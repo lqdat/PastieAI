@@ -1,0 +1,11 @@
+{
+  "name": "pastie-ai-root",
+  "version": "1.0.0",
+  "description": "Root orchestrator for Pastie AI Chat Multi-tenant Backend",
+  "scripts": {
+    "postinstall": "npm install --prefix server-dashboard",
+    "start": "npm start --prefix server-dashboard"
+  },
+  "author": "Antigravity",
+  "license": "MIT"
+}
