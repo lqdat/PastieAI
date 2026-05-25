@@ -40,6 +40,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Serve widget files statically (as a fallback)
 app.use(express.static(path.join(__dirname, '../widget')));
 
+// Redirect root path to admin dashboard
+app.get('/', (req, res) => {
+  res.redirect('/admin.html');
+});
+
 
 // Simple Token-based Auth Middleware for admin routes
 function checkAdminAuth(req, res, next) {
