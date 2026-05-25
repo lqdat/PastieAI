@@ -1,0 +1,75 @@
+const { Pool } = require('pg');
+require('dotenv').config();
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  console.error('ERROR: DATABASE_URL is not defined in environment variables. Please check your .env file.');
+}
+
+const pool = new Pool({
+  connectionString,
+  ssl: connectionString && !connectionString.includes('localhost') && !connectionString.includes('127.0.0.1')
+    ? { rejectUnauthorized: false }
+    : false
+});
+
+// SQL query runner helper
+const query = (text, params) => pool.query(text, params);
+
+// Initialize DB schema automatically
+async function initializeDatabase() {
+  try {
+    console.log('Connecting to PostgreSQL database and initializing tables...');
+    
+    // Create sessions table
+    await query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        project_id VARCHAR(100) NOT NULL,
+        visitor_name VARCHAR(255),
+        visitor_email VARCHAR(255),
+        detected_language VARCHAR(10),
+        ai_summary TEXT,
+        intent_tags TEXT,
+        is_verified BOOLEAN DEFAULT FALSE,
+        status VARCHAR(20) DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Create messages table
+    await query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+        sender VARCHAR(20) NOT NULL, -- 'visitor', 'agent', 'system'
+        original_text TEXT NOT NULL,
+        translated_text TEXT,
+        language VARCHAR(10),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Create otps table
+    await query(`
+      CREATE TABLE IF NOT EXISTS otps (
+        email VARCHAR(255) PRIMARY KEY,
+        code VARCHAR(10) NOT NULL,
+        expires_at TIMESTAMP NOT NULL
+      );
+    `);
+
+    console.log('Database tables verified/created successfully.');
+  } catch (err) {
+    console.error('Failed to initialize database tables:', err.message);
+  }
+}
+
+// Automatically trigger initialization when this module is loaded
+initializeDatabase();
+
+module.exports = {
+  query,
+  pool
+};

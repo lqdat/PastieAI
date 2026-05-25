@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pastie AI - Admin Chat Console</title>
+    <!-- Outfit Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Remix Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <!-- Gradient background decor -->
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <!-- Login Modal overlay -->
+    <div id="login-modal" class="modal-overlay">
+        <div class="login-box glass-panel">
+            <div class="brand-header">
+                <div class="brand-logo"><i class="ri-git-repository-private-line"></i></div>
+                <h2>Pastie AI Admin</h2>
+                <p>Nhập mật khẩu quản trị để kết nối console</p>
+            </div>
+            <div class="form-group">
+                <input type="password" id="admin-password-input" placeholder="Mật khẩu bảo mật..." required>
+                <div class="error-msg" id="login-error-msg">Mật khẩu không hợp lệ, vui lòng thử lại.</div>
+            </div>
+            <button id="login-btn" class="primary-btn">Kết Nối Console <i class="ri-arrow-right-line"></i></button>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Container -->
+    <div class="dashboard-container hide" id="main-dashboard">
+        <!-- Top Navigation -->
+        <header class="dashboard-header glass-panel">
+            <div class="header-left">
+                <div class="logo">
+                    <i class="ri-bubble-chart-fill"></i>
+                    <span>Pastie AI Console</span>
+                </div>
+                <div class="project-selector">
+                    <i class="ri-filter-3-line"></i>
+                    <select id="project-filter">
+                        <option value="">Tất cả dự án</option>
+                        <!-- Will be populated dynamically -->
+                    </select>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="export-actions">
+                    <button id="export-csv-btn" class="secondary-btn"><i class="ri-file-excel-2-line"></i> Xuất CSV (Sales Script)</button>
+                    <button id="export-jsonl-btn" class="secondary-btn"><i class="ri-braces-line"></i> Xuất JSONL (AI Train)</button>
+                </div>
+                <button id="logout-btn" class="icon-btn" title="Đăng xuất"><i class="ri-logout-box-r-line"></i></button>
+            </div>
+        </header>
+
+        <!-- Lower Grid -->
+        <div class="dashboard-body">
+            <!-- Sidebar: Sessions List -->
+            <aside class="sessions-sidebar glass-panel">
+                <div class="sidebar-header">
+                    <h3>Hội thoại chat</h3>
+                    <button id="refresh-sessions-btn" class="icon-btn" title="Tải lại"><i class="ri-refresh-line"></i></button>
+                </div>
+                <div class="sessions-list" id="sessions-list-container">
+                    <div class="empty-state">Đang tải cuộc hội thoại...</div>
+                </div>
+            </aside>
+
+            <!-- Main Chat Area -->
+            <main class="chat-main glass-panel">
+                <!-- Chat Window Header -->
+                <div class="chat-header" id="active-chat-header">
+                    <div class="visitor-details-header">
+                        <h3 id="chat-title-name">Chưa chọn phòng chat</h3>
+                        <p id="chat-title-email">Vui lòng chọn cuộc hội thoại từ danh sách bên trái</p>
+                    </div>
+                    <div id="chat-header-actions" class="hide">
+                        <button id="close-session-btn" class="danger-btn"><i class="ri-close-circle-line"></i> Đóng cuộc chat</button>
+                    </div>
+                </div>
+
+                <!-- Chat History Messages -->
+                <div class="chat-messages" id="chat-messages-container">
+                    <div class="chat-welcome-state">
+                        <i class="ri-message-3-line"></i>
+                        <p>Chọn một cuộc trò chuyện để bắt đầu tương tác & dịch thuật tự động.</p>
+                    </div>
+                </div>
+
+                <!-- Chat Input area -->
+                <div class="chat-input-area hide" id="chat-input-container">
+                    <div class="translation-status-bar">
+                        <i class="ri-sparkling-fill"></i>
+                        <span>AI sẽ tự động dịch tin nhắn của bạn sang ngôn ngữ của khách</span>
+                    </div>
+                    <form id="chat-form" class="chat-form">
+                        <input type="text" id="chat-input" placeholder="Gõ câu trả lời bằng tiếng Việt tại đây..." autocomplete="off">
+                        <button type="submit" class="send-btn"><i class="ri-send-plane-2-fill"></i></button>
+                    </form>
+                </div>
+            </main>
+
+            <!-- Details Sidebar -->
+            <aside class="details-sidebar glass-panel hide" id="details-sidebar-container">
+                <div class="details-header">
+                    <h3>Thông tin chi tiết</h3>
+                </div>
+                <div class="details-body">
+                    <div class="detail-card">
+                        <label>Ngôn ngữ phát hiện</label>
+                        <div class="detail-value" id="detail-lang">Chưa phát hiện</div>
+                    </div>
+                    <div class="detail-card">
+                        <label>AI Phân tích ý định (Intent Tags)</label>
+                        <div class="tags-container" id="detail-tags">
+                            <!-- Tags will go here -->
+                        </div>
+                    </div>
+                    <div class="detail-card">
+                        <label>AI Tóm tắt nội dung cuộc chat</label>
+                        <p class="summary-text" id="detail-summary">Nhấn nút "Đóng cuộc chat" để AI phân tích và tóm tắt cuộc trò chuyện này.</p>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>
