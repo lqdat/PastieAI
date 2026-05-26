@@ -611,15 +611,46 @@
                 }
             }
 
+            function extractTextFromTidioData(data) {
+                if (!data) return '';
+                if (typeof data === 'string') return data;
+                if (data.detail) {
+                    if (typeof data.detail === 'string') return data.detail;
+                    if (data.detail.text) return data.detail.text;
+                    if (data.detail.message) return data.detail.message;
+                }
+                if (data.text) return data.text;
+                if (data.message) return data.message;
+                return '';
+            }
+
             function bindTidioEvents() {
-                if (!window.tidioChatApi) return;
-                
-                window.tidioChatApi.on('messageFromVisitor', function(data) {
-                    onTidioMessage(data.text, 'visitor');
+                // Method 1: Bind via window.tidioChatApi
+                if (window.tidioChatApi) {
+                    window.tidioChatApi.on('messageFromVisitor', function(data) {
+                        console.log('[Tidio Event] messageFromVisitor data:', data);
+                        const text = extractTextFromTidioData(data);
+                        onTidioMessage(text, 'visitor');
+                    });
+                    
+                    window.tidioChatApi.on('messageFromOperator', function(data) {
+                        console.log('[Tidio Event] messageFromOperator data:', data);
+                        const text = extractTextFromTidioData(data);
+                        onTidioMessage(text, 'operator');
+                    });
+                }
+
+                // Method 2: Bind via document event listeners (Tidio custom DOM events)
+                document.addEventListener('tidioChat-messageFromVisitor', function(event) {
+                    console.log('[Tidio DOM Event] messageFromVisitor event:', event);
+                    const text = extractTextFromTidioData(event);
+                    onTidioMessage(text, 'visitor');
                 });
-                
-                window.tidioChatApi.on('messageFromOperator', function(data) {
-                    onTidioMessage(data.text, 'operator');
+
+                document.addEventListener('tidioChat-messageFromOperator', function(event) {
+                    console.log('[Tidio DOM Event] messageFromOperator event:', event);
+                    const text = extractTextFromTidioData(event);
+                    onTidioMessage(text, 'operator');
                 });
             }
 
