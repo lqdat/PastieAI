@@ -674,6 +674,22 @@
                 }
             }
 
+            // Listen for hash change to trigger AI chat from Tidio chatbot buttons/links
+            function checkHashForAIChat() {
+                if (window.location.hash === '#chat-with-human' || window.location.hash === '#ai-chat') {
+                    console.log('[Tidio Link Trigger] Detected URL hash match. Switching to AI Chat...');
+                    activateAIChat('Khách hàng click link chuyển hướng trên Tidio');
+                    // Remove hash from address bar without reloading the page
+                    try {
+                        history.pushState("", document.title, window.location.pathname + window.location.search);
+                    } catch(e) {
+                        window.location.hash = '';
+                    }
+                }
+            }
+            window.addEventListener('hashchange', checkHashForAIChat);
+            checkHashForAIChat(); // Check immediately on load
+
             if (window.tidioChatApi) {
                 handleInitialState();
                 bindTidioEvents();
