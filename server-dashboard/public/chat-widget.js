@@ -542,12 +542,12 @@
                     // Update form description if on init step
                     const descEl = document.getElementById('view-init-desc') || document.querySelector('#view-init p');
                     if (descEl) {
-                        descEl.innerHTML = `<span style="color: #ef4444; font-weight: 500;"><i class="ri-error-warning-line"></i> Tidio Chat đang chuyển hướng bạn gặp nhân viên hỗ trợ.</span><br/>Vui lòng điền thông tin để kết nối trực tiếp.`;
+                        descEl.innerHTML = `<span style="color: #ef4444; font-weight: 500;"><i class="ri-error-warning-line"></i> Chatbot đang chuyển hướng bạn gặp nhân viên hỗ trợ.</span><br/>Vui lòng điền thông tin để kết nối trực tiếp.`;
                     }
 
                     // If session is already active, send a system message to database
                     if (state.sessionId) {
-                        sendSystemNotification(`[Chuyển hướng Tidio] Khách hàng chuyển sang chat trực tiếp (Lý do: ${reason})`).then(() => {
+                        sendSystemNotification(`[Chuyển hướng Chatbot] Khách hàng chuyển sang chat trực tiếp (Lý do: ${reason})`).then(() => {
                             loadMessageHistory();
                         });
                     }
