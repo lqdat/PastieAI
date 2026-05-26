@@ -1,11 +1,12 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
 const express = require('express');
 const cors = require('cors');
 const { randomUUID } = require('crypto');
 const db = require('./database');
 const gemini = require('./gemini-helper');
 const resend = require('./resend-helper');
-
-require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -389,5 +390,11 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`-----------------------------------------------------`);
   console.log(`Pastie AI Chat Server is running on port ${PORT}`);
   console.log(`Admin Dashboard: http://localhost:${PORT}/admin.html`);
+  console.log(`-----------------------------------------------------`);
+  console.log(`[Env Configuration Check]`);
+  console.log(`- DATABASE_URL: ${process.env.DATABASE_URL ? 'LOADED (Configured)' : 'MISSING ❌'}`);
+  console.log(`- GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? 'LOADED (Configured)' : 'MISSING ❌'}`);
+  console.log(`- RESEND_API_KEY: ${process.env.RESEND_API_KEY ? 'LOADED (Configured)' : 'MISSING ❌'}`);
+  console.log(`- SENDER_EMAIL: ${process.env.SENDER_EMAIL ? `LOADED (${process.env.SENDER_EMAIL})` : 'MISSING (Using onboarding@resend.dev fallback) ⚠️'}`);
   console.log(`-----------------------------------------------------`);
 });

@@ -1,10 +1,10 @@
 /* --- Chat Widget Container & Launcher --- */
 #pastie-chat-widget-root {
-    --widget-accent: #6366f1;
-    --widget-bg: rgba(15, 12, 30, 0.85);
+    --widget-accent: #ff758f;
+    --widget-bg: rgba(25, 15, 22, 0.88);
     --widget-border: rgba(255, 255, 255, 0.08);
     --widget-text: #f8fafc;
-    --widget-text-sec: #94a3b8;
+    --widget-text-sec: #f1b5c2;
     --widget-glass-blur: blur(20px);
     
     font-family: 'Outfit', sans-serif;
@@ -25,7 +25,7 @@
     border-radius: 50%;
     background: var(--widget-accent);
     color: #ffffff;
-    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
+    box-shadow: 0 8px 24px rgba(255, 117, 143, 0.35);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -36,7 +36,7 @@
 }
 .pastie-chat-launcher:hover {
     transform: scale(1.08) translateY(-2px);
-    box-shadow: 0 12px 30px rgba(99, 102, 241, 0.5);
+    box-shadow: 0 12px 30px rgba(255, 117, 143, 0.45);
 }
 .pastie-chat-launcher i {
     font-size: 26px;
@@ -103,7 +103,7 @@
     width: 38px;
     height: 38px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+    background: linear-gradient(135deg, #ff758f 0%, #ff9eae 100%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -216,10 +216,10 @@
     justify-content: center;
     gap: 8px;
     transition: all 0.3s;
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 4px 12px rgba(255, 117, 143, 0.3);
 }
 .pastie-chat-btn:hover:not(:disabled) {
-    background: #4f46e5;
+    background: #ff4d6d;
     transform: translateY(-1px);
 }
 .pastie-chat-btn:disabled {
@@ -301,7 +301,7 @@
     padding-top: 6px;
     border-top: 1px dashed rgba(255, 255, 255, 0.1);
     font-size: 12px;
-    color: #a5b4fc;
+    color: #ffb3c1;
 }
 .pastie-msg-translation::before {
     content: "Original: ";
@@ -414,7 +414,7 @@ body:not(.tidio-active) .tidio-chat-iframe {
     transform: translateY(-2px);
     background: var(--widget-accent);
     border-color: var(--widget-accent);
-    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+    box-shadow: 0 6px 20px rgba(255, 117, 143, 0.4);
 }
 .pastie-ai-toggle-pill i {
     font-size: 14px;
