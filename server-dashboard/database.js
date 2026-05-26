@@ -14,6 +14,11 @@ const pool = new Pool({
     : false
 });
 
+// Prevent unhandled errors from crashing the Node process on idle client drops
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle pg client:', err.message || err);
+});
+
 // SQL query runner helper
 const query = (text, params) => pool.query(text, params);
 

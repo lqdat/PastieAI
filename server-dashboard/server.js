@@ -10,6 +10,14 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Catch uncaught exceptions and unhandled rejections to prevent server from crashing
+process.on('uncaughtException', (err) => {
+  console.error('CRITICAL: Uncaught Exception:', err.stack || err.message || err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason.stack || reason || reason.message);
+});
+
 app.use(cors());
 app.use(express.json());
 

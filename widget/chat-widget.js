@@ -1,8 +1,19 @@
 (function() {
     // --- Widget Configuration ---
-    // Change these values when deploying to production!
+    // Detect backend URL dynamically from the script source
     const CONFIG = {
-        BACKEND_URL: 'http://localhost:3000',
+        BACKEND_URL: (function() {
+            const scriptEl = document.querySelector('script[src*="chat-widget.js"]');
+            if (scriptEl && scriptEl.src) {
+                try {
+                    const url = new URL(scriptEl.src);
+                    if (url.origin && url.origin !== 'null' && url.protocol.startsWith('http')) {
+                        return url.origin;
+                    }
+                } catch(e) {}
+            }
+            return 'http://localhost:3000'; // fallback
+        })(),
         PROJECT_ID: 'pastie-landingpage', // unique ID for this landing page
         POLL_INTERVAL: 4000 // poll every 4 seconds for new agent replies
     };
@@ -557,7 +568,7 @@
                     window.tidioChatApi.show();
                     window.tidioChatApi.open();
                 }
-                togglePill.classList.remove('pastie-chat-hide');
+                togglePill.classList.add('pastie-chat-hide');
             }
 
             togglePill.addEventListener('click', () => activateAIChat('Khách hàng click nút chuyển hướng chủ động'));
@@ -573,7 +584,10 @@
                     'gặp admin', 'gap admin', 'human', 'agent', 'support',
                     'live chat', 'live support', 'người thật', 'nguoi that',
                     'nói chuyện với người', 'noi chuyen voi nguoi',
-                    'gặp tư vấn viên', 'gap tu van vien', 'gặp hỗ trợ', 'gap ho tro'
+                    'gặp tư vấn viên', 'gap tu van vien', 'gặp hỗ trợ', 'gap ho tro',
+                    'tư vấn viên', 'tu van vien', 'chat với người', 'chat voi nguoi',
+                    'gặp trực tiếp', 'gap truc tiep', 'nhân viên hỗ trợ', 'nhan vien ho tro',
+                    'talk to human', 'real person', 'speak to someone'
                 ];
 
                 // Keywords from chatbot indicating fallback or transfer
@@ -583,7 +597,9 @@
                     'chưa có câu trả lời', 'chua co cau tra loi', 'sorry', "don't know",
                     "don't understand", "can't help", 'kết nối với nhân viên', 'ket noi voi nhan vien',
                     'gặp nhân viên', 'gap nhan vien', 'chuyển sang nhân viên', 'chuyen sang nhan vien',
-                    'chuyển tiếp', 'chuyen tiep', 'đang kết nối', 'dang ket noi', 'chưa có sẵn', 'chua co san'
+                    'chuyển tiếp', 'chuyen tiep', 'đang kết nối', 'dang ket noi', 'chưa có sẵn', 'chua co san',
+                    'chuyển tới nhân viên', 'chuyen toi nhan vien', 'không thể trả lời', 'khong the tra loi',
+                    'chưa được cài đặt', 'chua duoc cai dat'
                 ];
 
                 const keywords = senderType === 'visitor' ? visitorKeywords : operatorKeywords;
@@ -608,8 +624,8 @@
             }
 
             function handleInitialState() {
-                if (state.detectedLang !== 'vi') {
-                    // Automatic AI translation for foreigners
+                if (state.sessionId) {
+                    // Has ongoing active custom agent chat session
                     document.body.classList.remove('tidio-active');
                     if (window.tidioChatApi) {
                         window.tidioChatApi.hide();
@@ -617,13 +633,13 @@
                     launcher.classList.remove('pastie-chat-hide');
                     togglePill.classList.add('pastie-chat-hide');
                 } else {
-                    // Default Tidio for Vietnamese visitors
+                    // Prioritize Tidio by default for all visitors
                     document.body.classList.add('tidio-active');
                     if (window.tidioChatApi) {
                         window.tidioChatApi.show();
                     }
                     launcher.classList.add('pastie-chat-hide');
-                    togglePill.classList.remove('pastie-chat-hide');
+                    togglePill.classList.add('pastie-chat-hide');
                 }
             }
 
