@@ -22,7 +22,6 @@ process.on('unhandledRejection', (reason, promise) => {
 app.use(cors());
 app.use(express.json());
 
-const path = require('path');
 const fs = require('fs');
 
 // Automatically sync widget files if they exist locally (for convenience in development)
