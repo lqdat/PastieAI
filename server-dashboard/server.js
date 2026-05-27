@@ -7,9 +7,48 @@ const { randomUUID } = require('crypto');
 const db = require('./database');
 const gemini = require('./gemini-helper');
 const resend = require('./resend-helper');
+const swaggerUi = require('swagger-ui-express');
+const swaggerJsdoc = require('swagger-jsdoc');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// --- Swagger Configuration ---
+const swaggerOptions = {
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'Pastie AI Chat API',
+      version: '1.0.0',
+      description: 'API documentation for Pastie AI Chat Multi-tenant Backend',
+    },
+    servers: [
+      {
+        url: 'https://dashboard.pastie.vn',
+        description: 'Production server',
+      },
+      {
+        url: 'http://localhost:3000',
+        description: 'Development server',
+      },
+    ],
+    components: {
+      securitySchemes: {
+        ApiKeyAuth: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'Authorization',
+          description: 'Bearer <ADMIN_PASSWORD>',
+        },
+      },
+    },
+  },
+  apis: [__filename],
+};
+
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
 
 // Catch uncaught exceptions and unhandled rejections to prevent server from crashing
 process.on('uncaughtException', (err) => {
@@ -104,6 +143,46 @@ function checkAdminAuth(req, res, next) {
 // CLIENT API ENDPOINTS (VISITORS)
 // ----------------------------------------------------
 
+/**
+ * @openapi
+ * /api/otp/send:
+ *   post:
+ *     summary: Gửi mã OTP xác thực qua email
+ *     description: Tạo mã số 6 chữ số và gửi qua Resend để xác thực email của khách hàng.
+ *     tags:
+ *       - Khách hàng
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: customer@example.com
+ *     responses:
+ *       200:
+ *         description: Gửi OTP thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Mã OTP đã được gửi về email của bạn.
+ *       400:
+ *         description: Email không hợp lệ
+ *       500:
+ *         description: Lỗi hệ thống khi xử lý
+ */
 // 1. Generate and Send OTP to email
 app.post('/api/otp/send', async (req, res) => {
   const { email } = req.body;
@@ -137,6 +216,61 @@ app.post('/api/otp/send', async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /api/otp/verify:
+ *   post:
+ *     summary: Xác thực mã OTP và khởi tạo phòng chat
+ *     description: Xác thực mã OTP đã được gửi về email. Nếu chính xác và chưa hết hạn, hệ thống sẽ tạo một phiên chat mới và cấp một `sessionId` dạng UUID.
+ *     tags:
+ *       - Khách hàng
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - code
+ *               - projectId
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: customer@example.com
+ *               code:
+ *                 type: string
+ *                 example: "123456"
+ *               name:
+ *                 type: string
+ *                 example: Nguyễn Văn A
+ *               projectId:
+ *                 type: string
+ *                 example: pastie-landingpage
+ *     responses:
+ *       200:
+ *         description: Xác thực thành công và khởi tạo session
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 sessionId:
+ *                   type: string
+ *                   format: uuid
+ *                   example: 123e4567-e89b-12d3-a456-426614174000
+ *                 name:
+ *                   type: string
+ *                   example: Nguyễn Văn A
+ *       400:
+ *         description: Mã OTP sai hoặc hết hạn hoặc thiếu thông số đầu vào
+ *       500:
+ *         description: Lỗi hệ thống
+ */
 // 2. Verify OTP and Create/Activate Chat Session
 app.post('/api/otp/verify', async (req, res) => {
   const { email, code, name, projectId } = req.body;
@@ -183,6 +317,79 @@ app.post('/api/otp/verify', async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /api/chats/message:
+ *   post:
+ *     summary: Gửi tin nhắn song ngữ (Khách hàng & Hỗ trợ viên)
+ *     description: Tiếp nhận tin nhắn từ Khách hàng (`visitor`) hoặc Nhân viên (`agent`). Hệ thống tự động dịch ngôn ngữ bằng Gemini AI và lưu trữ hội thoại song ngữ.
+ *     tags:
+ *       - Tin nhắn
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - sessionId
+ *               - sender
+ *               - text
+ *               - targetLang
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: ID của phiên chat (lấy từ verify OTP hoặc danh sách admin)
+ *                 example: 123e4567-e89b-12d3-a456-426614174000
+ *               sender:
+ *                 type: string
+ *                 enum: [visitor, agent]
+ *                 description: Người gửi (khách hàng hoặc nhân viên)
+ *                 example: visitor
+ *               text:
+ *                 type: string
+ *                 description: Nội dung tin nhắn cần gửi
+ *                 example: Hello, I have an issue
+ *               targetLang:
+ *                 type: string
+ *                 description: Ngôn ngữ đích cần dịch sang (ví dụ khách gửi tiếng Anh thì targetLang='vi', nhân viên gửi tiếng Việt thì targetLang='en')
+ *                 example: vi
+ *     responses:
+ *       200:
+ *         description: Gửi thành công và tin nhắn đã được dịch
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     session_id:
+ *                       type: string
+ *                     sender:
+ *                       type: string
+ *                     original_text:
+ *                       type: string
+ *                     translated_text:
+ *                       type: string
+ *                     language:
+ *                       type: string
+ *       400:
+ *         description: Thiếu thông số đầu vào bắt buộc
+ *       404:
+ *         description: Phiên chat không tồn tại
+ *       410:
+ *         description: Phiên chat đã bị đóng
+ *       500:
+ *         description: Lỗi hệ thống khi dịch/lưu tin nhắn
+ */
 // 3. Log Message and Translate (2-way Translation)
 app.post('/api/chats/message', async (req, res) => {
   const { sessionId, sender, text, targetLang } = req.body;
@@ -226,6 +433,51 @@ app.post('/api/chats/message', async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /api/chats/session/close:
+ *   post:
+ *     summary: Đóng cuộc trò chuyện và phân tích hội thoại bằng AI
+ *     description: Đóng phòng chat. Sau khi đóng, Gemini AI sẽ tự động phân tích toàn bộ nội dung tin nhắn để viết tóm tắt (`ai_summary`) và gắn nhãn phân loại khách hàng (`intent_tags`).
+ *     tags:
+ *       - Quản trị viên
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - sessionId
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *                 format: uuid
+ *                 example: 123e4567-e89b-12d3-a456-426614174000
+ *     responses:
+ *       200:
+ *         description: Đóng phòng chat và phân tích thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 summary:
+ *                   type: string
+ *                   example: Khách hàng hỏi về chính sách đặt phòng và đã được hỗ trợ thành công.
+ *                 tags:
+ *                   type: string
+ *                   example: "Đặt phòng, Hỗ trợ"
+ *       400:
+ *         description: Thiếu sessionId
+ *       404:
+ *         description: Không tìm thấy phiên chat
+ *       500:
+ *         description: Lỗi hệ thống
+ */
 // 4. Close Session (triggers AI conversation summarization & tagging)
 app.post('/api/chats/session/close', async (req, res) => {
   const { sessionId } = req.body;
@@ -264,6 +516,38 @@ app.post('/api/chats/session/close', async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /api/chats/{sessionId}/messages:
+ *   get:
+ *     summary: Lấy lịch sử tin nhắn của cuộc trò chuyện (Dùng cho khách hàng)
+ *     description: Lấy danh sách toàn bộ các tin nhắn song ngữ trong phiên chat này. Nếu phiên chat đã bị đóng bởi quản trị viên, trả về status `410 Gone`.
+ *     tags:
+ *       - Khách hàng
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID của phiên chat (UUID)
+ *     responses:
+ *       200:
+ *         description: Danh sách tin nhắn tải thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *       404:
+ *         description: Phiên chat không tồn tại
+ *       410:
+ *         description: Phiên chat đã đóng
+ *       500:
+ *         description: Lỗi hệ thống
+ */
 // 5. Get messages for a session (Public route for the Visitor Widget)
 // Secure because sessionId is a secure UUIDv4
 app.get('/api/chats/:sessionId/messages', async (req, res) => {
@@ -296,6 +580,41 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
 // ADMIN API ENDPOINTS (DASHBOARD)
 // ----------------------------------------------------
 
+/**
+ * @openapi
+ * /api/admin/chats:
+ *   get:
+ *     summary: Lấy danh sách tất cả các phiên chat (Yêu cầu quyền Admin)
+ *     description: Lấy danh sách toàn bộ phiên chat trong hệ thống, bao gồm thông tin chi tiết như tóm tắt AI, các tag phân loại và trạng thái của từng phòng chat.
+ *     tags:
+ *       - Quản trị viên
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: projectId
+ *         schema:
+ *           type: string
+ *         description: Lọc danh sách theo dự án/trang web cụ thể (ví dụ pastie-landingpage)
+ *       - in: query
+ *         name: token
+ *         schema:
+ *           type: string
+ *         description: Nhập mật khẩu quản trị thay cho Bearer Authorization Header
+ *     responses:
+ *       200:
+ *         description: Tải danh sách phòng chat thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *       401:
+ *         description: Chưa xác thực (thiếu token hoặc mật khẩu sai)
+ *       500:
+ *         description: Lỗi hệ thống
+ */
 // 1. Get all sessions
 app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
   const { projectId } = req.query;
@@ -319,6 +638,43 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /api/admin/chats/{sessionId}/messages:
+ *   get:
+ *     summary: Lấy lịch sử tin nhắn chi tiết của một cuộc trò chuyện (Yêu cầu quyền Admin)
+ *     description: Lấy danh sách toàn bộ các tin nhắn song ngữ trong một phiên chat. Không bị giới hạn bởi trạng thái phòng chat đã đóng hay đang mở.
+ *     tags:
+ *       - Quản trị viên
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID của phiên chat (UUID)
+ *       - in: query
+ *         name: token
+ *         schema:
+ *           type: string
+ *         description: Nhập mật khẩu quản trị thay cho Bearer Authorization Header
+ *     responses:
+ *       200:
+ *         description: Tải danh sách tin nhắn thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *       401:
+ *         description: Chưa xác thực (thiếu token hoặc mật khẩu sai)
+ *       500:
+ *         description: Lỗi hệ thống
+ */
 // 2. Get messages for a session
 app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res) => {
   const { sessionId } = req.params;
@@ -335,6 +691,46 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res)
   }
 });
 
+/**
+ * @openapi
+ * /api/admin/export:
+ *   get:
+ *     summary: Xuất dữ liệu các phòng chat (Yêu cầu quyền Admin)
+ *     description: Xuất toàn bộ dữ liệu các phiên chat và tin nhắn dưới định dạng **CSV** (để quản lý / đọc bằng Excel) hoặc **JSONL** (để training, fine-tune mô hình AI).
+ *     tags:
+ *       - Quản trị viên
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: format
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [csv, jsonl]
+ *         description: Định dạng file xuất dữ liệu
+ *       - in: query
+ *         name: projectId
+ *         schema:
+ *           type: string
+ *         description: Lọc theo dự án/trang web cụ thể
+ *       - in: query
+ *         name: token
+ *         schema:
+ *           type: string
+ *         description: Nhập mật khẩu quản trị thay cho Bearer Authorization Header
+ *     responses:
+ *       200:
+ *         description: Tải xuống file xuất dữ liệu thành công (application/x-jsonlines hoặc text/csv)
+ *       400:
+ *         description: Yêu cầu định dạng không được hỗ trợ
+ *       401:
+ *         description: Chưa xác thực (thiếu token hoặc mật khẩu sai)
+ *       404:
+ *         description: Không tìm thấy dữ liệu hội thoại phù hợp
+ *       500:
+ *         description: Lỗi hệ thống
+ */
 // 3. Export data (JSONL for Fine-tuning / CSV for Sales Scripting)
 app.get('/api/admin/export', checkAdminAuth, async (req, res) => {
   const { format, projectId } = req.query; // format = 'jsonl' | 'csv'
