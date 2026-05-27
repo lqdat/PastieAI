@@ -182,6 +182,7 @@ let currentProjectFilter = '';
 let currentDetectedLang = 'en'; // default to english for translations
 let sessionsList = [];
 let pollInterval = null;
+let messagePollInterval = null;
 
 // DOM Elements
 const loginModal = document.getElementById('login-modal');
@@ -316,6 +317,7 @@ function showLogin() {
     loginModal.classList.remove('hide');
     mainDashboard.classList.add('hide');
     if (pollInterval) clearInterval(pollInterval);
+    if (messagePollInterval) clearInterval(messagePollInterval);
 }
 
 function hideLogin() {
@@ -490,6 +492,16 @@ async function selectSession(sessionId) {
 
     // Load messages
     await loadMessages(sessionId);
+
+    // Setup real-time message polling
+    if (messagePollInterval) clearInterval(messagePollInterval);
+    if (session.status === 'active') {
+        messagePollInterval = setInterval(async () => {
+            if (currentSessionId === sessionId) {
+                await loadMessages(sessionId);
+            }
+        }, 3000);
+    }
 }
 
 async function loadMessages(sessionId) {
@@ -499,6 +511,10 @@ async function loadMessages(sessionId) {
         const response = await fetch(`${API_BASE}/api/admin/chats/${sessionId}/messages?token=${encodeURIComponent(token)}`);
         const messages = await response.json();
         
+        // Detect if user was near the bottom before rebuilding the messages view
+        const isNearBottom = (chatMessagesContainer.scrollHeight - chatMessagesContainer.scrollTop - chatMessagesContainer.clientHeight) < 100;
+        const isFirstLoad = chatMessagesContainer.children.length === 0 || chatMessagesContainer.querySelector('.chat-welcome-state');
+
         chatMessagesContainer.innerHTML = '';
         
         if (messages.length === 0) {
@@ -541,8 +557,10 @@ async function loadMessages(sessionId) {
             chatMessagesContainer.appendChild(wrapper);
         });
 
-        // Scroll to bottom
-        chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+        // Scroll to bottom only on initial load or if user was already reading at the bottom
+        if (isFirstLoad || isNearBottom) {
+            chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+        }
     } catch (e) {
         console.error('Error loading messages:', e);
     }
