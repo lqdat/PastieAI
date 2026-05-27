@@ -323,6 +323,7 @@
             const data = await res.json();
 
             if (res.ok && data.success) {
+                state.mode = 'human';
                 state.sessionId = data.sessionId;
                 sessionStorage.setItem('pastie_chat_session_id', data.sessionId);
                 
@@ -375,6 +376,26 @@
         inputEl.value = '';
 
         if (state.mode === 'tidio') {
+            // Check keywords directly in client first for instant redirection
+            const visitorKeywords = [
+                'nhân viên', 'nhan vien', 'gặp nhân viên', 'gap nhan vien',
+                'gặp admin', 'gap admin', 'human', 'agent', 'support',
+                'live chat', 'live support', 'người thật', 'nguoi that',
+                'nói chuyện với người', 'noi chuyen voi nguoi',
+                'gặp tư vấn viên', 'gap tu van vien', 'gặp hỗ trợ', 'gap ho tro',
+                'tư vấn viên', 'tu van vien', 'chat với người', 'chat voi nguoi',
+                'gặp trực tiếp', 'gap truc tiep', 'nhân viên hỗ trợ', 'nhan vien ho tro',
+                'talk to human', 'real person', 'speak to someone',
+                'gặp nv', 'gap nv', 'nv', 'cskh', 'chăm sóc khách hàng', 'ho tro viên'
+            ];
+            const lowerText = text.toLowerCase();
+            const matches = visitorKeywords.some(keyword => lowerText.includes(keyword));
+            if (matches) {
+                console.log(`[Tidio Integration] Direct switch triggered in sendMessage by keyword: "${text}"`);
+                activateAIChat('Khách yêu cầu gặp nhân viên trên Tidio');
+                return;
+            }
+
             // Append and save locally
             const newMsg = {
                 text: text,
@@ -541,16 +562,26 @@
             } catch(e) {}
         }
 
-        // 2. Remove old Tidio iframe to reset the widget UI
+        // 2. Remove old Tidio iframe and container to reset the widget UI
         const iframe = document.getElementById('tidio-chat-iframe');
         if (iframe) {
             try {
                 iframe.remove();
             } catch(e) {}
         }
+        const container = document.getElementById('tidio-chat');
+        if (container) {
+            try {
+                container.remove();
+            } catch(e) {}
+        }
 
-        // 3. Delete the tidioChatApi global object so the fresh script can recreate it
+        // 3. Delete the tidioChatApi and other global objects so the fresh script can recreate them
         delete window.tidioChatApi;
+        delete window.tidioChatCode;
+        delete window.TidioChat;
+        delete window.tidioChat;
+        delete window.TidioChatApi;
 
         // 4. Set document.tidioIdentify with the distinct_id
         const distinctId = getOrCreateTidioDistinctId(forceNewId);
