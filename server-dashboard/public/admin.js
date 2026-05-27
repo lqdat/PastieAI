@@ -200,7 +200,7 @@ const chatInputContainer = document.getElementById('chat-input-container');
 const chatForm = document.getElementById('chat-form');
 const chatInput = document.getElementById('chat-input');
 const detailsSidebar = document.getElementById('details-sidebar-container');
-const detailLangSelect = document.getElementById('detail-lang-select');
+const detailLang = document.getElementById('detail-lang');
 const detailTags = document.getElementById('detail-tags');
 const detailSummary = document.getElementById('detail-summary');
 const closeSessionBtn = document.getElementById('close-session-btn');
@@ -269,6 +269,10 @@ function applyTranslations(lang) {
             const summaryText = document.getElementById('detail-summary');
             if (summaryText && (!session.ai_summary)) {
                 summaryText.textContent = dictObj.closeChatToAnalyze;
+            }
+            const dl = document.getElementById('detail-lang');
+            if (dl && (!session.detected_language || session.detected_language === 'unknown')) {
+                dl.textContent = dictObj.notDetected;
             }
         }
     }
@@ -464,8 +468,12 @@ async function selectSession(sessionId) {
 
     // Update details side panel
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
-    currentDetectedLang = session.detected_language || 'unknown';
-    detailLangSelect.value = currentDetectedLang;
+    currentDetectedLang = session.detected_language || 'en';
+    if (!session.detected_language || session.detected_language === 'unknown') {
+        detailLang.textContent = dict.notDetected;
+    } else {
+        detailLang.textContent = currentDetectedLang.toUpperCase();
+    }
     
     renderTags(session.intent_tags);
     detailSummary.textContent = session.ai_summary || dict.closeChatToAnalyze;
@@ -677,39 +685,6 @@ logoutBtn.addEventListener('click', () => {
     localStorage.removeItem('pastie_admin_token');
     showLogin();
 });
-
-// Bind detail session language change selector
-if (detailLangSelect) {
-    detailLangSelect.addEventListener('change', async (e) => {
-        const newLang = e.target.value;
-        if (!currentSessionId) return;
-
-        try {
-            const response = await fetch(`${API_BASE}/api/chats/session/language`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sessionId: currentSessionId,
-                    language: newLang
-                })
-            });
-            const data = await response.json();
-            if (data.success) {
-                currentDetectedLang = newLang;
-                // Update in the sessions list cache
-                const session = sessionsList.find(s => s.id === currentSessionId);
-                if (session) {
-                    session.detected_language = newLang;
-                }
-            } else {
-                alert('Lỗi cập nhật ngôn ngữ: ' + data.error);
-            }
-        } catch (err) {
-            console.error('Error updating language:', err);
-            alert('Lỗi kết nối khi cập nhật ngôn ngữ.');
-        }
-    });
-}
 
 // Bind language selection dropdown
 const adminLangSelect = document.getElementById('admin-lang-select');
