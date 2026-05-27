@@ -121,7 +121,13 @@
                 <div class="details-body">
                     <div class="detail-card">
                         <label data-i18n="detectedLangLabel">Ngôn ngữ phát hiện</label>
-                        <div id="detail-lang" class="detail-value" data-i18n="notDetected">Chưa phát hiện</div>
+                        <select id="detail-lang-select" class="detail-select">
+                            <option value="unknown" data-i18n="notDetected">Chưa phát hiện</option>
+                            <option value="vi">Tiếng Việt (VI)</option>
+                            <option value="en">English (EN)</option>
+                            <option value="ru">Русский (RU)</option>
+                            <option value="zh">中文 (ZH)</option>
+                        </select>
                     </div>
                     <div class="detail-card">
                         <label data-i18n="intentTagsLabel">AI Phân tích ý định (Intent Tags)</label>

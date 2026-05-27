@@ -378,10 +378,26 @@
         }
     }
 
-    function changeWidgetLanguage(lang) {
+    async function changeWidgetLanguage(lang) {
         if (!TRANSLATIONS[lang]) return;
         state.detectedLang = lang;
         applyTranslations();
+
+        // Sync with backend if session is active
+        if (state.sessionId) {
+            try {
+                await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/language`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sessionId: state.sessionId,
+                        language: lang
+                    })
+                });
+            } catch(e) {
+                console.error('Failed to sync language selection with backend:', e);
+            }
+        }
     }
     window.changeWidgetLanguage = changeWidgetLanguage;
 
@@ -1188,14 +1204,12 @@
             `;
         } else if (msg.sender === 'agent') {
             // Agent writes Vietnamese, but client sees translated text!
-            // If translated_text exists, show it as primary bubble text, and original Vietnamese below
+            // Show only the translated/primary text in the client's language
             const primaryText = msg.translated_text || msg.original_text;
-            const hasTranslation = msg.translated_text && msg.translated_text !== msg.original_text;
 
             displayHtml = `
                 <div class="pastie-msg-bubble">
                     <div>${escapeHtml(primaryText)}</div>
-                    ${hasTranslation ? `<div class="pastie-msg-translation">${escapeHtml(msg.original_text)}</div>` : ''}
                 </div>
                 <div class="pastie-msg-time">${timeStr}</div>
             `;

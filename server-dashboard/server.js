@@ -477,6 +477,66 @@ app.post('/api/chats/message', async (req, res) => {
 
 /**
  * @openapi
+ * /api/chats/session/language:
+ *   post:
+ *     summary: Cập nhật ngôn ngữ được chọn/phát hiện của một phiên chat
+ *     description: Cập nhật trường `detected_language` của phiên chat để định hướng dịch thuật cho phản hồi tiếp theo của Agent.
+ *     tags:
+ *       - Tin nhắn
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - sessionId
+ *               - language
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *                 format: uuid
+ *               language:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Cập nhật ngôn ngữ thành công
+ *       400:
+ *         description: Thiếu dữ liệu đầu vào
+ *       404:
+ *         description: Không tìm thấy phiên chat
+ *       500:
+ *         description: Lỗi hệ thống
+ */
+app.post('/api/chats/session/language', async (req, res) => {
+  const { sessionId, language } = req.body;
+  if (!sessionId || !language) {
+    return res.status(400).json({ error: 'Thiếu sessionId hoặc language.' });
+  }
+
+  try {
+    const validLangs = ['vi', 'en', 'ru', 'zh', 'unknown'];
+    const updateLang = validLangs.includes(language.toLowerCase()) ? language.toLowerCase() : 'unknown';
+
+    const result = await db.query(
+      'UPDATE sessions SET detected_language = $1 WHERE id = $2 RETURNING *',
+      [updateLang, sessionId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy phiên chat.' });
+    }
+
+    res.json({ success: true, session: result.rows[0] });
+  } catch (error) {
+    console.error('Update session language error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi cập nhật ngôn ngữ.' });
+  }
+});
+
+
+/**
+ * @openapi
  * /api/chats/session/close:
  *   post:
  *     summary: Đóng cuộc trò chuyện và phân tích hội thoại bằng AI
@@ -738,7 +798,12 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
           if (session.status === 'active' && representative.status !== 'active') {
             representative.status = 'active';
             representative.id = session.id; // route messages to the active session
-            representative.detected_language = session.detected_language || representative.detected_language;
+          }
+          // Preserve the latest session's language, but fallback to older sessions if the latest is empty/unknown
+          if (!representative.detected_language || representative.detected_language === 'unknown') {
+            if (session.detected_language && session.detected_language !== 'unknown') {
+              representative.detected_language = session.detected_language;
+            }
           }
           // Merge AI intent tags
           if (session.intent_tags && session.intent_tags.length > 0) {

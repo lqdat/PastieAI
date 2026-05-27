@@ -270,11 +270,13 @@ function applyTranslations(lang) {
             if (summaryText && (!session.ai_summary)) {
                 summaryText.textContent = dictObj.closeChatToAnalyze;
             }
-            const dl = document.getElementById('detail-lang');
+            const dl = document.getElementById('detail-lang-select');
             if (dl && (!session.detected_language || session.detected_language === 'unknown')) {
-                dl.textContent = dictObj.notDetected;
+                dl.value = 'unknown';
             }
         }
+        // Reload messages to update bubble language displays instantly on administrative language change
+        loadMessages(currentSessionId);
     }
 }
 
@@ -468,11 +470,10 @@ async function selectSession(sessionId) {
 
     // Update details side panel
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
-    currentDetectedLang = session.detected_language || 'en';
-    if (!session.detected_language || session.detected_language === 'unknown') {
-        detailLang.textContent = dict.notDetected;
-    } else {
-        detailLang.textContent = currentDetectedLang.toUpperCase();
+    currentDetectedLang = session.detected_language || 'unknown';
+    const detailLangSelect = document.getElementById('detail-lang-select');
+    if (detailLangSelect) {
+        detailLangSelect.value = currentDetectedLang;
     }
     
     renderTags(session.intent_tags);
@@ -512,21 +513,26 @@ async function loadMessages(sessionId) {
             const locale = currentLang === 'vi' ? 'vi-VN' : currentLang === 'zh' ? 'zh-CN' : currentLang === 'ru' ? 'ru-RU' : 'en-US';
             const timeStr = new Date(msg.created_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 
-            let innerHtml = `
-                <div class="message-bubble">
-                    <div class="original-text">${escapeHtml(msg.original_text)}</div>
-            `;
-
-            // If there's an AI translation, display it
-            if (msg.translated_text && msg.translated_text !== msg.original_text) {
-                innerHtml += `
-                    <div class="translated-text-wrapper">
-                        <div>${escapeHtml(msg.translated_text)}</div>
-                    </div>
-                `;
+            let bubbleText = '';
+            if (msg.sender === 'visitor') {
+                if (currentLang === 'vi') {
+                    bubbleText = msg.translated_text || msg.original_text;
+                } else {
+                    bubbleText = msg.original_text;
+                }
+            } else if (msg.sender === 'agent') {
+                if (currentLang === 'vi') {
+                    bubbleText = msg.original_text;
+                } else {
+                    bubbleText = msg.translated_text || msg.original_text;
+                }
+            } else {
+                bubbleText = msg.original_text;
             }
 
-            innerHtml += `
+            let innerHtml = `
+                <div class="message-bubble">
+                    <div class="original-text">${escapeHtml(bubbleText)}</div>
                 </div>
                 <div class="message-time">${timeStr}</div>
             `;
@@ -578,9 +584,6 @@ async function sendMessage(e) {
     tempWrapper.innerHTML = `
         <div class="message-bubble">
             <div class="original-text">${escapeHtml(text)}</div>
-            <div class="translated-text-wrapper" style="opacity: 0.6;">
-                <div>${dict.translatingWithAI}</div>
-            </div>
         </div>
         <div class="message-time">${dict.sentJustNow}</div>
     `;
@@ -691,6 +694,36 @@ const adminLangSelect = document.getElementById('admin-lang-select');
 if (adminLangSelect) {
     adminLangSelect.addEventListener('change', (e) => {
         applyTranslations(e.target.value);
+    });
+}
+
+// Bind visitor detail language select dropdown
+const detailLangSelect = document.getElementById('detail-lang-select');
+if (detailLangSelect) {
+    detailLangSelect.addEventListener('change', async (e) => {
+        if (!currentSessionId) return;
+        const newLang = e.target.value;
+        try {
+            const res = await fetch(`${API_BASE}/api/chats/session/language`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sessionId: currentSessionId,
+                    language: newLang
+                })
+            });
+            if (res.ok) {
+                currentDetectedLang = newLang;
+                const s = sessionsList.find(x => x.id === currentSessionId);
+                if (s) {
+                    s.detected_language = newLang;
+                }
+                // Reload messages to update bubble translation rendering instantly based on target language choice
+                await loadMessages(currentSessionId);
+            }
+        } catch(err) {
+            console.error('Failed to update session language:', err);
+        }
     });
 }
 
