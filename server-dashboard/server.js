@@ -300,16 +300,35 @@ app.post('/api/otp/verify', async (req, res) => {
     // Delete OTP after verification to prevent reuse
     await db.query('DELETE FROM otps WHERE email = $1', [email]);
 
-    // Create a new session in PostgreSQL
-    const sessionId = randomUUID(); // Node native secure UUID
-
-    await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status) 
-       VALUES ($1, $2, $3, $4, $5, TRUE, 'active')`,
-      [sessionId, projectId, name || 'Khách ẩn danh', email, language || 'vi']
+    // Check if there is an existing active session for this email & project
+    const activeSessionRes = await db.query(
+      `SELECT id, visitor_name FROM sessions 
+       WHERE visitor_email = $1 AND project_id = $2 AND status = 'active' 
+       LIMIT 1`,
+      [email, projectId]
     );
 
-    res.json({ success: true, sessionId, name: name || 'Khách ẩn danh' });
+    let sessionId;
+    let finalName = name || 'Khách ẩn danh';
+
+    if (activeSessionRes.rows.length > 0) {
+      sessionId = activeSessionRes.rows[0].id;
+      finalName = activeSessionRes.rows[0].visitor_name || finalName;
+      // Update name if new non-default name is provided
+      if (name && name !== 'Khách ẩn danh' && name !== activeSessionRes.rows[0].visitor_name) {
+        await db.query('UPDATE sessions SET visitor_name = $1 WHERE id = $2', [name, sessionId]);
+        finalName = name;
+      }
+    } else {
+      sessionId = randomUUID(); // Node native secure UUID
+      await db.query(
+        `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status) 
+         VALUES ($1, $2, $3, $4, $5, TRUE, 'active')`,
+        [sessionId, projectId, finalName, email, language || 'vi']
+      );
+    }
+
+    res.json({ success: true, sessionId, name: finalName });
   } catch (error) {
     console.error('OTP Verify Error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi xác thực OTP.' });
@@ -515,6 +534,27 @@ app.post('/api/chats/session/close', async (req, res) => {
   } catch (error) {
     console.error('Session Close Error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi đóng phiên chat.' });
+  }
+});
+
+// 4b. Update Session Language
+app.post('/api/chats/session/language', async (req, res) => {
+  const { sessionId, language } = req.body;
+  if (!sessionId || !language) {
+    return res.status(400).json({ error: 'Thiếu sessionId hoặc language.' });
+  }
+
+  try {
+    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy phiên chat.' });
+    }
+
+    await db.query('UPDATE sessions SET detected_language = $1 WHERE id = $2', [language, sessionId]);
+    res.json({ success: true, language });
+  } catch (error) {
+    console.error('Update session language error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi cập nhật ngôn ngữ.' });
   }
 });
 

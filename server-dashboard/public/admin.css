@@ -597,6 +597,23 @@ button {
     display: inline-block;
     align-self: flex-start;
 }
+.detail-select {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--panel-border);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    outline: none;
+    cursor: pointer;
+    font-family: inherit;
+    width: 100%;
+}
+.detail-select option {
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+}
 .tags-container {
     display: flex;
     flex-wrap: wrap;
