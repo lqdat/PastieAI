@@ -1140,7 +1140,7 @@
 
         try {
             // Fetch messages using public session endpoint
-            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/messages`);
+            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/messages?_=${Date.now()}`);
             if (res.status === 404 || res.status === 410) {
                 console.warn(`[Session Verify] Session status ${res.status} on server. Transitioning back to Tidio.`);
                 activateTidioChat();

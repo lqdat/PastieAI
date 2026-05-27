@@ -139,6 +139,12 @@ function checkAdminAuth(req, res, next) {
   return res.status(401).json({ error: 'Unauthorized. Invalid admin password/token.' });
 }
 
+// Middleware to disable response caching for all API endpoints
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  next();
+});
+
 // ----------------------------------------------------
 // CLIENT API ENDPOINTS (VISITORS)
 // ----------------------------------------------------

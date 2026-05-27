@@ -368,7 +368,7 @@ function initDashboard() {
 async function fetchSessions() {
     const token = getToken();
     try {
-        const response = await fetch(`${API_BASE}/api/admin/chats?token=${encodeURIComponent(token)}`);
+        const response = await fetch(`${API_BASE}/api/admin/chats?token=${encodeURIComponent(token)}&_=${Date.now()}`);
         if (response.status === 401) {
             showLogin();
             return;
@@ -508,7 +508,7 @@ async function loadMessages(sessionId) {
     const token = getToken();
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     try {
-        const response = await fetch(`${API_BASE}/api/admin/chats/${sessionId}/messages?token=${encodeURIComponent(token)}`);
+        const response = await fetch(`${API_BASE}/api/admin/chats/${sessionId}/messages?token=${encodeURIComponent(token)}&_=${Date.now()}`);
         const messages = await response.json();
         
         // Detect if user was near the bottom before rebuilding the messages view
