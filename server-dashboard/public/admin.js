@@ -43,7 +43,11 @@ const TRANSLATIONS = {
         connecting: "Đang kết nối...",
         connError: "Không thể kết nối tới server.",
         closeError: "Lỗi đóng phiên chat.",
-        sendError: "Lỗi gửi tin nhắn: "
+        sendError: "Lỗi gửi tin nhắn: ",
+        loadOlder: "Xem tin nhắn cũ hơn",
+        loadingMore: "Đang tải...",
+        labelOriginal: "BẢN GỐC:",
+        labelAiTranslation: "AI DỊCH:"
     },
     en: {
         loginTitle: "Pastie AI Admin",
@@ -88,7 +92,11 @@ const TRANSLATIONS = {
         connecting: "Connecting...",
         connError: "Unable to connect to server.",
         closeError: "Failed to close chat session.",
-        sendError: "Failed to send message: "
+        sendError: "Failed to send message: ",
+        loadOlder: "Load older messages",
+        loadingMore: "Loading...",
+        labelOriginal: "ORIGINAL:",
+        labelAiTranslation: "AI TRANSLATION:"
     },
     ru: {
         loginTitle: "Панель Pastie AI",
@@ -133,7 +141,11 @@ const TRANSLATIONS = {
         connecting: "Подключение...",
         connError: "Не удалось подключиться к серверу.",
         closeError: "Не удалось закрыть сессию чата.",
-        sendError: "Ошибка отправки сообщения: "
+        sendError: "Ошибка отправки сообщения: ",
+        loadOlder: "Загрузить старые сообщения",
+        loadingMore: "Загрузка...",
+        labelOriginal: "ОРИГИНАЛ:",
+        labelAiTranslation: "ИИ-ПЕРЕВОД:"
     },
     zh: {
         loginTitle: "Pastie AI 管理员",
@@ -178,7 +190,11 @@ const TRANSLATIONS = {
         connecting: "正在连接...",
         connError: "无法连接到服务器。",
         closeError: "关闭聊天会话失败。",
-        sendError: "发送消息失败: "
+        sendError: "发送消息失败: ",
+        loadOlder: "加载历史消息",
+        loadingMore: "正在加载...",
+        labelOriginal: "原文:",
+        labelAiTranslation: "AI 翻译:"
     }
 };
 
@@ -191,6 +207,13 @@ let currentDetectedLang = 'en'; // default to english for translations
 let sessionsList = [];
 let pollInterval = null;
 let messagePollInterval = null;
+
+// Admin lazy loading pagination state
+let adminMessages = [];
+let adminOffset = 0;
+let adminLimit = 15;
+let adminHasMore = true;
+let adminIsLoadingMore = false;
 
 // DOM Elements
 const loginModal = document.getElementById('login-modal');
@@ -592,6 +615,12 @@ function renderSessionsList(sessions) {
 async function selectSession(sessionId) {
     currentSessionId = sessionId;
     
+    // Reset pagination states for the newly selected session
+    adminMessages = [];
+    adminOffset = 0;
+    adminHasMore = true;
+    adminIsLoadingMore = false;
+    
     // Highlight in list
     document.querySelectorAll('.session-card').forEach(c => {
         c.classList.remove('active-selected');
@@ -690,50 +719,160 @@ async function selectSession(sessionId) {
     }
 }
 
-async function loadMessages(sessionId) {
+async function loadMessages(sessionId, isLoadMore = false) {
     const token = getToken();
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
-    try {
-        const response = await fetch(`${API_BASE}/api/admin/chats/${sessionId}/messages?token=${encodeURIComponent(token)}&adminLang=${currentLang}&_=${Date.now()}`);
-        const messages = await response.json();
-        
-        // Detect if user was near the bottom before rebuilding the messages view
-        const isNearBottom = (chatMessagesContainer.scrollHeight - chatMessagesContainer.scrollTop - chatMessagesContainer.clientHeight) < 100;
-        const isFirstLoad = chatMessagesContainer.children.length === 0 || chatMessagesContainer.querySelector('.chat-welcome-state');
 
-        chatMessagesContainer.innerHTML = '';
-        
-        if (messages.length === 0) {
-            chatMessagesContainer.innerHTML = `<div class="system"><div class="message-bubble">${dict.emptyChatHistory}</div></div>`;
-            return;
+    let fetchLimit = adminLimit;
+    let fetchOffset = adminOffset;
+
+    if (!isLoadMore) {
+        // Fetch all currently loaded messages to keep polling sync complete
+        fetchLimit = Math.max(adminMessages.length, adminLimit);
+        fetchOffset = 0;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/chats/${sessionId}/messages?token=${encodeURIComponent(token)}&adminLang=${currentLang}&limit=${fetchLimit}&offset=${fetchOffset}&_=${Date.now()}`);
+        const fetchedMessages = await response.json();
+
+        if (!Array.isArray(fetchedMessages)) return;
+
+        if (isLoadMore) {
+            if (fetchedMessages.length < adminLimit) {
+                adminHasMore = false;
+            }
+            // Prepend older messages
+            adminMessages = [...fetchedMessages, ...adminMessages];
+            adminOffset += fetchedMessages.length;
+        } else {
+            // Filter out temp client-side messages
+            const currentMsgs = adminMessages.filter(m => m.id && !m.id.toString().startsWith('temp_'));
+
+            if (currentMsgs.length === 0) {
+                adminMessages = fetchedMessages;
+                if (fetchedMessages.length < adminLimit) {
+                    adminHasMore = false;
+                }
+            } else {
+                // Update current messages and append new ones
+                const merged = [...currentMsgs];
+                fetchedMessages.forEach(newMsg => {
+                    const idx = merged.findIndex(m => m.id === newMsg.id);
+                    if (idx !== -1) {
+                        merged[idx] = newMsg;
+                    } else {
+                        merged.push(newMsg);
+                    }
+                });
+
+                // Sort ascending by created_at
+                merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+                adminMessages = merged;
+            }
         }
 
-        messages.forEach(msg => {
-            const wrapper = document.createElement('div');
-            wrapper.className = `message-wrapper ${msg.sender}`;
-            
-            const locale = currentLang === 'vi' ? 'vi-VN' : currentLang === 'zh' ? 'zh-CN' : currentLang === 'ru' ? 'ru-RU' : 'en-US';
-            const timeStr = new Date(msg.created_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+        renderAdminMessages(isLoadMore);
+    } catch (e) {
+        console.error('Error loading messages:', e);
+    }
+}
 
-            const bubbleText = msg.translated_text || msg.original_text;
+function renderAdminMessages(isLoadMore = false) {
+    const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
+    const previousScrollHeight = chatMessagesContainer.scrollHeight;
+    const isNearBottom = (chatMessagesContainer.scrollHeight - chatMessagesContainer.scrollTop - chatMessagesContainer.clientHeight) < 100;
+    const isFirstLoad = chatMessagesContainer.children.length === 0 || chatMessagesContainer.querySelector('.chat-loading-state') || chatMessagesContainer.querySelector('.chat-welcome-state');
 
-            let innerHtml = `
+    chatMessagesContainer.innerHTML = '';
+
+    // Load More Button
+    if (adminHasMore) {
+        const loadMoreDiv = document.createElement('div');
+        loadMoreDiv.className = 'admin-chat-loadmore-btn-container';
+        loadMoreDiv.style.textAlign = 'center';
+        loadMoreDiv.style.padding = '15px 8px';
+
+        const loadMoreBtn = document.createElement('button');
+        loadMoreBtn.className = 'admin-chat-loadmore-btn';
+        loadMoreBtn.style.background = 'rgba(255, 255, 255, 0.05)';
+        loadMoreBtn.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+        loadMoreBtn.style.color = 'var(--text-secondary)';
+        loadMoreBtn.style.fontFamily = 'Outfit, sans-serif';
+        loadMoreBtn.style.fontSize = '12px';
+        loadMoreBtn.style.fontWeight = '500';
+        loadMoreBtn.style.borderRadius = '8px';
+        loadMoreBtn.style.padding = '6px 18px';
+        loadMoreBtn.style.cursor = 'pointer';
+        loadMoreBtn.style.transition = 'all 0.2s';
+        loadMoreBtn.textContent = adminIsLoadingMore ? dict.loadingMore : dict.loadOlder;
+
+        loadMoreBtn.onmouseover = () => { loadMoreBtn.style.background = 'rgba(255, 255, 255, 0.1)'; loadMoreBtn.style.color = 'var(--text-primary)'; };
+        loadMoreBtn.onmouseout = () => { loadMoreBtn.style.background = 'rgba(255, 255, 255, 0.05)'; loadMoreBtn.style.color = 'var(--text-secondary)'; };
+
+        loadMoreBtn.onclick = async () => {
+            if (adminIsLoadingMore) return;
+            adminIsLoadingMore = true;
+            loadMoreBtn.textContent = dict.loadingMore;
+            await loadMessages(currentSessionId, true);
+            adminIsLoadingMore = false;
+        };
+
+        loadMoreDiv.appendChild(loadMoreBtn);
+        chatMessagesContainer.appendChild(loadMoreDiv);
+    }
+
+    if (adminMessages.length === 0) {
+        chatMessagesContainer.innerHTML = `<div class="system"><div class="message-bubble">${dict.emptyChatHistory}</div></div>`;
+        return;
+    }
+
+    adminMessages.forEach(msg => {
+        const wrapper = document.createElement('div');
+        wrapper.className = `message-wrapper ${msg.sender}`;
+
+        const locale = currentLang === 'vi' ? 'vi-VN' : currentLang === 'zh' ? 'zh-CN' : currentLang === 'ru' ? 'ru-RU' : 'en-US';
+        const timeStr = new Date(msg.created_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+
+        let innerHtml = '';
+        if (msg.sender === 'visitor') {
+            const hasTranslation = msg.translated_text && msg.translated_text !== msg.original_text;
+            const primaryText = hasTranslation ? msg.translated_text : msg.original_text;
+            innerHtml = `
                 <div class="message-bubble">
-                    <div class="original-text">${escapeHtml(bubbleText)}</div>
+                    <div class="original-text">${escapeHtml(primaryText)}</div>
+                    ${hasTranslation ? `<div class="translated-text-wrapper" data-label="${dict.labelOriginal} ">${escapeHtml(msg.original_text)}</div>` : ''}
                 </div>
                 <div class="message-time">${timeStr}</div>
             `;
+        } else if (msg.sender === 'agent') {
+            const hasTranslation = msg.translated_text && msg.translated_text !== msg.original_text;
+            innerHtml = `
+                <div class="message-bubble">
+                    <div class="original-text">${escapeHtml(msg.original_text)}</div>
+                    ${hasTranslation ? `<div class="translated-text-wrapper" data-label="${dict.labelAiTranslation} ">${escapeHtml(msg.translated_text)}</div>` : ''}
+                </div>
+                <div class="message-time">${timeStr}</div>
+            `;
+        } else {
+            // System message
+            innerHtml = `
+                <div class="message-bubble">
+                    <div class="original-text">${escapeHtml(msg.original_text)}</div>
+                </div>
+            `;
+        }
 
-            wrapper.innerHTML = innerHtml;
-            chatMessagesContainer.appendChild(wrapper);
-        });
+        wrapper.innerHTML = innerHtml;
+        chatMessagesContainer.appendChild(wrapper);
+    });
 
-        // Scroll to bottom only on initial load or if user was already reading at the bottom
+    if (isLoadMore) {
+        chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight - previousScrollHeight;
+    } else {
         if (isFirstLoad || isNearBottom) {
             chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
         }
-    } catch (e) {
-        console.error('Error loading messages:', e);
     }
 }
 
@@ -768,16 +907,14 @@ async function sendMessage(e) {
     chatInput.value = '';
     
     // Add temp bubble immediately
-    const tempWrapper = document.createElement('div');
-    tempWrapper.className = 'message-wrapper agent';
-    tempWrapper.innerHTML = `
-        <div class="message-bubble">
-            <div class="original-text">${escapeHtml(text)}</div>
-        </div>
-        <div class="message-time">${dict.sentJustNow}</div>
-    `;
-    chatMessagesContainer.appendChild(tempWrapper);
-    chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+    const newMsgObj = {
+        id: 'temp_' + Date.now(),
+        sender: 'agent',
+        original_text: text,
+        created_at: new Date()
+    };
+    adminMessages.push(newMsgObj);
+    renderAdminMessages(false);
 
     try {
         const response = await fetch(`${API_BASE}/api/chats/message`, {
@@ -787,7 +924,8 @@ async function sendMessage(e) {
                 sessionId: currentSessionId,
                 sender: 'agent',
                 text,
-                targetLang: currentDetectedLang // translate Vietnamese text into the visitor's language
+                targetLang: currentDetectedLang, // translate Vietnamese text into the visitor's language
+                adminLang: currentLang // lock the conversation language on first response
             })
         });
 

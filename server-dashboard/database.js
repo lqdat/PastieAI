@@ -49,7 +49,7 @@ async function initializeDatabase() {
     // Migration: Add browser and device columns if they do not exist
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS browser VARCHAR(50);`);
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device VARCHAR(50);`);
-
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS admin_language VARCHAR(10);`);
 
     // Create messages table
     await query(`
@@ -61,6 +61,16 @@ async function initializeDatabase() {
         translated_text TEXT,
         language VARCHAR(10),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Create message_translations table for caching
+    await query(`
+      CREATE TABLE IF NOT EXISTS message_translations (
+        message_id INT REFERENCES messages(id) ON DELETE CASCADE,
+        target_lang VARCHAR(10) NOT NULL,
+        translated_text TEXT NOT NULL,
+        PRIMARY KEY (message_id, target_lang)
       );
     `);
 

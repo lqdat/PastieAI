@@ -427,7 +427,7 @@ app.post('/api/otp/verify', async (req, res) => {
  */
 // 3. Log Message and Translate (2-way Translation)
 app.post('/api/chats/message', async (req, res) => {
-  const { sessionId, sender, text, targetLang, visitorLang } = req.body;
+  const { sessionId, sender, text, targetLang, visitorLang, adminLang } = req.body;
 
   if (!sessionId || !sender || !text || !targetLang) {
     return res.status(400).json({ error: 'Thiếu thông số đầu vào bắt buộc.' });
@@ -458,6 +458,15 @@ app.post('/api/chats/message', async (req, res) => {
       const updateLang = visitorLang || detectedLang;
       if (updateLang) {
         await db.query('UPDATE sessions SET detected_language = $1 WHERE id = $2', [updateLang, sessionId]);
+      }
+    }
+
+    // Lock conversation admin_language on first agent reply
+    if (sender === 'agent') {
+      const currentAdminLang = sessionRes.rows[0].admin_language;
+      if (!currentAdminLang) {
+        const lockLang = adminLang || targetLang || 'vi';
+        await db.query('UPDATE sessions SET admin_language = $1 WHERE id = $2', [lockLang, sessionId]);
       }
     }
 
@@ -678,10 +687,73 @@ app.post('/api/chats/session/language', async (req, res) => {
  *       500:
  *         description: Lỗi hệ thống
  */
+// Helper to retrieve cached translation or translate using Gemini and cache it
+async function getOrTranslateMessage(msg, targetLang) {
+  if (!targetLang) return msg.translated_text || msg.original_text;
+  
+  const msgLang = (msg.language || '').toLowerCase();
+  const targetLangCode = targetLang.toLowerCase();
+
+  if (msgLang === targetLangCode) {
+    return msg.original_text;
+  }
+
+  // Check message_translations cache first
+  try {
+    const cacheRes = await db.query(
+      'SELECT translated_text FROM message_translations WHERE message_id = $1 AND target_lang = $2',
+      [msg.id, targetLangCode]
+    );
+    if (cacheRes.rows.length > 0) {
+      return cacheRes.rows[0].translated_text;
+    }
+  } catch (err) {
+    console.error('[Cache Read Error]:', err.message);
+  }
+
+  // For legacy 'vi' translation that was already saved on messages table
+  if (targetLangCode === 'vi' && msg.translated_text && msg.translated_text !== msg.original_text) {
+    try {
+      await db.query(
+        `INSERT INTO message_translations (message_id, target_lang, translated_text) 
+         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        [msg.id, 'vi', msg.translated_text]
+      );
+    } catch (e) {}
+    return msg.translated_text;
+  }
+
+  // Call Gemini API to translate
+  try {
+    const { translatedText, detectedLang } = await gemini.translateText(msg.original_text, targetLangCode);
+    if (translatedText) {
+      // Save to cache
+      await db.query(
+        `INSERT INTO message_translations (message_id, target_lang, translated_text) 
+         VALUES ($1, $2, $3)
+         ON CONFLICT (message_id, target_lang) DO UPDATE SET translated_text = $3`,
+        [msg.id, targetLangCode, translatedText]
+      );
+      if (detectedLang && detectedLang !== 'unknown' && !msg.language) {
+        await db.query('UPDATE messages SET language = $1 WHERE id = $2', [detectedLang, msg.id]);
+        msg.language = detectedLang;
+      }
+      return translatedText;
+    }
+  } catch (err) {
+    console.error(`[Gemini Translate Error] Message ID ${msg.id}:`, err.message);
+  }
+
+  return msg.translated_text || msg.original_text;
+}
+
 // 5. Get messages for a session (Public route for the Visitor Widget)
 // Secure because sessionId is a secure UUIDv4
 app.get('/api/chats/:sessionId/messages', async (req, res) => {
   const { sessionId } = req.params;
+  const visitorLang = req.query.visitorLang || '';
+  const limit = parseInt(req.query.limit) || 15;
+  const offset = parseInt(req.query.offset) || 0;
 
   try {
     // Verify session exists
@@ -700,16 +772,28 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
         `SELECT m.* FROM messages m 
          JOIN sessions s ON m.session_id = s.id 
          WHERE s.visitor_email = $1 
-         ORDER BY m.created_at ASC`,
-        [email]
+         ORDER BY m.created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [email, limit, offset]
       );
     } else {
       result = await db.query(
-        'SELECT * FROM messages WHERE session_id = $1 ORDER BY created_at ASC',
-        [sessionId]
+        `SELECT * FROM messages 
+         WHERE session_id = $1 
+         ORDER BY created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [sessionId, limit, offset]
       );
     }
-    res.json(result.rows);
+    
+    const messages = result.rows.reverse();
+
+    // Dịch các tin nhắn nếu ngôn ngữ khách hàng được chỉ định
+    for (let msg of messages) {
+      msg.translated_text = await getOrTranslateMessage(msg, visitorLang);
+    }
+
+    res.json(messages);
   } catch (error) {
     console.error('Fetch visitor messages error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi tải tin nhắn.' });
@@ -821,45 +905,27 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
 app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res) => {
   const { sessionId } = req.params;
   const adminLang = req.query.adminLang || 'vi';
+  const limit = parseInt(req.query.limit) || 15;
+  const offset = parseInt(req.query.offset) || 0;
 
   try {
+    // Check if session has a locked admin_language
+    const sessionRes = await db.query('SELECT admin_language FROM sessions WHERE id = $1', [sessionId]);
+    let targetLang = adminLang;
+    if (sessionRes.rows.length > 0 && sessionRes.rows[0].admin_language) {
+      targetLang = sessionRes.rows[0].admin_language;
+    }
+
     const result = await db.query(
-      'SELECT * FROM messages WHERE session_id = $1 ORDER BY created_at ASC',
-      [sessionId]
+      'SELECT * FROM messages WHERE session_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+      [sessionId, limit, offset]
     );
     
-    const messages = result.rows;
+    const messages = result.rows.reverse();
 
-    // Dynamically translate all messages (visitor, agent, system) to the Admin's selected language on-the-fly if needed
+    // Dịch tin nhắn theo ngôn ngữ được khóa (admin_language) của cuộc trò chuyện
     for (let msg of messages) {
-      if (msg.sender === 'visitor' || msg.sender === 'agent' || msg.sender === 'system') {
-        const msgLang = (msg.language || '').toLowerCase();
-        const targetLangCode = adminLang.toLowerCase();
-
-        if (msgLang === targetLangCode) {
-          // If the message is already in the admin's language, show original text
-          msg.translated_text = msg.original_text;
-        } else {
-          // Check if we already have a valid translation in the database for 'vi'
-          const alreadyTranslatedToVi = targetLangCode === 'vi' && 
-                                        msg.translated_text && 
-                                        msg.translated_text !== msg.original_text;
-
-          if (!alreadyTranslatedToVi) {
-            try {
-              const { translatedText, detectedLang } = await gemini.translateText(msg.original_text, targetLangCode);
-              if (translatedText) {
-                msg.translated_text = translatedText;
-                if (detectedLang && detectedLang !== 'unknown') {
-                  msg.language = detectedLang;
-                }
-              }
-            } catch (err) {
-              console.error(`[On-The-Fly Translate Error] Message ID ${msg.id}:`, err.message);
-            }
-          }
-        }
-      }
+      msg.translated_text = await getOrTranslateMessage(msg, targetLang);
     }
 
     res.json(messages);

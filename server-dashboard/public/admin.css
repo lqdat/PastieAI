@@ -308,6 +308,7 @@ button {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    flex-shrink: 0;
 }
 .session-card:hover {
     background: var(--panel-hover);
@@ -322,14 +323,17 @@ button {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
+    width: 100%;
 }
 .session-name {
     font-weight: 600;
-    font-size: 15px;
+    font-size: 14.5px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 160px;
+    flex-grow: 1;
+    min-width: 0;
 }
 .session-status-badge {
     font-size: 10px;
@@ -337,6 +341,7 @@ button {
     border-radius: 20px;
     font-weight: 600;
     text-transform: uppercase;
+    flex-shrink: 0;
 }
 .session-status-badge.active {
     background: rgba(16, 185, 129, 0.15);
@@ -357,6 +362,8 @@ button {
     font-size: 12px;
     color: var(--text-muted);
     margin-top: 4px;
+    gap: 6px;
+    width: 100%;
 }
 .session-project {
     display: inline-flex;
@@ -365,10 +372,11 @@ button {
     background: rgba(255, 255, 255, 0.05);
     padding: 1px 6px;
     border-radius: 4px;
-    max-width: 100px;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    flex-shrink: 1;
+    min-width: 0;
 }
 
 /* --- Main Chat Window --- */
@@ -462,7 +470,7 @@ button {
     gap: 2px;
 }
 .translated-text-wrapper::before {
-    content: "AI DỊCH:";
+    content: attr(data-label);
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.5px;
@@ -687,6 +695,7 @@ button {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    flex-shrink: 0;
 }
 .session-group-header {
     display: flex;
