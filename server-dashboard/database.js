@@ -40,9 +40,16 @@ async function initializeDatabase() {
         intent_tags TEXT,
         is_verified BOOLEAN DEFAULT FALSE,
         status VARCHAR(20) DEFAULT 'active',
+        browser VARCHAR(50),
+        device VARCHAR(50),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // Migration: Add browser and device columns if they do not exist
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS browser VARCHAR(50);`);
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device VARCHAR(50);`);
+
 
     // Create messages table
     await query(`

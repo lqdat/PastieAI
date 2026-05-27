@@ -277,6 +277,30 @@ app.post('/api/otp/send', async (req, res) => {
  *       500:
  *         description: Lỗi hệ thống
  */
+function parseUserAgent(ua) {
+  let browser = 'Chrome';
+  let device = 'Desktop';
+
+  if (!ua) return { browser, device };
+
+  // OS / Device detection
+  if (ua.includes('Windows')) device = 'Windows';
+  else if (ua.includes('Macintosh') || ua.includes('Mac OS')) device = 'macOS';
+  else if (ua.includes('iPhone')) device = 'iPhone';
+  else if (ua.includes('iPad')) device = 'iPad';
+  else if (ua.includes('Android')) device = 'Android';
+  else if (ua.includes('Linux')) device = 'Linux';
+
+  // Browser detection
+  if (ua.includes('Edg/')) browser = 'Edge';
+  else if (ua.includes('OPR/') || ua.includes('Opera')) browser = 'Opera';
+  else if (ua.includes('Chrome') && !ua.includes('Chromium')) browser = 'Chrome';
+  else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari';
+  else if (ua.includes('Firefox')) browser = 'Firefox';
+  
+  return { browser, device };
+}
+
 // 2. Verify OTP and Create/Activate Chat Session
 app.post('/api/otp/verify', async (req, res) => {
   const { email, code, name, projectId, language } = req.body;
@@ -311,10 +335,14 @@ app.post('/api/otp/verify', async (req, res) => {
     const finalName = name || 'Khách ẩn danh';
     const finalLang = language || 'vi';
 
+    // Parse User-Agent
+    const ua = req.headers['user-agent'] || '';
+    const { browser, device } = parseUserAgent(ua);
+
     await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status) 
-       VALUES ($1, $2, $3, $4, $5, TRUE, 'active')`,
-      [sessionId, projectId, finalName, email, finalLang]
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device) 
+       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7)`,
+      [sessionId, projectId, finalName, email, finalLang, browser, device]
     );
 
     res.json({ success: true, sessionId, name: finalName });

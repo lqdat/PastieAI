@@ -27,6 +27,7 @@ const TRANSLATIONS = {
         aiSummaryLabel: "AI Tóm tắt nội dung cuộc chat",
         closeChatToAnalyze: "Nhấn nút \"Đóng cuộc chat\" để AI phân tích và tóm tắt cuộc trò chuyện này.",
         projectLabel: "Dự án / Trang web",
+        clientInfoLabel: "Trình duyệt & Thiết bị",
         
         // Dynamic labels & alerts
         statusActive: "đang chat",
@@ -71,6 +72,7 @@ const TRANSLATIONS = {
         aiSummaryLabel: "AI Chat Summary",
         closeChatToAnalyze: "Click \"Close chat\" to analyze and summarize this conversation.",
         projectLabel: "Project / Website",
+        clientInfoLabel: "Browser & Device",
 
         // Dynamic labels & alerts
         statusActive: "active",
@@ -115,6 +117,7 @@ const TRANSLATIONS = {
         aiSummaryLabel: "Сводка диалога от ИИ",
         closeChatToAnalyze: "Нажмите \"Закрыть чат\", чтобы ИИ проанализировал и сделал резюме диалога.",
         projectLabel: "Проект / Сайт",
+        clientInfoLabel: "Браузер и устройство",
 
         // Dynamic labels & alerts
         statusActive: "активен",
@@ -159,6 +162,7 @@ const TRANSLATIONS = {
         aiSummaryLabel: "AI 对话摘要",
         closeChatToAnalyze: "点击 \"结束会话\" 让 AI 分析并总结此次对话。",
         projectLabel: "项目 / 网站",
+        clientInfoLabel: "浏览器与设备",
 
         // Dynamic labels & alerts
         statusActive: "对话中",
@@ -424,6 +428,24 @@ function updateProjectFilterDropdown(sessions) {
     projectFilter.value = existingValue;
 }
 
+function getBrowserIcon(browser) {
+    const b = (browser || '').toLowerCase();
+    if (b.includes('chrome')) return 'ri-chrome-fill';
+    if (b.includes('safari')) return 'ri-safari-fill';
+    if (b.includes('firefox')) return 'ri-firefox-fill';
+    if (b.includes('edge')) return 'ri-edge-fill';
+    if (b.includes('opera')) return 'ri-opera-fill';
+    return 'ri-global-line';
+}
+
+function getDeviceIcon(device) {
+    const d = (device || '').toLowerCase();
+    if (d.includes('iphone') || d.includes('android')) return 'ri-smartphone-line';
+    if (d.includes('ipad') || d.includes('tablet')) return 'ri-tablet-line';
+    if (d.includes('windows') || d.includes('macos') || d.includes('linux') || d.includes('desktop')) return 'ri-computer-line';
+    return 'ri-question-line';
+}
+
 function renderSessionsList(sessions) {
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     // Filter sessions by selected project
@@ -473,6 +495,11 @@ function renderSessionsList(sessions) {
 
         const statusText = session.status === 'active' ? dict.statusActive : dict.statusClosed;
 
+        const browserVal = session.browser || 'Chrome';
+        const deviceVal = session.device || 'Desktop';
+        const browserIcon = getBrowserIcon(browserVal);
+        const deviceIcon = getDeviceIcon(deviceVal);
+
         card.innerHTML = `
             <div class="session-card-header">
                 <span class="session-name" title="${session.visitor_name}">${session.visitor_name}</span>
@@ -480,6 +507,10 @@ function renderSessionsList(sessions) {
             </div>
             <div class="session-meta-footer">
                 <span class="session-project" title="${session.project_id}">${session.project_id}</span>
+                <span class="session-client-meta">
+                    <i class="${browserIcon}" title="Trình duyệt: ${browserVal}"></i>
+                    <i class="${deviceIcon}" title="Thiết bị: ${deviceVal}"></i>
+                </span>
                 <span>${dateStr}</span>
             </div>
         `;
@@ -589,6 +620,25 @@ async function selectSession(sessionId) {
         detailProjectId.textContent = session.project_id || '-';
     }
 
+    // Set browser and device details in details sidebar
+    const detailBrowserName = document.getElementById('detail-browser-name');
+    const detailBrowserIcon = document.getElementById('detail-browser-icon');
+    const detailDeviceName = document.getElementById('detail-device-name');
+    const detailDeviceIcon = document.getElementById('detail-device-icon');
+
+    const browserVal = session.browser || 'Chrome';
+    const deviceVal = session.device || 'Desktop';
+
+    if (detailBrowserName) detailBrowserName.textContent = browserVal;
+    if (detailDeviceName) detailDeviceName.textContent = deviceVal;
+
+    if (detailBrowserIcon) {
+        detailBrowserIcon.className = getBrowserIcon(browserVal);
+    }
+    if (detailDeviceIcon) {
+        detailDeviceIcon.className = getDeviceIcon(deviceVal);
+    }
+
     chatHeaderActions.classList.remove('hide');
     chatInputContainer.classList.remove('hide');
     detailsSidebar.classList.remove('hide');
@@ -612,6 +662,14 @@ async function selectSession(sessionId) {
         chatInputContainer.classList.remove('hide');
         closeSessionBtn.classList.remove('hide');
     }
+
+    // Show premium loading spinner inside messages container
+    chatMessagesContainer.innerHTML = `
+        <div class="chat-loading-state" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 15px; color: var(--text-secondary);">
+            <div class="spinner-glow" style="width: 40px; height: 40px; border: 3px solid rgba(255, 255, 255, 0.05); border-top-color: var(--accent-color); border-radius: 50%; animation: spin 1s linear infinite; box-shadow: 0 0 15px rgba(99, 102, 241, 0.2);"></div>
+            <span style="font-size: 13.5px; font-weight: 500; letter-spacing: 0.3px; color: var(--text-muted);">${dict.translatingWithAI || 'Đang dịch thuật bằng AI...'}</span>
+        </div>
+    `;
 
     // Load messages
     await loadMessages(sessionId);
