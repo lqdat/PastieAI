@@ -30,10 +30,157 @@
         pollInterval: null,
         otpCooldown: 0,
         otpCooldownTimer: null,
-        detectedLang: 'en', // default language detected
+        detectedLang: 'vi', // default language detected
         tidioHistory: JSON.parse(sessionStorage.getItem('pastie_tidio_history') || '[]'),
         isTyping: false,
         typingTimeout: null
+    };
+
+    const TRANSLATIONS = {
+        vi: {
+            headerTitle: 'Hỗ Trợ Trực Tuyến',
+            headerStatus: 'Đang hoạt động • AI song ngữ',
+            initTitle: 'Trò chuyện trực tiếp',
+            initDesc: 'Vui lòng điền thông tin để kết nối trực tiếp với nhân viên hỗ trợ của chúng tôi.',
+            initNameLabel: 'Họ tên của bạn',
+            initNamePlaceholder: 'Nguyễn Văn A...',
+            initEmailLabel: 'Địa chỉ Email',
+            initEmailPlaceholder: 'email@cua-ban.com...',
+            initBtnSubmit: 'Tiếp tục',
+            initBtnTidio: 'Quay lại AI Chatbot',
+            initErrorFields: 'Vui lòng điền đúng Họ tên và Email.',
+            initErrorConn: 'Không thể kết nối đến máy chủ.',
+            otpTitle: 'Xác thực Email',
+            otpDesc: 'Chúng tôi vừa gửi mã OTP 6 số vào email của bạn. Vui lòng nhập mã vào ô dưới đây để xác thực.',
+            otpLabel: 'Mã xác thực OTP',
+            otpPlaceholder: '------',
+            otpBtnSubmit: 'Xác nhận kết nối',
+            otpBtnResend: 'Gửi lại mã OTP',
+            otpBtnResendCooldown: 'Gửi lại mã',
+            otpErrorEmpty: 'Vui lòng nhập đủ mã OTP 6 số.',
+            otpErrorInvalid: 'Mã xác thực không hợp lệ hoặc đã hết hạn.',
+            otpErrorConn: 'Lỗi kết nối máy chủ.',
+            chatInputPlaceholder: 'Nhập tin nhắn...',
+            chatWelcome: 'Chào mừng! Chatbot hỗ trợ tự động của chúng tôi đã sẵn sàng.',
+            chatThinking: 'AI đang suy nghĩ...',
+            systemTidioRedirect: '[Chuyển hướng Tidio] Khách hàng chuyển sang chat trực tiếp',
+            systemKeywordsRedirect: '[Chuyển hướng Chatbot] Khách hàng chuyển sang chat trực tiếp (Lý do: Khách yêu cầu gặp nhân viên)',
+            btnBackToTidio: 'Quay lại AI Chatbot',
+            redirectingDesc: 'Chatbot đang chuyển hướng bạn gặp nhân viên hỗ trợ. Vui lòng điền thông tin để kết nối trực tiếp.',
+            loadingSend: 'Đang xử lý...',
+            loadingVerify: 'Xác thực...',
+            defaultError: 'Có lỗi xảy ra.',
+            typingText: 'Nhân viên đang nhập...',
+            chatStartWelcome: 'Chào mừng! Vui lòng gửi câu hỏi của bạn. Hệ thống AI dịch thuật tự động đã sẵn sàng.'
+        },
+        en: {
+            headerTitle: 'Live Support',
+            headerStatus: 'Online • Bilingual AI',
+            initTitle: 'Direct Live Chat',
+            initDesc: 'Please fill in the information to connect directly with our support agent.',
+            initNameLabel: 'Your Full Name',
+            initNamePlaceholder: 'John Doe...',
+            initEmailLabel: 'Email Address',
+            initEmailPlaceholder: 'your-email@domain.com...',
+            initBtnSubmit: 'Continue',
+            initBtnTidio: 'Back to AI Chatbot',
+            initErrorFields: 'Please fill in Name and Email correctly.',
+            initErrorConn: 'Cannot connect to server.',
+            otpTitle: 'Email Verification',
+            otpDesc: 'We have sent a 6-digit OTP code to your email. Please enter it below to verify.',
+            otpLabel: 'OTP Verification Code',
+            otpPlaceholder: '------',
+            otpBtnSubmit: 'Confirm Connection',
+            otpBtnResend: 'Resend OTP Code',
+            otpBtnResendCooldown: 'Resend in',
+            otpErrorEmpty: 'Please enter all 6 digits of the OTP.',
+            otpErrorInvalid: 'Invalid or expired verification code.',
+            otpErrorConn: 'Server connection error.',
+            chatInputPlaceholder: 'Type a message...',
+            chatWelcome: 'Welcome! Our automated support chatbot is ready.',
+            chatThinking: 'AI is thinking...',
+            systemTidioRedirect: '[Tidio Redirect] Customer switched to live chat',
+            systemKeywordsRedirect: '[Chatbot Redirect] Customer switched to live chat (Reason: Requested human agent)',
+            btnBackToTidio: 'Back to AI Chatbot',
+            redirectingDesc: 'Chatbot is transferring you to a support agent. Please fill in the details below.',
+            loadingSend: 'Processing...',
+            loadingVerify: 'Verifying...',
+            defaultError: 'An error occurred.',
+            typingText: 'Agent is typing...',
+            chatStartWelcome: 'Welcome! Please send your question. Automated AI translation is ready.'
+        },
+        ru: {
+            headerTitle: 'Живая поддержка',
+            headerStatus: 'В сети • Двуязычный ИИ',
+            initTitle: 'Прямой чат',
+            initDesc: 'Пожалуйста, заполните информацию, чтобы связаться с нашим агентом поддержки напрямую.',
+            initNameLabel: 'Ваше имя',
+            initNamePlaceholder: 'Иван Иванов...',
+            initEmailLabel: 'Адрес эл. почты',
+            initEmailPlaceholder: 'email@domain.ru...',
+            initBtnSubmit: 'Продолжить',
+            initBtnTidio: 'Назад к ИИ-боту',
+            initErrorFields: 'Пожалуйста, правильно заполните имя и адрес электронной почты.',
+            initErrorConn: 'Не удалось подключиться к серверу.',
+            otpTitle: 'Подтверждение Email',
+            otpDesc: 'Мы отправили 6-значный код OTP на ваш email. Введите его ниже для подтверждения.',
+            otpLabel: 'Код подтверждения OTP',
+            otpPlaceholder: '------',
+            otpBtnSubmit: 'Подтвердить подключение',
+            otpBtnResend: 'Отправить код еще раз',
+            otpBtnResendCooldown: 'Отправить еще раз через',
+            otpErrorEmpty: 'Пожалуйста, введите все 6 цифр OTP.',
+            otpErrorInvalid: 'Неверный или просроченный код подтверждения.',
+            otpErrorConn: 'Ошибка подключения к серверу.',
+            chatInputPlaceholder: 'Введите сообщение...',
+            chatWelcome: 'Добро пожаловать! Наш автоматический ИИ-чатбот готов к работе.',
+            chatThinking: 'ИИ думает...',
+            systemTidioRedirect: '[Перенаправление Tidio] Клиент переключился на живой чат',
+            systemKeywordsRedirect: '[Перенаправление чат-бота] Клиент переключился на живой чат (Причина: Запрос человека)',
+            btnBackToTidio: 'Назад к ИИ-боту',
+            redirectingDesc: 'Чат-бот переводит вас на агента поддержки. Заполните данные ниже для подключения.',
+            loadingSend: 'Обработка...',
+            loadingVerify: 'Проверка...',
+            defaultError: 'Произошла ошибка.',
+            typingText: 'Агент печатает...',
+            chatStartWelcome: 'Добро пожаловать! Отправьте ваш вопрос. Автоматический ИИ-перевод готов.'
+        },
+        zh: {
+            headerTitle: '在线客服',
+            headerStatus: '在线 • 双语 AI',
+            initTitle: '直接人工对话',
+            initDesc: '请填写以下信息，以便直接 với 人工客服建立连接。',
+            initNameLabel: '您的姓名',
+            initNamePlaceholder: '张三...',
+            initEmailLabel: '电子邮箱',
+            initEmailPlaceholder: 'email@domain.com...',
+            initBtnSubmit: '继续',
+            initBtnTidio: '返回 AI 机器人',
+            initErrorFields: '请正确填写姓名和邮箱。',
+            initErrorConn: '无法连接到服务器。',
+            otpTitle: '邮箱验证',
+            otpDesc: '我们已向您的邮箱发送了 6 位数的 OTP 验证码。请输入该验证码进行验证。',
+            otpLabel: 'OTP 验证码',
+            otpPlaceholder: '------',
+            otpBtnSubmit: '确认连接',
+            otpBtnResend: '重新发送验证码',
+            otpBtnResendCooldown: '重新发送',
+            otpErrorEmpty: '请输入完整的 6 位 OTP 验证码。',
+            otpErrorInvalid: '验证码无效或已过期。',
+            otpErrorConn: '服务器连接错误。',
+            chatInputPlaceholder: '输入消息...',
+            chatWelcome: '欢迎！我们的自动客服机器人已就绪。',
+            chatThinking: 'AI 正在思考...',
+            systemTidioRedirect: '[Tidio 重定向] 客户切换到人工客服',
+            systemKeywordsRedirect: '[机器人重定向] 客户切换到人工客服（原因：客户请求人工）',
+            btnBackToTidio: '返回 AI 机器人',
+            redirectingDesc: '机器人正在为您转接人工客服，请填写以下信息以直接连接。',
+            loadingSend: '处理中...',
+            loadingVerify: '验证中...',
+            defaultError: '发生错误。',
+            typingText: '客服正在输入...',
+            chatStartWelcome: '欢迎！请发送您的问题。自动 AI 翻译已就绪。'
+        }
     };
 
     // DOM Elements
@@ -42,9 +189,12 @@
     let chatWindow = null;
     let hasBoundDocumentTidioEvents = false;
 
-    // Auto detect browser language
+    // Auto detect browser/landing page language
     try {
-        state.detectedLang = navigator.language.split('-')[0] || 'en';
+        state.detectedLang = localStorage.getItem('pastie-lang') || navigator.language.split('-')[0] || 'vi';
+        if (!TRANSLATIONS[state.detectedLang]) {
+            state.detectedLang = 'vi';
+        }
     } catch(e) {}
 
     // --- UI Dynamic Injection ---
@@ -78,6 +228,8 @@
         const root = document.createElement('div');
         root.id = 'pastie-chat-widget-root';
         
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
+        
         root.innerHTML = `
             <!-- Chat Window -->
             <div class="pastie-chat-window" id="pastie-chat-window">
@@ -85,8 +237,8 @@
                 <div class="pastie-chat-header">
                     <div class="pastie-chat-avatar"><i class="ri-customer-service-2-fill"></i></div>
                     <div class="pastie-chat-header-info">
-                        <h4>Hỗ Trợ Trực Tuyến</h4>
-                        <p><span class="pastie-chat-status-dot"></span> Đang hoạt động • AI song ngữ</p>
+                        <h4 id="pastie-chat-header-title">${t.headerTitle}</h4>
+                        <p id="pastie-chat-header-status"><span class="pastie-chat-status-dot"></span> ${t.headerStatus}</p>
                     </div>
                 </div>
                 
@@ -95,39 +247,39 @@
                     
                     <!-- Screen 1: Contact Form -->
                     <div class="pastie-chat-view" id="view-init">
-                        <h3>Trò chuyện trực tiếp</h3>
-                        <p id="view-init-desc">Vui lòng điền thông tin để kết nối trực tiếp với nhân viên hỗ trợ của chúng tôi.</p>
+                        <h3 id="view-init-title">${t.initTitle}</h3>
+                        <p id="view-init-desc">${t.initDesc}</p>
                         <div class="pastie-chat-error" id="init-error"></div>
                         <div class="pastie-chat-form-group">
-                            <label>Họ tên của bạn</label>
-                            <input type="text" id="input-name" placeholder="Nguyễn Văn A..." required>
+                            <label id="lbl-input-name">${t.initNameLabel}</label>
+                            <input type="text" id="input-name" placeholder="${t.initNamePlaceholder}" required>
                         </div>
                         <div class="pastie-chat-form-group">
-                            <label>Địa chỉ Email</label>
-                            <input type="email" id="input-email" placeholder="email@cua-ban.com..." required>
+                            <label id="lbl-input-email">${t.initEmailLabel}</label>
+                            <input type="email" id="input-email" placeholder="${t.initEmailPlaceholder}" required>
                         </div>
                         <button class="pastie-chat-btn" id="btn-submit-init">
-                            Tiếp tục <i class="ri-arrow-right-line"></i>
+                            <span id="txt-btn-submit-init">${t.initBtnSubmit}</span> <i class="ri-arrow-right-line"></i>
                         </button>
                         <button class="pastie-chat-btn-link" id="btn-open-tidio" style="margin-top: 12px; margin-bottom: 0;">
-                            <i class="ri-robot-2-line"></i> Quay lại AI Chatbot
+                            <i class="ri-robot-2-line"></i> <span id="txt-btn-open-tidio">${t.initBtnTidio}</span>
                         </button>
                     </div>
 
 
                     <!-- Screen 2: OTP Verification -->
                     <div class="pastie-chat-view pastie-chat-hide" id="view-otp">
-                        <h3>Xác thực Email</h3>
-                        <p>Chúng tôi vừa gửi mã OTP 6 số vào email của bạn. Vui lòng nhập mã vào ô dưới đây để xác thực.</p>
+                        <h3 id="view-otp-title">${t.otpTitle}</h3>
+                        <p id="view-otp-desc">${t.otpDesc}</p>
                         <div class="pastie-chat-error" id="otp-error"></div>
                         <div class="pastie-chat-form-group">
-                            <label>Mã xác thực OTP</label>
-                            <input type="text" id="input-otp" placeholder="------" maxlength="6" style="text-align: center; letter-spacing: 4px; font-weight: bold; font-size: 18px;" required>
+                            <label id="lbl-input-otp">${t.otpLabel}</label>
+                            <input type="text" id="input-otp" placeholder="${t.otpPlaceholder}" maxlength="6" style="text-align: center; letter-spacing: 4px; font-weight: bold; font-size: 18px;" required>
                         </div>
                         <button class="pastie-chat-btn" id="btn-submit-otp">
-                            Xác nhận kết nối <i class="ri-checkbox-circle-line"></i>
+                            <span id="txt-btn-submit-otp">${t.otpBtnSubmit}</span> <i class="ri-checkbox-circle-line"></i>
                         </button>
-                        <button class="pastie-chat-btn-link" id="btn-resend-otp">Gửi lại mã OTP</button>
+                        <button class="pastie-chat-btn-link" id="btn-resend-otp">${t.otpBtnResend}</button>
                     </div>
 
                     <!-- Screen 3: Active Conversation Thread -->
@@ -138,7 +290,7 @@
                         <div class="pastie-chat-footer">
                             <form id="pastie-chat-form" onsubmit="event.preventDefault();">
                                 <div class="pastie-chat-input-row">
-                                    <input type="text" id="pastie-chat-input" placeholder="Type a message..." autocomplete="off">
+                                    <input type="text" id="pastie-chat-input" placeholder="${t.chatInputPlaceholder}" autocomplete="off">
                                     <button type="submit" class="pastie-chat-send-btn" id="btn-send-message">
                                         <i class="ri-send-plane-2-fill"></i>
                                     </button>
@@ -151,19 +303,87 @@
             </div>
 
             <!-- Launcher Button -->
-            <button class="pastie-chat-launcher pastie-chat-hide" id="pastie-chat-launcher">
+            <button class="pastie-chat-launcher" id="pastie-chat-launcher">
                 <i class="ri-chat-3-line" id="launcher-icon"></i>
                 <div class="pastie-chat-badge" id="pastie-chat-badge"></div>
             </button>
 
             <!-- Toggle Pill to switch to AI Chat -->
             <button class="pastie-ai-toggle-pill pastie-chat-hide" id="pastie-ai-toggle-pill">
-                <i class="ri-robot-2-line"></i> Dịch thuật AI (🤖)
+                <i class="ri-robot-2-line"></i> <span id="txt-ai-toggle-pill">${t.btnBackToTidio}</span>
             </button>
         `;
 
         document.body.appendChild(root);
     }
+
+    function applyTranslations() {
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
+        
+        const safeSetText = (id, text) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        };
+        const safeSetPlaceholder = (id, text) => {
+            const el = document.getElementById(id);
+            if (el) el.placeholder = text;
+        };
+        
+        safeSetText('pastie-chat-header-title', t.headerTitle);
+        const statusEl = document.getElementById('pastie-chat-header-status');
+        if (statusEl) {
+            statusEl.innerHTML = `<span class="pastie-chat-status-dot"></span> ${t.headerStatus}`;
+        }
+        
+        safeSetText('view-init-title', t.initTitle);
+        
+        if (state.redirectedFromTidio) {
+            const descEl = document.getElementById('view-init-desc');
+            if (descEl) {
+                descEl.innerHTML = `<span style="color: #ef4444; font-weight: 500;"><i class="ri-error-warning-line"></i> ${t.redirectingDesc}</span>`;
+            }
+        } else {
+            safeSetText('view-init-desc', t.initDesc);
+        }
+        
+        safeSetText('lbl-input-name', t.initNameLabel);
+        safeSetPlaceholder('input-name', t.initNamePlaceholder);
+        safeSetText('lbl-input-email', t.initEmailLabel);
+        safeSetPlaceholder('input-email', t.initEmailPlaceholder);
+        safeSetText('txt-btn-submit-init', t.initBtnSubmit);
+        safeSetText('txt-btn-open-tidio', t.initBtnTidio);
+        
+        safeSetText('view-otp-title', t.otpTitle);
+        safeSetText('view-otp-desc', t.otpDesc);
+        safeSetText('lbl-input-otp', t.otpLabel);
+        safeSetPlaceholder('input-otp', t.otpPlaceholder);
+        safeSetText('txt-btn-submit-otp', t.otpBtnSubmit);
+        
+        const resendBtn = document.getElementById('btn-resend-otp');
+        if (resendBtn) {
+            if (state.otpCooldown <= 0) {
+                resendBtn.textContent = t.otpBtnResend;
+            } else {
+                resendBtn.textContent = `${t.otpBtnResendCooldown} (${state.otpCooldown}s)`;
+            }
+        }
+        
+        safeSetPlaceholder('pastie-chat-input', t.chatInputPlaceholder);
+        safeSetText('txt-ai-toggle-pill', t.btnBackToTidio);
+        
+        // Re-render chat view welcome message if the thread is empty
+        const threadContainer = document.getElementById('pastie-chat-thread');
+        if (threadContainer && threadContainer.children.length === 1 && threadContainer.children[0].classList.contains('system')) {
+            threadContainer.children[0].innerHTML = `<div class="pastie-msg-bubble">${t.chatStartWelcome}</div>`;
+        }
+    }
+
+    function changeWidgetLanguage(lang) {
+        if (!TRANSLATIONS[lang]) return;
+        state.detectedLang = lang;
+        applyTranslations();
+    }
+    window.changeWidgetLanguage = changeWidgetLanguage;
 
 
     // --- DOM Actions & Navigation ---
@@ -226,6 +446,7 @@
     // --- OTP Countdown Timer ---
     function startOtpCooldown() {
         const resendBtn = document.getElementById('btn-resend-otp');
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
         state.otpCooldown = 60;
         resendBtn.disabled = true;
         
@@ -235,10 +456,10 @@
             state.otpCooldown--;
             if (state.otpCooldown <= 0) {
                 clearInterval(state.otpCooldownTimer);
-                resendBtn.textContent = 'Gửi lại mã OTP';
+                resendBtn.textContent = t.otpBtnResend;
                 resendBtn.disabled = false;
             } else {
-                resendBtn.textContent = `Gửi lại mã (${state.otpCooldown}s)`;
+                resendBtn.textContent = `${t.otpBtnResendCooldown} (${state.otpCooldown}s)`;
             }
         }, 1000);
     }
@@ -253,22 +474,23 @@
         const email = document.getElementById('input-email').value.trim();
         const errorEl = document.getElementById('init-error');
         const submitBtn = document.getElementById('btn-submit-init');
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
 
         if (!name || !email || !email.includes('@')) {
-            errorEl.textContent = 'Vui lòng điền đúng Họ tên và Email.';
+            errorEl.textContent = t.initErrorFields;
             errorEl.style.display = 'block';
             return;
         }
 
         errorEl.style.display = 'none';
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang xử lý...';
+        submitBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> ${t.loadingSend}`;
 
         try {
             const res = await fetch(`${CONFIG.BACKEND_URL}/api/otp/send`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
+                body: JSON.stringify({ email, language: state.detectedLang })
             });
             const data = await res.json();
 
@@ -281,15 +503,15 @@
                 switchView('otp');
                 startOtpCooldown();
             } else {
-                errorEl.textContent = data.error || 'Có lỗi xảy ra.';
+                errorEl.textContent = data.error || t.defaultError;
                 errorEl.style.display = 'block';
             }
         } catch (e) {
-            errorEl.textContent = 'Không thể kết nối đến máy chủ.';
+            errorEl.textContent = t.initErrorConn;
             errorEl.style.display = 'block';
         } finally {
             submitBtn.disabled = false;
-            submitBtn.innerHTML = 'Tiếp tục <i class="ri-arrow-right-line"></i>';
+            submitBtn.innerHTML = `${t.initBtnSubmit} <i class="ri-arrow-right-line"></i>`;
         }
     }
 
@@ -298,16 +520,17 @@
         const code = document.getElementById('input-otp').value.trim();
         const errorEl = document.getElementById('otp-error');
         const submitBtn = document.getElementById('btn-submit-otp');
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
 
         if (code.length < 6) {
-            errorEl.textContent = 'Vui lòng nhập đủ mã OTP 6 số.';
+            errorEl.textContent = t.otpErrorEmpty;
             errorEl.style.display = 'block';
             return;
         }
 
         errorEl.style.display = 'none';
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Xác thực...';
+        submitBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> ${t.loadingVerify}`;
 
         try {
             const res = await fetch(`${CONFIG.BACKEND_URL}/api/otp/verify`, {
@@ -317,7 +540,8 @@
                     email: state.visitorEmail,
                     code,
                     name: state.visitorName,
-                    projectId: CONFIG.PROJECT_ID
+                    projectId: CONFIG.PROJECT_ID,
+                    language: state.detectedLang
                 })
             });
             const data = await res.json();
@@ -336,15 +560,15 @@
                     loadMessageHistory();
                 }
             } else {
-                errorEl.textContent = data.error || 'Mã xác thực không hợp lệ.';
+                errorEl.textContent = data.error || t.otpErrorInvalid;
                 errorEl.style.display = 'block';
             }
         } catch (e) {
-            errorEl.textContent = 'Lỗi kết nối máy chủ.';
+            errorEl.textContent = t.otpErrorConn;
             errorEl.style.display = 'block';
         } finally {
             submitBtn.disabled = false;
-            submitBtn.innerHTML = 'Xác nhận kết nối <i class="ri-checkbox-circle-line"></i>';
+            submitBtn.innerHTML = `${t.otpBtnSubmit} <i class="ri-checkbox-circle-line"></i>`;
         }
     }
 
@@ -359,7 +583,7 @@
                     sessionId: state.sessionId,
                     sender: 'system',
                     text: text,
-                    targetLang: state.detectedLang || 'en'
+                    targetLang: state.detectedLang || 'vi'
                 })
             });
         } catch (e) {
@@ -444,6 +668,7 @@
                         sessionId: state.sessionId,
                         sender: 'visitor',
                         text,
+                        visitorLang: state.detectedLang || 'vi',
                         targetLang: 'vi' // visitor translates their language to agent's Vietnamese
                     })
                 });
@@ -923,7 +1148,8 @@
             threadContainer.innerHTML = '';
             
             if (messages.length === 0) {
-                threadContainer.innerHTML = '<div class="pastie-msg system"><div class="pastie-msg-bubble">Chào mừng! Vui lòng gửi câu hỏi của bạn. Hệ thống AI dịch thuật tự động đã sẵn sàng.</div></div>';
+                const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
+                threadContainer.innerHTML = `<div class="pastie-msg system"><div class="pastie-msg-bubble">${t.chatStartWelcome}</div></div>`;
                 return;
             }
 
@@ -1003,7 +1229,7 @@
                     <span class="pastie-typing-dot"></span>
                     <span class="pastie-typing-dot"></span>
                     <span class="pastie-typing-dot"></span>
-                    <span class="pastie-typing-text" style="font-size: 11.5px; margin-left: 6px; color: var(--widget-text-sec); font-weight: 500;">Nhân viên đang nhập...</span>
+                    <span class="pastie-typing-text" style="font-size: 11.5px; margin-left: 6px; color: var(--widget-text-sec); font-weight: 500;">${t.typingText}</span>
                 </div>
             </div>
         `;
@@ -1071,6 +1297,9 @@
         launcher = document.getElementById('pastie-chat-launcher');
         chatWindow = document.getElementById('pastie-chat-window');
 
+        // Unconditionally evaluate initial state to configure launcher visibility and tidio status
+        handleInitialState();
+
         // Bind events
         if (launcher) launcher.addEventListener('click', toggleChatWindow);
         document.getElementById('btn-submit-init').addEventListener('click', sendOTP);
@@ -1098,6 +1327,16 @@
         // Setup Tidio hash listener
         window.addEventListener('hashchange', checkHashForAIChat);
         checkHashForAIChat(); // Check immediately on load
+
+        // Intercept language changes on landing page
+        if (typeof window.switchLang === 'function') {
+            const originalSwitchLang = window.switchLang;
+            window.switchLang = function(lang) {
+                originalSwitchLang(lang);
+                changeWidgetLanguage(lang);
+            };
+        }
+        applyTranslations(); // apply default lang on load
 
         
         document.getElementById('pastie-chat-form').addEventListener('submit', (e) => {

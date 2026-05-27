@@ -273,7 +273,7 @@ app.post('/api/otp/send', async (req, res) => {
  */
 // 2. Verify OTP and Create/Activate Chat Session
 app.post('/api/otp/verify', async (req, res) => {
-  const { email, code, name, projectId } = req.body;
+  const { email, code, name, projectId, language } = req.body;
   
   if (!email || !code || !projectId) {
     return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ email, mã OTP và projectId.' });
@@ -303,11 +303,10 @@ app.post('/api/otp/verify', async (req, res) => {
     // Create a new session in PostgreSQL
     const sessionId = randomUUID(); // Node native secure UUID
 
-    
     await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, is_verified, status) 
-       VALUES ($1, $2, $3, $4, TRUE, 'active')`,
-      [sessionId, projectId, name || 'Khách ẩn danh', email]
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status) 
+       VALUES ($1, $2, $3, $4, $5, TRUE, 'active')`,
+      [sessionId, projectId, name || 'Khách ẩn danh', email, language || 'vi']
     );
 
     res.json({ success: true, sessionId, name: name || 'Khách ẩn danh' });
@@ -392,7 +391,7 @@ app.post('/api/otp/verify', async (req, res) => {
  */
 // 3. Log Message and Translate (2-way Translation)
 app.post('/api/chats/message', async (req, res) => {
-  const { sessionId, sender, text, targetLang } = req.body;
+  const { sessionId, sender, text, targetLang, visitorLang } = req.body;
 
   if (!sessionId || !sender || !text || !targetLang) {
     return res.status(400).json({ error: 'Thiếu thông số đầu vào bắt buộc.' });
@@ -418,9 +417,12 @@ app.post('/api/chats/message', async (req, res) => {
       [sessionId, sender, text, translatedText, detectedLang]
     );
 
-    // Update session detected language if it's the first message from the visitor
-    if (sender === 'visitor' && !sessionRes.rows[0].detected_language) {
-      await db.query('UPDATE sessions SET detected_language = $1 WHERE id = $2', [detectedLang, sessionId]);
+    // Update session detected language if it's the first message from the visitor, or update with visitorLang if provided
+    if (sender === 'visitor') {
+      const updateLang = visitorLang || detectedLang;
+      if (updateLang) {
+        await db.query('UPDATE sessions SET detected_language = $1 WHERE id = $2', [updateLang, sessionId]);
+      }
     }
 
     res.json({
@@ -563,10 +565,22 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
       return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
     }
 
-    const result = await db.query(
-      'SELECT * FROM messages WHERE session_id = $1 ORDER BY created_at ASC',
-      [sessionId]
-    );
+    const email = sessionRes.rows[0].visitor_email;
+    let result;
+    if (email && email.trim() !== '') {
+      result = await db.query(
+        `SELECT m.* FROM messages m 
+         JOIN sessions s ON m.session_id = s.id 
+         WHERE s.visitor_email = $1 
+         ORDER BY m.created_at ASC`,
+        [email]
+      );
+    } else {
+      result = await db.query(
+        'SELECT * FROM messages WHERE session_id = $1 ORDER BY created_at ASC',
+        [sessionId]
+      );
+    }
     res.json(result.rows);
   } catch (error) {
     console.error('Fetch visitor messages error:', error);
@@ -680,10 +694,24 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res)
   const { sessionId } = req.params;
 
   try {
-    const result = await db.query(
-      'SELECT * FROM messages WHERE session_id = $1 ORDER BY created_at ASC',
-      [sessionId]
-    );
+    const sessionRes = await db.query('SELECT visitor_email FROM sessions WHERE id = $1', [sessionId]);
+    const email = sessionRes.rows[0]?.visitor_email;
+
+    let result;
+    if (email && email.trim() !== '') {
+      result = await db.query(
+        `SELECT m.* FROM messages m 
+         JOIN sessions s ON m.session_id = s.id 
+         WHERE s.visitor_email = $1 
+         ORDER BY m.created_at ASC`,
+        [email]
+      );
+    } else {
+      result = await db.query(
+        'SELECT * FROM messages WHERE session_id = $1 ORDER BY created_at ASC',
+        [sessionId]
+      );
+    }
     res.json(result.rows);
   } catch (error) {
     console.error('Fetch messages error:', error);
