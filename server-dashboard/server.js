@@ -300,31 +300,52 @@ app.post('/api/otp/verify', async (req, res) => {
     // Delete OTP after verification to prevent reuse
     await db.query('DELETE FROM otps WHERE email = $1', [email]);
 
-    // Check if there is an existing active session for this email & project
+    // Query all active sessions for this email & project, ordered by created_at DESC
     const activeSessionRes = await db.query(
-      `SELECT id, visitor_name FROM sessions 
+      `SELECT id, visitor_name, detected_language FROM sessions 
        WHERE visitor_email = $1 AND project_id = $2 AND status = 'active' 
-       LIMIT 1`,
+       ORDER BY created_at DESC`,
       [email, projectId]
     );
 
     let sessionId;
     let finalName = name || 'Khách ẩn danh';
+    const finalLang = language || 'vi';
 
     if (activeSessionRes.rows.length > 0) {
-      sessionId = activeSessionRes.rows[0].id;
-      finalName = activeSessionRes.rows[0].visitor_name || finalName;
-      // Update name if new non-default name is provided
-      if (name && name !== 'Khách ẩn danh' && name !== activeSessionRes.rows[0].visitor_name) {
-        await db.query('UPDATE sessions SET visitor_name = $1 WHERE id = $2', [name, sessionId]);
+      // Reuse the most recent active session
+      const targetSession = activeSessionRes.rows[0];
+      sessionId = targetSession.id;
+      finalName = targetSession.visitor_name || finalName;
+
+      // Update name & language of this active session to match customer's latest selection
+      await db.query(
+        `UPDATE sessions SET visitor_name = $1, detected_language = $2 WHERE id = $3`,
+        [
+          (name && name !== 'Khách ẩn danh') ? name : finalName,
+          finalLang,
+          sessionId
+        ]
+      );
+      if (name && name !== 'Khách ẩn danh') {
         finalName = name;
+      }
+
+      // Automatically close any older duplicate active sessions to prevent them from cluttering the dashboard
+      if (activeSessionRes.rows.length > 1) {
+        const extraSessionIds = activeSessionRes.rows.slice(1).map(row => row.id);
+        await db.query(
+          `UPDATE sessions SET status = 'closed', ai_summary = 'Đóng tự động do trùng lặp phiên' 
+           WHERE id = ANY($1)`,
+          [extraSessionIds]
+        );
       }
     } else {
       sessionId = randomUUID(); // Node native secure UUID
       await db.query(
         `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status) 
          VALUES ($1, $2, $3, $4, $5, TRUE, 'active')`,
-        [sessionId, projectId, finalName, email, language || 'vi']
+        [sessionId, projectId, finalName, email, finalLang]
       );
     }
 
@@ -523,6 +544,17 @@ app.post('/api/chats/session/close', async (req, res) => {
     const { summary, tags } = await gemini.analyzeSession(msgRes.rows);
 
     // Update session in DB
+    const email = sessionRes.rows[0].visitor_email;
+    const projectId = sessionRes.rows[0].project_id;
+    if (email && email.trim() !== '') {
+      await db.query(
+        `UPDATE sessions 
+         SET status = 'closed', ai_summary = $1, intent_tags = $2 
+         WHERE visitor_email = $3 AND project_id = $4 AND status = 'active'`,
+        [summary, tags, email, projectId]
+      );
+    }
+
     await db.query(
       `UPDATE sessions 
        SET status = 'closed', ai_summary = $1, intent_tags = $2 
@@ -669,7 +701,7 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
  *       500:
  *         description: Lỗi hệ thống
  */
-// 1. Get all sessions
+// 1. Get all sessions (grouped by email + projectId to avoid duplicates in sidebar)
 app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
   const { projectId } = req.query;
   
@@ -685,7 +717,48 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
     queryText += ' ORDER BY created_at DESC';
 
     const result = await db.query(queryText, params);
-    res.json(result.rows);
+    
+    const grouped = [];
+    const emailGroups = new Map(); // key: email + '|' + projectId
+    
+    for (const session of result.rows) {
+      const email = session.visitor_email;
+      const pid = session.project_id;
+      
+      if (!email || email.trim() === '') {
+        // Anonymous sessions without email remain separate
+        grouped.push(session);
+      } else {
+        const key = `${email.toLowerCase().trim()}|${pid}`;
+        if (!emailGroups.has(key)) {
+          emailGroups.set(key, { ...session });
+        } else {
+          const representative = emailGroups.get(key);
+          // If any session in the group is active, ensure the representative reflects it
+          if (session.status === 'active' && representative.status !== 'active') {
+            representative.status = 'active';
+            representative.id = session.id; // route messages to the active session
+            representative.detected_language = session.detected_language || representative.detected_language;
+          }
+          // Merge AI intent tags
+          if (session.intent_tags && session.intent_tags.length > 0) {
+            representative.intent_tags = Array.from(new Set([
+              ...(representative.intent_tags || []),
+              ...session.intent_tags
+            ]));
+          }
+        }
+      }
+    }
+    
+    for (const rep of emailGroups.values()) {
+      grouped.push(rep);
+    }
+    
+    // Sort final list by latest creation time
+    grouped.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    
+    res.json(grouped);
   } catch (error) {
     console.error('Fetch sessions error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi tải danh sách hội thoại.' });
