@@ -22,6 +22,7 @@
     let state = {
         isOpen: false,
         step: 'init', // 'init' | 'otp' | 'chat'
+        mode: sessionStorage.getItem('pastie_chat_session_id') ? 'human' : 'tidio', // 'tidio' | 'otp' | 'human'
         sessionId: sessionStorage.getItem('pastie_chat_session_id') || null,
         visitorName: sessionStorage.getItem('pastie_chat_visitor_name') || '',
         visitorEmail: sessionStorage.getItem('pastie_chat_visitor_email') || '',
@@ -29,8 +30,15 @@
         pollInterval: null,
         otpCooldown: 0,
         otpCooldownTimer: null,
-        detectedLang: 'en' // default language detected
+        detectedLang: 'en', // default language detected
+        tidioHistory: JSON.parse(sessionStorage.getItem('pastie_tidio_history') || '[]')
     };
+
+    // DOM Elements
+    let togglePill = null;
+    let launcher = null;
+    let chatWindow = null;
+    let hasBoundDocumentTidioEvents = false;
 
     // Auto detect browser language
     try {
@@ -100,7 +108,7 @@
                             Tiếp tục <i class="ri-arrow-right-line"></i>
                         </button>
                         <button class="pastie-chat-btn-link" id="btn-open-tidio" style="margin-top: 12px; margin-bottom: 0;">
-                            <i class="ri-wechat-line"></i> Trò chuyện trực tiếp qua Tidio
+                            <i class="ri-robot-2-line"></i> Quay lại AI Chatbot
                         </button>
                     </div>
 
@@ -172,8 +180,13 @@
         views[step].classList.remove('pastie-chat-hide');
 
         if (step === 'chat') {
-            startPolling();
-            loadMessageHistory();
+            if (state.mode === 'human') {
+                startPolling();
+                loadMessageHistory();
+            } else {
+                stopPolling();
+                renderTidioHistory();
+            }
         }
     }
 
@@ -189,11 +202,17 @@
             iconEl.className = 'ri-close-line active';
             badgeEl.style.display = 'none'; // hide notification dot when chat opens
 
-            // Auto navigate to active chat if session exists
+            // Route view based on mode/session
             if (state.sessionId) {
+                state.mode = 'human';
                 switchView('chat');
-            } else {
+            } else if (state.mode === 'otp') {
+                switchView('otp');
+            } else if (state.mode === 'init') {
                 switchView('init');
+            } else {
+                state.mode = 'tidio';
+                switchView('chat');
             }
         } else {
             windowEl.classList.remove('open');
@@ -349,35 +368,442 @@
     async function sendMessage() {
         const inputEl = document.getElementById('pastie-chat-input');
         const text = inputEl.value.trim();
-        if (!text || !state.sessionId) return;
+        if (!text) return;
 
         inputEl.value = '';
 
-        // Append user message instantly in client
-        appendMessageBubble({
-            sender: 'visitor',
-            original_text: text,
-            created_at: new Date()
-        });
+        if (state.mode === 'tidio') {
+            // Append and save locally
+            const newMsg = {
+                text: text,
+                sender: 'visitor',
+                timestamp: Date.now()
+            };
+            state.tidioHistory.push(newMsg);
+            sessionStorage.setItem('pastie_tidio_history', JSON.stringify(state.tidioHistory));
+            renderTidioHistory();
 
-        try {
-            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/message`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sessionId: state.sessionId,
-                    sender: 'visitor',
-                    text,
-                    targetLang: 'vi' // visitor translates their language to agent's Vietnamese
-                })
-            });
-            
-            const data = await res.json();
-            if (data.success) {
-                loadMessageHistory(); // reload messages to update database state
+            // Send to hidden Tidio API
+            if (window.tidioChatApi && typeof window.tidioChatApi.messageFromVisitor === 'function') {
+                try {
+                    window.tidioChatApi.messageFromVisitor(text);
+                } catch(e) {
+                    console.error('[Tidio Error] Failed to send visitor message:', e);
+                }
+            } else {
+                console.warn('[Tidio Warning] tidioChatApi not available to proxy visitor message.');
             }
+        } else if (state.mode === 'human' && state.sessionId) {
+            // Append user message instantly in client
+            appendMessageBubble({
+                sender: 'visitor',
+                original_text: text,
+                created_at: new Date()
+            });
+
+            try {
+                const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/message`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sessionId: state.sessionId,
+                        sender: 'visitor',
+                        text,
+                        targetLang: 'vi' // visitor translates their language to agent's Vietnamese
+                    })
+                });
+                
+                if (res.status === 404 || res.status === 410) {
+                    console.warn(`[Session Verify] Session status ${res.status} on server during message send. Transitioning back to Tidio.`);
+                    activateTidioChat();
+                    return;
+                }
+                
+                const data = await res.json();
+                if (data.success) {
+                    loadMessageHistory(); // reload messages to update database state
+                }
+            } catch(e) {
+                console.error('Failed to send message:', e);
+            }
+        }
+    }
+
+    function clearActiveSession() {
+        console.log('[Session Reset] Clearing active custom chat session.');
+        state.sessionId = null;
+        state.step = 'chat';
+        state.mode = 'tidio';
+        state.lastMessageCount = 0;
+        sessionStorage.removeItem('pastie_chat_session_id');
+        
+        stopPolling();
+
+        // Close custom chat window if open
+        if (chatWindow && chatWindow.classList.contains('open')) {
+            chatWindow.classList.remove('open');
+            state.isOpen = false;
+            
+            const iconEl = document.getElementById('launcher-icon');
+            if (iconEl) {
+                iconEl.className = 'ri-chat-3-line';
+            }
+        }
+
+        // Re-evaluate initial state (shows custom launcher)
+        handleInitialState();
+        switchView('chat');
+    }
+
+    function handleInitialState() {
+        // Custom widget launcher is always visible in headless mode
+        if (launcher) launcher.classList.remove('pastie-chat-hide');
+        if (togglePill) togglePill.classList.add('pastie-chat-hide');
+        
+        // Unconditionally call Tidio hide/close to be sure the hidden widget doesn't attempt to pop up
+        if (window.tidioChatApi) {
+            try {
+                if (typeof window.tidioChatApi.hide === 'function') window.tidioChatApi.hide();
+                if (typeof window.tidioChatApi.close === 'function') window.tidioChatApi.close();
+            } catch(e) {}
+        }
+    }
+
+    function activateAIChat(reason = '') {
+        // Switch state to registration form
+        state.mode = 'init';
+        
+        if (window.tidioChatApi) {
+            try {
+                if (typeof window.tidioChatApi.close === 'function') window.tidioChatApi.close();
+                if (typeof window.tidioChatApi.hide === 'function') window.tidioChatApi.hide();
+            } catch(e) {}
+        }
+        if (togglePill) togglePill.classList.add('pastie-chat-hide');
+        if (launcher) launcher.classList.remove('pastie-chat-hide');
+
+        if (reason) {
+            state.redirectedFromTidio = true;
+            state.tidioRedirectReason = reason;
+
+            // Update form description if on init step
+            const descEl = document.getElementById('view-init-desc') || document.querySelector('#view-init p');
+            if (descEl) {
+                descEl.innerHTML = `<span style="color: #ef4444; font-weight: 500;"><i class="ri-error-warning-line"></i> Chatbot đang chuyển hướng bạn gặp nhân viên hỗ trợ.</span><br/>Vui lòng điền thông tin để kết nối trực tiếp.`;
+            }
+
+            // If session is already active, send a system message to database
+            if (state.sessionId) {
+                sendSystemNotification(`[Chuyển hướng Chatbot] Khách hàng chuyển sang chat trực tiếp (Lý do: ${reason})`).then(() => {
+                    loadMessageHistory();
+                });
+            }
+        }
+
+        if (!state.isOpen) {
+            toggleChatWindow();
+        } else {
+            switchView('init');
+        }
+    }
+
+    // --- Tidio Helper & Integration Functions ---
+    function getOrCreateTidioDistinctId(forceNew = false) {
+        let distinctId = localStorage.getItem('pastie_tidio_distinct_id');
+        if (!distinctId || forceNew) {
+            distinctId = 'visitor_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now();
+            localStorage.setItem('pastie_tidio_distinct_id', distinctId);
+            console.log('[Tidio Integration] Generated new distinct_id:', distinctId);
+        }
+        return distinctId;
+    }
+
+    function injectTidioScript(forceNewId = false) {
+        // 1. Remove existing Tidio script if present
+        const oldScript = document.querySelector('script[src*="tidio.co"]');
+        if (oldScript) {
+            try {
+                oldScript.remove();
+            } catch(e) {}
+        }
+
+        // 2. Remove old Tidio iframe to reset the widget UI
+        const iframe = document.getElementById('tidio-chat-iframe');
+        if (iframe) {
+            try {
+                iframe.remove();
+            } catch(e) {}
+        }
+
+        // 3. Delete the tidioChatApi global object so the fresh script can recreate it
+        delete window.tidioChatApi;
+
+        // 4. Set document.tidioIdentify with the distinct_id
+        const distinctId = getOrCreateTidioDistinctId(forceNewId);
+        document.tidioIdentify = {
+            distinct_id: distinctId
+        };
+
+        // 5. Inject fresh script tag
+        const newScript = document.createElement('script');
+        newScript.src = "https://code.tidio.co/plnbt3py3nupfabcl8uzw3ip0zxlsdhy.js";
+        newScript.async = true;
+
+        // 6. Bind events on the new Tidio instance once it's ready
+        let isReadyCalled = false;
+        let checkInterval = null;
+
+        const onReady = () => {
+            if (isReadyCalled) return;
+            isReadyCalled = true;
+            document.removeEventListener('tidioChat-ready', onReady);
+            if (checkInterval) {
+                clearInterval(checkInterval);
+            }
+            console.log('[Tidio Integration] Tidio instance ready with distinct_id:', distinctId);
+            handleInitialState();
+            bindTidioEvents();
+
+            // Force open the chatbot widget if we explicitly requested a reset/open
+            if (forceNewId && window.tidioChatApi && typeof window.tidioChatApi.open === 'function') {
+                try {
+                    window.tidioChatApi.open();
+                } catch(e) {}
+            }
+        };
+
+        if (window.tidioChatApi && typeof window.tidioChatApi.on === 'function') {
+            onReady();
+        } else {
+            document.addEventListener('tidioChat-ready', onReady);
+        }
+            // Safety fallback: poll up to 20 times (10 seconds) to detect if tidioChatApi becomes ready
+        let checks = 0;
+        checkInterval = setInterval(() => {
+            checks++;
+            if (window.tidioChatApi && typeof window.tidioChatApi.on === 'function') {
+                onReady();
+            } else if (checks >= 20) {
+                clearInterval(checkInterval);
+            }
+        }, 500);
+
+        document.body.appendChild(newScript);
+    }
+
+    function activateTidioChat() {
+        console.log('[Tidio Integration] Returning to AI Chatbot. Clearing session and resetting Tidio...');
+        
+        // 1. Clear the active custom agent session
+        state.sessionId = null;
+        state.step = 'chat';
+        state.mode = 'tidio';
+        state.lastMessageCount = 0;
+        sessionStorage.removeItem('pastie_chat_session_id');
+        
+        stopPolling();
+
+        // 2. Reset Tidio local history
+        state.tidioHistory = [];
+        sessionStorage.removeItem('pastie_tidio_history');
+
+        // 3. Clear Tidio keys from localStorage & sessionStorage to force a new chatbot flow
+        try {
+            Object.keys(localStorage).forEach((key) => {
+                if (key.toLowerCase().includes('tidio')) {
+                    localStorage.removeItem(key);
+                }
+            });
+            Object.keys(sessionStorage).forEach((key) => {
+                if (key.toLowerCase().includes('tidio')) {
+                    sessionStorage.removeItem(key);
+                }
+            });
         } catch(e) {
-            console.error('Failed to send message:', e);
+            console.error('[Tidio Reset Error] Failed to clear storage keys:', e);
+        }
+
+        // 4. Clear Tidio cookies
+        try {
+            document.cookie.split(";").forEach((c) => {
+                const eqPos = c.indexOf("=");
+                const name = eqPos > -1 ? c.substring(0, eqPos).trim() : c.trim();
+                if (name.toLowerCase().includes('tidio')) {
+                    document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+                    document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=" + window.location.hostname;
+                }
+            });
+        } catch(e) {
+            console.error('[Tidio Reset Error] Failed to clear cookies:', e);
+        }
+
+        // 5. Inject Tidio script with fresh distinctId
+        injectTidioScript(true);
+
+        // 6. Refresh the view
+        handleInitialState();
+        switchView('chat');
+    }
+
+    function renderTidioHistory() {
+        const threadContainer = document.getElementById('pastie-chat-thread');
+        if (!threadContainer) return;
+        threadContainer.innerHTML = '';
+
+        if (state.tidioHistory.length === 0) {
+            threadContainer.innerHTML = '<div class="pastie-msg system"><div class="pastie-msg-bubble">Chào mừng! Chatbot hỗ trợ tự động của chúng tôi đã sẵn sàng.</div></div>';
+            return;
+        }
+
+        state.tidioHistory.forEach(msg => {
+            const bubbleWrap = document.createElement('div');
+            const cssClass = msg.sender === 'visitor' ? 'visitor' : 'agent';
+            bubbleWrap.className = `pastie-msg ${cssClass}`;
+
+            const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            bubbleWrap.innerHTML = `
+                <div class="pastie-msg-bubble">
+                    <div>${escapeHtml(msg.text)}</div>
+                </div>
+                <div class="pastie-msg-time">${timeStr}</div>
+            `;
+            threadContainer.appendChild(bubbleWrap);
+        });
+        threadContainer.scrollTop = threadContainer.scrollHeight;
+    }
+
+    function onTidioMessage(text, senderType) {
+        if (!text) return;
+        console.log(`[Tidio Headless Bridge] Received message from ${senderType}: "${text}"`);
+        const lowerText = text.toLowerCase();
+
+        // Keywords from visitor that ask for human agent
+        const visitorKeywords = [
+            'nhân viên', 'nhan vien', 'gặp nhân viên', 'gap nhan vien',
+            'gặp admin', 'gap admin', 'human', 'agent', 'support',
+            'live chat', 'live support', 'người thật', 'nguoi that',
+            'nói chuyện với người', 'noi chuyen voi nguoi',
+            'gặp tư vấn viên', 'gap tu van vien', 'gặp hỗ trợ', 'gap ho tro',
+            'tư vấn viên', 'tu van vien', 'chat với người', 'chat voi nguoi',
+            'gặp trực tiếp', 'gap truc tiep', 'nhân viên hỗ trợ', 'nhan vien ho tro',
+            'talk to human', 'real person', 'speak to someone',
+            'gặp nv', 'gap nv', 'nv', 'cskh', 'chăm sóc khách hàng', 'ho tro viên'
+        ];
+
+        // Keywords from chatbot indicating fallback or transfer
+        const operatorKeywords = [
+            'không tìm thấy', 'khong tim thay', 'chưa được thiết lập', 'chua duoc thiet lap',
+            'chưa được setup', 'chua duoc setup', 'không hiểu', 'khong hieu',
+            'chưa có câu trả lời', 'chua co cau tra loi', 'sorry', "don't know",
+            "don't understand", "can't help", 'kết nối với nhân viên', 'ket noi voi nhan vien',
+            'gặp nhân viên', 'gap nhan vien', 'chuyển sang nhân viên', 'chuyen sang nhan vien',
+            'chuyển tiếp', 'chuyen tiep', 'đang kết nối', 'dang ket noi', 'chưa có sẵn', 'chua duoc san',
+            'chuyển tới nhân viên', 'chuyen toi nhan vien', 'không thể trả lời', 'khong the tra loi',
+            'chưa được cài đặt', 'chua duoc cai dat',
+            'tư vấn viên', 'tu van vien', 'kết nối tư vấn viên', 'nhân viên hỗ trợ', 'hỗ trợ viên',
+            'kết nối trực tiếp', 'chat với nhân viên', 'chuyển cho nhân viên'
+        ];
+
+        const keywords = senderType === 'visitor' ? visitorKeywords : operatorKeywords;
+        const matches = keywords.some(keyword => lowerText.includes(keyword));
+
+        if (matches) {
+            console.log(`[Tidio Integration] Auto-switch triggered by ${senderType} message: "${text}"`);
+            activateAIChat(senderType === 'visitor' ? 'Khách yêu cầu gặp nhân viên trên Tidio' : 'Hệ thống Tidio chuyển giao cho nhân viên');
+            return;
+        }
+
+        // Add to Tidio Chatbot Mode history if applicable
+        if (state.mode === 'tidio') {
+            const isDuplicate = state.tidioHistory.some(m => m.text === text && m.sender === senderType && (Date.now() - m.timestamp < 1000));
+            if (!isDuplicate) {
+                const newMsg = {
+                    text: text,
+                    sender: senderType,
+                    timestamp: Date.now()
+                };
+                state.tidioHistory.push(newMsg);
+                sessionStorage.setItem('pastie_tidio_history', JSON.stringify(state.tidioHistory));
+
+                if (state.step === 'chat') {
+                    renderTidioHistory();
+                } else {
+                    playNotificationAlert();
+                }
+            }
+        }
+    }
+
+    function extractTextFromTidioData(data) {
+        if (!data) return '';
+        if (typeof data === 'string') return data;
+        if (data.detail) {
+            if (typeof data.detail === 'string') return data.detail;
+            if (data.detail.text) return data.detail.text;
+            if (data.detail.message) return data.detail.message;
+        }
+        if (data.text) return data.text;
+        if (data.message) return data.message;
+        return '';
+    }
+
+    function handleTidioVisitorDOMEvent(event) {
+        console.log('[Tidio DOM Event] messageFromVisitor event:', event);
+        const text = extractTextFromTidioData(event);
+        onTidioMessage(text, 'visitor');
+    }
+
+    function handleTidioOperatorDOMEvent(event) {
+        console.log('[Tidio DOM Event] messageFromOperator event:', event);
+        const text = extractTextFromTidioData(event);
+        onTidioMessage(text, 'operator');
+    }
+
+    function bindTidioEvents() {
+        // Method 1: Bind via window.tidioChatApi
+        if (window.tidioChatApi && typeof window.tidioChatApi.on === 'function') {
+            try {
+                if (typeof window.tidioChatApi.off === 'function') {
+                    window.tidioChatApi.off('messageFromVisitor');
+                    window.tidioChatApi.off('messageFromOperator');
+                }
+                window.tidioChatApi.on('messageFromVisitor', function(data) {
+                    console.log('[Tidio Event] messageFromVisitor data:', data);
+                    const text = extractTextFromTidioData(data);
+                    onTidioMessage(text, 'visitor');
+                });
+                
+                window.tidioChatApi.on('messageFromOperator', function(data) {
+                    console.log('[Tidio Event] messageFromOperator data:', data);
+                    const text = extractTextFromTidioData(data);
+                    onTidioMessage(text, 'operator');
+                });
+                console.log('[Tidio Integration] Events bound successfully.');
+            } catch(e) {
+                console.error('[Tidio Error] Failed to bind API events:', e);
+            }
+        }
+
+        // Method 2: Bind via document event listeners (Tidio custom DOM events) - Bind only once!
+        if (!hasBoundDocumentTidioEvents) {
+            document.addEventListener('tidioChat-messageFromVisitor', handleTidioVisitorDOMEvent);
+            document.addEventListener('tidioChat-messageFromOperator', handleTidioOperatorDOMEvent);
+            hasBoundDocumentTidioEvents = true;
+        }
+    }
+
+    // Listen for hash change to trigger AI chat from Tidio chatbot buttons/links
+    function checkHashForAIChat() {
+        if (window.location.hash === '#chat-with-human' || window.location.hash === '#ai-chat') {
+            console.log('[Tidio Link Trigger] Detected URL hash match. Switching to AI Chat...');
+            activateAIChat('Khách hàng click link chuyển hướng trên Tidio');
+            // Remove hash from address bar without reloading the page
+            try {
+                history.pushState("", document.title, window.location.pathname + window.location.search);
+            } catch(e) {
+                window.location.hash = '';
+            }
         }
     }
 
@@ -388,6 +814,11 @@
         try {
             // Fetch messages using public session endpoint
             const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/messages`);
+            if (res.status === 404 || res.status === 410) {
+                console.warn(`[Session Verify] Session status ${res.status} on server. Transitioning back to Tidio.`);
+                activateTidioChat();
+                return;
+            }
             const messages = await res.json();
 
             if (!Array.isArray(messages)) return;
@@ -516,192 +947,38 @@
         injectAssets();
         createWidgetDOM();
 
+        // Assign global elements
+        togglePill = document.getElementById('pastie-ai-toggle-pill');
+        launcher = document.getElementById('pastie-chat-launcher');
+        chatWindow = document.getElementById('pastie-chat-window');
+
         // Bind events
-        document.getElementById('pastie-chat-launcher').addEventListener('click', toggleChatWindow);
+        if (launcher) launcher.addEventListener('click', toggleChatWindow);
         document.getElementById('btn-submit-init').addEventListener('click', sendOTP);
         document.getElementById('btn-submit-otp').addEventListener('click', verifyOTP);
         document.getElementById('btn-resend-otp').addEventListener('click', sendOTP);
-        
-        function setupTidioIntegration() {
-            const togglePill = document.getElementById('pastie-ai-toggle-pill');
-            const launcher = document.getElementById('pastie-chat-launcher');
 
-            function activateAIChat(reason = '') {
-                document.body.classList.remove('tidio-active');
-                if (window.tidioChatApi) {
-                    window.tidioChatApi.close();
-                    window.tidioChatApi.hide();
-                }
-                togglePill.classList.add('pastie-chat-hide');
-                launcher.classList.remove('pastie-chat-hide');
-
-                if (reason) {
-                    state.redirectedFromTidio = true;
-                    state.tidioRedirectReason = reason;
-
-                    // Update form description if on init step
-                    const descEl = document.getElementById('view-init-desc') || document.querySelector('#view-init p');
-                    if (descEl) {
-                        descEl.innerHTML = `<span style="color: #ef4444; font-weight: 500;"><i class="ri-error-warning-line"></i> Chatbot đang chuyển hướng bạn gặp nhân viên hỗ trợ.</span><br/>Vui lòng điền thông tin để kết nối trực tiếp.`;
-                    }
-
-                    // If session is already active, send a system message to database
-                    if (state.sessionId) {
-                        sendSystemNotification(`[Chuyển hướng Chatbot] Khách hàng chuyển sang chat trực tiếp (Lý do: ${reason})`).then(() => {
-                            loadMessageHistory();
-                        });
-                    }
-                }
-
-                if (!state.isOpen) {
-                    toggleChatWindow();
-                }
-            }
-
-            function activateTidioChat() {
-                document.body.classList.add('tidio-active');
-                launcher.classList.add('pastie-chat-hide');
-                if (state.isOpen) {
-                    toggleChatWindow();
-                }
-                if (window.tidioChatApi) {
-                    window.tidioChatApi.show();
-                    window.tidioChatApi.open();
-                }
-                togglePill.classList.add('pastie-chat-hide');
-            }
-
+        if (togglePill) {
             togglePill.addEventListener('click', () => activateAIChat('Khách hàng click nút chuyển hướng chủ động'));
-            document.getElementById('btn-open-tidio').addEventListener('click', activateTidioChat);
-
-            function onTidioMessage(text, senderType) {
-                if (!text) return;
-                const lowerText = text.toLowerCase();
-
-                // Keywords from visitor that ask for human agent
-                const visitorKeywords = [
-                    'nhân viên', 'nhan vien', 'gặp nhân viên', 'gap nhan vien',
-                    'gặp admin', 'gap admin', 'human', 'agent', 'support',
-                    'live chat', 'live support', 'người thật', 'nguoi that',
-                    'nói chuyện với người', 'noi chuyen voi nguoi',
-                    'gặp tư vấn viên', 'gap tu van vien', 'gặp hỗ trợ', 'gap ho tro',
-                    'tư vấn viên', 'tu van vien', 'chat với người', 'chat voi nguoi',
-                    'gặp trực tiếp', 'gap truc tiep', 'nhân viên hỗ trợ', 'nhan vien ho tro',
-                    'talk to human', 'real person', 'speak to someone'
-                ];
-
-                // Keywords from chatbot indicating fallback or transfer
-                const operatorKeywords = [
-                    'không tìm thấy', 'khong tim thay', 'chưa được thiết lập', 'chua duoc thiet lap',
-                    'chưa được setup', 'chua duoc setup', 'không hiểu', 'khong hieu',
-                    'chưa có câu trả lời', 'chua co cau tra loi', 'sorry', "don't know",
-                    "don't understand", "can't help", 'kết nối với nhân viên', 'ket noi voi nhan vien',
-                    'gặp nhân viên', 'gap nhan vien', 'chuyển sang nhân viên', 'chuyen sang nhan vien',
-                    'chuyển tiếp', 'chuyen tiep', 'đang kết nối', 'dang ket noi', 'chưa có sẵn', 'chua co san',
-                    'chuyển tới nhân viên', 'chuyen toi nhan vien', 'không thể trả lời', 'khong the tra loi',
-                    'chưa được cài đặt', 'chua duoc cai dat'
-                ];
-
-                const keywords = senderType === 'visitor' ? visitorKeywords : operatorKeywords;
-                const matches = keywords.some(keyword => lowerText.includes(keyword));
-
-                if (matches) {
-                    console.log(`[Tidio Integration] Auto-switch triggered by ${senderType} message: "${text}"`);
-                    activateAIChat(senderType === 'visitor' ? 'Khách yêu cầu gặp nhân viên trên Tidio' : 'Hệ thống Tidio không có câu trả lời sẵn');
-                }
-            }
-
-            function extractTextFromTidioData(data) {
-                if (!data) return '';
-                if (typeof data === 'string') return data;
-                if (data.detail) {
-                    if (typeof data.detail === 'string') return data.detail;
-                    if (data.detail.text) return data.detail.text;
-                    if (data.detail.message) return data.detail.message;
-                }
-                if (data.text) return data.text;
-                if (data.message) return data.message;
-                return '';
-            }
-
-            function bindTidioEvents() {
-                // Method 1: Bind via window.tidioChatApi
-                if (window.tidioChatApi) {
-                    window.tidioChatApi.on('messageFromVisitor', function(data) {
-                        console.log('[Tidio Event] messageFromVisitor data:', data);
-                        const text = extractTextFromTidioData(data);
-                        onTidioMessage(text, 'visitor');
-                    });
-                    
-                    window.tidioChatApi.on('messageFromOperator', function(data) {
-                        console.log('[Tidio Event] messageFromOperator data:', data);
-                        const text = extractTextFromTidioData(data);
-                        onTidioMessage(text, 'operator');
-                    });
-                }
-
-                // Method 2: Bind via document event listeners (Tidio custom DOM events)
-                document.addEventListener('tidioChat-messageFromVisitor', function(event) {
-                    console.log('[Tidio DOM Event] messageFromVisitor event:', event);
-                    const text = extractTextFromTidioData(event);
-                    onTidioMessage(text, 'visitor');
-                });
-
-                document.addEventListener('tidioChat-messageFromOperator', function(event) {
-                    console.log('[Tidio DOM Event] messageFromOperator event:', event);
-                    const text = extractTextFromTidioData(event);
-                    onTidioMessage(text, 'operator');
-                });
-            }
-
-            function handleInitialState() {
-                if (state.sessionId) {
-                    // Has ongoing active custom agent chat session
-                    document.body.classList.remove('tidio-active');
-                    if (window.tidioChatApi) {
-                        window.tidioChatApi.hide();
-                    }
-                    launcher.classList.remove('pastie-chat-hide');
-                    togglePill.classList.add('pastie-chat-hide');
-                } else {
-                    // Prioritize Tidio by default for all visitors
-                    document.body.classList.add('tidio-active');
-                    if (window.tidioChatApi) {
-                        window.tidioChatApi.show();
-                    }
-                    launcher.classList.add('pastie-chat-hide');
-                    togglePill.classList.add('pastie-chat-hide');
-                }
-            }
-
-            // Listen for hash change to trigger AI chat from Tidio chatbot buttons/links
-            function checkHashForAIChat() {
-                if (window.location.hash === '#chat-with-human' || window.location.hash === '#ai-chat') {
-                    console.log('[Tidio Link Trigger] Detected URL hash match. Switching to AI Chat...');
-                    activateAIChat('Khách hàng click link chuyển hướng trên Tidio');
-                    // Remove hash from address bar without reloading the page
-                    try {
-                        history.pushState("", document.title, window.location.pathname + window.location.search);
-                    } catch(e) {
-                        window.location.hash = '';
-                    }
-                }
-            }
-            window.addEventListener('hashchange', checkHashForAIChat);
-            checkHashForAIChat(); // Check immediately on load
-
-            if (window.tidioChatApi) {
-                handleInitialState();
-                bindTidioEvents();
-            } else {
-                document.addEventListener('tidioChat-ready', () => {
-                    handleInitialState();
-                    bindTidioEvents();
-                });
-            }
+        }
+        const openTidioBtn = document.getElementById('btn-open-tidio');
+        if (openTidioBtn) {
+            openTidioBtn.addEventListener('click', activateTidioChat);
         }
 
-        setupTidioIntegration();
+        // Start message polling if session is already active on load
+        if (state.sessionId) {
+            state.mode = 'human';
+            switchView('chat');
+        } else {
+            state.mode = 'tidio';
+            switchView('chat');
+            injectTidioScript(false);
+        }
+
+        // Setup Tidio hash listener
+        window.addEventListener('hashchange', checkHashForAIChat);
+        checkHashForAIChat(); // Check immediately on load
 
         
         document.getElementById('pastie-chat-form').addEventListener('submit', (e) => {

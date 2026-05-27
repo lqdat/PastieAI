@@ -43,6 +43,33 @@ try {
   console.log('Note: Widget files not synced dynamically (expected in production):', e.message);
 }
 
+// Request-time sync for widget files during development
+app.get('/chat-widget.js', (req, res, next) => {
+  try {
+    const localWidgetJs = path.join(__dirname, '../widget/chat-widget.js');
+    const publicWidgetJs = path.join(__dirname, 'public/chat-widget.js');
+    if (fs.existsSync(localWidgetJs)) {
+      fs.copyFileSync(localWidgetJs, publicWidgetJs);
+    }
+  } catch (e) {
+    console.error('Failed to sync chat-widget.js on request:', e.message);
+  }
+  next();
+});
+
+app.get('/chat-widget.css', (req, res, next) => {
+  try {
+    const localWidgetCss = path.join(__dirname, '../widget/chat-widget.css');
+    const publicWidgetCss = path.join(__dirname, 'public/chat-widget.css');
+    if (fs.existsSync(localWidgetCss)) {
+      fs.copyFileSync(localWidgetCss, publicWidgetCss);
+    }
+  } catch (e) {
+    console.error('Failed to sync chat-widget.css on request:', e.message);
+  }
+  next();
+});
+
 // Serve admin dashboard statically from 'public' folder
 app.use(express.static(path.join(__dirname, 'public')));
 // Serve widget files statically (as a fallback)
@@ -168,7 +195,10 @@ app.post('/api/chats/message', async (req, res) => {
     // Verify session is active
     const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
     if (sessionRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Phiên chat không tồn tại hoặc đã bị đóng.' });
+      return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
+    }
+    if (sessionRes.rows[0].status === 'closed') {
+      return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
     }
 
     // Call Gemini to translate and detect language
@@ -240,6 +270,15 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
   const { sessionId } = req.params;
 
   try {
+    // Verify session exists
+    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
+    }
+    if (sessionRes.rows[0].status === 'closed') {
+      return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
+    }
+
     const result = await db.query(
       'SELECT * FROM messages WHERE session_id = $1 ORDER BY created_at ASC',
       [sessionId]

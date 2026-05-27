@@ -379,12 +379,19 @@
     border-radius: 10px;
 }
 
-/* --- Tidio Graceful Integration --- */
-body:not(.tidio-active) #tidio-chat,
-body:not(.tidio-active) #tidio-chat-iframe,
-body:not(.tidio-active) iframe[src*="tidio.co"],
-body:not(.tidio-active) .tidio-chat-iframe {
+/* --- Tidio Headless Integration (Always Hide Tidio Widget UI) --- */
+#tidio-chat,
+#tidio-chat-iframe,
+iframe[src*="tidio.co"],
+.tidio-chat-iframe,
+div[id^="tidio-chat"],
+iframe[id^="tidio-chat"] {
     display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
 }
 
 /* --- AI Toggle Pill Styles --- */
