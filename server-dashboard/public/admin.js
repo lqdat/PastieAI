@@ -292,6 +292,11 @@ function applyTranslations(lang) {
         // Reload messages to update bubble language displays instantly on administrative language change
         loadMessages(currentSessionId);
     }
+
+    // Re-render sessions list to apply selected administrative language instantly to sidebar cards and groups
+    if (sessionsList && sessionsList.length > 0) {
+        renderSessionsList(sessionsList);
+    }
 }
 
 // Base URL helper
@@ -710,18 +715,7 @@ async function loadMessages(sessionId) {
             const locale = currentLang === 'vi' ? 'vi-VN' : currentLang === 'zh' ? 'zh-CN' : currentLang === 'ru' ? 'ru-RU' : 'en-US';
             const timeStr = new Date(msg.created_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 
-            let bubbleText = '';
-            if (msg.sender === 'visitor') {
-                bubbleText = msg.translated_text || msg.original_text;
-            } else if (msg.sender === 'agent') {
-                if (currentLang === 'vi') {
-                    bubbleText = msg.original_text;
-                } else {
-                    bubbleText = msg.translated_text || msg.original_text;
-                }
-            } else {
-                bubbleText = msg.original_text;
-            }
+            const bubbleText = msg.translated_text || msg.original_text;
 
             let innerHtml = `
                 <div class="message-bubble">

@@ -830,10 +830,10 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res)
     
     const messages = result.rows;
 
-    // Dynamically translate visitor messages to the Admin's selected language on-the-fly if needed
+    // Dynamically translate all messages (visitor, agent, system) to the Admin's selected language on-the-fly if needed
     for (let msg of messages) {
-      if (msg.sender === 'visitor') {
-        const msgLang = (msg.language || 'en').toLowerCase();
+      if (msg.sender === 'visitor' || msg.sender === 'agent' || msg.sender === 'system') {
+        const msgLang = (msg.language || '').toLowerCase();
         const targetLangCode = adminLang.toLowerCase();
 
         if (msgLang === targetLangCode) {
