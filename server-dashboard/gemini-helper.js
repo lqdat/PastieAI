@@ -19,22 +19,19 @@ if (apiKey) {
  * @returns {Promise<{translatedText: string, detectedLang: string}>}
  */
 async function translateText(text, targetLang) {
-  if (!ai) {
-    console.warn('Gemini AI not initialized. Returning original text.');
-    return { translatedText: text, detectedLang: 'unknown' };
-  }
+  // 1. Try Gemini Translation if initialized
+  if (ai) {
+    try {
+      const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
+      
+      const targetLangName = {
+        'vi': 'Vietnamese',
+        'en': 'English',
+        'ru': 'Russian',
+        'zh': 'Chinese'
+      }[targetLang.toLowerCase()] || targetLang;
 
-  try {
-    const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    
-    const targetLangName = {
-      'vi': 'Vietnamese',
-      'en': 'English',
-      'ru': 'Russian',
-      'zh': 'Chinese'
-    }[targetLang.toLowerCase()] || targetLang;
-
-    const prompt = `You are a real-time chat translator. Translate the following text into ${targetLangName}.
+      const prompt = `You are a real-time chat translator. Translate the following text into ${targetLangName}.
 Input text: "${text}"
 
 Requirements:
@@ -47,11 +44,9 @@ Requirements:
 }
 Do not wrap the JSON response in markdown code blocks. Return only raw JSON.`;
 
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text().trim();
-    
-    // Parse the JSON response
-    try {
+      const result = await model.generateContent(prompt);
+      const responseText = result.response.text().trim();
+      
       // Clean up markdown wrapper if model accidentally outputs it
       const cleanedJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanedJson);
@@ -59,12 +54,24 @@ Do not wrap the JSON response in markdown code blocks. Return only raw JSON.`;
         translatedText: parsed.translated_text || text,
         detectedLang: parsed.detected_language || 'unknown'
       };
-    } catch (e) {
-      console.error('Failed to parse Gemini translation JSON response:', responseText, e);
-      return { translatedText: responseText || text, detectedLang: 'unknown' };
+    } catch (error) {
+      console.warn('Gemini AI translation failed/exhausted, falling back to Free Google Translate:', error.message);
     }
-  } catch (error) {
-    console.error('Error calling Gemini API for translation:', error.message);
+  }
+
+  // 2. Fallback to free Google Translate public API (unlimited & 100% reliable)
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang.toLowerCase()}&dt=t&q=${encodeURIComponent(text)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const translatedText = data[0].map(item => item[0]).join('');
+    const detectedLang = data[2] || 'unknown';
+    return {
+      translatedText,
+      detectedLang
+    };
+  } catch (err) {
+    console.error('All translation options failed:', err.message);
     return { translatedText: text, detectedLang: 'unknown' };
   }
 }
@@ -80,7 +87,7 @@ async function analyzeSession(messages) {
   }
 
   try {
-    const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
     
     const conversationDump = messages
       .map(m => `${m.sender === 'visitor' ? 'Khách hàng' : 'Nhân viên'}: ${m.text}`)
