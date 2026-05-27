@@ -31,7 +31,9 @@
         otpCooldown: 0,
         otpCooldownTimer: null,
         detectedLang: 'en', // default language detected
-        tidioHistory: JSON.parse(sessionStorage.getItem('pastie_tidio_history') || '[]')
+        tidioHistory: JSON.parse(sessionStorage.getItem('pastie_tidio_history') || '[]'),
+        isTyping: false,
+        typingTimeout: null
     };
 
     // DOM Elements
@@ -381,7 +383,19 @@
             };
             state.tidioHistory.push(newMsg);
             sessionStorage.setItem('pastie_tidio_history', JSON.stringify(state.tidioHistory));
+            
+            // Show typing indicator
+            state.isTyping = true;
             renderTidioHistory();
+
+            // Safety timeout to clear indicator after 12 seconds
+            if (state.typingTimeout) clearTimeout(state.typingTimeout);
+            state.typingTimeout = setTimeout(() => {
+                if (state.isTyping && state.mode === 'tidio') {
+                    state.isTyping = false;
+                    renderTidioHistory();
+                }
+            }, 12000);
 
             // Send to hidden Tidio API
             if (window.tidioChatApi && typeof window.tidioChatApi.messageFromVisitor === 'function') {
@@ -652,24 +666,40 @@
 
         if (state.tidioHistory.length === 0) {
             threadContainer.innerHTML = '<div class="pastie-msg system"><div class="pastie-msg-bubble">Chào mừng! Chatbot hỗ trợ tự động của chúng tôi đã sẵn sàng.</div></div>';
-            return;
+        } else {
+            state.tidioHistory.forEach(msg => {
+                const bubbleWrap = document.createElement('div');
+                const cssClass = msg.sender === 'visitor' ? 'visitor' : 'agent';
+                bubbleWrap.className = `pastie-msg ${cssClass}`;
+
+                const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                bubbleWrap.innerHTML = `
+                    <div class="pastie-msg-bubble">
+                        <div>${escapeHtml(msg.text)}</div>
+                    </div>
+                    <div class="pastie-msg-time">${timeStr}</div>
+                `;
+                threadContainer.appendChild(bubbleWrap);
+            });
         }
 
-        state.tidioHistory.forEach(msg => {
-            const bubbleWrap = document.createElement('div');
-            const cssClass = msg.sender === 'visitor' ? 'visitor' : 'agent';
-            bubbleWrap.className = `pastie-msg ${cssClass}`;
-
-            const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-            bubbleWrap.innerHTML = `
-                <div class="pastie-msg-bubble">
-                    <div>${escapeHtml(msg.text)}</div>
+        // Add typing indicator if chatbot is thinking
+        if (state.isTyping) {
+            const typingBubble = document.createElement('div');
+            typingBubble.className = 'pastie-msg agent';
+            typingBubble.innerHTML = `
+                <div class="pastie-msg-bubble pastie-typing-indicator-bubble">
+                    <div class="pastie-typing-indicator">
+                        <span class="pastie-typing-dot"></span>
+                        <span class="pastie-typing-dot"></span>
+                        <span class="pastie-typing-dot"></span>
+                    </div>
                 </div>
-                <div class="pastie-msg-time">${timeStr}</div>
             `;
-            threadContainer.appendChild(bubbleWrap);
-        });
+            threadContainer.appendChild(typingBubble);
+        }
+
         threadContainer.scrollTop = threadContainer.scrollHeight;
     }
 
@@ -716,6 +746,13 @@
 
         // Add to Tidio Chatbot Mode history if applicable
         if (state.mode === 'tidio') {
+            if (senderType === 'operator') {
+                state.isTyping = false;
+                if (state.typingTimeout) {
+                    clearTimeout(state.typingTimeout);
+                    state.typingTimeout = null;
+                }
+            }
             const isDuplicate = state.tidioHistory.some(m => m.text === text && m.sender === senderType && (Date.now() - m.timestamp < 1000));
             if (!isDuplicate) {
                 const newMsg = {
@@ -844,6 +881,15 @@
             messages.forEach(msg => {
                 appendMessageBubble(msg);
             });
+
+            // Show typing indicator if agent is thinking/typing (visitor sent last message)
+            const lastMsg = messages[messages.length - 1];
+            if (lastMsg && lastMsg.sender === 'visitor') {
+                state.isTyping = true;
+                appendTypingBubble();
+            } else {
+                state.isTyping = false;
+            }
         } catch(e) {
             console.error('Failed to load message history:', e);
         }
@@ -889,6 +935,29 @@
 
         bubbleWrap.innerHTML = displayHtml;
         threadContainer.appendChild(bubbleWrap);
+        threadContainer.scrollTop = threadContainer.scrollHeight;
+    }
+
+    function appendTypingBubble() {
+        const threadContainer = document.getElementById('pastie-chat-thread');
+        if (!threadContainer) return;
+        
+        // Remove existing typing indicators to prevent duplicates
+        const existing = threadContainer.querySelector('.pastie-typing-indicator-bubble');
+        if (existing) return;
+
+        const typingBubble = document.createElement('div');
+        typingBubble.className = 'pastie-msg agent';
+        typingBubble.innerHTML = `
+            <div class="pastie-msg-bubble pastie-typing-indicator-bubble">
+                <div class="pastie-typing-indicator">
+                    <span class="pastie-typing-dot"></span>
+                    <span class="pastie-typing-dot"></span>
+                    <span class="pastie-typing-dot"></span>
+                </div>
+            </div>
+        `;
+        threadContainer.appendChild(typingBubble);
         threadContainer.scrollTop = threadContainer.scrollHeight;
     }
 

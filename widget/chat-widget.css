@@ -427,4 +427,38 @@ iframe[id^="tidio-chat"] {
     font-size: 14px;
 }
 
+/* --- Typing Indicator Bubble & Animations --- */
+.pastie-typing-indicator-bubble {
+    padding: 10px 14px !important;
+}
+.pastie-typing-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 14px;
+}
+.pastie-typing-dot {
+    width: 6px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 50%;
+    animation: pastieBouncing 1.4s infinite ease-in-out both;
+}
+.pastie-typing-dot:nth-child(1) {
+    animation-delay: -0.32s;
+}
+.pastie-typing-dot:nth-child(2) {
+    animation-delay: -0.16s;
+}
+@keyframes pastieBouncing {
+    0%, 80%, 100% { 
+        transform: scale(0.3);
+        opacity: 0.3;
+    } 
+    40% { 
+        transform: scale(1.0);
+        opacity: 1;
+    }
+}
+
 
