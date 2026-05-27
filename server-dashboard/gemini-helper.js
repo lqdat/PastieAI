@@ -25,7 +25,7 @@ async function translateText(text, targetLang) {
   }
 
   try {
-    const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
     
     const targetLangName = {
       'vi': 'Vietnamese',
@@ -80,7 +80,7 @@ async function analyzeSession(messages) {
   }
 
   try {
-    const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
     
     const conversationDump = messages
       .map(m => `${m.sender === 'visitor' ? 'Khách hàng' : 'Nhân viên'}: ${m.text}`)

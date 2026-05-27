@@ -800,6 +800,22 @@
                 container.remove();
             } catch(e) {}
         }
+        const codeIframe = document.getElementById('tidio-chat-code');
+        if (codeIframe) {
+            try {
+                codeIframe.remove();
+            } catch(e) {}
+        }
+
+        // Remove extra style tags or elements injected by Tidio
+        document.querySelectorAll('[id*="tidio"], [class*="tidio"]').forEach(el => {
+            if (!el.id.includes('pastie') && !el.className.includes('pastie')) {
+                try { el.remove(); } catch(e) {}
+            }
+        });
+        document.querySelectorAll('link[href*="tidio"]').forEach(el => {
+            try { el.remove(); } catch(e) {}
+        });
 
         // 3. Delete the tidioChatApi and other global objects so the fresh script can recreate them
         delete window.tidioChatApi;
@@ -876,6 +892,7 @@
         // 2. Reset Tidio local history
         state.tidioHistory = [];
         sessionStorage.removeItem('pastie_tidio_history');
+        state.isTyping = true; // Show thinking indicator immediately
 
         // 3. Clear Tidio keys from localStorage & sessionStorage to force a new chatbot flow
         try {
@@ -921,8 +938,7 @@
         threadContainer.innerHTML = '';
 
         if (state.tidioHistory.length === 0) {
-            const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
-            threadContainer.innerHTML = `<div class="pastie-msg system"><div class="pastie-msg-bubble">${t.chatWelcome}</div></div>`;
+            threadContainer.innerHTML = '<div class="pastie-msg system"><div class="pastie-msg-bubble">Chào mừng! Chatbot hỗ trợ tự động của chúng tôi đã sẵn sàng.</div></div>';
         } else {
             state.tidioHistory.forEach(msg => {
                 const bubbleWrap = document.createElement('div');
@@ -951,6 +967,7 @@
                         <span class="pastie-typing-dot"></span>
                         <span class="pastie-typing-dot"></span>
                         <span class="pastie-typing-dot"></span>
+                        <span class="pastie-typing-text" style="font-size: 11.5px; margin-left: 6px; color: var(--widget-text-sec); font-weight: 500;">AI đang suy nghĩ...</span>
                     </div>
                 </div>
             `;
@@ -1212,6 +1229,7 @@
                     <span class="pastie-typing-dot"></span>
                     <span class="pastie-typing-dot"></span>
                     <span class="pastie-typing-dot"></span>
+                    <span class="pastie-typing-text" style="font-size: 11.5px; margin-left: 6px; color: var(--widget-text-sec); font-weight: 500;">${t.typingText}</span>
                 </div>
             </div>
         `;

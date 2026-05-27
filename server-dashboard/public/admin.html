@@ -20,14 +20,14 @@
         <div class="login-box glass-panel">
             <div class="brand-header">
                 <div class="brand-logo"><i class="ri-git-repository-private-line"></i></div>
-                <h2>Pastie AI Admin</h2>
-                <p>Nhập mật khẩu quản trị để kết nối console</p>
+                <h2 data-i18n="loginTitle">Pastie AI Admin</h2>
+                <p data-i18n="loginSubtitle">Nhập mật khẩu quản trị để kết nối console</p>
             </div>
             <div class="form-group">
-                <input type="password" id="admin-password-input" placeholder="Mật khẩu bảo mật..." required>
-                <div class="error-msg" id="login-error-msg">Mật khẩu không hợp lệ, vui lòng thử lại.</div>
+                <input type="password" id="admin-password-input" placeholder="Mật khẩu bảo mật..." data-i18n-placeholder="passwordPlaceholder" required>
+                <div class="error-msg" id="login-error-msg" data-i18n="loginError">Mật khẩu không hợp lệ, vui lòng thử lại.</div>
             </div>
-            <button id="login-btn" class="primary-btn">Kết Nối Console <i class="ri-arrow-right-line"></i></button>
+            <button id="login-btn" class="primary-btn"><span data-i18n="loginBtn">Kết Nối Console</span> <i class="ri-arrow-right-line"></i></button>
         </div>
     </div>
 
@@ -38,22 +38,31 @@
             <div class="header-left">
                 <div class="logo">
                     <i class="ri-bubble-chart-fill"></i>
-                    <span>Pastie AI Console</span>
+                    <span data-i18n="headerTitle">Pastie AI Console</span>
                 </div>
                 <div class="project-selector">
                     <i class="ri-filter-3-line"></i>
                     <select id="project-filter">
-                        <option value="">Tất cả dự án</option>
+                        <option value="" data-i18n="allProjects">Tất cả dự án</option>
                         <!-- Will be populated dynamically -->
                     </select>
                 </div>
             </div>
             <div class="header-right">
                 <div class="export-actions">
-                    <button id="export-csv-btn" class="secondary-btn"><i class="ri-file-excel-2-line"></i> Xuất CSV (Sales Script)</button>
-                    <button id="export-jsonl-btn" class="secondary-btn"><i class="ri-braces-line"></i> Xuất JSONL (AI Train)</button>
+                    <button id="export-csv-btn" class="secondary-btn"><i class="ri-file-excel-2-line"></i> <span data-i18n="exportCsv">Xuất CSV (Sales Script)</span></button>
+                    <button id="export-jsonl-btn" class="secondary-btn"><i class="ri-braces-line"></i> <span data-i18n="exportJsonl">Xuất JSONL (AI Train)</span></button>
                 </div>
-                <button id="logout-btn" class="icon-btn" title="Đăng xuất"><i class="ri-logout-box-r-line"></i></button>
+                <div class="lang-selector">
+                    <i class="ri-translate-2"></i>
+                    <select id="admin-lang-select">
+                        <option value="vi">Tiếng Việt</option>
+                        <option value="en">English</option>
+                        <option value="ru">Русский</option>
+                        <option value="zh">中文</option>
+                    </select>
+                </div>
+                <button id="logout-btn" class="icon-btn" title="Đăng xuất" data-i18n-title="logoutTitle"><i class="ri-logout-box-r-line"></i></button>
             </div>
         </header>
 
@@ -62,11 +71,11 @@
             <!-- Sidebar: Sessions List -->
             <aside class="sessions-sidebar glass-panel">
                 <div class="sidebar-header">
-                    <h3>Hội thoại chat</h3>
-                    <button id="refresh-sessions-btn" class="icon-btn" title="Tải lại"><i class="ri-refresh-line"></i></button>
+                    <h3 data-i18n="chatListTitle">Hội thoại chat</h3>
+                    <button id="refresh-sessions-btn" class="icon-btn" title="Tải lại" data-i18n-title="refreshTitle"><i class="ri-refresh-line"></i></button>
                 </div>
                 <div class="sessions-list" id="sessions-list-container">
-                    <div class="empty-state">Đang tải cuộc hội thoại...</div>
+                    <div class="empty-state" data-i18n="loadingConversations">Đang tải cuộc hội thoại...</div>
                 </div>
             </aside>
 
@@ -75,11 +84,11 @@
                 <!-- Chat Window Header -->
                 <div class="chat-header" id="active-chat-header">
                     <div class="visitor-details-header">
-                        <h3 id="chat-title-name">Chưa chọn phòng chat</h3>
-                        <p id="chat-title-email">Vui lòng chọn cuộc hội thoại từ danh sách bên trái</p>
+                        <h3 id="chat-title-name" data-i18n="noChatSelected">Chưa chọn phòng chat</h3>
+                        <p id="chat-title-email" data-i18n="selectChatPrompt">Vui lòng chọn cuộc hội thoại từ danh sách bên trái</p>
                     </div>
                     <div id="chat-header-actions" class="hide">
-                        <button id="close-session-btn" class="danger-btn"><i class="ri-close-circle-line"></i> Đóng cuộc chat</button>
+                        <button id="close-session-btn" class="danger-btn"><i class="ri-close-circle-line"></i> <span data-i18n="closeChat">Đóng cuộc chat</span></button>
                     </div>
                 </div>
 
@@ -87,7 +96,7 @@
                 <div class="chat-messages" id="chat-messages-container">
                     <div class="chat-welcome-state">
                         <i class="ri-message-3-line"></i>
-                        <p>Chọn một cuộc trò chuyện để bắt đầu tương tác & dịch thuật tự động.</p>
+                        <p data-i18n="welcomePrompt">Chọn một cuộc trò chuyện để bắt đầu tương tác & dịch thuật tự động.</p>
                     </div>
                 </div>
 
@@ -95,10 +104,10 @@
                 <div class="chat-input-area hide" id="chat-input-container">
                     <div class="translation-status-bar">
                         <i class="ri-sparkling-fill"></i>
-                        <span>AI sẽ tự động dịch tin nhắn của bạn sang ngôn ngữ của khách</span>
+                        <span data-i18n="aiTranslationPrompt">AI sẽ tự động dịch tin nhắn của bạn sang ngôn ngữ của khách</span>
                     </div>
                     <form id="chat-form" class="chat-form">
-                        <input type="text" id="chat-input" placeholder="Gõ câu trả lời bằng tiếng Việt tại đây..." autocomplete="off">
+                        <input type="text" id="chat-input" placeholder="Gõ câu trả lời bằng tiếng Việt tại đây..." data-i18n-placeholder="chatInputPlaceholder" autocomplete="off">
                         <button type="submit" class="send-btn"><i class="ri-send-plane-2-fill"></i></button>
                     </form>
                 </div>
@@ -107,22 +116,22 @@
             <!-- Details Sidebar -->
             <aside class="details-sidebar glass-panel hide" id="details-sidebar-container">
                 <div class="details-header">
-                    <h3>Thông tin chi tiết</h3>
+                    <h3 data-i18n="detailsTitle">Thông tin chi tiết</h3>
                 </div>
                 <div class="details-body">
                     <div class="detail-card">
-                        <label>Ngôn ngữ phát hiện</label>
-                        <div class="detail-value" id="detail-lang">Chưa phát hiện</div>
+                        <label data-i18n="detectedLangLabel">Ngôn ngữ phát hiện</label>
+                        <div class="detail-value" id="detail-lang" data-i18n="notDetected">Chưa phát hiện</div>
                     </div>
                     <div class="detail-card">
-                        <label>AI Phân tích ý định (Intent Tags)</label>
+                        <label data-i18n="intentTagsLabel">AI Phân tích ý định (Intent Tags)</label>
                         <div class="tags-container" id="detail-tags">
                             <!-- Tags will go here -->
                         </div>
                     </div>
                     <div class="detail-card">
-                        <label>AI Tóm tắt nội dung cuộc chat</label>
-                        <p class="summary-text" id="detail-summary">Nhấn nút "Đóng cuộc chat" để AI phân tích và tóm tắt cuộc trò chuyện này.</p>
+                        <label data-i18n="aiSummaryLabel">AI Tóm tắt nội dung cuộc chat</label>
+                        <p class="summary-text" id="detail-summary" data-i18n="closeChatToAnalyze">Nhấn nút "Đóng cuộc chat" để AI phân tích và tóm tắt cuộc trò chuyện này.</p>
                     </div>
                 </div>
             </aside>
