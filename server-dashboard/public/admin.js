@@ -26,6 +26,7 @@ const TRANSLATIONS = {
         intentTagsLabel: "AI Phân tích ý định (Intent Tags)",
         aiSummaryLabel: "AI Tóm tắt nội dung cuộc chat",
         closeChatToAnalyze: "Nhấn nút \"Đóng cuộc chat\" để AI phân tích và tóm tắt cuộc trò chuyện này.",
+        projectLabel: "Dự án / Trang web",
         
         // Dynamic labels & alerts
         statusActive: "đang chat",
