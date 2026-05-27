@@ -70,6 +70,7 @@ const TRANSLATIONS = {
         intentTagsLabel: "AI Intent Analysis (Intent Tags)",
         aiSummaryLabel: "AI Chat Summary",
         closeChatToAnalyze: "Click \"Close chat\" to analyze and summarize this conversation.",
+        projectLabel: "Project / Website",
 
         // Dynamic labels & alerts
         statusActive: "active",
@@ -113,6 +114,7 @@ const TRANSLATIONS = {
         intentTagsLabel: "Анализ намерений ИИ (Intent Tags)",
         aiSummaryLabel: "Сводка диалога от ИИ",
         closeChatToAnalyze: "Нажмите \"Закрыть чат\", чтобы ИИ проанализировал и сделал резюме диалога.",
+        projectLabel: "Проект / Сайт",
 
         // Dynamic labels & alerts
         statusActive: "активен",
@@ -156,6 +158,7 @@ const TRANSLATIONS = {
         intentTagsLabel: "AI 意图分析 (意图标签)",
         aiSummaryLabel: "AI 对话摘要",
         closeChatToAnalyze: "点击 \"结束会话\" 让 AI 分析并总结此次对话。",
+        projectLabel: "项目 / 网站",
 
         // Dynamic labels & alerts
         statusActive: "对话中",
@@ -255,6 +258,11 @@ function applyTranslations(lang) {
         const titleEmail = document.getElementById('chat-title-email');
         if (titleName) titleName.textContent = dictObj.noChatSelected;
         if (titleEmail) titleEmail.textContent = dictObj.selectChatPrompt;
+        
+        const chatHeaderProjectBadge = document.getElementById('chat-header-project-badge');
+        if (chatHeaderProjectBadge) {
+            chatHeaderProjectBadge.classList.add('hide');
+        }
         
         const messagesCont = document.getElementById('chat-messages-container');
         if (messagesCont && messagesCont.querySelector('.chat-welcome-state')) {
@@ -562,6 +570,25 @@ async function selectSession(sessionId) {
     // Show header details
     chatTitleName.textContent = session.visitor_name;
     chatTitleEmail.textContent = session.visitor_email;
+
+    // Set project ID badge in active header
+    const chatHeaderProjectBadge = document.getElementById('chat-header-project-badge');
+    const chatHeaderProjectId = document.getElementById('chat-header-project-id');
+    if (chatHeaderProjectBadge && chatHeaderProjectId) {
+        if (session.project_id) {
+            chatHeaderProjectId.textContent = session.project_id;
+            chatHeaderProjectBadge.classList.remove('hide');
+        } else {
+            chatHeaderProjectBadge.classList.add('hide');
+        }
+    }
+
+    // Set project ID in details sidebar
+    const detailProjectId = document.getElementById('detail-project-id');
+    if (detailProjectId) {
+        detailProjectId.textContent = session.project_id || '-';
+    }
+
     chatHeaderActions.classList.remove('hide');
     chatInputContainer.classList.remove('hide');
     detailsSidebar.classList.remove('hide');

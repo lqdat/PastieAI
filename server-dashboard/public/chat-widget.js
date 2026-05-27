@@ -378,26 +378,10 @@
         }
     }
 
-    async function changeWidgetLanguage(lang) {
+    function changeWidgetLanguage(lang) {
         if (!TRANSLATIONS[lang]) return;
         state.detectedLang = lang;
         applyTranslations();
-
-        // Sync with backend if session is active
-        if (state.sessionId) {
-            try {
-                await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/language`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        sessionId: state.sessionId,
-                        language: lang
-                    })
-                });
-            } catch(e) {
-                console.error('Failed to sync language selection with backend:', e);
-            }
-        }
     }
     window.changeWidgetLanguage = changeWidgetLanguage;
 
@@ -1140,7 +1124,7 @@
 
         try {
             // Fetch messages using public session endpoint
-            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/messages?_=${Date.now()}`);
+            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/messages`);
             if (res.status === 404 || res.status === 410) {
                 console.warn(`[Session Verify] Session status ${res.status} on server. Transitioning back to Tidio.`);
                 activateTidioChat();
@@ -1204,12 +1188,14 @@
             `;
         } else if (msg.sender === 'agent') {
             // Agent writes Vietnamese, but client sees translated text!
-            // Show only the translated/primary text in the client's language
+            // If translated_text exists, show it as primary bubble text, and original Vietnamese below
             const primaryText = msg.translated_text || msg.original_text;
+            const hasTranslation = msg.translated_text && msg.translated_text !== msg.original_text;
 
             displayHtml = `
                 <div class="pastie-msg-bubble">
                     <div>${escapeHtml(primaryText)}</div>
+                    ${hasTranslation ? `<div class="pastie-msg-translation">${escapeHtml(msg.original_text)}</div>` : ''}
                 </div>
                 <div class="pastie-msg-time">${timeStr}</div>
             `;

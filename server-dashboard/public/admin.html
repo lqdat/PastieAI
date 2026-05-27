@@ -85,7 +85,13 @@
                 <div class="chat-header" id="active-chat-header">
                     <div class="visitor-details-header">
                         <h3 id="chat-title-name" data-i18n="noChatSelected">Chưa chọn phòng chat</h3>
-                        <p id="chat-title-email" data-i18n="selectChatPrompt">Vui lòng chọn cuộc hội thoại từ danh sách bên trái</p>
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <p id="chat-title-email" style="margin: 0;" data-i18n="selectChatPrompt">Vui lòng chọn cuộc hội thoại từ danh sách bên trái</p>
+                            <span id="chat-header-project-badge" class="session-status-badge active hide" style="background: rgba(99, 102, 241, 0.15); color: var(--accent-color); border: 1px solid rgba(99, 102, 241, 0.3); font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                                <i class="ri-global-line"></i>
+                                <span id="chat-header-project-id"></span>
+                            </span>
+                        </div>
                     </div>
                     <div id="chat-header-actions" class="hide">
                         <button id="close-session-btn" class="danger-btn"><i class="ri-close-circle-line"></i> <span data-i18n="closeChat">Đóng cuộc chat</span></button>
@@ -119,6 +125,13 @@
                     <h3 data-i18n="detailsTitle">Thông tin chi tiết</h3>
                 </div>
                 <div class="details-body">
+                    <div class="detail-card">
+                        <label data-i18n="projectLabel">Dự án / Trang web</label>
+                        <div class="project-badge-container" style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); font-size: 13px; font-weight: 600; color: var(--accent-color);">
+                            <i class="ri-global-line"></i>
+                            <span id="detail-project-id">-</span>
+                        </div>
+                    </div>
                     <div class="detail-card">
                         <label data-i18n="detectedLangLabel">Ngôn ngữ phát hiện</label>
                         <select id="detail-lang-select" class="detail-select">
