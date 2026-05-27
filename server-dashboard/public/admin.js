@@ -377,6 +377,18 @@ async function fetchSessions() {
         const data = await response.json();
         sessionsList = data;
         
+        // Real-time synchronization of the visitor's selected language in the dropdown
+        if (currentSessionId) {
+            const currentActiveSession = data.find(s => s.id === currentSessionId);
+            if (currentActiveSession) {
+                currentDetectedLang = currentActiveSession.detected_language || 'unknown';
+                const detailLangSelect = document.getElementById('detail-lang-select');
+                if (detailLangSelect && detailLangSelect.value !== currentDetectedLang) {
+                    detailLangSelect.value = currentDetectedLang;
+                }
+            }
+        }
+
         updateProjectFilterDropdown(data);
         renderSessionsList(data);
     } catch (e) {
@@ -416,7 +428,32 @@ function renderSessionsList(sessions) {
     }
 
     sessionsListContainer.innerHTML = '';
+
+    // Grouping logic by visitor_email
+    const emailGroups = new Map(); // key: email (lowercase) -> { email, name, sessions: [] }
+    const orderedGroupKeys = [];
+    const anonymousSessions = [];
+
     filtered.forEach(session => {
+        const email = session.visitor_email?.trim();
+        if (email) {
+            const key = email.toLowerCase();
+            if (!emailGroups.has(key)) {
+                emailGroups.set(key, {
+                    email: session.visitor_email,
+                    name: session.visitor_name || 'Khách hàng',
+                    sessions: []
+                });
+                orderedGroupKeys.push(key);
+            }
+            emailGroups.get(key).sessions.push(session);
+        } else {
+            anonymousSessions.push(session);
+        }
+    });
+
+    // Helper to generate a clean session card
+    function createSessionCard(session) {
         const card = document.createElement('div');
         card.className = `session-card ${session.id === currentSessionId ? 'active-selected' : ''}`;
         card.setAttribute('data-id', session.id);
@@ -426,14 +463,12 @@ function renderSessionsList(sessions) {
             + ' ' + new Date(session.created_at).toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
 
         const statusText = session.status === 'active' ? dict.statusActive : dict.statusClosed;
-        const emailText = session.visitor_email || dict.noEmail;
 
         card.innerHTML = `
             <div class="session-card-header">
                 <span class="session-name" title="${session.visitor_name}">${session.visitor_name}</span>
                 <span class="session-status-badge ${session.status}">${statusText}</span>
             </div>
-            <div class="session-email">${emailText}</div>
             <div class="session-meta-footer">
                 <span class="session-project" title="${session.project_id}">${session.project_id}</span>
                 <span>${dateStr}</span>
@@ -441,7 +476,67 @@ function renderSessionsList(sessions) {
         `;
 
         card.addEventListener('click', () => selectSession(session.id));
-        sessionsListContainer.appendChild(card);
+        return card;
+    }
+
+    // Blend anonymous and email groups chronologically based on their newest session's created_at
+    const renderBlocks = [];
+
+    orderedGroupKeys.forEach(key => {
+        const group = emailGroups.get(key);
+        const newestSession = group.sessions[0];
+        renderBlocks.push({
+            type: 'group',
+            timestamp: new Date(newestSession.created_at).getTime(),
+            data: group
+        });
+    });
+
+    anonymousSessions.forEach(session => {
+        renderBlocks.push({
+            type: 'anonymous',
+            timestamp: new Date(session.created_at).getTime(),
+            data: session
+        });
+    });
+
+    // Sort blocks (newest first)
+    renderBlocks.sort((a, b) => b.timestamp - a.timestamp);
+
+    // Append to container
+    renderBlocks.forEach(block => {
+        if (block.type === 'anonymous') {
+            const card = createSessionCard(block.data);
+            sessionsListContainer.appendChild(card);
+        } else {
+            const group = block.data;
+
+            const groupContainer = document.createElement('div');
+            groupContainer.className = 'session-group';
+
+            const groupHeader = document.createElement('div');
+            groupHeader.className = 'session-group-header';
+
+            const countText = currentLang === 'vi' ? 'thiết bị' : currentLang === 'zh' ? '设备' : currentLang === 'ru' ? 'устройств' : 'devices';
+
+            groupHeader.innerHTML = `
+                <i class="ri-user-line"></i>
+                <span class="group-email" title="${group.email}">${group.email}</span>
+                <span class="group-count-badge">${group.sessions.length} ${countText}</span>
+            `;
+
+            const itemsContainer = document.createElement('div');
+            itemsContainer.className = 'session-group-items';
+
+            group.sessions.forEach(session => {
+                const card = createSessionCard(session);
+                itemsContainer.appendChild(card);
+            });
+
+            groupContainer.appendChild(groupHeader);
+            groupContainer.appendChild(itemsContainer);
+            sessionsListContainer.appendChild(groupContainer);
+        }
     });
 }
 
@@ -508,7 +603,7 @@ async function loadMessages(sessionId) {
     const token = getToken();
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     try {
-        const response = await fetch(`${API_BASE}/api/admin/chats/${sessionId}/messages?token=${encodeURIComponent(token)}&_=${Date.now()}`);
+        const response = await fetch(`${API_BASE}/api/admin/chats/${sessionId}/messages?token=${encodeURIComponent(token)}&adminLang=${currentLang}&_=${Date.now()}`);
         const messages = await response.json();
         
         // Detect if user was near the bottom before rebuilding the messages view
@@ -531,11 +626,7 @@ async function loadMessages(sessionId) {
 
             let bubbleText = '';
             if (msg.sender === 'visitor') {
-                if (currentLang === 'vi') {
-                    bubbleText = msg.translated_text || msg.original_text;
-                } else {
-                    bubbleText = msg.original_text;
-                }
+                bubbleText = msg.translated_text || msg.original_text;
             } else if (msg.sender === 'agent') {
                 if (currentLang === 'vi') {
                     bubbleText = msg.original_text;

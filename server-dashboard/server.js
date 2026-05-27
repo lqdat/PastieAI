@@ -306,54 +306,16 @@ app.post('/api/otp/verify', async (req, res) => {
     // Delete OTP after verification to prevent reuse
     await db.query('DELETE FROM otps WHERE email = $1', [email]);
 
-    // Query all active sessions for this email & project, ordered by created_at DESC
-    const activeSessionRes = await db.query(
-      `SELECT id, visitor_name, detected_language FROM sessions 
-       WHERE visitor_email = $1 AND project_id = $2 AND status = 'active' 
-       ORDER BY created_at DESC`,
-      [email, projectId]
-    );
-
-    let sessionId;
-    let finalName = name || 'Khách ẩn danh';
+    // Always create a new distinct device/browser session
+    const sessionId = randomUUID(); // Node native secure UUID
+    const finalName = name || 'Khách ẩn danh';
     const finalLang = language || 'vi';
 
-    if (activeSessionRes.rows.length > 0) {
-      // Reuse the most recent active session
-      const targetSession = activeSessionRes.rows[0];
-      sessionId = targetSession.id;
-      finalName = targetSession.visitor_name || finalName;
-
-      // Update name & language of this active session to match customer's latest selection
-      await db.query(
-        `UPDATE sessions SET visitor_name = $1, detected_language = $2 WHERE id = $3`,
-        [
-          (name && name !== 'Khách ẩn danh') ? name : finalName,
-          finalLang,
-          sessionId
-        ]
-      );
-      if (name && name !== 'Khách ẩn danh') {
-        finalName = name;
-      }
-
-      // Automatically close any older duplicate active sessions to prevent them from cluttering the dashboard
-      if (activeSessionRes.rows.length > 1) {
-        const extraSessionIds = activeSessionRes.rows.slice(1).map(row => row.id);
-        await db.query(
-          `UPDATE sessions SET status = 'closed', ai_summary = 'Đóng tự động do trùng lặp phiên' 
-           WHERE id = ANY($1)`,
-          [extraSessionIds]
-        );
-      }
-    } else {
-      sessionId = randomUUID(); // Node native secure UUID
-      await db.query(
-        `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status) 
-         VALUES ($1, $2, $3, $4, $5, TRUE, 'active')`,
-        [sessionId, projectId, finalName, email, finalLang]
-      );
-    }
+    await db.query(
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status) 
+       VALUES ($1, $2, $3, $4, $5, TRUE, 'active')`,
+      [sessionId, projectId, finalName, email, finalLang]
+    );
 
     res.json({ success: true, sessionId, name: finalName });
   } catch (error) {
@@ -784,52 +746,7 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
 
     const result = await db.query(queryText, params);
     
-    const grouped = [];
-    const emailGroups = new Map(); // key: email + '|' + projectId
-    
-    for (const session of result.rows) {
-      const email = session.visitor_email;
-      const pid = session.project_id;
-      
-      if (!email || email.trim() === '') {
-        // Anonymous sessions without email remain separate
-        grouped.push(session);
-      } else {
-        const key = `${email.toLowerCase().trim()}|${pid}`;
-        if (!emailGroups.has(key)) {
-          emailGroups.set(key, { ...session });
-        } else {
-          const representative = emailGroups.get(key);
-          // If any session in the group is active, ensure the representative reflects it
-          if (session.status === 'active' && representative.status !== 'active') {
-            representative.status = 'active';
-            representative.id = session.id; // route messages to the active session
-          }
-          // Preserve the latest session's language, but fallback to older sessions if the latest is empty/unknown
-          if (!representative.detected_language || representative.detected_language === 'unknown') {
-            if (session.detected_language && session.detected_language !== 'unknown') {
-              representative.detected_language = session.detected_language;
-            }
-          }
-          // Merge AI intent tags
-          if (session.intent_tags && session.intent_tags.length > 0) {
-            representative.intent_tags = Array.from(new Set([
-              ...(representative.intent_tags || []),
-              ...session.intent_tags
-            ]));
-          }
-        }
-      }
-    }
-    
-    for (const rep of emailGroups.values()) {
-      grouped.push(rep);
-    }
-    
-    // Sort final list by latest creation time
-    grouped.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    
-    res.json(grouped);
+    res.json(result.rows);
   } catch (error) {
     console.error('Fetch sessions error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi tải danh sách hội thoại.' });
@@ -873,30 +790,51 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
  *       500:
  *         description: Lỗi hệ thống
  */
-// 2. Get messages for a session
 app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res) => {
   const { sessionId } = req.params;
+  const adminLang = req.query.adminLang || 'vi';
 
   try {
-    const sessionRes = await db.query('SELECT visitor_email FROM sessions WHERE id = $1', [sessionId]);
-    const email = sessionRes.rows[0]?.visitor_email;
+    const result = await db.query(
+      'SELECT * FROM messages WHERE session_id = $1 ORDER BY created_at ASC',
+      [sessionId]
+    );
+    
+    const messages = result.rows;
 
-    let result;
-    if (email && email.trim() !== '') {
-      result = await db.query(
-        `SELECT m.* FROM messages m 
-         JOIN sessions s ON m.session_id = s.id 
-         WHERE s.visitor_email = $1 
-         ORDER BY m.created_at ASC`,
-        [email]
-      );
-    } else {
-      result = await db.query(
-        'SELECT * FROM messages WHERE session_id = $1 ORDER BY created_at ASC',
-        [sessionId]
-      );
+    // Dynamically translate visitor messages to the Admin's selected language on-the-fly if needed
+    for (let msg of messages) {
+      if (msg.sender === 'visitor') {
+        const msgLang = (msg.language || 'en').toLowerCase();
+        const targetLangCode = adminLang.toLowerCase();
+
+        if (msgLang === targetLangCode) {
+          // If the message is already in the admin's language, show original text
+          msg.translated_text = msg.original_text;
+        } else {
+          // Check if we already have a valid translation in the database for 'vi'
+          const alreadyTranslatedToVi = targetLangCode === 'vi' && 
+                                        msg.translated_text && 
+                                        msg.translated_text !== msg.original_text;
+
+          if (!alreadyTranslatedToVi) {
+            try {
+              const { translatedText, detectedLang } = await gemini.translateText(msg.original_text, targetLangCode);
+              if (translatedText) {
+                msg.translated_text = translatedText;
+                if (detectedLang && detectedLang !== 'unknown') {
+                  msg.language = detectedLang;
+                }
+              }
+            } catch (err) {
+              console.error(`[On-The-Fly Translate Error] Message ID ${msg.id}:`, err.message);
+            }
+          }
+        }
+      }
     }
-    res.json(result.rows);
+
+    res.json(messages);
   } catch (error) {
     console.error('Fetch messages error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi tải tin nhắn.' });
