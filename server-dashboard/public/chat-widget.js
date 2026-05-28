@@ -454,6 +454,13 @@
     }
     window.changeWidgetLanguage = changeWidgetLanguage;
 
+    function minimizePastieChat() {
+        if (state.isOpen) {
+            toggleChatWindow();
+        }
+    }
+    window.minimizePastieChat = minimizePastieChat;
+
 
     // --- DOM Actions & Navigation ---
     
