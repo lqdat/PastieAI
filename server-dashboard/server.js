@@ -1181,13 +1181,17 @@ app.get('/api/admin/export', checkAdminAuth, async (req, res) => {
  * Sends a message back to the customer on their respective platform using the Meta Graph APIs.
  * Supports WhatsApp, Messenger, and Instagram.
  */
-async function sendMultichannelMessage(platform, recipientId, text) {
+async function sendMultichannelMessage(platform, recipientId, text, projectId = 'pastie-landingpage') {
   try {
+    // 1. Fetch channel config for this project from Database
+    const configRes = await db.query('SELECT * FROM channel_configs WHERE project_id = $1', [projectId]);
+    const config = configRes.rows[0];
+
     if (platform === 'whatsapp') {
-      const whatsappPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-      const whatsappToken = process.env.WHATSAPP_ACCESS_TOKEN;
+      const whatsappPhoneId = config?.whatsapp_phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
+      const whatsappToken = config?.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
       if (!whatsappPhoneId || !whatsappToken) {
-        console.warn('WARNING: WhatsApp API credentials missing. Cannot send message.');
+        console.warn(`WARNING: WhatsApp credentials missing for project ${projectId}. Cannot send message.`);
         return;
       }
       
@@ -1210,11 +1214,14 @@ async function sendMultichannelMessage(platform, recipientId, text) {
       console.log('WhatsApp send response:', data);
     } 
     else if (platform === 'messenger' || platform === 'instagram') {
-      const pageToken = platform === 'instagram' 
-        ? process.env.INSTAGRAM_ACCESS_TOKEN 
-        : process.env.MESSENGER_PAGE_ACCESS_TOKEN;
+      let pageToken = '';
+      if (platform === 'instagram') {
+        pageToken = config?.instagram_access_token || process.env.INSTAGRAM_ACCESS_TOKEN;
+      } else {
+        pageToken = config?.messenger_page_access_token || process.env.MESSENGER_PAGE_ACCESS_TOKEN;
+      }
       if (!pageToken) {
-        console.warn(`WARNING: Page access token for ${platform} missing. Cannot send message.`);
+        console.warn(`WARNING: Page access token for ${platform} missing for project ${projectId}. Cannot send message.`);
         return;
       }
         
@@ -1246,10 +1253,12 @@ function parseWebhookEvent(body) {
     const entry = body.entry?.[0];
     const change = entry?.changes?.[0]?.value;
     const message = change?.messages?.[0];
+    const phoneId = change?.metadata?.phone_number_id;
     if (message) {
       return {
         platform: 'whatsapp',
         senderId: message.from, // Visitor's phone number
+        targetId: phoneId || '', // Target business phone number ID
         name: change.contacts?.[0]?.profile?.name || `WhatsApp User (${message.from})`,
         text: message.text?.body || '[Phương tiện/Media]',
         messageId: message.id
@@ -1266,6 +1275,7 @@ function parseWebhookEvent(body) {
       return {
         platform: isInstagram ? 'instagram' : 'messenger',
         senderId: messaging.sender.id, // PSID (Page-Scoped ID) or IGSID
+        targetId: messaging.recipient.id, // Target Page ID receiving message
         name: isInstagram ? `Instagram User` : `Facebook User`,
         text: messaging.message.text || '[Phương tiện/Media]',
         messageId: messaging.message.mid
@@ -1277,18 +1287,32 @@ function parseWebhookEvent(body) {
 }
 
 // Verification Webhook for Meta (GET)
-app.get('/api/multichannel/webhook', (req, res) => {
+app.get('/api/multichannel/webhook', async (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  const verifyToken = process.env.META_VERIFY_TOKEN || 'pastie_verify_token_2026';
+  const defaultVerifyToken = process.env.META_VERIFY_TOKEN || 'pastie_verify_token_2026';
 
   if (mode && token) {
-    if (mode === 'subscribe' && token === verifyToken) {
-      console.log('WEBHOOK_VERIFIED: Webhook Meta successfully verified!');
-      return res.status(200).send(challenge);
-    } else {
+    if (mode === 'subscribe') {
+      // 1. Check default env verify token first
+      if (token === defaultVerifyToken) {
+        console.log('WEBHOOK_VERIFIED: Webhook Meta successfully verified via Env Token!');
+        return res.status(200).send(challenge);
+      }
+      
+      // 2. Search database channel configurations for matching verification tokens
+      try {
+        const dbVerifyRes = await db.query('SELECT project_id FROM channel_configs WHERE meta_verify_token = $1 LIMIT 1', [token]);
+        if (dbVerifyRes.rows.length > 0) {
+          console.log(`WEBHOOK_VERIFIED: Webhook Meta successfully verified via DB Token for project ${dbVerifyRes.rows[0].project_id}!`);
+          return res.status(200).send(challenge);
+        }
+      } catch (err) {
+        console.error('Error during DB verify token verification:', err.message);
+      }
+
       console.warn('WEBHOOK_VERIFICATION_FAILED: Tokens mismatch.');
       return res.sendStatus(403);
     }
@@ -1304,14 +1328,43 @@ app.post('/api/multichannel/webhook', async (req, res) => {
   const event = parseWebhookEvent(req.body);
   if (!event) return;
 
-  const { platform, senderId, name, text } = event;
-  console.log(`Webhook received message from ${platform} (senderId: ${senderId}): ${text}`);
+  const { platform, senderId, targetId, name, text } = event;
+  console.log(`Webhook received message from ${platform} (senderId: ${senderId}, targetId: ${targetId}): ${text}`);
   
   try {
-    // 1. Check if there is an active (human agent-led) session for this user on this platform
+    // 1. Resolve project_id based on targetId dynamically
+    let projectId = 'pastie-landingpage'; // Default/fallback project
+    if (targetId) {
+      const configLookup = await db.query(
+        `SELECT project_id FROM channel_configs 
+         WHERE (platform = 'whatsapp' AND whatsapp_phone_number_id = $1)
+            OR (platform = 'messenger' AND messenger_page_id = $1)
+            OR (platform = 'instagram' AND instagram_page_id = $1)
+         LIMIT 1`,
+        [targetId]
+      );
+      if (configLookup.rows.length > 0) {
+        projectId = configLookup.rows[0].project_id;
+      } else {
+        const fieldLookup = await db.query(
+          `SELECT project_id FROM channel_configs
+           WHERE whatsapp_phone_number_id = $1
+              OR messenger_page_id = $1
+              OR instagram_page_id = $1
+           LIMIT 1`,
+          [targetId]
+        );
+        if (fieldLookup.rows.length > 0) {
+          projectId = fieldLookup.rows[0].project_id;
+        }
+      }
+    }
+    console.log(`Mapped multi-channel targetId ${targetId} to project_id: ${projectId}`);
+
+    // 2. Check if there is an active (human agent-led) session for this user on this platform and project
     const sessionRes = await db.query(
-      `SELECT * FROM sessions WHERE platform = $1 AND platform_sender_id = $2 AND status = 'active' LIMIT 1`,
-      [platform, senderId]
+      `SELECT * FROM sessions WHERE platform = $1 AND platform_sender_id = $2 AND project_id = $3 AND status = 'active' LIMIT 1`,
+      [platform, senderId, projectId]
     );
 
     let session = sessionRes.rows[0];
@@ -1321,8 +1374,8 @@ app.post('/api/multichannel/webhook', async (req, res) => {
       // No active agent session. Let's trigger the Gemini AI Chatbot!
       // First, see if there is any existing session for this user to append history
       const lastSessionRes = await db.query(
-        `SELECT id FROM sessions WHERE platform = $1 AND platform_sender_id = $2 ORDER BY created_at DESC LIMIT 1`,
-        [platform, senderId]
+        `SELECT id FROM sessions WHERE platform = $1 AND platform_sender_id = $2 AND project_id = $3 ORDER BY created_at DESC LIMIT 1`,
+        [platform, senderId, projectId]
       );
 
       if (lastSessionRes.rows.length > 0) {
@@ -1334,8 +1387,8 @@ app.post('/api/multichannel/webhook', async (req, res) => {
         sessionId = `mc-${platform}-${randomUUID()}`;
         await db.query(`
           INSERT INTO sessions (id, project_id, visitor_name, status, platform, platform_sender_id, is_verified)
-          VALUES ($1, 'pastie-landingpage', $2, 'active', $3, $4, true)
-        `, [sessionId, name, platform, senderId]);
+          VALUES ($1, $2, $3, 'active', $4, $5, true)
+        `, [sessionId, projectId, name, platform, senderId]);
       }
 
       // Save customer's incoming message
@@ -1345,14 +1398,15 @@ app.post('/api/multichannel/webhook', async (req, res) => {
       `, [sessionId, text]);
 
       // Call Gemini Chatbot with Scraped Knowledge Base context!
-      // Fetch latest synced knowledge base for pastie-landingpage
+      // Fetch latest synced knowledge base for the resolved project ID
       const kbRes = await db.query(
-        `SELECT cleaned_content FROM knowledge_base WHERE project_id = 'pastie-landingpage' ORDER BY updated_at DESC LIMIT 1`
+        `SELECT cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+        [projectId]
       );
-      const knowledgeContext = kbRes.rows[0]?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình cho thương hiệu Pastie.";
+      const knowledgeContext = kbRes.rows[0]?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình.";
 
       const systemInstruction = `
-        Bạn là một trợ lý tư vấn dịch vụ du lịch và phòng nghỉ cao cấp cực kỳ chuyên nghiệp và thân thiện của thương hiệu Pastie.
+        Bạn là một trợ lý tư vấn dịch vụ và sản phẩm cực kỳ chuyên nghiệp và thân thiện.
         
         Hãy trả lời câu hỏi của khách hàng một cách ngắn gọn, súc tích (dưới 3 câu) để hiển thị tốt nhất trên thiết bị di động.
         Giao tiếp bằng ngôn ngữ mà khách hàng đang sử dụng.
@@ -1382,7 +1436,7 @@ app.post('/api/multichannel/webhook', async (req, res) => {
       `, [sessionId, aiReply]);
 
       // Send AI response back to the customer on Facebook/WhatsApp
-      await sendMultichannelMessage(platform, senderId, aiReply);
+      await sendMultichannelMessage(platform, senderId, aiReply, projectId);
 
     } else {
       // An active session is assigned to a human agent.
@@ -1394,7 +1448,7 @@ app.post('/api/multichannel/webhook', async (req, res) => {
         VALUES ($1, 'visitor', $2, $2, 'auto')
       `, [sessionId, text]);
 
-      console.log(`Active human session found for ${platform}:${senderId}. Message saved to trigger dashboard refresh.`);
+      console.log(`Active human session found for ${platform}:${senderId} on project ${projectId}. Message saved to trigger dashboard refresh.`);
     }
   } catch (error) {
     console.error('Webhook processing error:', error);
@@ -1527,6 +1581,94 @@ app.post('/api/admin/knowledge/manual', checkAdminAuth, async (req, res) => {
   } catch (error) {
     console.error('Manual knowledge save error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi lưu tri thức thủ công.' });
+  }
+});
+
+
+// --- DYNAMIC MULTI-TENANT CHANNEL CONFIG API ENDPOINTS ---
+
+// 1. GET Channel configurations for a project
+app.get('/api/admin/channels', checkAdminAuth, async (req, res) => {
+  const projectId = req.query.projectId || 'pastie-landingpage';
+  try {
+    const configRes = await db.query('SELECT * FROM channel_configs WHERE project_id = $1', [projectId]);
+    res.json({
+      success: true,
+      config: configRes.rows[0] || null
+    });
+  } catch (error) {
+    console.error('Fetch channel configurations error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi tải cấu hình kênh.' });
+  }
+});
+
+// 2. POST Save/Upsert Channel configurations for a project
+app.post('/api/admin/channels', checkAdminAuth, async (req, res) => {
+  const {
+    projectId = 'pastie-landingpage',
+    platform = 'whatsapp',
+    whatsappPhoneNumberId = '',
+    whatsappAccessToken = '',
+    messengerPageId = '',
+    messengerPageAccessToken = '',
+    instagramPageId = '',
+    instagramAccessToken = '',
+    metaVerifyToken = 'pastie_verify_token_2026'
+  } = req.body;
+
+  try {
+    const existsRes = await db.query('SELECT id FROM channel_configs WHERE project_id = $1 LIMIT 1', [projectId]);
+    
+    if (existsRes.rows.length > 0) {
+      await db.query(`
+        UPDATE channel_configs 
+        SET platform = $1, 
+            whatsapp_phone_number_id = $2, 
+            whatsapp_access_token = $3, 
+            messenger_page_id = $4, 
+            messenger_page_access_token = $5, 
+            instagram_page_id = $6, 
+            instagram_access_token = $7, 
+            meta_verify_token = $8,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE project_id = $9
+      `, [
+        platform,
+        whatsappPhoneNumberId.trim(),
+        whatsappAccessToken.trim(),
+        messengerPageId.trim(),
+        messengerPageAccessToken.trim(),
+        instagramPageId.trim(),
+        instagramAccessToken.trim(),
+        metaVerifyToken.trim(),
+        projectId
+      ]);
+    } else {
+      await db.query(`
+        INSERT INTO channel_configs (
+          project_id, platform, 
+          whatsapp_phone_number_id, whatsapp_access_token, 
+          messenger_page_id, messenger_page_access_token, 
+          instagram_page_id, instagram_access_token, 
+          meta_verify_token
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `, [
+        projectId,
+        platform,
+        whatsappPhoneNumberId.trim(),
+        whatsappAccessToken.trim(),
+        messengerPageId.trim(),
+        messengerPageAccessToken.trim(),
+        instagramPageId.trim(),
+        instagramAccessToken.trim(),
+        metaVerifyToken.trim()
+      ]);
+    }
+
+    res.json({ success: true, message: 'Lưu cấu hình tích hợp đa kênh thành công!' });
+  } catch (error) {
+    console.error('Save channel configurations error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi lưu cấu hình tích hợp kênh: ' + error.message });
   }
 });
 

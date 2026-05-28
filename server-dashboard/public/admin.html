@@ -51,6 +51,7 @@
             <div class="header-right">
                 <div class="export-actions">
                     <button id="knowledge-settings-btn" class="secondary-btn" style="background: rgba(99, 102, 241, 0.1); color: var(--accent-color); border: 1px solid rgba(99, 102, 241, 0.25);"><i class="ri-brain-line"></i> <span>AI Knowledge Base</span></button>
+                    <button id="channel-settings-btn" class="secondary-btn" style="background: rgba(16, 185, 129, 0.1); color: var(--success-color); border: 1px solid rgba(16, 185, 129, 0.25);"><i class="ri-whatsapp-line"></i> <span>Meta Channels</span></button>
                     <button id="export-csv-btn" class="secondary-btn"><i class="ri-file-excel-2-line"></i> <span data-i18n="exportCsv">Xuất CSV (Sales Script)</span></button>
                     <button id="export-jsonl-btn" class="secondary-btn"><i class="ri-braces-line"></i> <span data-i18n="exportJsonl">Xuất JSONL (AI Train)</span></button>
                 </div>
@@ -206,6 +207,78 @@
                 <button id="kb-save-manual-btn" class="primary-btn" style="flex: 1; background: var(--success-color); box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.3);"><i class="ri-save-line"></i> Lưu thủ công</button>
                 <button id="kb-close-btn" class="secondary-btn" style="background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.1); width: 100px;"><i class="ri-close-line"></i> Đóng</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Meta Channel Settings Modal -->
+    <div id="channel-modal" class="modal-overlay hide">
+        <div class="login-box glass-panel" style="max-width: 650px; width: 90%;">
+            <div class="brand-header" style="margin-bottom: 20px;">
+                <div class="brand-logo" style="background: rgba(16, 185, 129, 0.15); color: var(--success-color); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto; font-size: 28px;"><i class="ri-whatsapp-line"></i></div>
+                <h2 style="font-size: 22px; margin-bottom: 6px;">Meta Channel Configurations</h2>
+                <p style="font-size: 13px; color: var(--text-secondary);">Cấu hình API Fanpage FB, WhatsApp Cloud API và Instagram cho chatbot</p>
+            </div>
+            
+            <form id="channel-config-form">
+                <!-- Select Active Platform -->
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">Kênh Đang Hoạt Động (Active Platform)</label>
+                    <select id="channel-platform" style="width: 100%; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+                        <option value="whatsapp">WhatsApp Cloud API</option>
+                        <option value="messenger">Facebook Messenger</option>
+                        <option value="instagram">Instagram Direct</option>
+                    </select>
+                </div>
+
+                <!-- Meta Webhook Verify Token -->
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">Meta Webhook Verify Token (Token xác thực webhook)</label>
+                    <input type="text" id="channel-meta-verify-token" placeholder="Ví dụ: my_secret_token_123" style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;" required>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 16px 0;">
+
+                <!-- WhatsApp Specific Configs -->
+                <div id="whatsapp-fields" class="channel-fields-group">
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">WhatsApp Phone Number ID (ID số điện thoại)</label>
+                        <input type="text" id="channel-whatsapp-phone-id" placeholder="Nhập Phone Number ID..." style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">WhatsApp Permanent Access Token</label>
+                        <textarea id="channel-whatsapp-token" rows="3" placeholder="Nhập mã truy cập WhatsApp..." style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px; font-family: monospace; resize: vertical;"></textarea>
+                    </div>
+                </div>
+
+                <!-- Facebook Messenger Specific Configs -->
+                <div id="messenger-fields" class="channel-fields-group hide">
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">Facebook Page ID</label>
+                        <input type="text" id="channel-messenger-page-id" placeholder="Nhập Facebook Page ID..." style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">Facebook Page Access Token</label>
+                        <textarea id="channel-messenger-token" rows="3" placeholder="Nhập mã truy cập Fanpage..." style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px; font-family: monospace; resize: vertical;"></textarea>
+                    </div>
+                </div>
+
+                <!-- Instagram Specific Configs -->
+                <div id="instagram-fields" class="channel-fields-group hide">
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">Instagram Business Account ID</label>
+                        <input type="text" id="channel-instagram-page-id" placeholder="Nhập Instagram Account ID..." style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">Instagram Access Token</label>
+                        <textarea id="channel-instagram-token" rows="3" placeholder="Nhập mã truy cập Instagram..." style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px; font-family: monospace; resize: vertical;"></textarea>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; gap: 12px; margin-top: 20px;">
+                    <button type="submit" id="channel-save-btn" class="primary-btn" style="flex: 1; background: var(--success-color); box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.3);"><i class="ri-save-line"></i> Lưu cấu hình</button>
+                    <button type="button" id="channel-close-btn" class="secondary-btn" style="background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.1); width: 100px;"><i class="ri-close-line"></i> Đóng</button>
+                </div>
+            </form>
         </div>
     </div>
 

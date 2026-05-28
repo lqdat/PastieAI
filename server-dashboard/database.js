@@ -65,6 +65,21 @@ async function initializeDatabase() {
       );
     `);
 
+    // Create channel_configs table
+    await query(`
+      CREATE TABLE IF NOT EXISTS channel_configs (
+        project_id VARCHAR(100) PRIMARY KEY,
+        fb_page_id VARCHAR(100),
+        messenger_page_access_token TEXT,
+        ig_page_id VARCHAR(100),
+        instagram_access_token TEXT,
+        whatsapp_phone_number_id VARCHAR(100),
+        whatsapp_access_token TEXT,
+        meta_verify_token VARCHAR(255) DEFAULT 'pastie_verify_token',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Create messages table
     await query(`
       CREATE TABLE IF NOT EXISTS messages (
