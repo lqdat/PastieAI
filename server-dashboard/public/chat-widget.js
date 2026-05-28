@@ -30,7 +30,13 @@
         pollInterval: null,
         otpCooldown: 0,
         otpCooldownTimer: null,
-        detectedLang: 'vi', // default language detected
+        detectedLang: (() => {
+            try {
+                return localStorage.getItem('pastie-lang') || 'vi';
+            } catch (e) {
+                return 'vi';
+            }
+        })(), // default language detected
         tidioHistory: JSON.parse(sessionStorage.getItem('pastie_tidio_history') || '[]'),
         isTyping: false,
         typingTimeout: null
@@ -401,6 +407,8 @@
             } catch(e) {
                 console.error('Failed to sync language selection with backend:', e);
             }
+        } else if (state.mode === 'tidio') {
+            renderTidioHistory();
         }
     }
     window.changeWidgetLanguage = changeWidgetLanguage;
@@ -1355,6 +1363,23 @@
         }
         applyTranslations(); // apply default lang on load
 
+        // Global click-outside listener to minimize the chat window
+        document.addEventListener('click', (e) => {
+            if (state.isOpen && chatWindow) {
+                // If click is outside the window, launcher, togglePill and mini bubble
+                const clickedInsideWindow = chatWindow.contains(e.target);
+                const clickedInsideLauncher = launcher && launcher.contains(e.target);
+                
+                const miniBubble = document.getElementById('pastie-chat-mini-bubble');
+                const clickedInsideMiniBubble = miniBubble && miniBubble.contains(e.target);
+                
+                const clickedInsideTogglePill = togglePill && togglePill.contains(e.target);
+
+                if (!clickedInsideWindow && !clickedInsideLauncher && !clickedInsideMiniBubble && !clickedInsideTogglePill) {
+                    toggleChatWindow();
+                }
+            }
+        });
         
         document.getElementById('pastie-chat-form').addEventListener('submit', (e) => {
 
