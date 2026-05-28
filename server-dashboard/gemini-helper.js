@@ -131,7 +131,51 @@ Không bao quanh JSON bằng các khối mã markdown.`;
   }
 }
 
+/**
+ * Generates an automated response using Gemini AI, based on the knowledge base context and message history.
+ * @param {string} systemInstruction The system instruction containing the knowledge base.
+ * @param {Array<{sender: string, original_text: string}>} history Messages history.
+ * @param {string} userMessage The latest user message.
+ * @returns {Promise<string>}
+ */
+async function generateChatbotResponse(systemInstruction, history, userMessage) {
+  if (!ai) {
+    return 'Xin lỗi, hệ thống AI Chatbot hiện đang bảo trì. Nhân viên hỗ trợ sẽ liên hệ bạn sớm nhất!';
+  }
+
+  try {
+    const model = ai.getGenerativeModel({
+      model: 'gemini-2.0-flash',
+      systemInstruction: systemInstruction
+    });
+
+    // Format chat history for Gemini API contents
+    const contents = [];
+    
+    for (let msg of history) {
+      const role = msg.sender === 'visitor' ? 'user' : 'model';
+      contents.push({
+        role: role,
+        parts: [{ text: msg.original_text || msg.text || '' }]
+      });
+    }
+
+    // Append current user message
+    contents.push({
+      role: 'user',
+      parts: [{ text: userMessage }]
+    });
+
+    const chatResult = await model.generateContent({ contents });
+    return chatResult.response.text().trim();
+  } catch (error) {
+    console.error('Error generating Gemini chatbot response:', error.message);
+    return 'Cám ơn bạn đã gửi tin nhắn. Chúng tôi đã nhận được thông tin và sẽ phản hồi sớm nhất!';
+  }
+}
+
 module.exports = {
   translateText,
-  analyzeSession
+  analyzeSession,
+  generateChatbotResponse
 };

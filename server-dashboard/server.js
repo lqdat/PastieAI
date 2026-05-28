@@ -425,7 +425,7 @@ app.post('/api/otp/verify', async (req, res) => {
  *       500:
  *         description: Lỗi hệ thống khi dịch/lưu tin nhắn
  */
-// 3. Log Message and Translate (2-way Translation)
+// 3. Log Message and Translate (2-way Translation & AI Chatbot / Multi-Channel Router)
 app.post('/api/chats/message', async (req, res) => {
   const { sessionId, sender, text, targetLang, visitorLang, adminLang } = req.body;
 
@@ -468,11 +468,71 @@ app.post('/api/chats/message', async (req, res) => {
         const lockLang = adminLang || targetLang || 'vi';
         await db.query('UPDATE sessions SET admin_language = $1 WHERE id = $2', [lockLang, sessionId]);
       }
+
+      // MULTI-CHANNEL: If this is an agent reply in a multi-channel session, automatically forward it to Meta APIs
+      if (sessionRes.rows[0].platform && sessionRes.rows[0].platform !== 'widget') {
+        const platform = sessionRes.rows[0].platform;
+        const recipientId = sessionRes.rows[0].platform_sender_id;
+        await sendMultichannelMessage(platform, recipientId, translatedText);
+      }
+    }
+
+    let aiReplyMsg = null;
+
+    // AI CHATBOT: If visitor sends a message and no human agent has taken over yet, auto-respond using the Knowledge Base!
+    if (sender === 'visitor') {
+      const agentMsgCheck = await db.query(
+        "SELECT id FROM messages WHERE session_id = $1 AND sender = 'agent' LIMIT 1",
+        [sessionId]
+      );
+      const isHumanAgentActive = agentMsgCheck.rows.length > 0;
+
+      if (!isHumanAgentActive) {
+        // Load latest knowledge base context
+        const kbRes = await db.query(
+          `SELECT cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+          [sessionRes.rows[0].project_id]
+        );
+        const knowledgeContext = kbRes.rows[0]?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình cho thương hiệu Pastie.";
+
+        const systemInstruction = `
+          Bạn là một trợ lý tư vấn dịch vụ du lịch và phòng nghỉ cao cấp cực kỳ chuyên nghiệp và thân thiện của thương hiệu Pastie.
+          
+          Hãy trả lời các câu hỏi của khách hàng một cách ngắn gọn, súc tích (dưới 3 câu) để hiển thị tốt nhất trên thiết bị di động.
+          Giao tiếp bằng chính ngôn ngữ mà khách hàng đang sử dụng.
+          
+          Dưới đây là TOÀN BỘ CƠ SỞ TRI THỨC được lấy từ trang web chính thức của chúng tôi. CHỈ trả lời dựa trên tài liệu này, không tự bịa thông tin:
+          
+          === CƠ SỞ TRI THỨC CHÍNH THỨC ===
+          ${knowledgeContext}
+          === HẾT CƠ SỞ TRI THỨC ===
+          
+          Nếu thông tin khách hỏi nằm ngoài cơ sở tri thức trên, hãy khéo léo từ chối và đề xuất chuyển gặp nhân viên hỗ trợ trực tiếp.
+        `;
+
+        // Get conversation history (last 10 turns)
+        const historyRes = await db.query(
+          `SELECT sender, original_text FROM messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT 10`,
+          [sessionId]
+        );
+
+        // Generate response using gemini-helper (slice to exclude the visitor's message we just inserted)
+        const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text);
+
+        // Save AI reply as system sender
+        const aiMsgRes = await db.query(
+          `INSERT INTO messages (session_id, sender, original_text, translated_text, language) 
+           VALUES ($1, 'system', $2, $2, 'vi') RETURNING *`,
+          [sessionId, aiReply]
+        );
+        aiReplyMsg = aiMsgRes.rows[0];
+      }
     }
 
     res.json({
       success: true,
-      message: msgRes.rows[0]
+      message: msgRes.rows[0],
+      aiReply: aiReplyMsg
     });
   } catch (error) {
     console.error('Message translation/logging error:', error);
@@ -1111,6 +1171,362 @@ app.get('/api/admin/export', checkAdminAuth, async (req, res) => {
   } catch (error) {
     console.error('Export error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi xuất dữ liệu.' });
+  }
+});
+
+
+// --- MULTI-CHANNEL WEBHOOK & ROUTING (PHASE 3) ---
+
+/**
+ * Sends a message back to the customer on their respective platform using the Meta Graph APIs.
+ * Supports WhatsApp, Messenger, and Instagram.
+ */
+async function sendMultichannelMessage(platform, recipientId, text) {
+  try {
+    if (platform === 'whatsapp') {
+      const whatsappPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+      const whatsappToken = process.env.WHATSAPP_ACCESS_TOKEN;
+      if (!whatsappPhoneId || !whatsappToken) {
+        console.warn('WARNING: WhatsApp API credentials missing. Cannot send message.');
+        return;
+      }
+      
+      const url = `https://graph.facebook.com/v20.0/${whatsappPhoneId}/messages`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${whatsappToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: recipientId,
+          type: "text",
+          text: { body: text }
+        })
+      });
+      const data = await response.json();
+      console.log('WhatsApp send response:', data);
+    } 
+    else if (platform === 'messenger' || platform === 'instagram') {
+      const pageToken = platform === 'instagram' 
+        ? process.env.INSTAGRAM_ACCESS_TOKEN 
+        : process.env.MESSENGER_PAGE_ACCESS_TOKEN;
+      if (!pageToken) {
+        console.warn(`WARNING: Page access token for ${platform} missing. Cannot send message.`);
+        return;
+      }
+        
+      const url = `https://graph.facebook.com/v20.0/me/messages?access_token=${pageToken}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          recipient: { id: recipientId },
+          message: { text: text }
+        })
+      });
+      const data = await response.json();
+      console.log(`${platform} send response:`, data);
+    }
+  } catch (error) {
+    console.error(`Error sending message to multi-channel platform ${platform}:`, error.message);
+  }
+}
+
+/**
+ * Parses disparate Meta payloads into a unified format.
+ */
+function parseWebhookEvent(body) {
+  // 1. WhatsApp Cloud API Payload
+  if (body.object === 'whatsapp_business_account') {
+    const entry = body.entry?.[0];
+    const change = entry?.changes?.[0]?.value;
+    const message = change?.messages?.[0];
+    if (message) {
+      return {
+        platform: 'whatsapp',
+        senderId: message.from, // Visitor's phone number
+        name: change.contacts?.[0]?.profile?.name || `WhatsApp User (${message.from})`,
+        text: message.text?.body || '[Phương tiện/Media]',
+        messageId: message.id
+      };
+    }
+  }
+
+  // 2. Facebook Messenger or Instagram Graph API Payload
+  if (body.object === 'page' || body.object === 'instagram') {
+    const entry = body.entry?.[0];
+    const messaging = entry?.messaging?.[0];
+    if (messaging && messaging.message) {
+      const isInstagram = body.object === 'instagram';
+      return {
+        platform: isInstagram ? 'instagram' : 'messenger',
+        senderId: messaging.sender.id, // PSID (Page-Scoped ID) or IGSID
+        name: isInstagram ? `Instagram User` : `Facebook User`,
+        text: messaging.message.text || '[Phương tiện/Media]',
+        messageId: messaging.message.mid
+      };
+    }
+  }
+
+  return null;
+}
+
+// Verification Webhook for Meta (GET)
+app.get('/api/multichannel/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  const verifyToken = process.env.META_VERIFY_TOKEN || 'pastie_verify_token_2026';
+
+  if (mode && token) {
+    if (mode === 'subscribe' && token === verifyToken) {
+      console.log('WEBHOOK_VERIFIED: Webhook Meta successfully verified!');
+      return res.status(200).send(challenge);
+    } else {
+      console.warn('WEBHOOK_VERIFICATION_FAILED: Tokens mismatch.');
+      return res.sendStatus(403);
+    }
+  }
+  return res.sendStatus(400);
+});
+
+// Incoming message handling (POST)
+app.post('/api/multichannel/webhook', async (req, res) => {
+  // Always respond 200 OK immediately to Meta to acknowledge receipt and prevent retries
+  res.sendStatus(200);
+
+  const event = parseWebhookEvent(req.body);
+  if (!event) return;
+
+  const { platform, senderId, name, text } = event;
+  console.log(`Webhook received message from ${platform} (senderId: ${senderId}): ${text}`);
+  
+  try {
+    // 1. Check if there is an active (human agent-led) session for this user on this platform
+    const sessionRes = await db.query(
+      `SELECT * FROM sessions WHERE platform = $1 AND platform_sender_id = $2 AND status = 'active' LIMIT 1`,
+      [platform, senderId]
+    );
+
+    let session = sessionRes.rows[0];
+    let sessionId;
+
+    if (!session) {
+      // No active agent session. Let's trigger the Gemini AI Chatbot!
+      // First, see if there is any existing session for this user to append history
+      const lastSessionRes = await db.query(
+        `SELECT id FROM sessions WHERE platform = $1 AND platform_sender_id = $2 ORDER BY created_at DESC LIMIT 1`,
+        [platform, senderId]
+      );
+
+      if (lastSessionRes.rows.length > 0) {
+        sessionId = lastSessionRes.rows[0].id;
+        // Keep/reopen it active so it displays on the active chat feed of dashboard
+        await db.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [sessionId]);
+      } else {
+        // Create a new session
+        sessionId = `mc-${platform}-${randomUUID()}`;
+        await db.query(`
+          INSERT INTO sessions (id, project_id, visitor_name, status, platform, platform_sender_id, is_verified)
+          VALUES ($1, 'pastie-landingpage', $2, 'active', $3, $4, true)
+        `, [sessionId, name, platform, senderId]);
+      }
+
+      // Save customer's incoming message
+      await db.query(`
+        INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+        VALUES ($1, 'visitor', $2, $2, 'auto')
+      `, [sessionId, text]);
+
+      // Call Gemini Chatbot with Scraped Knowledge Base context!
+      // Fetch latest synced knowledge base for pastie-landingpage
+      const kbRes = await db.query(
+        `SELECT cleaned_content FROM knowledge_base WHERE project_id = 'pastie-landingpage' ORDER BY updated_at DESC LIMIT 1`
+      );
+      const knowledgeContext = kbRes.rows[0]?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình cho thương hiệu Pastie.";
+
+      const systemInstruction = `
+        Bạn là một trợ lý tư vấn dịch vụ du lịch và phòng nghỉ cao cấp cực kỳ chuyên nghiệp và thân thiện của thương hiệu Pastie.
+        
+        Hãy trả lời câu hỏi của khách hàng một cách ngắn gọn, súc tích (dưới 3 câu) để hiển thị tốt nhất trên thiết bị di động.
+        Giao tiếp bằng ngôn ngữ mà khách hàng đang sử dụng.
+        
+        Dưới đây là TOÀN BỘ CƠ SỞ TRI THỨC được lấy từ trang web chính thức của chúng tôi. CHỈ trả lời dựa trên tài liệu này, không tự bịa thông tin:
+        
+        === CƠ SỞ TRI THỨC CHÍNH THỨC ===
+        ${knowledgeContext}
+        === HẾT CƠ SỞ TRI THỨC ===
+        
+        Nếu thông tin khách hỏi nằm ngoài cơ sở tri thức trên, hãy khéo léo phản hồi: "Dạ, thông tin này em xin phép ghi nhận để chuyển cho nhân viên hỗ trợ trực tiếp tư vấn kỹ hơn cho anh/chị nhé!" và đề xuất chuyển gặp nhân viên.
+      `;
+
+      // Load conversation history (last 10 messages) to provide memory to Gemini
+      const historyRes = await db.query(
+        `SELECT sender, original_text FROM messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT 10`,
+        [sessionId]
+      );
+
+      // Generate response using gemini-helper
+      const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text);
+
+      // Save AI's response to DB as 'system'
+      await db.query(`
+        INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+        VALUES ($1, 'system', $2, $2, 'vi')
+      `, [sessionId, aiReply]);
+
+      // Send AI response back to the customer on Facebook/WhatsApp
+      await sendMultichannelMessage(platform, senderId, aiReply);
+
+    } else {
+      // An active session is assigned to a human agent.
+      sessionId = session.id;
+
+      // Save customer's message
+      await db.query(`
+        INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+        VALUES ($1, 'visitor', $2, $2, 'auto')
+      `, [sessionId, text]);
+
+      console.log(`Active human session found for ${platform}:${senderId}. Message saved to trigger dashboard refresh.`);
+    }
+  } catch (error) {
+    console.error('Webhook processing error:', error);
+  }
+});
+
+
+function cleanHtmlToText(html) {
+  // 1. Remove script and style tags completely
+  let text = html.replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, '');
+  text = text.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, '');
+  
+  // 2. Replace heading and block tags with newlines to preserve structural spacing
+  text = text.replace(/<\/h[1-6]>/gi, '\n');
+  text = text.replace(/<\/p>/gi, '\n');
+  text = text.replace(/<\/div>/gi, '\n');
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<li>/gi, '\n- ');
+  
+  // 3. Remove all other HTML tags
+  text = text.replace(/<[^>]+>/g, ' ');
+  
+  // 4. Decode common HTML entities
+  text = text.replace(/&nbsp;/gi, ' ')
+             .replace(/&amp;/gi, '&')
+             .replace(/&lt;/gi, '<')
+             .replace(/&gt;/gi, '>')
+             .replace(/&quot;/gi, '"')
+             .replace(/&#39;/gi, "'");
+
+  // 5. Compress spacing and newlines
+  text = text.replace(/[ \t]+/g, ' '); // Horizontal spaces
+  text = text.replace(/\n\s*\n+/g, '\n\n'); // Multiple newlines
+  return text.trim();
+}
+
+// 4. GET Knowledge Base status & text
+app.get('/api/admin/knowledge', checkAdminAuth, async (req, res) => {
+  const { projectId = 'pastie-landingpage' } = req.query;
+  try {
+    const result = await db.query(
+      'SELECT source_url, cleaned_content, updated_at FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 1',
+      [projectId]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ message: 'Chưa có cơ sở dữ liệu tri thức nào được cấu hình.' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Fetch knowledge error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi tải cơ sở tri thức.' });
+  }
+});
+
+// 5. POST Knowledge Base sync from URL
+app.post('/api/admin/knowledge/sync', checkAdminAuth, async (req, res) => {
+  const { url, projectId = 'pastie-landingpage' } = req.body;
+  if (!url) {
+    return res.status(400).json({ error: 'Vui lòng cung cấp tham số URL.' });
+  }
+
+  try {
+    console.log(`Bắt đầu cào dữ liệu tri thức tự động từ: ${url}`);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `Không thể tải trang web. Mã lỗi HTTP: ${response.status}` });
+    }
+
+    const html = await response.text();
+    const cleanedContent = cleanHtmlToText(html);
+
+    if (cleanedContent.length < 50) {
+      return res.status(400).json({ error: 'Nội dung trang web quá ngắn hoặc không thể cào được văn bản hữu ích.' });
+    }
+
+    // Upsert record
+    const existsRes = await db.query('SELECT id FROM knowledge_base WHERE project_id = $1 LIMIT 1', [projectId]);
+    
+    if (existsRes.rows.length > 0) {
+      await db.query(
+        'UPDATE knowledge_base SET source_url = $1, raw_html = $2, cleaned_content = $3, updated_at = CURRENT_TIMESTAMP WHERE project_id = $4',
+        [url, html, cleanedContent, projectId]
+      );
+    } else {
+      await db.query(
+        'INSERT INTO knowledge_base (project_id, source_url, raw_html, cleaned_content) VALUES ($1, $2, $3, $4)',
+        [projectId, url, html, cleanedContent]
+      );
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Đồng bộ cơ sở tri thức từ Landing Page thành công!', 
+      characterCount: cleanedContent.length 
+    });
+  } catch (error) {
+    console.error('Knowledge sync error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi đồng bộ tri thức: ' + error.message });
+  }
+});
+
+// 6. POST Knowledge Base manual update
+app.post('/api/admin/knowledge/manual', checkAdminAuth, async (req, res) => {
+  const { cleanedContent, projectId = 'pastie-landingpage' } = req.body;
+  if (!cleanedContent || cleanedContent.trim().length === 0) {
+    return res.status(400).json({ error: 'Vui lòng điền nội dung tri thức.' });
+  }
+
+  try {
+    const existsRes = await db.query('SELECT id FROM knowledge_base WHERE project_id = $1 LIMIT 1', [projectId]);
+    
+    if (existsRes.rows.length > 0) {
+      await db.query(
+        "UPDATE knowledge_base SET source_url = 'manual', raw_html = '', cleaned_content = $1, updated_at = CURRENT_TIMESTAMP WHERE project_id = $2",
+        [cleanedContent, projectId]
+      );
+    } else {
+      await db.query(
+        "INSERT INTO knowledge_base (project_id, source_url, raw_html, cleaned_content) VALUES ($1, 'manual', '', $2)",
+        [projectId, cleanedContent]
+      );
+    }
+
+    res.json({ success: true, message: 'Đã lưu tri thức tư vấn thủ công thành công!' });
+  } catch (error) {
+    console.error('Manual knowledge save error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi lưu tri thức thủ công.' });
   }
 });
 

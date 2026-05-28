@@ -50,6 +50,20 @@ async function initializeDatabase() {
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS browser VARCHAR(50);`);
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device VARCHAR(50);`);
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS admin_language VARCHAR(10);`);
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS platform VARCHAR(20) DEFAULT 'widget';`);
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS platform_sender_id VARCHAR(100);`);
+
+    // Create knowledge_base table
+    await query(`
+      CREATE TABLE IF NOT EXISTS knowledge_base (
+        id SERIAL PRIMARY KEY,
+        project_id VARCHAR(100) DEFAULT 'pastie-landingpage',
+        source_url TEXT NOT NULL,
+        raw_html TEXT,
+        cleaned_content TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
 
     // Create messages table
     await query(`

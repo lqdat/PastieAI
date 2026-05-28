@@ -50,6 +50,7 @@
             </div>
             <div class="header-right">
                 <div class="export-actions">
+                    <button id="knowledge-settings-btn" class="secondary-btn" style="background: rgba(99, 102, 241, 0.1); color: var(--accent-color); border: 1px solid rgba(99, 102, 241, 0.25);"><i class="ri-brain-line"></i> <span>AI Knowledge Base</span></button>
                     <button id="export-csv-btn" class="secondary-btn"><i class="ri-file-excel-2-line"></i> <span data-i18n="exportCsv">Xuất CSV (Sales Script)</span></button>
                     <button id="export-jsonl-btn" class="secondary-btn"><i class="ri-braces-line"></i> <span data-i18n="exportJsonl">Xuất JSONL (AI Train)</span></button>
                 </div>
@@ -168,6 +169,43 @@
                     </div>
                 </div>
             </aside>
+        </div>
+    </div>
+
+    <!-- AI Knowledge Base Modal -->
+    <div id="knowledge-modal" class="modal-overlay hide">
+        <div class="login-box glass-panel" style="max-width: 650px; width: 90%;">
+            <div class="brand-header" style="margin-bottom: 20px;">
+                <div class="brand-logo" style="background: rgba(99, 102, 241, 0.15); color: var(--accent-color); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto; font-size: 28px;"><i class="ri-brain-line"></i></div>
+                <h2 style="font-size: 22px; margin-bottom: 6px;">AI Knowledge Base Settings</h2>
+                <p style="font-size: 13px; color: var(--text-secondary);">Đồng bộ & huấn luyện tự động Gemini AI Chatbot dựa trên dữ liệu Landing Page</p>
+            </div>
+            
+            <!-- Automated crawling block -->
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">Cào dữ liệu tự động từ URL (Landing Page)</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="url" id="kb-url-input" placeholder="Ví dụ: https://pastie.vn" style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;" value="https://pastie-landingpage.vercel.app">
+                    <button id="kb-sync-btn" class="primary-btn" style="width: auto; padding: 0 20px; white-space: nowrap;"><i class="ri-refresh-line"></i> Đồng bộ</button>
+                </div>
+                <div id="kb-sync-status" style="font-size: 12px; margin-top: 8px; color: var(--text-secondary); text-align: left; display: flex; align-items: center; gap: 6px;">
+                    <i class="ri-information-line" style="color: var(--accent-color);"></i>
+                    <span>Đồng bộ lần cuối: Chưa tải trạng thái.</span>
+                </div>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 20px 0;">
+
+            <!-- Manual edit block -->
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">Nội dung Huấn luyện & Cơ sở Tri thức</label>
+                <textarea id="kb-text-area" rows="8" placeholder="Nội dung đã cào sẽ xuất hiện tại đây. Bạn có thể tự chỉnh sửa hoặc nhập thêm câu hỏi/câu trả lời thủ công tại đây..." style="width: 100%; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px; line-height: 1.6; resize: vertical; box-sizing: border-box;"></textarea>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+                <button id="kb-save-manual-btn" class="primary-btn" style="flex: 1; background: var(--success-color); box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.3);"><i class="ri-save-line"></i> Lưu thủ công</button>
+                <button id="kb-close-btn" class="secondary-btn" style="background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.1); width: 100px;"><i class="ri-close-line"></i> Đóng</button>
+            </div>
         </div>
     </div>
 

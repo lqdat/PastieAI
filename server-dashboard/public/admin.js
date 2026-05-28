@@ -1133,6 +1133,124 @@ if (detailLangSelect) {
     });
 }
 
+// --- AI KNOWLEDGE BASE SETTINGS DIALOG ---
+const knowledgeModal = document.getElementById('knowledge-modal');
+const knowledgeSettingsBtn = document.getElementById('knowledge-settings-btn');
+const kbSyncBtn = document.getElementById('kb-sync-btn');
+const kbSaveManualBtn = document.getElementById('kb-save-manual-btn');
+const kbCloseBtn = document.getElementById('kb-close-btn');
+const kbUrlInput = document.getElementById('kb-url-input');
+const kbTextArea = document.getElementById('kb-text-area');
+const kbSyncStatus = document.getElementById('kb-sync-status');
+
+if (knowledgeSettingsBtn) {
+    knowledgeSettingsBtn.addEventListener('click', openKnowledgeModal);
+}
+if (kbCloseBtn) {
+    kbCloseBtn.addEventListener('click', closeKnowledgeModal);
+}
+if (kbSyncBtn) {
+    kbSyncBtn.addEventListener('click', syncKnowledgeFromUrl);
+}
+if (kbSaveManualBtn) {
+    kbSaveManualBtn.addEventListener('click', saveKnowledgeManual);
+}
+
+async function openKnowledgeModal() {
+    knowledgeModal.classList.remove('hide');
+    const token = getToken();
+    const projectId = 'pastie-landingpage';
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/knowledge?projectId=${projectId}&token=${encodeURIComponent(token)}`);
+        const data = await response.json();
+        if (data.source_url) {
+            kbUrlInput.value = data.source_url === 'manual' ? 'https://pastie-landingpage.vercel.app' : data.source_url;
+            kbTextArea.value = data.cleaned_content || '';
+            const locale = currentLang === 'vi' ? 'vi-VN' : 'en-US';
+            const dateStr = new Date(data.updated_at).toLocaleString(locale);
+            kbSyncStatus.innerHTML = `<i class="ri-checkbox-circle-line" style="color: var(--success-color);"></i> <span>Đồng bộ từ <strong>${data.source_url}</strong> lúc ${dateStr}</span>`;
+        } else {
+            kbSyncStatus.innerHTML = `<i class="ri-information-line" style="color: var(--accent-color);"></i> <span>Chưa có cơ sở dữ liệu tri thức nào được cấu hình.</span>`;
+            kbTextArea.value = '';
+        }
+    } catch (e) {
+        console.error('Error fetching knowledge settings:', e);
+    }
+}
+
+function closeKnowledgeModal() {
+    knowledgeModal.classList.add('hide');
+}
+
+async function syncKnowledgeFromUrl() {
+    const url = kbUrlInput.value.trim();
+    if (!url) {
+        alert('Vui lòng nhập URL!');
+        return;
+    }
+
+    const token = getToken();
+    kbSyncBtn.disabled = true;
+    kbSyncBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang đồng bộ...`;
+    kbSyncStatus.innerHTML = `<i class="ri-loader-4-line ri-spin" style="color: var(--accent-color);"></i> <span>Đang kết nối & cào dữ liệu từ ${url}...</span>`;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/knowledge/sync?token=${encodeURIComponent(token)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, projectId: 'pastie-landingpage' })
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+            alert(data.message || 'Đồng bộ tri thức từ Landing Page thành công!');
+            await openKnowledgeModal(); // Refresh modal info
+        } else {
+            alert('Lỗi: ' + (data.error || 'Không thể đồng bộ.'));
+            kbSyncStatus.innerHTML = `<i class="ri-error-warning-line" style="color: var(--danger-color);"></i> <span>Đồng bộ thất bại: ${data.error || 'Lỗi HTTP'}</span>`;
+        }
+    } catch (err) {
+        alert('Lỗi kết nối mạng: ' + err.message);
+        kbSyncStatus.innerHTML = `<i class="ri-error-warning-line" style="color: var(--danger-color);"></i> <span>Lỗi kết nối: ${err.message}</span>`;
+    } finally {
+        kbSyncBtn.disabled = false;
+        kbSyncBtn.innerHTML = `<i class="ri-refresh-line"></i> Đồng bộ`;
+    }
+}
+
+async function saveKnowledgeManual() {
+    const text = kbTextArea.value.trim();
+    if (!text) {
+        alert('Vui lòng điền nội dung tri thức!');
+        return;
+    }
+
+    const token = getToken();
+    kbSaveManualBtn.disabled = true;
+    kbSaveManualBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang lưu...`;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/knowledge/manual?token=${encodeURIComponent(token)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cleanedContent: text, projectId: 'pastie-landingpage' })
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+            alert(data.message || 'Lưu tri thức thủ công thành công!');
+            await openKnowledgeModal(); // Refresh modal info
+        } else {
+            alert('Lỗi: ' + (data.error || 'Không thể lưu.'));
+        }
+    } catch (err) {
+        alert('Lỗi kết nối mạng: ' + err.message);
+    } finally {
+        kbSaveManualBtn.disabled = false;
+        kbSaveManualBtn.innerHTML = `<i class="ri-save-line"></i> Lưu thủ công`;
+    }
+}
+
 // Initial translations load
 applyTranslations(currentLang);
 
