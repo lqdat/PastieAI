@@ -937,6 +937,58 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res)
 
 /**
  * @openapi
+ * /api/admin/chats/{sessionId}:
+ *   delete:
+ *     summary: Xóa cuộc trò chuyện vĩnh viễn (Yêu cầu quyền Admin)
+ *     description: Xóa toàn bộ dữ liệu của phiên chat (bao gồm tin nhắn, các bản dịch) khỏi cơ sở dữ liệu.
+ *     tags:
+ *       - Quản trị viên
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID của phiên chat cần xóa (UUID)
+ *       - in: query
+ *         name: token
+ *         schema:
+ *           type: string
+ *         description: Nhập mật khẩu quản trị thay cho Bearer Authorization Header
+ *     responses:
+ *       200:
+ *         description: Xóa phiên chat thành công
+ *       401:
+ *         description: Chưa xác thực (thiếu token hoặc mật khẩu sai)
+ *       404:
+ *         description: Không tìm thấy phiên chat
+ *       500:
+ *         description: Lỗi hệ thống
+ */
+app.delete('/api/admin/chats/:sessionId', checkAdminAuth, async (req, res) => {
+  const { sessionId } = req.params;
+  try {
+    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy phiên chat để xóa.' });
+    }
+
+    // Since the database tables (messages, message_translations) have ON DELETE CASCADE foreign key constraints,
+    // deleting the session row will automatically delete all associated messages and translations!
+    await db.query('DELETE FROM sessions WHERE id = $1', [sessionId]);
+
+    res.json({ success: true, message: 'Đã xóa cuộc trò chuyện thành công.' });
+  } catch (error) {
+    console.error('Delete session error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi xóa cuộc trò chuyện.' });
+  }
+});
+
+/**
+ * @openapi
  * /api/admin/export:
  *   get:
  *     summary: Xuất dữ liệu các phòng chat (Yêu cầu quyền Admin)

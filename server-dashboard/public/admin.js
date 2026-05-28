@@ -47,7 +47,11 @@ const TRANSLATIONS = {
         loadOlder: "Xem tin nhắn cũ hơn",
         loadingMore: "Đang tải...",
         labelOriginal: "BẢN GỐC:",
-        labelAiTranslation: "AI DỊCH:"
+        labelAiTranslation: "AI DỊCH:",
+        deleteChat: "Xóa cuộc chat",
+        deleteConfirm: "Bạn có chắc chắn muốn XÓA VĨNH VIỄN cuộc trò chuyện này cùng toàn bộ tin nhắn lịch sử? Thao tác này không thể hoàn tác.",
+        deleteSuccess: "Đã xóa cuộc trò chuyện thành công.",
+        deleteError: "Lỗi khi xóa cuộc trò chuyện."
     },
     en: {
         loginTitle: "Pastie AI Admin",
@@ -96,7 +100,11 @@ const TRANSLATIONS = {
         loadOlder: "Load older messages",
         loadingMore: "Loading...",
         labelOriginal: "ORIGINAL:",
-        labelAiTranslation: "AI TRANSLATION:"
+        labelAiTranslation: "AI TRANSLATION:",
+        deleteChat: "Delete chat",
+        deleteConfirm: "Are you sure you want to PERMANENTLY DELETE this conversation along with all messages? This action cannot be undone.",
+        deleteSuccess: "Conversation deleted successfully.",
+        deleteError: "Failed to delete conversation."
     },
     ru: {
         loginTitle: "Панель Pastie AI",
@@ -145,7 +153,11 @@ const TRANSLATIONS = {
         loadOlder: "Загрузить старые сообщения",
         loadingMore: "Загрузка...",
         labelOriginal: "ОРИГИНАЛ:",
-        labelAiTranslation: "ИИ-ПЕРЕВОД:"
+        labelAiTranslation: "ИИ-ПЕРЕВОД:",
+        deleteChat: "Удалить чат",
+        deleteConfirm: "Вы уверены, что хотите НАВСЕГДА УДАЛИТЬ этот диалог и всю историю сообщений? Это действие нельзя отменить.",
+        deleteSuccess: "Диалог успешно удален.",
+        deleteError: "Не удалось удалить диалог."
     },
     zh: {
         loginTitle: "Pastie AI 管理员",
@@ -194,7 +206,11 @@ const TRANSLATIONS = {
         loadOlder: "加载历史消息",
         loadingMore: "正在加载...",
         labelOriginal: "原文:",
-        labelAiTranslation: "AI 翻译:"
+        labelAiTranslation: "AI 翻译:",
+        deleteChat: "删除会话",
+        deleteConfirm: "您确定要永久删除此会话以及所有历史消息吗？此操作无法撤销。",
+        deleteSuccess: "会话已成功删除。",
+        deleteError: "删除会话失败。"
     }
 };
 
@@ -236,6 +252,7 @@ const detailLang = document.getElementById('detail-lang');
 const detailTags = document.getElementById('detail-tags');
 const detailSummary = document.getElementById('detail-summary');
 const closeSessionBtn = document.getElementById('close-session-btn');
+const deleteSessionBtn = document.getElementById('delete-session-btn');
 const refreshSessionsBtn = document.getElementById('refresh-sessions-btn');
 const exportCsvBtn = document.getElementById('export-csv-btn');
 const exportJsonlBtn = document.getElementById('export-jsonl-btn');
@@ -971,6 +988,67 @@ async function closeActiveSession() {
     }
 }
 
+function resetActiveChatUI() {
+    currentSessionId = null;
+    if (messagePollInterval) clearInterval(messagePollInterval);
+    
+    chatHeaderActions.classList.add('hide');
+    chatInputContainer.classList.add('hide');
+    detailsSidebar.classList.add('hide');
+    
+    const dictObj = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
+    chatTitleName.textContent = dictObj.noChatSelected;
+    chatTitleEmail.textContent = dictObj.selectChatPrompt;
+    
+    const chatHeaderProjectBadge = document.getElementById('chat-header-project-badge');
+    if (chatHeaderProjectBadge) {
+        chatHeaderProjectBadge.classList.add('hide');
+    }
+    
+    chatMessagesContainer.innerHTML = `
+        <div class="chat-welcome-state">
+            <i class="ri-message-3-line"></i>
+            <p>${dictObj.welcomePrompt}</p>
+        </div>
+    `;
+    
+    // De-select all cards
+    document.querySelectorAll('.session-card').forEach(c => {
+        c.classList.remove('active-selected');
+    });
+}
+
+async function deleteActiveSession() {
+    if (!currentSessionId) return;
+    const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
+    if (!confirm(dict.deleteConfirm)) return;
+
+    deleteSessionBtn.disabled = true;
+    deleteSessionBtn.innerHTML = `<i class="ri-loader-4-line"></i> ...`;
+
+    try {
+        const token = getToken();
+        const response = await fetch(`${API_BASE}/api/admin/chats/${currentSessionId}?token=${encodeURIComponent(token)}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            alert(dict.deleteSuccess);
+            resetActiveChatUI();
+            await fetchSessions();
+        } else {
+            alert(dict.deleteError + (data.error ? ': ' + data.error : ''));
+        }
+    } catch (e) {
+        console.error('Delete chat error:', e);
+        alert(dict.deleteError);
+    } finally {
+        deleteSessionBtn.disabled = false;
+        deleteSessionBtn.innerHTML = `<i class="ri-delete-bin-line"></i> ${dict.deleteChat}`;
+    }
+}
+
 function handleExport(format) {
     const token = getToken();
     const projectId = projectFilter.value;
@@ -1006,6 +1084,7 @@ projectFilter.addEventListener('change', (e) => {
 
 refreshSessionsBtn.addEventListener('click', fetchSessions);
 closeSessionBtn.addEventListener('click', closeActiveSession);
+deleteSessionBtn.addEventListener('click', deleteActiveSession);
 chatForm.addEventListener('submit', sendMessage);
 
 exportCsvBtn.addEventListener('click', () => handleExport('csv'));
