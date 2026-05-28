@@ -389,6 +389,11 @@
         state.detectedLang = lang;
         applyTranslations();
 
+        // Minimize the chat window when language changes
+        if (state.isOpen) {
+            toggleChatWindow();
+        }
+
         // Sync with backend if session is active
         if (state.sessionId) {
             try {
