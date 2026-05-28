@@ -447,7 +447,6 @@ iframe[id^="tidio-chat"] {
     }
 }
 
-
 /* --- Mini Bubble Popup Styles --- */
 .pastie-chat-mini-bubble {
     position: absolute;
@@ -460,9 +459,9 @@ iframe[id^="tidio-chat"] {
     border: 1px solid var(--widget-border);
     border-radius: 16px;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
-    padding: 12px 14px;
+    padding: 8px 12px;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 10px;
     z-index: 999997;
     opacity: 0;
@@ -523,11 +522,7 @@ iframe[id^="tidio-chat"] {
 }
 
 .pastie-chat-mini-sender {
-    font-size: 11px;
-    font-weight: 700;
-    color: #ffb3c1;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    display: none;
 }
 
 .pastie-chat-mini-text {
@@ -560,3 +555,5 @@ iframe[id^="tidio-chat"] {
     color: #f8fafc;
     background: rgba(255, 255, 255, 0.08);
 }
+
+
