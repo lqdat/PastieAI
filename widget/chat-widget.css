@@ -295,21 +295,7 @@
     text-align: center;
 }
 
-/* Bilingual translations on client side */
-.pastie-msg-translation {
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px dashed rgba(255, 255, 255, 0.1);
-    font-size: 12px;
-    color: #ffb3c1;
-}
-.pastie-msg-translation::before {
-    content: "Original: ";
-    font-size: 9px;
-    font-weight: 700;
-    color: var(--widget-text-sec);
-    text-transform: uppercase;
-}
+
 
 .pastie-msg-time {
     font-size: 9.5px;
@@ -459,6 +445,159 @@ iframe[id^="tidio-chat"] {
         transform: scale(1.0);
         opacity: 1;
     }
+}
+
+/* --- Mini Bubble Popup Styles --- */
+.pastie-chat-mini-bubble {
+    position: absolute;
+    bottom: 80px; /* Right above the launcher button */
+    right: 0;
+    width: 280px;
+    background: var(--widget-bg);
+    backdrop-filter: var(--widget-glass-blur);
+    -webkit-backdrop-filter: var(--widget-glass-blur);
+    border: 1px solid var(--widget-border);
+    border-radius: 16px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 999997;
+    opacity: 0;
+    transform: translateY(10px) scale(0.95);
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-family: 'Outfit', sans-serif;
+    cursor: pointer;
+}
+
+.pastie-chat-mini-bubble.show {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+/* Tiny bubble arrow pointing down to the launcher */
+.pastie-chat-mini-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    right: 24px; /* aligned with the launcher center */
+    width: 12px;
+    height: 12px;
+    background: rgba(25, 15, 22, 0.94);
+    border-right: 1px solid var(--widget-border);
+    border-bottom: 1px solid var(--widget-border);
+    transform: rotate(45deg);
+}
+
+.pastie-chat-mini-body {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-grow: 1;
+    overflow: hidden;
+}
+
+.pastie-chat-mini-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ff758f 0%, #ff9eae 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    font-size: 15px;
+    flex-shrink: 0;
+}
+
+.pastie-chat-mini-text-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex-grow: 1;
+    overflow: hidden;
+}
+
+.pastie-chat-mini-sender {
+    display: none;
+}
+
+.pastie-chat-mini-text {
+    font-size: 13px;
+    color: #f8fafc;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+    text-align: left;
+}
+
+.pastie-chat-mini-close {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: color 0.2s, transform 0.2s;
+    border-radius: 4px;
+    flex-shrink: 0;
+    margin-left: 4px;
+}
+
+.pastie-chat-mini-close:hover {
+    color: #f8fafc;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* --- Header Action Button --- */
+.pastie-chat-header-action-btn {
+    border: none;
+    outline: none;
+    font-family: 'Outfit', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: none; /* dynamically shown via js */
+    flex-shrink: 0;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.pastie-chat-header-action-btn:hover {
+    transform: translateY(-1px);
+}
+
+/* Emerald green button for switching to CSKH */
+.pastie-chat-header-action-btn.meet-cskh {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+.pastie-chat-header-action-btn.meet-cskh:hover {
+    background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
+}
+
+/* Rose red button for ending session */
+.pastie-chat-header-action-btn.close-cskh {
+    background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(244, 63, 94, 0.25);
+}
+.pastie-chat-header-action-btn.close-cskh:hover {
+    background: linear-gradient(135deg, #fb7185 0%, #f43f5e 100%);
+    box-shadow: 0 6px 16px rgba(244, 63, 94, 0.35);
 }
 
 

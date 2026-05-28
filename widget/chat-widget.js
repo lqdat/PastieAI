@@ -30,10 +30,23 @@
         pollInterval: null,
         otpCooldown: 0,
         otpCooldownTimer: null,
-        detectedLang: 'vi', // default language detected
+        detectedLang: (() => {
+            try {
+                return localStorage.getItem('pastie-lang') || 'vi';
+            } catch (e) {
+                return 'vi';
+            }
+        })(), // default language detected
         tidioHistory: JSON.parse(sessionStorage.getItem('pastie_tidio_history') || '[]'),
         isTyping: false,
-        typingTimeout: null
+        typingTimeout: null,
+
+        // Lazy-loading and cached list
+        messages: [],
+        offset: 0,
+        limit: 15,
+        hasMore: true,
+        isLoadingMore: false
     };
 
     const TRANSLATIONS = {
@@ -71,7 +84,16 @@
             loadingVerify: 'Xác thực...',
             defaultError: 'Có lỗi xảy ra.',
             typingText: 'Nhân viên đang nhập...',
-            chatStartWelcome: 'Chào mừng! Vui lòng gửi câu hỏi của bạn. Hệ thống AI dịch thuật tự động đã sẵn sàng.'
+            chatStartWelcome: 'Chào mừng! Vui lòng gửi câu hỏi của bạn. Hệ thống AI dịch thuật tự động đã sẵn sàng.',
+            loadOlder: 'Xem tin nhắn cũ hơn',
+            loadingMore: 'Đang tải...',
+            miniSenderAgent: 'Hỗ trợ',
+            miniSenderVisitor: 'Bạn',
+            miniSenderSystem: 'Hệ thống',
+            miniSenderAI: 'AI Trợ lý',
+            btnMeetCSKH: 'Gặp CSKH',
+            btnCloseCSKH: 'Kết thúc',
+            confirmEndChat: 'Bạn có chắc chắn muốn kết thúc cuộc trò chuyện với nhân viên hỗ trợ?'
         },
         en: {
             headerTitle: 'Live Support',
@@ -107,7 +129,16 @@
             loadingVerify: 'Verifying...',
             defaultError: 'An error occurred.',
             typingText: 'Agent is typing...',
-            chatStartWelcome: 'Welcome! Please send your question. Automated AI translation is ready.'
+            chatStartWelcome: 'Welcome! Please send your question. Automated AI translation is ready.',
+            loadOlder: 'Load older messages',
+            loadingMore: 'Loading...',
+            miniSenderAgent: 'Support',
+            miniSenderVisitor: 'You',
+            miniSenderSystem: 'System',
+            miniSenderAI: 'AI Assistant',
+            btnMeetCSKH: 'Live Chat',
+            btnCloseCSKH: 'End Chat',
+            confirmEndChat: 'Are you sure you want to end your live support session?'
         },
         ru: {
             headerTitle: 'Живая поддержка',
@@ -131,7 +162,7 @@
             otpBtnResendCooldown: 'Отправить еще раз через',
             otpErrorEmpty: 'Пожалуйста, введите все 6 цифр OTP.',
             otpErrorInvalid: 'Неверный или просроченный код подтверждения.',
-            otpErrorConn: 'Ошибка подключения к серверу.',
+            otpErrorConn: 'Ошибка подключения к server.',
             chatInputPlaceholder: 'Введите сообщение...',
             chatWelcome: 'Добро пожаловать! Наш автоматический ИИ-чатбот готов к работе.',
             chatThinking: 'ИИ думает...',
@@ -143,7 +174,16 @@
             loadingVerify: 'Проверка...',
             defaultError: 'Произошла ошибка.',
             typingText: 'Агент печатает...',
-            chatStartWelcome: 'Добро пожаловать! Отправьте ваш вопрос. Автоматический ИИ-перевод готов.'
+            chatStartWelcome: 'Добро пожаловать! Отправьте ваш вопрос. Автоматический ИИ-перевод готов.',
+            loadOlder: 'Показать предыдущие сообщения',
+            loadingMore: 'Загрузка...',
+            miniSenderAgent: 'Поддержка',
+            miniSenderVisitor: 'Вы',
+            miniSenderSystem: 'Система',
+            miniSenderAI: 'ИИ-Помощник',
+            btnMeetCSKH: 'Чат',
+            btnCloseCSKH: 'Выйти',
+            confirmEndChat: 'Вы уверены, что хотите завершить сеанс живой поддержки?'
         },
         zh: {
             headerTitle: '在线客服',
@@ -179,7 +219,16 @@
             loadingVerify: '验证中...',
             defaultError: '发生错误。',
             typingText: '客服正在输入...',
-            chatStartWelcome: '欢迎！请发送您的问题。自动 AI 翻译已就绪。'
+            chatStartWelcome: '欢迎！请发送您的问题。自动 AI 翻译已就绪。',
+            loadOlder: '查看历史消息',
+            loadingMore: '加载中...',
+            miniSenderAgent: '支持',
+            miniSenderVisitor: '您',
+            miniSenderSystem: '系统',
+            miniSenderAI: 'AI 助手',
+            btnMeetCSKH: '人工客服',
+            btnCloseCSKH: '结束',
+            confirmEndChat: '您确定要结束与人工客服的对话吗？'
         }
     };
 
@@ -187,6 +236,7 @@
     let togglePill = null;
     let launcher = null;
     let chatWindow = null;
+    let headerActionBtn = null;
     let hasBoundDocumentTidioEvents = false;
 
     // Auto detect browser/landing page language
@@ -240,6 +290,7 @@
                         <h4 id="pastie-chat-header-title">${t.headerTitle}</h4>
                         <p id="pastie-chat-header-status"><span class="pastie-chat-status-dot"></span> ${t.headerStatus}</p>
                     </div>
+                    <button class="pastie-chat-header-action-btn" id="pastie-chat-header-action-btn"></button>
                 </div>
                 
                 <!-- Body (Dynamic Views) -->
@@ -312,6 +363,20 @@
             <button class="pastie-ai-toggle-pill pastie-chat-hide" id="pastie-ai-toggle-pill">
                 <i class="ri-robot-2-line"></i> <span id="txt-ai-toggle-pill">${t.btnBackToTidio}</span>
             </button>
+
+            <!-- Mini Bubble Popup -->
+            <div class="pastie-chat-mini-bubble" id="pastie-chat-mini-bubble">
+                <div class="pastie-chat-mini-body" id="pastie-chat-mini-body">
+                    <div class="pastie-chat-mini-avatar"><i class="ri-customer-service-2-fill"></i></div>
+                    <div class="pastie-chat-mini-text-container">
+                        <div class="pastie-chat-mini-sender" id="pastie-chat-mini-sender">Support Team</div>
+                        <div class="pastie-chat-mini-text" id="pastie-chat-mini-text">...</div>
+                    </div>
+                </div>
+                <button class="pastie-chat-mini-close" id="pastie-chat-mini-close" aria-label="Close message preview">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
         `;
 
         document.body.appendChild(root);
@@ -378,12 +443,113 @@
         }
     }
 
-    function changeWidgetLanguage(lang) {
+    async function changeWidgetLanguage(lang) {
         if (!TRANSLATIONS[lang]) return;
         state.detectedLang = lang;
         applyTranslations();
+
+        // Minimize the chat window when language changes
+        if (state.isOpen) {
+            toggleChatWindow();
+        } else {
+            // Refresh mini bubble translation if it is already open
+            const miniEl = document.getElementById('pastie-chat-mini-bubble');
+            if (miniEl && miniEl.classList.contains('show')) {
+                showMiniBubble();
+            }
+        }
+
+        // Sync with backend if session is active
+        if (state.sessionId) {
+            try {
+                await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/language`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sessionId: state.sessionId,
+                        language: lang
+                    })
+                });
+
+                // Clear current messages, reset pagination, and reload in the newly selected language
+                state.messages = [];
+                state.offset = 0;
+                state.hasMore = true;
+                await loadMessageHistory(false);
+            } catch(e) {
+                console.error('Failed to sync language selection with backend:', e);
+            }
+        } else if (state.mode === 'tidio') {
+            renderTidioHistory();
+        }
     }
     window.changeWidgetLanguage = changeWidgetLanguage;
+
+    function minimizePastieChat() {
+        if (state.isOpen) {
+            toggleChatWindow();
+        }
+    }
+    window.minimizePastieChat = minimizePastieChat;
+
+    function updateHeaderActionButton() {
+        const btn = document.getElementById('pastie-chat-header-action-btn');
+        if (!btn) return;
+
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
+
+        if (state.mode === 'tidio') {
+            btn.className = 'pastie-chat-header-action-btn meet-cskh';
+            btn.textContent = t.btnMeetCSKH || 'Gặp CSKH';
+            btn.style.display = 'block';
+            btn.onclick = () => {
+                activateAIChat('Khách hàng muốn gặp nhân viên qua nút header');
+            };
+        } else if (state.mode === 'human' && state.sessionId) {
+            btn.className = 'pastie-chat-header-action-btn close-cskh';
+            btn.textContent = t.btnCloseCSKH || 'Kết thúc';
+            btn.style.display = 'block';
+            btn.onclick = () => {
+                handleEndChatSession();
+            };
+        } else {
+            btn.style.display = 'none';
+        }
+    }
+
+    async function handleEndChatSession() {
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
+        const confirmMsg = t.confirmEndChat || 'Bạn có chắc chắn muốn kết thúc cuộc trò chuyện với nhân viên hỗ trợ?';
+        
+        if (!confirm(confirmMsg)) return;
+
+        const btn = document.getElementById('pastie-chat-header-action-btn');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i>`;
+        }
+
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/close`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: state.sessionId })
+            });
+
+            if (res.ok) {
+                console.log('[Session Close] Successfully closed session on server.');
+            } else {
+                console.warn('[Session Close] Server returned error closing session:', res.status);
+            }
+        } catch (e) {
+            console.error('[Session Close] Failed to contact server to close session:', e);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+            }
+            activateTidioChat();
+        }
+    }
 
 
     // --- DOM Actions & Navigation ---
@@ -410,6 +576,7 @@
                 renderTidioHistory();
             }
         }
+        updateHeaderActionButton();
     }
 
     function toggleChatWindow() {
@@ -424,6 +591,10 @@
             iconEl.className = 'ri-close-line active';
             badgeEl.style.display = 'none'; // hide notification dot when chat opens
 
+            // Hide the mini bubble when chat is opened
+            const miniBubble = document.getElementById('pastie-chat-mini-bubble');
+            if (miniBubble) miniBubble.classList.remove('show');
+            
             // Route view based on mode/session
             if (state.sessionId) {
                 state.mode = 'human';
@@ -436,10 +607,63 @@
                 state.mode = 'tidio';
                 switchView('chat');
             }
+            updateHeaderActionButton();
         } else {
             windowEl.classList.remove('open');
             iconEl.className = 'ri-chat-3-line';
             stopPolling();
+
+            // Show the mini bubble preview when closing
+            const hasHumanMessages = state.mode === 'human' && state.messages && state.messages.length > 0 && state.sessionId;
+            const hasTidioMessages = state.mode === 'tidio' && state.tidioHistory && state.tidioHistory.length > 0;
+            if (hasHumanMessages || hasTidioMessages) {
+                showMiniBubble();
+            }
+        }
+    }
+
+    function showMiniBubble() {
+        const miniEl = document.getElementById('pastie-chat-mini-bubble');
+        const textEl = document.getElementById('pastie-chat-mini-text');
+        const senderEl = document.getElementById('pastie-chat-mini-sender');
+        if (!miniEl || !textEl || !senderEl) return;
+
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
+
+        if (state.mode === 'human' && state.sessionId && state.messages && state.messages.length > 0) {
+            // Find the last message in human support mode
+            const lastMsg = state.messages[state.messages.length - 1];
+            if (!lastMsg) return;
+
+            if (lastMsg.sender === 'agent') {
+                senderEl.textContent = t.miniSenderAgent || 'Support';
+                textEl.textContent = lastMsg.translated_text || lastMsg.original_text;
+            } else if (lastMsg.sender === 'visitor') {
+                senderEl.textContent = t.miniSenderVisitor || 'Bạn';
+                textEl.textContent = lastMsg.original_text;
+            } else {
+                senderEl.textContent = t.miniSenderSystem || 'Hệ thống';
+                textEl.textContent = lastMsg.original_text;
+            }
+
+            miniEl.classList.add('show');
+        } else if (state.mode === 'tidio' && state.tidioHistory && state.tidioHistory.length > 0) {
+            // Find the last message in Tidio chatbot mode
+            const lastMsg = state.tidioHistory[state.tidioHistory.length - 1];
+            if (!lastMsg) return;
+
+            if (lastMsg.sender === 'operator') {
+                senderEl.textContent = t.miniSenderAI || 'AI Assistant';
+                textEl.textContent = lastMsg.text;
+            } else if (lastMsg.sender === 'visitor') {
+                senderEl.textContent = t.miniSenderVisitor || 'Bạn';
+                textEl.textContent = lastMsg.text;
+            } else {
+                senderEl.textContent = t.miniSenderAI || 'AI Assistant';
+                textEl.textContent = lastMsg.text;
+            }
+
+            miniEl.classList.add('show');
         }
     }
 
@@ -610,7 +834,11 @@
                 'tư vấn viên', 'tu van vien', 'chat với người', 'chat voi nguoi',
                 'gặp trực tiếp', 'gap truc tiep', 'nhân viên hỗ trợ', 'nhan vien ho tro',
                 'talk to human', 'real person', 'speak to someone',
-                'gặp nv', 'gap nv', 'nv', 'cskh', 'chăm sóc khách hàng', 'ho tro viên'
+                'gặp nv', 'gap nv', 'nv', 'cskh', 'chăm sóc khách hàng', 'ho tro viên',
+                // Russian (Nga)
+                'поддержка', 'человек', 'оператор', 'агент', 'живой чат', 'связаться с человеком', 'поговорить с человеком', 'менеджер', 'администратор', 'живая поддержка',
+                // Chinese (Trung)
+                '人工', '客服', '转人工', '人工客服', '在线客服', '联系人', '管理员', '真人'
             ];
             const lowerText = text.toLowerCase();
             const matches = visitorKeywords.some(keyword => lowerText.includes(keyword));
@@ -654,11 +882,14 @@
             }
         } else if (state.mode === 'human' && state.sessionId) {
             // Append user message instantly in client
-            appendMessageBubble({
+            const newMsgObj = {
+                id: 'temp_' + Date.now(),
                 sender: 'visitor',
                 original_text: text,
                 created_at: new Date()
-            });
+            };
+            state.messages.push(newMsgObj);
+            renderMessageThread(false);
 
             try {
                 const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/message`, {
@@ -992,7 +1223,11 @@
             'tư vấn viên', 'tu van vien', 'chat với người', 'chat voi nguoi',
             'gặp trực tiếp', 'gap truc tiep', 'nhân viên hỗ trợ', 'nhan vien ho tro',
             'talk to human', 'real person', 'speak to someone',
-            'gặp nv', 'gap nv', 'nv', 'cskh', 'chăm sóc khách hàng', 'ho tro viên'
+            'gặp nv', 'gap nv', 'nv', 'cskh', 'chăm sóc khách hàng', 'ho tro viên',
+            // Russian (Nga)
+            'поддержка', 'человек', 'оператор', 'агент', 'живой чат', 'связаться с человеком', 'поговорить с человеком', 'менеджер', 'администратор', 'живая поддержка',
+            // Chinese (Trung)
+            '人工', '客服', '转人工', '人工客服', '在线客服', '联系人', '管理员', '真人'
         ];
 
         // Keywords from chatbot indicating fallback or transfer
@@ -1006,7 +1241,11 @@
             'chuyển tới nhân viên', 'chuyen toi nhan vien', 'không thể trả lời', 'khong the tra loi',
             'chưa được cài đặt', 'chua duoc cai dat',
             'tư vấn viên', 'tu van vien', 'kết nối tư vấn viên', 'nhân viên hỗ trợ', 'hỗ trợ viên',
-            'kết nối trực tiếp', 'chat với nhân viên', 'chuyển cho nhân viên'
+            'kết nối trực tiếp', 'chat với nhân viên', 'chuyển cho nhân viên',
+            // Russian (Nga)
+            'не найден', 'не настроен', 'не понимаю', 'нет ответа', 'извините', 'не знаю', 'не могу помочь', 'подключить оператора', 'перевести на оператора',
+            // Chinese (Trung)
+            '不明白', '未设置', '抱歉', '不知道', '无法帮助', '连接人工', '转接人工', '转人工'
         ];
 
         const keywords = senderType === 'visitor' ? visitorKeywords : operatorKeywords;
@@ -1119,98 +1358,188 @@
     }
 
     // 4. Poll and Load Message Thread
-    async function loadMessageHistory() {
+    async function loadMessageHistory(isLoadMore = false) {
         if (!state.sessionId) return;
 
+        let fetchLimit = state.limit;
+        let fetchOffset = state.offset;
+
+        if (!isLoadMore) {
+            // When polling, fetch all currently loaded messages to keep state synced
+            fetchLimit = Math.max(state.messages.length, state.limit);
+            fetchOffset = 0;
+        }
+
         try {
-            // Fetch messages using public session endpoint
-            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/messages`);
+            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/messages?visitorLang=${state.detectedLang}&limit=${fetchLimit}&offset=${fetchOffset}&_=${Date.now()}`);
             if (res.status === 404 || res.status === 410) {
                 console.warn(`[Session Verify] Session status ${res.status} on server. Transitioning back to Tidio.`);
                 activateTidioChat();
                 return;
             }
-            const messages = await res.json();
+            const fetchedMessages = await res.json();
 
-            if (!Array.isArray(messages)) return;
+            if (!Array.isArray(fetchedMessages)) return;
 
-            const threadContainer = document.getElementById('pastie-chat-thread');
-            
-            // Check for new messages from the agent to trigger notification sound/dot
-            if (messages.length > state.lastMessageCount) {
-                const latestMsg = messages[messages.length - 1];
-                if (latestMsg.sender === 'agent' && state.lastMessageCount > 0) {
-                    playNotificationAlert();
+            if (isLoadMore) {
+                if (fetchedMessages.length < state.limit) {
+                    state.hasMore = false;
                 }
-                state.lastMessageCount = messages.length;
-            }
-
-            threadContainer.innerHTML = '';
-            
-            if (messages.length === 0) {
-                const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
-                threadContainer.innerHTML = `<div class="pastie-msg system"><div class="pastie-msg-bubble">${t.chatStartWelcome}</div></div>`;
-                return;
-            }
-
-            messages.forEach(msg => {
-                appendMessageBubble(msg);
-            });
-
-            // Show typing indicator if agent is thinking/typing (visitor sent last message)
-            const lastMsg = messages[messages.length - 1];
-            if (lastMsg && lastMsg.sender === 'visitor') {
-                state.isTyping = true;
-                appendTypingBubble();
+                // Prepend older messages to state.messages
+                state.messages = [...fetchedMessages, ...state.messages];
+                state.offset += fetchedMessages.length;
             } else {
-                state.isTyping = false;
+                // Polling or initial load: Filter out any temporary client-side messages before merging
+                const currentMsgs = state.messages.filter(m => m.id && !m.id.toString().startsWith('temp_'));
+                
+                if (currentMsgs.length === 0) {
+                    state.messages = fetchedMessages;
+                    if (fetchedMessages.length < state.limit) {
+                        state.hasMore = false;
+                    }
+                    state.lastMessageCount = fetchedMessages.length;
+                    
+                    // Show mini-bubble preview on initial load if chat is closed and messages exist
+                    if (!state.isOpen && state.messages.length > 0) {
+                        showMiniBubble();
+                    }
+                } else {
+                    // Update current messages and append any new ones
+                    const merged = [...currentMsgs];
+                    fetchedMessages.forEach(newMsg => {
+                        const idx = merged.findIndex(m => m.id === newMsg.id);
+                        if (idx !== -1) {
+                            merged[idx] = newMsg;
+                        } else {
+                            merged.push(newMsg);
+                        }
+                    });
+                    
+                    // Sort merged by created_at ascending
+                    merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+                    
+                    if (merged.length > state.lastMessageCount) {
+                        const latestMsg = merged[merged.length - 1];
+                        if (latestMsg.sender === 'agent' && state.lastMessageCount > 0) {
+                            playNotificationAlert();
+                        }
+                        state.lastMessageCount = merged.length;
+                    }
+                    state.messages = merged;
+                }
             }
+
+            renderMessageThread(isLoadMore);
         } catch(e) {
             console.error('Failed to load message history:', e);
         }
     }
 
-    function appendMessageBubble(msg) {
+    function renderMessageThread(isLoadMore = false) {
         const threadContainer = document.getElementById('pastie-chat-thread');
-        const bubbleWrap = document.createElement('div');
-        bubbleWrap.className = `pastie-msg ${msg.sender}`;
+        if (!threadContainer) return;
 
-        const timeStr = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const previousScrollHeight = threadContainer.scrollHeight;
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
 
-        let displayHtml = '';
-        
-        if (msg.sender === 'visitor') {
-            displayHtml = `
-                <div class="pastie-msg-bubble">
-                    <div>${escapeHtml(msg.original_text)}</div>
-                </div>
-                <div class="pastie-msg-time">${timeStr}</div>
-            `;
-        } else if (msg.sender === 'agent') {
-            // Agent writes Vietnamese, but client sees translated text!
-            // If translated_text exists, show it as primary bubble text, and original Vietnamese below
-            const primaryText = msg.translated_text || msg.original_text;
-            const hasTranslation = msg.translated_text && msg.translated_text !== msg.original_text;
+        threadContainer.innerHTML = '';
 
-            displayHtml = `
-                <div class="pastie-msg-bubble">
-                    <div>${escapeHtml(primaryText)}</div>
-                    ${hasTranslation ? `<div class="pastie-msg-translation">${escapeHtml(msg.original_text)}</div>` : ''}
-                </div>
-                <div class="pastie-msg-time">${timeStr}</div>
-            `;
-        } else {
-            // System message
-            displayHtml = `
-                <div class="pastie-msg-bubble">
-                    <div>${escapeHtml(msg.original_text)}</div>
-                </div>
-            `;
+        // Render Load More button at the top if there is more history to fetch
+        if (state.hasMore) {
+            const loadMoreDiv = document.createElement('div');
+            loadMoreDiv.className = 'pastie-chat-loadmore-btn-container';
+            loadMoreDiv.style.textAlign = 'center';
+            loadMoreDiv.style.padding = '12px 8px';
+            
+            const loadMoreBtn = document.createElement('button');
+            loadMoreBtn.className = 'pastie-chat-loadmore-btn';
+            loadMoreBtn.id = 'btn-load-older';
+            loadMoreBtn.style.background = 'rgba(255, 255, 255, 0.08)';
+            loadMoreBtn.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+            loadMoreBtn.style.color = 'var(--widget-text)';
+            loadMoreBtn.style.fontFamily = 'Outfit, sans-serif';
+            loadMoreBtn.style.fontSize = '11px';
+            loadMoreBtn.style.fontWeight = '600';
+            loadMoreBtn.style.borderRadius = '20px';
+            loadMoreBtn.style.padding = '6px 16px';
+            loadMoreBtn.style.cursor = 'pointer';
+            loadMoreBtn.style.transition = 'all 0.2s';
+            loadMoreBtn.textContent = state.isLoadingMore ? t.loadingMore : t.loadOlder;
+            
+            loadMoreBtn.onmouseover = () => { loadMoreBtn.style.background = 'rgba(255, 255, 255, 0.15)'; };
+            loadMoreBtn.onmouseout = () => { loadMoreBtn.style.background = 'rgba(255, 255, 255, 0.08)'; };
+
+            loadMoreBtn.onclick = async () => {
+                if (state.isLoadingMore) return;
+                state.isLoadingMore = true;
+                loadMoreBtn.textContent = t.loadingMore;
+                await loadMessageHistory(true);
+                state.isLoadingMore = false;
+            };
+
+            loadMoreDiv.appendChild(loadMoreBtn);
+            threadContainer.appendChild(loadMoreDiv);
         }
 
-        bubbleWrap.innerHTML = displayHtml;
-        threadContainer.appendChild(bubbleWrap);
-        threadContainer.scrollTop = threadContainer.scrollHeight;
+        if (state.messages.length === 0) {
+            const welcomeDiv = document.createElement('div');
+            welcomeDiv.className = 'pastie-msg system';
+            welcomeDiv.innerHTML = `<div class="pastie-msg-bubble">${t.chatStartWelcome}</div>`;
+            threadContainer.appendChild(welcomeDiv);
+            return;
+        }
+
+        state.messages.forEach(msg => {
+            const bubbleWrap = document.createElement('div');
+            bubbleWrap.className = `pastie-msg ${msg.sender}`;
+
+            const timeStr = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            let displayHtml = '';
+            if (msg.sender === 'visitor') {
+                const primaryText = msg.translated_text || msg.original_text;
+                displayHtml = `
+                    <div class="pastie-msg-bubble">
+                        <div>${escapeHtml(primaryText)}</div>
+                    </div>
+                    <div class="pastie-msg-time">${timeStr}</div>
+                `;
+            } else if (msg.sender === 'agent') {
+                const primaryText = msg.translated_text || msg.original_text;
+                displayHtml = `
+                    <div class="pastie-msg-bubble">
+                        <div>${escapeHtml(primaryText)}</div>
+                    </div>
+                    <div class="pastie-msg-time">${timeStr}</div>
+                `;
+            } else {
+                const primaryText = msg.translated_text || msg.original_text;
+                displayHtml = `
+                    <div class="pastie-msg-bubble">
+                        <div>${escapeHtml(primaryText)}</div>
+                    </div>
+                `;
+            }
+
+            bubbleWrap.innerHTML = displayHtml;
+            threadContainer.appendChild(bubbleWrap);
+        });
+
+        // Show typing indicator if agent is thinking/typing (visitor sent last message)
+        const lastMsg = state.messages[state.messages.length - 1];
+        if (lastMsg && lastMsg.sender === 'visitor') {
+            state.isTyping = true;
+            appendTypingBubble();
+        } else {
+            state.isTyping = false;
+        }
+
+        // Maintain scroll position or scroll to the bottom depending on context
+        if (isLoadMore) {
+            threadContainer.scrollTop = threadContainer.scrollHeight - previousScrollHeight;
+        } else {
+            threadContainer.scrollTop = threadContainer.scrollHeight;
+        }
     }
 
     function appendTypingBubble() {
@@ -1220,6 +1549,8 @@
         // Remove existing typing indicators to prevent duplicates
         const existing = threadContainer.querySelector('.pastie-typing-indicator-bubble');
         if (existing) return;
+
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
 
         const typingBubble = document.createElement('div');
         typingBubble.className = 'pastie-msg agent';
@@ -1243,6 +1574,11 @@
         // Show notification dot on launcher button if closed
         if (!state.isOpen) {
             document.getElementById('pastie-chat-badge').style.display = 'block';
+
+            // Show mini bubble preview with the latest message
+            if (state.messages && state.messages.length > 0 && state.sessionId) {
+                showMiniBubble();
+            }
         }
         
         // Audio sound chime
@@ -1296,12 +1632,33 @@
         togglePill = document.getElementById('pastie-ai-toggle-pill');
         launcher = document.getElementById('pastie-chat-launcher');
         chatWindow = document.getElementById('pastie-chat-window');
+        headerActionBtn = document.getElementById('pastie-chat-header-action-btn');
 
         // Unconditionally evaluate initial state to configure launcher visibility and tidio status
         handleInitialState();
 
         // Bind events
         if (launcher) launcher.addEventListener('click', toggleChatWindow);
+
+        // Bind mini bubble preview click & close event
+        const miniBubble = document.getElementById('pastie-chat-mini-bubble');
+        const miniClose = document.getElementById('pastie-chat-mini-close');
+        if (miniBubble) {
+            miniBubble.addEventListener('click', (e) => {
+                // If they clicked the close button, don't trigger the bubble toggle
+                if (e.target.closest('#pastie-chat-mini-close')) return;
+                if (!state.isOpen) {
+                    toggleChatWindow();
+                }
+                miniBubble.classList.remove('show');
+            });
+        }
+        if (miniClose) {
+            miniClose.addEventListener('click', (e) => {
+                e.stopPropagation();
+                miniBubble.classList.remove('show');
+            });
+        }
         document.getElementById('btn-submit-init').addEventListener('click', sendOTP);
         document.getElementById('btn-submit-otp').addEventListener('click', verifyOTP);
         document.getElementById('btn-resend-otp').addEventListener('click', sendOTP);
@@ -1338,6 +1695,23 @@
         }
         applyTranslations(); // apply default lang on load
 
+        // Global click-outside listener to minimize the chat window
+        document.addEventListener('click', (e) => {
+            if (state.isOpen && chatWindow) {
+                // If click is outside the window, launcher, togglePill and mini bubble
+                const clickedInsideWindow = chatWindow.contains(e.target);
+                const clickedInsideLauncher = launcher && launcher.contains(e.target);
+                
+                const miniBubble = document.getElementById('pastie-chat-mini-bubble');
+                const clickedInsideMiniBubble = miniBubble && miniBubble.contains(e.target);
+                
+                const clickedInsideTogglePill = togglePill && togglePill.contains(e.target);
+
+                if (!clickedInsideWindow && !clickedInsideLauncher && !clickedInsideMiniBubble && !clickedInsideTogglePill) {
+                    toggleChatWindow();
+                }
+            }
+        });
         
         document.getElementById('pastie-chat-form').addEventListener('submit', (e) => {
 

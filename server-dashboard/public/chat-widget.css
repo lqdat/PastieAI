@@ -556,4 +556,48 @@ iframe[id^="tidio-chat"] {
     background: rgba(255, 255, 255, 0.08);
 }
 
+/* --- Header Action Button --- */
+.pastie-chat-header-action-btn {
+    border: none;
+    outline: none;
+    font-family: 'Outfit', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: none; /* dynamically shown via js */
+    flex-shrink: 0;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.pastie-chat-header-action-btn:hover {
+    transform: translateY(-1px);
+}
+
+/* Emerald green button for switching to CSKH */
+.pastie-chat-header-action-btn.meet-cskh {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+.pastie-chat-header-action-btn.meet-cskh:hover {
+    background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
+}
+
+/* Rose red button for ending session */
+.pastie-chat-header-action-btn.close-cskh {
+    background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(244, 63, 94, 0.25);
+}
+.pastie-chat-header-action-btn.close-cskh:hover {
+    background: linear-gradient(135deg, #fb7185 0%, #f43f5e 100%);
+    box-shadow: 0 6px 16px rgba(244, 63, 94, 0.35);
+}
+
 

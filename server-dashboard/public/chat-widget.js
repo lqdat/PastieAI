@@ -90,7 +90,10 @@
             miniSenderAgent: 'Hỗ trợ',
             miniSenderVisitor: 'Bạn',
             miniSenderSystem: 'Hệ thống',
-            miniSenderAI: 'AI Trợ lý'
+            miniSenderAI: 'AI Trợ lý',
+            btnMeetCSKH: 'Gặp CSKH',
+            btnCloseCSKH: 'Kết thúc',
+            confirmEndChat: 'Bạn có chắc chắn muốn kết thúc cuộc trò chuyện với nhân viên hỗ trợ?'
         },
         en: {
             headerTitle: 'Live Support',
@@ -132,7 +135,10 @@
             miniSenderAgent: 'Support',
             miniSenderVisitor: 'You',
             miniSenderSystem: 'System',
-            miniSenderAI: 'AI Assistant'
+            miniSenderAI: 'AI Assistant',
+            btnMeetCSKH: 'Live Chat',
+            btnCloseCSKH: 'End Chat',
+            confirmEndChat: 'Are you sure you want to end your live support session?'
         },
         ru: {
             headerTitle: 'Живая поддержка',
@@ -174,7 +180,10 @@
             miniSenderAgent: 'Поддержка',
             miniSenderVisitor: 'Вы',
             miniSenderSystem: 'Система',
-            miniSenderAI: 'ИИ-Помощник'
+            miniSenderAI: 'ИИ-Помощник',
+            btnMeetCSKH: 'Чат',
+            btnCloseCSKH: 'Выйти',
+            confirmEndChat: 'Вы уверены, что хотите завершить сеанс живой поддержки?'
         },
         zh: {
             headerTitle: '在线客服',
@@ -216,7 +225,10 @@
             miniSenderAgent: '支持',
             miniSenderVisitor: '您',
             miniSenderSystem: '系统',
-            miniSenderAI: 'AI 助手'
+            miniSenderAI: 'AI 助手',
+            btnMeetCSKH: '人工客服',
+            btnCloseCSKH: '结束',
+            confirmEndChat: '您确定要结束与人工客服的对话吗？'
         }
     };
 
@@ -224,6 +236,7 @@
     let togglePill = null;
     let launcher = null;
     let chatWindow = null;
+    let headerActionBtn = null;
     let hasBoundDocumentTidioEvents = false;
 
     // Auto detect browser/landing page language
@@ -277,6 +290,7 @@
                         <h4 id="pastie-chat-header-title">${t.headerTitle}</h4>
                         <p id="pastie-chat-header-status"><span class="pastie-chat-status-dot"></span> ${t.headerStatus}</p>
                     </div>
+                    <button class="pastie-chat-header-action-btn" id="pastie-chat-header-action-btn"></button>
                 </div>
                 
                 <!-- Body (Dynamic Views) -->
@@ -478,6 +492,65 @@
     }
     window.minimizePastieChat = minimizePastieChat;
 
+    function updateHeaderActionButton() {
+        const btn = document.getElementById('pastie-chat-header-action-btn');
+        if (!btn) return;
+
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
+
+        if (state.mode === 'tidio') {
+            btn.className = 'pastie-chat-header-action-btn meet-cskh';
+            btn.textContent = t.btnMeetCSKH || 'Gặp CSKH';
+            btn.style.display = 'block';
+            btn.onclick = () => {
+                activateAIChat('Khách hàng muốn gặp nhân viên qua nút header');
+            };
+        } else if (state.mode === 'human' && state.sessionId) {
+            btn.className = 'pastie-chat-header-action-btn close-cskh';
+            btn.textContent = t.btnCloseCSKH || 'Kết thúc';
+            btn.style.display = 'block';
+            btn.onclick = () => {
+                handleEndChatSession();
+            };
+        } else {
+            btn.style.display = 'none';
+        }
+    }
+
+    async function handleEndChatSession() {
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
+        const confirmMsg = t.confirmEndChat || 'Bạn có chắc chắn muốn kết thúc cuộc trò chuyện với nhân viên hỗ trợ?';
+        
+        if (!confirm(confirmMsg)) return;
+
+        const btn = document.getElementById('pastie-chat-header-action-btn');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i>`;
+        }
+
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/close`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: state.sessionId })
+            });
+
+            if (res.ok) {
+                console.log('[Session Close] Successfully closed session on server.');
+            } else {
+                console.warn('[Session Close] Server returned error closing session:', res.status);
+            }
+        } catch (e) {
+            console.error('[Session Close] Failed to contact server to close session:', e);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+            }
+            activateTidioChat();
+        }
+    }
+
 
     // --- DOM Actions & Navigation ---
     
@@ -503,6 +576,7 @@
                 renderTidioHistory();
             }
         }
+        updateHeaderActionButton();
     }
 
     function toggleChatWindow() {
@@ -533,6 +607,7 @@
                 state.mode = 'tidio';
                 switchView('chat');
             }
+            updateHeaderActionButton();
         } else {
             windowEl.classList.remove('open');
             iconEl.className = 'ri-chat-3-line';
@@ -759,7 +834,11 @@
                 'tư vấn viên', 'tu van vien', 'chat với người', 'chat voi nguoi',
                 'gặp trực tiếp', 'gap truc tiep', 'nhân viên hỗ trợ', 'nhan vien ho tro',
                 'talk to human', 'real person', 'speak to someone',
-                'gặp nv', 'gap nv', 'nv', 'cskh', 'chăm sóc khách hàng', 'ho tro viên'
+                'gặp nv', 'gap nv', 'nv', 'cskh', 'chăm sóc khách hàng', 'ho tro viên',
+                // Russian (Nga)
+                'поддержка', 'человек', 'оператор', 'агент', 'живой чат', 'связаться с человеком', 'поговорить с человеком', 'менеджер', 'администратор', 'живая поддержка',
+                // Chinese (Trung)
+                '人工', '客服', '转人工', '人工客服', '在线客服', '联系人', '管理员', '真人'
             ];
             const lowerText = text.toLowerCase();
             const matches = visitorKeywords.some(keyword => lowerText.includes(keyword));
@@ -1144,7 +1223,11 @@
             'tư vấn viên', 'tu van vien', 'chat với người', 'chat voi nguoi',
             'gặp trực tiếp', 'gap truc tiep', 'nhân viên hỗ trợ', 'nhan vien ho tro',
             'talk to human', 'real person', 'speak to someone',
-            'gặp nv', 'gap nv', 'nv', 'cskh', 'chăm sóc khách hàng', 'ho tro viên'
+            'gặp nv', 'gap nv', 'nv', 'cskh', 'chăm sóc khách hàng', 'ho tro viên',
+            // Russian (Nga)
+            'поддержка', 'человек', 'оператор', 'агент', 'живой чат', 'связаться с человеком', 'поговорить с человеком', 'менеджер', 'администратор', 'живая поддержка',
+            // Chinese (Trung)
+            '人工', '客服', '转人工', '人工客服', '在线客服', '联系人', '管理员', '真人'
         ];
 
         // Keywords from chatbot indicating fallback or transfer
@@ -1158,7 +1241,11 @@
             'chuyển tới nhân viên', 'chuyen toi nhan vien', 'không thể trả lời', 'khong the tra loi',
             'chưa được cài đặt', 'chua duoc cai dat',
             'tư vấn viên', 'tu van vien', 'kết nối tư vấn viên', 'nhân viên hỗ trợ', 'hỗ trợ viên',
-            'kết nối trực tiếp', 'chat với nhân viên', 'chuyển cho nhân viên'
+            'kết nối trực tiếp', 'chat với nhân viên', 'chuyển cho nhân viên',
+            // Russian (Nga)
+            'не найден', 'не настроен', 'не понимаю', 'нет ответа', 'извините', 'не знаю', 'не могу помочь', 'подключить оператора', 'перевести на оператора',
+            // Chinese (Trung)
+            '不明白', '未设置', '抱歉', '不知道', '无法帮助', '连接人工', '转接人工', '转人工'
         ];
 
         const keywords = senderType === 'visitor' ? visitorKeywords : operatorKeywords;
@@ -1545,6 +1632,7 @@
         togglePill = document.getElementById('pastie-ai-toggle-pill');
         launcher = document.getElementById('pastie-chat-launcher');
         chatWindow = document.getElementById('pastie-chat-window');
+        headerActionBtn = document.getElementById('pastie-chat-header-action-btn');
 
         // Unconditionally evaluate initial state to configure launcher visibility and tidio status
         handleInitialState();
