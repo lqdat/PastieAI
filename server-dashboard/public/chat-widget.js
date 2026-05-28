@@ -77,7 +77,11 @@
             loadingVerify: 'Xác thực...',
             defaultError: 'Có lỗi xảy ra.',
             typingText: 'Nhân viên đang nhập...',
-            chatStartWelcome: 'Chào mừng! Vui lòng gửi câu hỏi của bạn. Hệ thống AI dịch thuật tự động đã sẵn sàng.'
+            chatStartWelcome: 'Chào mừng! Vui lòng gửi câu hỏi của bạn. Hệ thống AI dịch thuật tự động đã sẵn sàng.',
+            miniSenderAgent: 'Hỗ trợ',
+            miniSenderVisitor: 'Bạn',
+            miniSenderSystem: 'Hệ thống',
+            miniSenderAI: 'AI Trợ lý'
         },
         en: {
             headerTitle: 'Live Support',
@@ -113,7 +117,11 @@
             loadingVerify: 'Verifying...',
             defaultError: 'An error occurred.',
             typingText: 'Agent is typing...',
-            chatStartWelcome: 'Welcome! Please send your question. Automated AI translation is ready.'
+            chatStartWelcome: 'Welcome! Please send your question. Automated AI translation is ready.',
+            miniSenderAgent: 'Support',
+            miniSenderVisitor: 'You',
+            miniSenderSystem: 'System',
+            miniSenderAI: 'AI Assistant'
         },
         ru: {
             headerTitle: 'Живая поддержка',
@@ -149,7 +157,11 @@
             loadingVerify: 'Проверка...',
             defaultError: 'Произошла ошибка.',
             typingText: 'Агент печатает...',
-            chatStartWelcome: 'Добро пожаловать! Отправьте ваш вопрос. Автоматический ИИ-перевод готов.'
+            chatStartWelcome: 'Добро пожаловать! Отправьте ваш вопрос. Автоматический ИИ-перевод готов.',
+            miniSenderAgent: 'Поддержка',
+            miniSenderVisitor: 'Вы',
+            miniSenderSystem: 'Система',
+            miniSenderAI: 'ИИ-Помощник'
         },
         zh: {
             headerTitle: '在线客服',
@@ -185,7 +197,11 @@
             loadingVerify: '验证中...',
             defaultError: '发生错误。',
             typingText: '客服正在输入...',
-            chatStartWelcome: '欢迎！请发送您的问题。自动 AI 翻译已就绪。'
+            chatStartWelcome: '欢迎！请发送您的问题。自动 AI 翻译已就绪。',
+            miniSenderAgent: '支持',
+            miniSenderVisitor: '您',
+            miniSenderSystem: '系统',
+            miniSenderAI: 'AI 助手'
         }
     };
 
@@ -318,6 +334,20 @@
             <button class="pastie-ai-toggle-pill pastie-chat-hide" id="pastie-ai-toggle-pill">
                 <i class="ri-robot-2-line"></i> <span id="txt-ai-toggle-pill">${t.btnBackToTidio}</span>
             </button>
+
+            <!-- Mini Bubble Popup -->
+            <div class="pastie-chat-mini-bubble" id="pastie-chat-mini-bubble">
+                <div class="pastie-chat-mini-body" id="pastie-chat-mini-body">
+                    <div class="pastie-chat-mini-avatar"><i class="ri-customer-service-2-fill"></i></div>
+                    <div class="pastie-chat-mini-text-container">
+                        <div class="pastie-chat-mini-sender" id="pastie-chat-mini-sender">Support Team</div>
+                        <div class="pastie-chat-mini-text" id="pastie-chat-mini-text">...</div>
+                    </div>
+                </div>
+                <button class="pastie-chat-mini-close" id="pastie-chat-mini-close" aria-label="Close message preview">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
         `;
 
         document.body.appendChild(root);
@@ -392,6 +422,12 @@
         // Minimize the chat window when language changes
         if (state.isOpen) {
             toggleChatWindow();
+        } else {
+            // Refresh mini bubble translation if it is already open
+            const miniEl = document.getElementById('pastie-chat-mini-bubble');
+            if (miniEl && miniEl.classList.contains('show')) {
+                showMiniBubble();
+            }
         }
 
         // Sync with backend if session is active
@@ -457,6 +493,10 @@
             iconEl.className = 'ri-close-line active';
             badgeEl.style.display = 'none'; // hide notification dot when chat opens
 
+            // Hide the mini bubble when chat is opened
+            const miniBubble = document.getElementById('pastie-chat-mini-bubble');
+            if (miniBubble) miniBubble.classList.remove('show');
+            
             // Route view based on mode/session
             if (state.sessionId) {
                 state.mode = 'human';
@@ -473,6 +513,58 @@
             windowEl.classList.remove('open');
             iconEl.className = 'ri-chat-3-line';
             stopPolling();
+
+            // Show the mini bubble preview when closing
+            const hasHumanMessages = state.mode === 'human' && state.messages && state.messages.length > 0 && state.sessionId;
+            const hasTidioMessages = state.mode === 'tidio' && state.tidioHistory && state.tidioHistory.length > 0;
+            if (hasHumanMessages || hasTidioMessages) {
+                showMiniBubble();
+            }
+        }
+    }
+
+    function showMiniBubble() {
+        const miniEl = document.getElementById('pastie-chat-mini-bubble');
+        const textEl = document.getElementById('pastie-chat-mini-text');
+        const senderEl = document.getElementById('pastie-chat-mini-sender');
+        if (!miniEl || !textEl || !senderEl) return;
+
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
+
+        if (state.mode === 'human' && state.sessionId && state.messages && state.messages.length > 0) {
+            // Find the last message in human support mode
+            const lastMsg = state.messages[state.messages.length - 1];
+            if (!lastMsg) return;
+
+            if (lastMsg.sender === 'agent') {
+                senderEl.textContent = t.miniSenderAgent || 'Support';
+                textEl.textContent = lastMsg.translated_text || lastMsg.original_text;
+            } else if (lastMsg.sender === 'visitor') {
+                senderEl.textContent = t.miniSenderVisitor || 'Bạn';
+                textEl.textContent = lastMsg.original_text;
+            } else {
+                senderEl.textContent = t.miniSenderSystem || 'Hệ thống';
+                textEl.textContent = lastMsg.original_text;
+            }
+
+            miniEl.classList.add('show');
+        } else if (state.mode === 'tidio' && state.tidioHistory && state.tidioHistory.length > 0) {
+            // Find the last message in Tidio chatbot mode
+            const lastMsg = state.tidioHistory[state.tidioHistory.length - 1];
+            if (!lastMsg) return;
+
+            if (lastMsg.sender === 'operator') {
+                senderEl.textContent = t.miniSenderAI || 'AI Assistant';
+                textEl.textContent = lastMsg.text;
+            } else if (lastMsg.sender === 'visitor') {
+                senderEl.textContent = t.miniSenderVisitor || 'Bạn';
+                textEl.textContent = lastMsg.text;
+            } else {
+                senderEl.textContent = t.miniSenderAI || 'AI Assistant';
+                textEl.textContent = lastMsg.text;
+            }
+
+            miniEl.classList.add('show');
         }
     }
 
@@ -1332,6 +1424,26 @@
 
         // Bind events
         if (launcher) launcher.addEventListener('click', toggleChatWindow);
+
+        // Bind mini bubble preview click & close event
+        const miniBubble = document.getElementById('pastie-chat-mini-bubble');
+        const miniClose = document.getElementById('pastie-chat-mini-close');
+        if (miniBubble) {
+            miniBubble.addEventListener('click', (e) => {
+                // If they clicked the close button, don't trigger the bubble toggle
+                if (e.target.closest('#pastie-chat-mini-close')) return;
+                if (!state.isOpen) {
+                    toggleChatWindow();
+                }
+                miniBubble.classList.remove('show');
+            });
+        }
+        if (miniClose) {
+            miniClose.addEventListener('click', (e) => {
+                e.stopPropagation();
+                miniBubble.classList.remove('show');
+            });
+        }
         document.getElementById('btn-submit-init').addEventListener('click', sendOTP);
         document.getElementById('btn-submit-otp').addEventListener('click', verifyOTP);
         document.getElementById('btn-resend-otp').addEventListener('click', sendOTP);
@@ -1380,14 +1492,7 @@
                 
                 const clickedInsideTogglePill = togglePill && togglePill.contains(e.target);
 
-                // Exclude language switcher/dropdown element clicks from minimizing the chat
-                const clickedInsideLang = e.target.closest('.lang-switcher') || 
-                                          e.target.closest('#lang-menu') || 
-                                          e.target.closest('[id*="lang"]') || 
-                                          e.target.closest('[class*="lang"]') ||
-                                          e.target.closest('#lang-switcher');
-
-                if (!clickedInsideWindow && !clickedInsideLauncher && !clickedInsideMiniBubble && !clickedInsideTogglePill && !clickedInsideLang) {
+                if (!clickedInsideWindow && !clickedInsideLauncher && !clickedInsideMiniBubble && !clickedInsideTogglePill) {
                     toggleChatWindow();
                 }
             }
