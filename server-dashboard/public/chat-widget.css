@@ -295,21 +295,7 @@
     text-align: center;
 }
 
-/* Bilingual translations on client side */
-.pastie-msg-translation {
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px dashed rgba(255, 255, 255, 0.1);
-    font-size: 12px;
-    color: #ffb3c1;
-}
-.pastie-msg-translation::before {
-    content: "Original: ";
-    font-size: 9px;
-    font-weight: 700;
-    color: var(--widget-text-sec);
-    text-transform: uppercase;
-}
+
 
 .pastie-msg-time {
     font-size: 9.5px;

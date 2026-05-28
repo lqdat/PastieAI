@@ -378,10 +378,30 @@
         }
     }
 
-    function changeWidgetLanguage(lang) {
+    async function changeWidgetLanguage(lang) {
         if (!TRANSLATIONS[lang]) return;
         state.detectedLang = lang;
         applyTranslations();
+
+        // Sync with backend if session is active
+        if (state.sessionId) {
+            try {
+                await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/language`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sessionId: state.sessionId,
+                        language: lang
+                    })
+                });
+
+                // Clear current messages, reset pagination if any, and reload in the newly selected language
+                state.lastMessageCount = 0;
+                await loadMessageHistory();
+            } catch(e) {
+                console.error('Failed to sync language selection with backend:', e);
+            }
+        }
     }
     window.changeWidgetLanguage = changeWidgetLanguage;
 
@@ -1124,7 +1144,7 @@
 
         try {
             // Fetch messages using public session endpoint
-            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/messages`);
+            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/messages?visitorLang=${state.detectedLang || ''}`);
             if (res.status === 404 || res.status === 410) {
                 console.warn(`[Session Verify] Session status ${res.status} on server. Transitioning back to Tidio.`);
                 activateTidioChat();
@@ -1180,30 +1200,27 @@
         let displayHtml = '';
         
         if (msg.sender === 'visitor') {
+            const primaryText = msg.translated_text || msg.original_text;
             displayHtml = `
                 <div class="pastie-msg-bubble">
-                    <div>${escapeHtml(msg.original_text)}</div>
+                    <div>${escapeHtml(primaryText)}</div>
                 </div>
                 <div class="pastie-msg-time">${timeStr}</div>
             `;
         } else if (msg.sender === 'agent') {
-            // Agent writes Vietnamese, but client sees translated text!
-            // If translated_text exists, show it as primary bubble text, and original Vietnamese below
             const primaryText = msg.translated_text || msg.original_text;
-            const hasTranslation = msg.translated_text && msg.translated_text !== msg.original_text;
-
             displayHtml = `
                 <div class="pastie-msg-bubble">
                     <div>${escapeHtml(primaryText)}</div>
-                    ${hasTranslation ? `<div class="pastie-msg-translation">${escapeHtml(msg.original_text)}</div>` : ''}
                 </div>
                 <div class="pastie-msg-time">${timeStr}</div>
             `;
         } else {
             // System message
+            const primaryText = msg.translated_text || msg.original_text;
             displayHtml = `
                 <div class="pastie-msg-bubble">
-                    <div>${escapeHtml(msg.original_text)}</div>
+                    <div>${escapeHtml(primaryText)}</div>
                 </div>
             `;
         }
