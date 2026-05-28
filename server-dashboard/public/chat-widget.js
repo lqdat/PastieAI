@@ -39,7 +39,14 @@
         })(), // default language detected
         tidioHistory: JSON.parse(sessionStorage.getItem('pastie_tidio_history') || '[]'),
         isTyping: false,
-        typingTimeout: null
+        typingTimeout: null,
+
+        // Lazy-loading and cached list
+        messages: [],
+        offset: 0,
+        limit: 15,
+        hasMore: true,
+        isLoadingMore: false
     };
 
     const TRANSLATIONS = {
@@ -78,6 +85,8 @@
             defaultError: 'Có lỗi xảy ra.',
             typingText: 'Nhân viên đang nhập...',
             chatStartWelcome: 'Chào mừng! Vui lòng gửi câu hỏi của bạn. Hệ thống AI dịch thuật tự động đã sẵn sàng.',
+            loadOlder: 'Xem tin nhắn cũ hơn',
+            loadingMore: 'Đang tải...',
             miniSenderAgent: 'Hỗ trợ',
             miniSenderVisitor: 'Bạn',
             miniSenderSystem: 'Hệ thống',
@@ -118,6 +127,8 @@
             defaultError: 'An error occurred.',
             typingText: 'Agent is typing...',
             chatStartWelcome: 'Welcome! Please send your question. Automated AI translation is ready.',
+            loadOlder: 'Load older messages',
+            loadingMore: 'Loading...',
             miniSenderAgent: 'Support',
             miniSenderVisitor: 'You',
             miniSenderSystem: 'System',
@@ -145,7 +156,7 @@
             otpBtnResendCooldown: 'Отправить еще раз через',
             otpErrorEmpty: 'Пожалуйста, введите все 6 цифр OTP.',
             otpErrorInvalid: 'Неверный или просроченный код подтверждения.',
-            otpErrorConn: 'Ошибка подключения к серверу.',
+            otpErrorConn: 'Ошибка подключения к server.',
             chatInputPlaceholder: 'Введите сообщение...',
             chatWelcome: 'Добро пожаловать! Наш автоматический ИИ-чатбот готов к работе.',
             chatThinking: 'ИИ думает...',
@@ -158,6 +169,8 @@
             defaultError: 'Произошла ошибка.',
             typingText: 'Агент печатает...',
             chatStartWelcome: 'Добро пожаловать! Отправьте ваш вопрос. Автоматический ИИ-перевод готов.',
+            loadOlder: 'Показать предыдущие сообщения',
+            loadingMore: 'Загрузка...',
             miniSenderAgent: 'Поддержка',
             miniSenderVisitor: 'Вы',
             miniSenderSystem: 'Система',
@@ -198,6 +211,8 @@
             defaultError: '发生错误。',
             typingText: '客服正在输入...',
             chatStartWelcome: '欢迎！请发送您的问题。自动 AI 翻译已就绪。',
+            loadOlder: '查看历史消息',
+            loadingMore: '加载中...',
             miniSenderAgent: '支持',
             miniSenderVisitor: '您',
             miniSenderSystem: '系统',
@@ -442,9 +457,11 @@
                     })
                 });
 
-                // Clear current messages, reset pagination if any, and reload in the newly selected language
-                state.lastMessageCount = 0;
-                await loadMessageHistory();
+                // Clear current messages, reset pagination, and reload in the newly selected language
+                state.messages = [];
+                state.offset = 0;
+                state.hasMore = true;
+                await loadMessageHistory(false);
             } catch(e) {
                 console.error('Failed to sync language selection with backend:', e);
             }
@@ -786,11 +803,14 @@
             }
         } else if (state.mode === 'human' && state.sessionId) {
             // Append user message instantly in client
-            appendMessageBubble({
+            const newMsgObj = {
+                id: 'temp_' + Date.now(),
                 sender: 'visitor',
                 original_text: text,
                 created_at: new Date()
-            });
+            };
+            state.messages.push(newMsgObj);
+            renderMessageThread(false);
 
             try {
                 const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/message`, {
@@ -1251,95 +1271,188 @@
     }
 
     // 4. Poll and Load Message Thread
-    async function loadMessageHistory() {
+    async function loadMessageHistory(isLoadMore = false) {
         if (!state.sessionId) return;
 
+        let fetchLimit = state.limit;
+        let fetchOffset = state.offset;
+
+        if (!isLoadMore) {
+            // When polling, fetch all currently loaded messages to keep state synced
+            fetchLimit = Math.max(state.messages.length, state.limit);
+            fetchOffset = 0;
+        }
+
         try {
-            // Fetch messages using public session endpoint
-            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/messages?visitorLang=${state.detectedLang || ''}`);
+            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/messages?visitorLang=${state.detectedLang}&limit=${fetchLimit}&offset=${fetchOffset}&_=${Date.now()}`);
             if (res.status === 404 || res.status === 410) {
                 console.warn(`[Session Verify] Session status ${res.status} on server. Transitioning back to Tidio.`);
                 activateTidioChat();
                 return;
             }
-            const messages = await res.json();
+            const fetchedMessages = await res.json();
 
-            if (!Array.isArray(messages)) return;
+            if (!Array.isArray(fetchedMessages)) return;
 
-            const threadContainer = document.getElementById('pastie-chat-thread');
-            
-            // Check for new messages from the agent to trigger notification sound/dot
-            if (messages.length > state.lastMessageCount) {
-                const latestMsg = messages[messages.length - 1];
-                if (latestMsg.sender === 'agent' && state.lastMessageCount > 0) {
-                    playNotificationAlert();
+            if (isLoadMore) {
+                if (fetchedMessages.length < state.limit) {
+                    state.hasMore = false;
                 }
-                state.lastMessageCount = messages.length;
-            }
-
-            threadContainer.innerHTML = '';
-            
-            if (messages.length === 0) {
-                const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
-                threadContainer.innerHTML = `<div class="pastie-msg system"><div class="pastie-msg-bubble">${t.chatStartWelcome}</div></div>`;
-                return;
-            }
-
-            messages.forEach(msg => {
-                appendMessageBubble(msg);
-            });
-
-            // Show typing indicator if agent is thinking/typing (visitor sent last message)
-            const lastMsg = messages[messages.length - 1];
-            if (lastMsg && lastMsg.sender === 'visitor') {
-                state.isTyping = true;
-                appendTypingBubble();
+                // Prepend older messages to state.messages
+                state.messages = [...fetchedMessages, ...state.messages];
+                state.offset += fetchedMessages.length;
             } else {
-                state.isTyping = false;
+                // Polling or initial load: Filter out any temporary client-side messages before merging
+                const currentMsgs = state.messages.filter(m => m.id && !m.id.toString().startsWith('temp_'));
+                
+                if (currentMsgs.length === 0) {
+                    state.messages = fetchedMessages;
+                    if (fetchedMessages.length < state.limit) {
+                        state.hasMore = false;
+                    }
+                    state.lastMessageCount = fetchedMessages.length;
+                    
+                    // Show mini-bubble preview on initial load if chat is closed and messages exist
+                    if (!state.isOpen && state.messages.length > 0) {
+                        showMiniBubble();
+                    }
+                } else {
+                    // Update current messages and append any new ones
+                    const merged = [...currentMsgs];
+                    fetchedMessages.forEach(newMsg => {
+                        const idx = merged.findIndex(m => m.id === newMsg.id);
+                        if (idx !== -1) {
+                            merged[idx] = newMsg;
+                        } else {
+                            merged.push(newMsg);
+                        }
+                    });
+                    
+                    // Sort merged by created_at ascending
+                    merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+                    
+                    if (merged.length > state.lastMessageCount) {
+                        const latestMsg = merged[merged.length - 1];
+                        if (latestMsg.sender === 'agent' && state.lastMessageCount > 0) {
+                            playNotificationAlert();
+                        }
+                        state.lastMessageCount = merged.length;
+                    }
+                    state.messages = merged;
+                }
             }
+
+            renderMessageThread(isLoadMore);
         } catch(e) {
             console.error('Failed to load message history:', e);
         }
     }
 
-    function appendMessageBubble(msg) {
+    function renderMessageThread(isLoadMore = false) {
         const threadContainer = document.getElementById('pastie-chat-thread');
-        const bubbleWrap = document.createElement('div');
-        bubbleWrap.className = `pastie-msg ${msg.sender}`;
+        if (!threadContainer) return;
 
-        const timeStr = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const previousScrollHeight = threadContainer.scrollHeight;
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
 
-        let displayHtml = '';
-        
-        if (msg.sender === 'visitor') {
-            const primaryText = msg.translated_text || msg.original_text;
-            displayHtml = `
-                <div class="pastie-msg-bubble">
-                    <div>${escapeHtml(primaryText)}</div>
-                </div>
-                <div class="pastie-msg-time">${timeStr}</div>
-            `;
-        } else if (msg.sender === 'agent') {
-            const primaryText = msg.translated_text || msg.original_text;
-            displayHtml = `
-                <div class="pastie-msg-bubble">
-                    <div>${escapeHtml(primaryText)}</div>
-                </div>
-                <div class="pastie-msg-time">${timeStr}</div>
-            `;
-        } else {
-            // System message
-            const primaryText = msg.translated_text || msg.original_text;
-            displayHtml = `
-                <div class="pastie-msg-bubble">
-                    <div>${escapeHtml(primaryText)}</div>
-                </div>
-            `;
+        threadContainer.innerHTML = '';
+
+        // Render Load More button at the top if there is more history to fetch
+        if (state.hasMore) {
+            const loadMoreDiv = document.createElement('div');
+            loadMoreDiv.className = 'pastie-chat-loadmore-btn-container';
+            loadMoreDiv.style.textAlign = 'center';
+            loadMoreDiv.style.padding = '12px 8px';
+            
+            const loadMoreBtn = document.createElement('button');
+            loadMoreBtn.className = 'pastie-chat-loadmore-btn';
+            loadMoreBtn.id = 'btn-load-older';
+            loadMoreBtn.style.background = 'rgba(255, 255, 255, 0.08)';
+            loadMoreBtn.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+            loadMoreBtn.style.color = 'var(--widget-text)';
+            loadMoreBtn.style.fontFamily = 'Outfit, sans-serif';
+            loadMoreBtn.style.fontSize = '11px';
+            loadMoreBtn.style.fontWeight = '600';
+            loadMoreBtn.style.borderRadius = '20px';
+            loadMoreBtn.style.padding = '6px 16px';
+            loadMoreBtn.style.cursor = 'pointer';
+            loadMoreBtn.style.transition = 'all 0.2s';
+            loadMoreBtn.textContent = state.isLoadingMore ? t.loadingMore : t.loadOlder;
+            
+            loadMoreBtn.onmouseover = () => { loadMoreBtn.style.background = 'rgba(255, 255, 255, 0.15)'; };
+            loadMoreBtn.onmouseout = () => { loadMoreBtn.style.background = 'rgba(255, 255, 255, 0.08)'; };
+
+            loadMoreBtn.onclick = async () => {
+                if (state.isLoadingMore) return;
+                state.isLoadingMore = true;
+                loadMoreBtn.textContent = t.loadingMore;
+                await loadMessageHistory(true);
+                state.isLoadingMore = false;
+            };
+
+            loadMoreDiv.appendChild(loadMoreBtn);
+            threadContainer.appendChild(loadMoreDiv);
         }
 
-        bubbleWrap.innerHTML = displayHtml;
-        threadContainer.appendChild(bubbleWrap);
-        threadContainer.scrollTop = threadContainer.scrollHeight;
+        if (state.messages.length === 0) {
+            const welcomeDiv = document.createElement('div');
+            welcomeDiv.className = 'pastie-msg system';
+            welcomeDiv.innerHTML = `<div class="pastie-msg-bubble">${t.chatStartWelcome}</div>`;
+            threadContainer.appendChild(welcomeDiv);
+            return;
+        }
+
+        state.messages.forEach(msg => {
+            const bubbleWrap = document.createElement('div');
+            bubbleWrap.className = `pastie-msg ${msg.sender}`;
+
+            const timeStr = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            let displayHtml = '';
+            if (msg.sender === 'visitor') {
+                const primaryText = msg.translated_text || msg.original_text;
+                displayHtml = `
+                    <div class="pastie-msg-bubble">
+                        <div>${escapeHtml(primaryText)}</div>
+                    </div>
+                    <div class="pastie-msg-time">${timeStr}</div>
+                `;
+            } else if (msg.sender === 'agent') {
+                const primaryText = msg.translated_text || msg.original_text;
+                displayHtml = `
+                    <div class="pastie-msg-bubble">
+                        <div>${escapeHtml(primaryText)}</div>
+                    </div>
+                    <div class="pastie-msg-time">${timeStr}</div>
+                `;
+            } else {
+                const primaryText = msg.translated_text || msg.original_text;
+                displayHtml = `
+                    <div class="pastie-msg-bubble">
+                        <div>${escapeHtml(primaryText)}</div>
+                    </div>
+                `;
+            }
+
+            bubbleWrap.innerHTML = displayHtml;
+            threadContainer.appendChild(bubbleWrap);
+        });
+
+        // Show typing indicator if agent is thinking/typing (visitor sent last message)
+        const lastMsg = state.messages[state.messages.length - 1];
+        if (lastMsg && lastMsg.sender === 'visitor') {
+            state.isTyping = true;
+            appendTypingBubble();
+        } else {
+            state.isTyping = false;
+        }
+
+        // Maintain scroll position or scroll to the bottom depending on context
+        if (isLoadMore) {
+            threadContainer.scrollTop = threadContainer.scrollHeight - previousScrollHeight;
+        } else {
+            threadContainer.scrollTop = threadContainer.scrollHeight;
+        }
     }
 
     function appendTypingBubble() {
@@ -1349,6 +1462,8 @@
         // Remove existing typing indicators to prevent duplicates
         const existing = threadContainer.querySelector('.pastie-typing-indicator-bubble');
         if (existing) return;
+
+        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
 
         const typingBubble = document.createElement('div');
         typingBubble.className = 'pastie-msg agent';
@@ -1372,6 +1487,11 @@
         // Show notification dot on launcher button if closed
         if (!state.isOpen) {
             document.getElementById('pastie-chat-badge').style.display = 'block';
+
+            // Show mini bubble preview with the latest message
+            if (state.messages && state.messages.length > 0 && state.sessionId) {
+                showMiniBubble();
+            }
         }
         
         // Audio sound chime
