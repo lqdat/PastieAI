@@ -1375,7 +1375,14 @@
                 
                 const clickedInsideTogglePill = togglePill && togglePill.contains(e.target);
 
-                if (!clickedInsideWindow && !clickedInsideLauncher && !clickedInsideMiniBubble && !clickedInsideTogglePill) {
+                // Exclude language switcher/dropdown element clicks from minimizing the chat
+                const clickedInsideLang = e.target.closest('.lang-switcher') || 
+                                          e.target.closest('#lang-menu') || 
+                                          e.target.closest('[id*="lang"]') || 
+                                          e.target.closest('[class*="lang"]') ||
+                                          e.target.closest('#lang-switcher');
+
+                if (!clickedInsideWindow && !clickedInsideLauncher && !clickedInsideMiniBubble && !clickedInsideTogglePill && !clickedInsideLang) {
                     toggleChatWindow();
                 }
             }
