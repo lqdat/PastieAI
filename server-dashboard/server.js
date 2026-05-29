@@ -109,7 +109,44 @@ app.get('/chat-widget.css', (req, res, next) => {
   next();
 });
 
-// Serve admin dashboard statically from 'public' folder
+const crypto = require('crypto');
+
+// Cryptographically secure password hashing using Node's native PBKDF2
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, storedPassword) {
+  if (!storedPassword || !storedPassword.includes(':')) return false;
+  const [salt, originalHash] = storedPassword.split(':');
+  if (!salt || !originalHash) return false;
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return hash === originalHash;
+}
+
+// Automatically seed a default Super-Admin account if none exist
+async function seedSuperAdmin() {
+  try {
+    const result = await db.query("SELECT * FROM admins WHERE role = 'superadmin' LIMIT 1");
+    if (result.rows.length === 0) {
+      const adminPassword = process.env.ADMIN_PASSWORD || 'PastiePhuQuoc@123';
+      const hashedPassword = hashPassword(adminPassword);
+      await db.query(
+        "INSERT INTO admins (username, password_hash, full_name, role, avatar_url) VALUES ($1, $2, $3, $4, $5)",
+        ['admin', hashedPassword, 'Admin Tổng', 'superadmin', 'gradient-1']
+      );
+      console.log('Successfully seeded default super-admin account ("admin")');
+    }
+  } catch (err) {
+    console.error('Error seeding super-admin account:', err.message);
+  }
+}
+// Run seed function with a short delay to ensure DB tables are ready
+setTimeout(seedSuperAdmin, 2500);
+
+// Serving admin dashboard statically from 'public' folder
 app.use(express.static(path.join(__dirname, 'public')));
 // Serve widget files statically (as a fallback)
 app.use(express.static(path.join(__dirname, '../widget')));
@@ -120,23 +157,62 @@ app.get('/', (req, res) => {
 });
 
 
-// Simple Token-based Auth Middleware for admin routes
-function checkAdminAuth(req, res, next) {
-  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-  const authHeader = req.headers['authorization'];
+// Upgraded Multi-Admin Session-based Auth Middleware
+async function checkAdminAuth(req, res, next) {
   let token = '';
-
+  const authHeader = req.headers['authorization'];
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.substring(7);
   } else if (req.query.token) {
     token = req.query.token;
   }
 
-  if (token === adminPassword) {
-    return next();
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized. Missing authentication token.' });
   }
 
-  return res.status(401).json({ error: 'Unauthorized. Invalid admin password/token.' });
+  try {
+    // 1. Check if token exists in admin_sessions and joins admins
+    const sessionRes = await db.query(
+      `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.role, a.avatar_url, a.is_active 
+       FROM admin_sessions s
+       JOIN admins a ON s.admin_id = a.id
+       WHERE s.token = $1`,
+      [token]
+    );
+
+    if (sessionRes.rows.length === 0) {
+      return res.status(401).json({ error: 'Unauthorized. Invalid session token.' });
+    }
+
+    const adminSession = sessionRes.rows[0];
+
+    // Check session token expiration
+    if (new Date() > new Date(adminSession.expires_at)) {
+      await db.query('DELETE FROM admin_sessions WHERE token = $1', [token]);
+      return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    }
+
+    // Check active status
+    if (!adminSession.is_active) {
+      return res.status(403).json({ error: 'Account deactivated. Please contact the administrator.' });
+    }
+
+    // Attach admin context to the request
+    req.admin = {
+      id: adminSession.id,
+      username: adminSession.username,
+      full_name: adminSession.full_name,
+      role: adminSession.role,
+      avatar_url: adminSession.avatar_url,
+      token: token
+    };
+
+    return next();
+  } catch (error) {
+    console.error('Auth middleware error:', error);
+    return res.status(500).json({ error: 'Internal server error during authentication.' });
+  }
 }
 
 // Middleware to disable response caching for all API endpoints
@@ -339,10 +415,37 @@ app.post('/api/otp/verify', async (req, res) => {
     const ua = req.headers['user-agent'] || '';
     const { browser, device } = parseUserAgent(ua);
 
+    // Auto-assignment algorithm (Least Active Load)
+    let assignedAdminId = null;
+    try {
+      const leastLoadRes = await db.query(`
+        SELECT a.id, a.full_name, COUNT(s.id) as active_count
+        FROM admins a
+        LEFT JOIN sessions s ON s.assigned_admin_id = a.id AND s.status = 'active'
+        WHERE a.role = 'subadmin' AND a.is_active = TRUE
+        GROUP BY a.id, a.full_name
+        ORDER BY active_count ASC, a.id ASC
+        LIMIT 1
+      `);
+      if (leastLoadRes.rows.length > 0) {
+        assignedAdminId = leastLoadRes.rows[0].id;
+        console.log(`Auto-assigned conversation ${sessionId} to sub-admin ${leastLoadRes.rows[0].full_name} (Active chats: ${leastLoadRes.rows[0].active_count})`);
+      } else {
+        // Fallback to superadmin
+        const superRes = await db.query("SELECT id FROM admins WHERE role = 'superadmin' AND is_active = TRUE LIMIT 1");
+        if (superRes.rows.length > 0) {
+          assignedAdminId = superRes.rows[0].id;
+          console.log(`No active sub-admins found. Auto-assigned to Super-Admin.`);
+        }
+      }
+    } catch (assignError) {
+      console.error('Error during auto-assignment calculations:', assignError.message);
+    }
+
     await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device) 
-       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7)`,
-      [sessionId, projectId, finalName, email, finalLang, browser, device]
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, assigned_admin_id) 
+       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8)`,
+      [sessionId, projectId, finalName, email, finalLang, browser, device, assignedAdminId]
     );
 
     res.json({ success: true, sessionId, name: finalName });
@@ -446,11 +549,36 @@ app.post('/api/chats/message', async (req, res) => {
     // Call Gemini to translate and detect language
     const { translatedText, detectedLang } = await gemini.translateText(text, targetLang);
 
+    // Resolve sender_admin_id if sent by an agent with a valid session token
+    let senderAdminId = null;
+    if (sender === 'agent') {
+      const authHeader = req.headers['authorization'];
+      let token = '';
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      } else if (req.query.token) {
+        token = req.query.token;
+      }
+      if (token) {
+        try {
+          const sessionAdminRes = await db.query(
+            'SELECT admin_id FROM admin_sessions WHERE token = $1',
+            [token]
+          );
+          if (sessionAdminRes.rows.length > 0) {
+            senderAdminId = sessionAdminRes.rows[0].admin_id;
+          }
+        } catch (e) {
+          console.error('Failed to resolve sender_admin_id:', e.message);
+        }
+      }
+    }
+
     // Save message to database
     const msgRes = await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language) 
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [sessionId, sender, text, translatedText, detectedLang]
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [sessionId, sender, text, translatedText, detectedLang, senderAdminId]
     );
 
     // Update session detected language if it's the first message from the visitor, or update with visitorLang if provided
@@ -862,6 +990,287 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
 
 
 
+// --- ADMIN AUTHENTICATION ENDPOINTS ---
+
+// Admin Login
+app.post('/api/admin/login', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Vui lòng điền đầy đủ tên đăng nhập và mật khẩu.' });
+  }
+
+  try {
+    const result = await db.query('SELECT * FROM admins WHERE username = $1', [username]);
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Tên đăng nhập hoặc mật khẩu không chính xác.' });
+    }
+
+    const admin = result.rows[0];
+    if (!admin.is_active) {
+      return res.status(403).json({ error: 'Tài khoản của bạn đã bị khóa hoặc chưa được kích hoạt.' });
+    }
+
+    const isValid = await verifyPassword(password, admin.password_hash);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Tên đăng nhập hoặc mật khẩu không chính xác.' });
+    }
+
+    // Create session token
+    const token = randomUUID();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    await db.query(
+      'INSERT INTO admin_sessions (token, admin_id, expires_at) VALUES ($1, $2, $3)',
+      [token, admin.id, expiresAt]
+    );
+
+    res.json({
+      success: true,
+      token,
+      admin: {
+        id: admin.id,
+        username: admin.username,
+        role: admin.role,
+        full_name: admin.full_name,
+        avatar_url: admin.avatar_url,
+        is_active: admin.is_active
+      }
+    });
+  } catch (error) {
+    console.error('Admin login error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi đăng nhập.' });
+  }
+});
+
+// Admin Logout
+app.post('/api/admin/logout', checkAdminAuth, async (req, res) => {
+  const authHeader = req.headers['authorization'];
+  let token = '';
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  } else if (req.query.token) {
+    token = req.query.token;
+  }
+
+  if (!token) {
+    return res.status(400).json({ error: 'Không tìm thấy token đăng nhập.' });
+  }
+
+  try {
+    await db.query('DELETE FROM admin_sessions WHERE token = $1', [token]);
+    res.json({ success: true, message: 'Đăng xuất thành công.' });
+  } catch (error) {
+    console.error('Admin logout error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi đăng xuất.' });
+  }
+});
+
+// Get Current Admin Info
+app.get('/api/admin/me', checkAdminAuth, async (req, res) => {
+  res.json({
+    success: true,
+    admin: req.admin
+  });
+});
+
+// --- SUPER-ADMIN SUB-ADMIN MANAGEMENT ENDPOINTS (CRUD) ---
+
+// List all sub-admins
+app.get('/api/admin/users', checkAdminAuth, async (req, res) => {
+  // Check role
+  if (req.admin.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Quyền hạn bị từ chối. Chỉ Admin tổng mới có quyền quản lý nhân viên.' });
+  }
+
+  try {
+    const result = await db.query(
+      'SELECT id, username, role, full_name, avatar_url, is_active, created_at FROM admins ORDER BY role DESC, username ASC'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('List admins error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi tải danh sách nhân viên.' });
+  }
+});
+
+// Create a new sub-admin
+app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Quyền hạn bị từ chối. Chỉ Admin tổng mới có quyền quản lý nhân viên.' });
+  }
+
+  const { username, password, full_name, role, avatar_url } = req.body;
+  if (!username || !password || !full_name || !role) {
+    return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ: username, password, full_name, role.' });
+  }
+
+  try {
+    // Check if username already exists
+    const checkRes = await db.query('SELECT id FROM admins WHERE username = $1', [username]);
+    if (checkRes.rows.length > 0) {
+      return res.status(400).json({ error: 'Tên đăng nhập đã tồn tại trong hệ thống.' });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const avatar = avatar_url || '';
+
+    const insertRes = await db.query(
+      `INSERT INTO admins (username, password_hash, full_name, role, avatar_url, is_active) 
+       VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING id, username, role, full_name, avatar_url, is_active, created_at`,
+      [username, passwordHash, full_name, role, avatar]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Tạo tài khoản nhân viên thành công.',
+      user: insertRes.rows[0]
+    });
+  } catch (error) {
+    console.error('Create admin error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi tạo tài khoản nhân viên.' });
+  }
+});
+
+// Update an admin / sub-admin
+app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Quyền hạn bị từ chối. Chỉ Admin tổng mới có quyền quản lý nhân viên.' });
+  }
+
+  const { id } = req.params;
+  const { username, password, full_name, role, avatar_url, is_active } = req.body;
+
+  try {
+    // Verify admin exists
+    const checkRes = await db.query('SELECT * FROM admins WHERE id = $1', [id]);
+    if (checkRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy tài khoản nhân viên cần sửa.' });
+    }
+
+    const currentAdmin = checkRes.rows[0];
+
+    // If username changes, check if new username exists
+    if (username && username !== currentAdmin.username) {
+      const uRes = await db.query('SELECT id FROM admins WHERE username = $1', [username]);
+      if (uRes.rows.length > 0) {
+        return res.status(400).json({ error: 'Tên đăng nhập mới đã tồn tại.' });
+      }
+    }
+
+    let passwordHash = currentAdmin.password_hash;
+    if (password && password.trim() !== '') {
+      passwordHash = await hashPassword(password);
+    }
+
+    const updatedUsername = username || currentAdmin.username;
+    const updatedFullName = full_name || currentAdmin.full_name;
+    const updatedRole = role || currentAdmin.role;
+    const updatedAvatar = avatar_url !== undefined ? avatar_url : currentAdmin.avatar_url;
+    const updatedIsActive = is_active !== undefined ? is_active : currentAdmin.is_active;
+
+    // Do not allow deactivating themselves
+    if (id === req.admin.id && !updatedIsActive) {
+      return res.status(400).json({ error: 'Bạn không thể tự vô hiệu hóa tài khoản của chính mình.' });
+    }
+
+    const updateRes = await db.query(
+      `UPDATE admins 
+       SET username = $1, password_hash = $2, full_name = $3, role = $4, avatar_url = $5, is_active = $6 
+       WHERE id = $7 RETURNING id, username, role, full_name, avatar_url, is_active, created_at`,
+      [updatedUsername, passwordHash, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Cập nhật tài khoản nhân viên thành công.',
+      user: updateRes.rows[0]
+    });
+  } catch (error) {
+    console.error('Update admin error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi cập nhật tài khoản nhân viên.' });
+  }
+});
+
+// Delete a sub-admin
+app.delete('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Quyền hạn bị từ chối. Chỉ Admin tổng mới có quyền quản lý nhân viên.' });
+  }
+
+  const { id } = req.params;
+
+  if (id === req.admin.id) {
+    return res.status(400).json({ error: 'Bạn không thể tự xóa tài khoản của chính mình.' });
+  }
+
+  try {
+    const checkRes = await db.query('SELECT * FROM admins WHERE id = $1', [id]);
+    if (checkRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy tài khoản nhân viên để xóa.' });
+    }
+
+    // Delete all sessions for this admin first (or unassign them)
+    await db.query('UPDATE sessions SET assigned_admin_id = NULL WHERE assigned_admin_id = $1', [id]);
+    await db.query('DELETE FROM admin_sessions WHERE admin_id = $1', [id]);
+
+    await db.query('DELETE FROM admins WHERE id = $1', [id]);
+
+    res.json({
+      success: true,
+      message: 'Xóa tài khoản nhân viên thành công.'
+    });
+  } catch (error) {
+    console.error('Delete admin error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi xóa tài khoản nhân viên.' });
+  }
+});
+
+// Reassign a session to an admin (Super-Admin or Sub-Admin can reassign)
+app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, async (req, res) => {
+  const { sessionId } = req.params;
+  const { assignedAdminId } = req.body; // Can be UUID string or null
+
+  try {
+    // Verify session exists
+    const sessionCheck = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    if (sessionCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy cuộc trò chuyện.' });
+    }
+
+    let adminName = 'Chưa chỉ định';
+    if (assignedAdminId) {
+      const adminCheck = await db.query('SELECT full_name FROM admins WHERE id = $1', [assignedAdminId]);
+      if (adminCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy nhân viên được chỉ định.' });
+      }
+      adminName = adminCheck.rows[0].full_name;
+    }
+
+    // Update assignment
+    await db.query(
+      'UPDATE sessions SET assigned_admin_id = $1 WHERE id = $2',
+      [assignedAdminId, sessionId]
+    );
+
+    // Save a system log message inside the chat
+    const logText = `[Hệ thống] Cuộc trò chuyện đã được chỉ định cho nhân viên: ${adminName}.`;
+    await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language) 
+       VALUES ($1, 'system', $2, $2, 'vi')`,
+      [sessionId, logText]
+    );
+
+    res.json({
+      success: true,
+      message: `Đã chuyển cuộc hội thoại cho nhân viên: ${adminName}.`
+    });
+  } catch (error) {
+    console.error('Reassign chat error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi chuyển giao cuộc hội thoại.' });
+  }
+});
+
+
 // ----------------------------------------------------
 // ADMIN API ENDPOINTS (DASHBOARD)
 // ----------------------------------------------------
@@ -906,15 +1315,19 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
   const { projectId } = req.query;
   
   try {
-    let queryText = 'SELECT * FROM sessions';
+    let queryText = `
+      SELECT s.*, a.full_name as assigned_admin_name, a.avatar_url as assigned_admin_avatar
+      FROM sessions s
+      LEFT JOIN admins a ON s.assigned_admin_id = a.id
+    `;
     const params = [];
 
     if (projectId) {
-      queryText += ' WHERE project_id = $1';
+      queryText += ' WHERE s.project_id = $1';
       params.push(projectId);
     }
 
-    queryText += ' ORDER BY created_at DESC';
+    queryText += ' ORDER BY s.created_at DESC';
 
     const result = await db.query(queryText, params);
     
@@ -977,7 +1390,11 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res)
     }
 
     const result = await db.query(
-      'SELECT * FROM messages WHERE session_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+      `SELECT m.*, a.full_name as sender_admin_name, a.avatar_url as sender_admin_avatar 
+       FROM messages m
+       LEFT JOIN admins a ON m.sender_admin_id = a.id
+       WHERE m.session_id = $1 
+       ORDER BY m.created_at DESC LIMIT $2 OFFSET $3`,
       [sessionId, limit, offset]
     );
     
@@ -1030,6 +1447,12 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res)
  */
 app.delete('/api/admin/chats/:sessionId', checkAdminAuth, async (req, res) => {
   const { sessionId } = req.params;
+
+  // RBAC: Only superadmin can delete conversations!
+  if (req.admin.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Quyền hạn bị từ chối. Chỉ Admin tổng (Super-admin) mới có quyền xóa cuộc hội thoại.' });
+  }
+
   try {
     const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
     if (sessionRes.rows.length === 0) {
@@ -1045,7 +1468,7 @@ app.delete('/api/admin/chats/:sessionId', checkAdminAuth, async (req, res) => {
     console.error('Delete session error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi xóa cuộc trò chuyện.' });
   }
-});
+}); 
 
 /**
  * @openapi
