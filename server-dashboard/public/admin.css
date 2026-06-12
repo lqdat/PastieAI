@@ -22,7 +22,7 @@
 }
 
 body {
-    font-family: 'Outfit', sans-serif;
+    font-family: 'Be Vietnam Pro', system-ui, -apple-system, sans-serif;
     background-color: var(--bg-color);
     color: var(--text-primary);
     min-height: 100vh;
@@ -325,6 +325,51 @@ button {
     align-items: center;
     gap: 8px;
     width: 100%;
+}
+.visitor-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+.visitor-avatar-img {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(99, 102, 241, 0.35);
+    display: block;
+}
+.visitor-avatar-initials {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(99, 102, 241, 0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent-color);
+    border: 2px solid rgba(99, 102, 241, 0.35);
+}
+.visitor-platform-badge {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    font-size: 12px;
+    background: #1a1a2e;
+    border-radius: 50%;
+    padding: 1px;
+    color: #4267B2;
+}
+.visitor-platform-badge.ri-instagram-fill { color: #C13584; }
+.visitor-platform-badge.ri-whatsapp-fill { color: #25D366; }
+.session-card-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
 }
 .session-name {
     font-weight: 600;

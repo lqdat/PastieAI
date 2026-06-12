@@ -174,8 +174,31 @@ async function generateChatbotResponse(systemInstruction, history, userMessage) 
   }
 }
 
+const SUPPORTED_LANGS = ['vi', 'en', 'ru', 'zh'];
+
+/**
+ * Detect language of a text using Gemini AI.
+ * Returns one of: 'vi', 'en', 'ru', 'zh'. Defaults to 'en' if unsupported or error.
+ */
+async function detectLanguage(text) {
+  if (!text?.trim()) return 'en';
+  try {
+    if (ai) {
+      const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
+      const prompt = `Detect the language of the following text. Return ONLY a 2-letter ISO 639-1 language code (e.g. "vi", "en", "ru", "zh", "ja", "ko"). No explanation, no punctuation, just the code.\n\nText: "${text.substring(0, 200)}"`;
+      const result = await model.generateContent(prompt);
+      const lang = result.response.text().trim().toLowerCase().replace(/[^a-z]/g, '');
+      return SUPPORTED_LANGS.includes(lang) ? lang : 'en';
+    }
+  } catch (e) {
+    console.warn('detectLanguage failed:', e.message);
+  }
+  return 'en';
+}
+
 module.exports = {
   translateText,
   analyzeSession,
-  generateChatbotResponse
+  generateChatbotResponse,
+  detectLanguage
 };

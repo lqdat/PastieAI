@@ -578,10 +578,22 @@ function renderSessionsList(sessions) {
         const browserIcon = getBrowserIcon(browserVal);
         const deviceIcon = getDeviceIcon(deviceVal);
 
+        const avatarHtml = session.visitor_avatar
+            ? `<img src="${session.visitor_avatar}" class="visitor-avatar-img" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+              + `<div class="visitor-avatar-initials" style="display:none">${(session.visitor_name || '?')[0].toUpperCase()}</div>`
+            : `<div class="visitor-avatar-initials">${(session.visitor_name || '?')[0].toUpperCase()}</div>`;
+
+        const platformIcon = session.platform === 'messenger' ? 'ri-messenger-fill'
+            : session.platform === 'instagram' ? 'ri-instagram-fill'
+            : session.platform === 'whatsapp' ? 'ri-whatsapp-fill' : '';
+
         card.innerHTML = `
             <div class="session-card-header">
-                <span class="session-name" title="${session.visitor_name}">${session.visitor_name}</span>
-                <span class="session-status-badge ${session.status}">${statusText}</span>
+                <div class="visitor-avatar-wrap">${avatarHtml}${platformIcon ? `<i class="${platformIcon} visitor-platform-badge"></i>` : ''}</div>
+                <div class="session-card-info">
+                    <span class="session-name" title="${session.visitor_name}">${session.visitor_name}</span>
+                    <span class="session-status-badge ${session.status}">${statusText}</span>
+                </div>
             </div>
             <div class="session-meta-footer">
                 <span class="session-project" title="${session.project_id}">${session.project_id}</span>
@@ -685,6 +697,25 @@ async function selectSession(sessionId) {
     // Show header details
     chatTitleName.textContent = session.visitor_name;
     chatTitleEmail.textContent = session.visitor_email;
+
+    // Show visitor avatar in chat header
+    const chatHeaderAvatar = document.getElementById('chat-header-avatar');
+    if (chatHeaderAvatar) {
+        if (session.visitor_avatar) {
+            chatHeaderAvatar.style.display = 'block';
+            chatHeaderAvatar.innerHTML = `<img src="${session.visitor_avatar}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid rgba(99,102,241,0.4);" alt="" onerror="this.parentElement.style.display='none'">`;
+        } else {
+            const initials = (session.visitor_name || '?')[0].toUpperCase();
+            const isSocial = session.platform === 'messenger' || session.platform === 'instagram' || session.platform === 'whatsapp';
+            if (isSocial) {
+                chatHeaderAvatar.style.display = 'block';
+                chatHeaderAvatar.innerHTML = `<div style="width:44px;height:44px;border-radius:50%;background:rgba(99,102,241,0.2);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--accent-color);border:2px solid rgba(99,102,241,0.4);">${initials}</div>`;
+            } else {
+                chatHeaderAvatar.style.display = 'none';
+                chatHeaderAvatar.innerHTML = '';
+            }
+        }
+    }
 
     // Set project ID badge in active header
     const chatHeaderProjectBadge = document.getElementById('chat-header-project-badge');

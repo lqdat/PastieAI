@@ -47,6 +47,7 @@ async function runTests() {
     });
     console.log(`Status: ${res.status}`);
     body = await res.json();
+
     console.log('Body:', body);
     if (res.status !== 410) {
       throw new Error(`Expected status 410, got ${res.status}`);

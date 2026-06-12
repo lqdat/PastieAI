@@ -1682,6 +1682,29 @@ async function sendMultichannelMessage(platform, recipientId, text, projectId = 
 }
 
 /**
+ * Lấy tên thật của người dùng Messenger qua Graph API.
+ * Trả về { name, avatarUrl } hoặc null nếu thất bại.
+ */
+async function fetchMessengerUserProfile(psid, pageAccessToken) {
+  try {
+    const url = `https://graph.facebook.com/v20.0/${psid}?fields=name,profile_pic&access_token=${pageAccessToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) {
+      console.warn('fetchMessengerUserProfile error:', data.error.message);
+      return null;
+    }
+    return {
+      name: data.name || null,
+      avatarUrl: data.profile_pic || null
+    };
+  } catch (e) {
+    console.warn('fetchMessengerUserProfile fetch failed:', e.message);
+    return null;
+  }
+}
+
+/**
  * Parses disparate Meta payloads into a unified format.
  */
 function parseWebhookEvent(body) {
@@ -1864,9 +1887,10 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
   try {
     // 1. Resolve project_id based on targetId dynamically
     let projectId = 'pastie-landingpage'; // Default/fallback project
+    let resolvedPageToken = null;
     if (targetId) {
       const configLookup = await db.query(
-        `SELECT project_id FROM channel_configs 
+        `SELECT project_id, messenger_page_access_token, instagram_access_token FROM channel_configs
          WHERE (platform = 'whatsapp' AND whatsapp_phone_number_id = $1)
             OR (platform = 'messenger' AND messenger_page_id = $1)
             OR (platform = 'instagram' AND instagram_page_id = $1)
@@ -1875,6 +1899,8 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
       );
       if (configLookup.rows.length > 0) {
         projectId = configLookup.rows[0].project_id;
+        resolvedPageToken = configLookup.rows[0].messenger_page_access_token
+          || configLookup.rows[0].instagram_access_token || null;
       } else {
         const fieldLookup = await db.query(
           `SELECT project_id FROM channel_configs
@@ -1913,19 +1939,41 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
         // Keep/reopen it active so it displays on the active chat feed of dashboard
         await db.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [sessionId]);
       } else {
+        // Fetch real name + avatar from Graph API for Messenger/Instagram
+        let visitorName = name;
+        let visitorAvatar = null;
+        if ((platform === 'messenger' || platform === 'instagram') && resolvedPageToken) {
+          const profile = await fetchMessengerUserProfile(senderId, resolvedPageToken);
+          if (profile?.name) visitorName = profile.name;
+          if (profile?.avatarUrl) visitorAvatar = profile.avatarUrl;
+        }
+
+        // Detect language from first message (vi/en/ru/zh — default en)
+        const detectedLang = await gemini.detectLanguage(text);
+
         // Create a new session
         sessionId = `mc-${platform}-${randomUUID()}`;
         await db.query(`
-          INSERT INTO sessions (id, project_id, visitor_name, status, platform, platform_sender_id, is_verified)
-          VALUES ($1, $2, $3, 'active', $4, $5, true)
-        `, [sessionId, projectId, name, platform, senderId]);
+          INSERT INTO sessions (id, project_id, visitor_name, visitor_avatar, detected_language, status, platform, platform_sender_id, is_verified)
+          VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, true)
+        `, [sessionId, projectId, visitorName, visitorAvatar, detectedLang, platform, senderId]);
       }
 
-      // Save customer's incoming message
+      // Get session language (detect if not set yet)
+      const sessionLangRes = await db.query(
+        `SELECT detected_language FROM sessions WHERE id = $1`, [sessionId]
+      );
+      let msgLang = sessionLangRes.rows[0]?.detected_language;
+      if (!msgLang || msgLang === 'auto') {
+        msgLang = await gemini.detectLanguage(text);
+        await db.query(`UPDATE sessions SET detected_language = $1 WHERE id = $2`, [msgLang, sessionId]);
+      }
+
+      // Save customer's incoming message with detected language
       await db.query(`
         INSERT INTO messages (session_id, sender, original_text, translated_text, language)
-        VALUES ($1, 'visitor', $2, $2, 'auto')
-      `, [sessionId, text]);
+        VALUES ($1, 'visitor', $2, $2, $3)
+      `, [sessionId, text, msgLang]);
 
       // Call Gemini Chatbot with Scraped Knowledge Base context!
       // Fetch latest synced knowledge base for the resolved project ID
@@ -1971,12 +2019,13 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
     } else {
       // An active session is assigned to a human agent.
       sessionId = session.id;
+      const sessionLang = session.detected_language || await gemini.detectLanguage(text);
 
-      // Save customer's message
+      // Save customer's message with session language
       await db.query(`
         INSERT INTO messages (session_id, sender, original_text, translated_text, language)
-        VALUES ($1, 'visitor', $2, $2, 'auto')
-      `, [sessionId, text]);
+        VALUES ($1, 'visitor', $2, $2, $3)
+      `, [sessionId, text, sessionLang]);
 
       console.log(`Active human session found for ${platform}:${senderId} on project ${projectId}. Message saved to trigger dashboard refresh.`);
     }
