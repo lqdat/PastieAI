@@ -40,6 +40,12 @@ const swaggerOptions = {
           name: 'Authorization',
           description: 'Bearer <ADMIN_PASSWORD>',
         },
+        MetaSignature: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'x-hub-signature-256',
+          description: 'HMAC SHA-256 signature từ Meta: sha256=<hash>. Bắt buộc khi META_APP_SECRET được cấu hình.',
+        },
       },
     },
   },
@@ -1713,6 +1719,48 @@ function parseWebhookEvent(body) {
   return null;
 }
 
+/**
+ * @openapi
+ * /api/multichannel/webhook:
+ *   get:
+ *     summary: Xác thực Webhook Meta (Facebook/Instagram/WhatsApp)
+ *     description: >
+ *       Endpoint dùng để Meta xác minh webhook khi cấu hình trên Meta Developer Portal.
+ *       Hỗ trợ verify token theo biến môi trường `META_VERIFY_TOKEN` hoặc từ bảng `channel_configs` trong DB (multi-project).
+ *     tags:
+ *       - Multi-channel Webhook
+ *     parameters:
+ *       - in: query
+ *         name: hub.mode
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: subscribe
+ *       - in: query
+ *         name: hub.verify_token
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: pastie_verify_token_2026
+ *       - in: query
+ *         name: hub.challenge
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: chal_12345
+ *     responses:
+ *       200:
+ *         description: Xác thực thành công, trả về hub.challenge
+ *         content:
+ *           text/plain:
+ *             schema:
+ *               type: string
+ *               example: chal_12345
+ *       403:
+ *         description: Token không khớp
+ *       400:
+ *         description: Thiếu tham số bắt buộc
+ */
 // Verification Webhook for Meta (GET)
 app.get('/api/multichannel/webhook', async (req, res) => {
   const mode = req.query['hub.mode'];
@@ -1779,6 +1827,56 @@ function verifyMetaSignature(req, res, next) {
   next();
 }
 
+/**
+ * @openapi
+ * /api/multichannel/webhook:
+ *   post:
+ *     summary: Nhận tin nhắn từ Meta (Facebook Messenger / Instagram / WhatsApp)
+ *     description: >
+ *       Endpoint nhận sự kiện webhook từ Meta khi có tin nhắn mới.
+ *       Yêu cầu header `x-hub-signature-256` hợp lệ (nếu `META_APP_SECRET` được cấu hình).
+ *       Tự động phân luồng: nếu chưa có agent → Gemini AI trả lời; nếu đang có agent → lưu vào DB cho dashboard.
+ *     tags:
+ *       - Multi-channel Webhook
+ *     security:
+ *       - MetaSignature: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               object:
+ *                 type: string
+ *                 enum: [whatsapp_business_account, page, instagram]
+ *                 example: whatsapp_business_account
+ *               entry:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *             example:
+ *               object: whatsapp_business_account
+ *               entry:
+ *                 - id: "123456789"
+ *                   changes:
+ *                     - value:
+ *                         messaging_product: whatsapp
+ *                         metadata:
+ *                           phone_number_id: "987654321"
+ *                         messages:
+ *                           - from: "84901234567"
+ *                             id: "wamid.xxx"
+ *                             text:
+ *                               body: "Xin chào!"
+ *                             type: text
+ *                       field: messages
+ *     responses:
+ *       200:
+ *         description: Đã nhận sự kiện (luôn trả về 200 để Meta không retry)
+ *       401:
+ *         description: Signature không hợp lệ hoặc thiếu header x-hub-signature-256
+ */
 // Incoming message handling (POST)
 app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
   // Always respond 200 OK immediately to Meta to acknowledge receipt and prevent retries
