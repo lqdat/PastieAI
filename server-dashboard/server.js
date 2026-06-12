@@ -1682,6 +1682,47 @@ async function sendMultichannelMessage(platform, recipientId, text, projectId = 
 }
 
 /**
+ * Trả về tin nhắn xác thực OTP đa ngôn ngữ cho multi-channel.
+ * Hỗ trợ: vi, en, ru, zh — mặc định en nếu ngôn ngữ khác.
+ */
+function mcVerifyMsg(step, lang, email = '') {
+  const L = ['vi', 'en', 'ru', 'zh'].includes(lang) ? lang : 'en';
+  const msgs = {
+    ask_email: {
+      vi: 'Xin chào! Vui lòng cung cấp email của bạn để chúng tôi hỗ trợ tốt hơn 📧',
+      en: 'Hello! Please provide your email so we can assist you better 📧',
+      ru: 'Привет! Пожалуйста, укажите ваш email для лучшей поддержки 📧',
+      zh: '您好！请提供您的电子邮件，以便我们更好地为您服务 📧',
+    },
+    invalid_email: {
+      vi: 'Email không hợp lệ. Vui lòng nhập lại (ví dụ: example@gmail.com)',
+      en: 'Invalid email. Please try again (e.g. example@gmail.com)',
+      ru: 'Неверный email. Пожалуйста, попробуйте снова (например: example@gmail.com)',
+      zh: '邮箱格式无效，请重新输入（例如：example@gmail.com）',
+    },
+    otp_sent: {
+      vi: `Mã OTP đã gửi đến ${email}. Vui lòng nhập mã 6 số trong vòng 5 phút ⏱️`,
+      en: `OTP sent to ${email}. Please enter the 6-digit code within 5 minutes ⏱️`,
+      ru: `Код OTP отправлен на ${email}. Введите 6-значный код в течение 5 минут ⏱️`,
+      zh: `OTP验证码已发送至 ${email}，请在5分钟内输入6位验证码 ⏱️`,
+    },
+    wrong_otp: {
+      vi: 'Mã OTP không đúng hoặc đã hết hạn. Vui lòng thử lại.',
+      en: 'Incorrect or expired OTP. Please try again.',
+      ru: 'Неверный или просроченный код OTP. Попробуйте снова.',
+      zh: '验证码错误或已过期，请重新输入。',
+    },
+    verified: {
+      vi: '✅ Xác thực thành công! Tôi có thể giúp gì cho bạn?',
+      en: '✅ Verified! How can I help you today?',
+      ru: '✅ Верификация прошла! Чем я могу помочь?',
+      zh: '✅ 验证成功！今天我能为您做什么？',
+    },
+  };
+  return msgs[step][L];
+}
+
+/**
  * Lấy tên thật của người dùng Messenger qua Graph API.
  * Trả về { name, avatarUrl } hoặc null nếu thất bại.
  */
@@ -1917,118 +1958,193 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
     }
     console.log(`Mapped multi-channel targetId ${targetId} to project_id: ${projectId}`);
 
-    // 2. Check if there is an active (human agent-led) session for this user on this platform and project
+    // 2. Get the most recent session for this user (any status) to check verify state
     const sessionRes = await db.query(
-      `SELECT * FROM sessions WHERE platform = $1 AND platform_sender_id = $2 AND project_id = $3 AND status = 'active' LIMIT 1`,
+      `SELECT * FROM sessions WHERE platform = $1 AND platform_sender_id = $2 AND project_id = $3 ORDER BY created_at DESC LIMIT 1`,
       [platform, senderId, projectId]
     );
 
     let session = sessionRes.rows[0];
     let sessionId;
+    let verifyState = session?.mc_verify_state || null;
+    let sessionLang = session?.detected_language || null;
 
+    // ── BRAND NEW USER ──────────────────────────────────────────────
     if (!session) {
-      // No active agent session. Let's trigger the Gemini AI Chatbot!
-      // First, see if there is any existing session for this user to append history
-      const lastSessionRes = await db.query(
-        `SELECT id FROM sessions WHERE platform = $1 AND platform_sender_id = $2 AND project_id = $3 ORDER BY created_at DESC LIMIT 1`,
-        [platform, senderId, projectId]
-      );
-
-      if (lastSessionRes.rows.length > 0) {
-        sessionId = lastSessionRes.rows[0].id;
-        // Keep/reopen it active so it displays on the active chat feed of dashboard
-        await db.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [sessionId]);
-      } else {
-        // Fetch real name + avatar from Graph API for Messenger/Instagram
-        let visitorName = name;
-        let visitorAvatar = null;
-        if ((platform === 'messenger' || platform === 'instagram') && resolvedPageToken) {
-          const profile = await fetchMessengerUserProfile(senderId, resolvedPageToken);
-          if (profile?.name) visitorName = profile.name;
-          if (profile?.avatarUrl) visitorAvatar = profile.avatarUrl;
-        }
-
-        // Detect language from first message (vi/en/ru/zh — default en)
-        const detectedLang = await gemini.detectLanguage(text);
-
-        // Create a new session
-        sessionId = `mc-${platform}-${randomUUID()}`;
-        await db.query(`
-          INSERT INTO sessions (id, project_id, visitor_name, visitor_avatar, detected_language, status, platform, platform_sender_id, is_verified)
-          VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, true)
-        `, [sessionId, projectId, visitorName, visitorAvatar, detectedLang, platform, senderId]);
+      // Fetch real name + avatar from Graph API for Messenger/Instagram
+      let visitorName = name;
+      let visitorAvatar = null;
+      if ((platform === 'messenger' || platform === 'instagram') && resolvedPageToken) {
+        const profile = await fetchMessengerUserProfile(senderId, resolvedPageToken);
+        if (profile?.name) visitorName = profile.name;
+        if (profile?.avatarUrl) visitorAvatar = profile.avatarUrl;
       }
 
-      // Get session language (detect if not set yet)
-      const sessionLangRes = await db.query(
-        `SELECT detected_language FROM sessions WHERE id = $1`, [sessionId]
-      );
-      let msgLang = sessionLangRes.rows[0]?.detected_language;
-      if (!msgLang || msgLang === 'auto') {
-        msgLang = await gemini.detectLanguage(text);
-        await db.query(`UPDATE sessions SET detected_language = $1 WHERE id = $2`, [msgLang, sessionId]);
-      }
+      // Detect language from first message
+      sessionLang = await gemini.detectLanguage(text);
 
-      // Save customer's incoming message with detected language
+      // Create session — not verified yet, waiting for email
+      sessionId = `mc-${platform}-${randomUUID()}`;
       await db.query(`
-        INSERT INTO messages (session_id, sender, original_text, translated_text, language)
-        VALUES ($1, 'visitor', $2, $2, $3)
-      `, [sessionId, text, msgLang]);
+        INSERT INTO sessions (id, project_id, visitor_name, visitor_avatar, detected_language, status, platform, platform_sender_id, is_verified, mc_verify_state)
+        VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, false, 'email')
+      `, [sessionId, projectId, visitorName, visitorAvatar, sessionLang, platform, senderId]);
 
-      // Call Gemini Chatbot with Scraped Knowledge Base context!
-      // Fetch latest synced knowledge base for the resolved project ID
-      const kbRes = await db.query(
-        `SELECT cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 1`,
-        [projectId]
-      );
-      const knowledgeContext = kbRes.rows[0]?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình.";
-
-      const systemInstruction = `
-        Bạn là một trợ lý tư vấn dịch vụ và sản phẩm cực kỳ chuyên nghiệp và thân thiện.
-        
-        Hãy trả lời câu hỏi của khách hàng một cách ngắn gọn, súc tích (dưới 3 câu) để hiển thị tốt nhất trên thiết bị di động.
-        Giao tiếp bằng ngôn ngữ mà khách hàng đang sử dụng.
-        
-        Dưới đây là TOÀN BỘ CƠ SỞ TRI THỨC được lấy từ trang web chính thức của chúng tôi. CHỈ trả lời dựa trên tài liệu này, không tự bịa thông tin:
-        
-        === CƠ SỞ TRI THỨC CHÍNH THỨC ===
-        ${knowledgeContext}
-        === HẾT CƠ SỞ TRI THỨC ===
-        
-        Nếu thông tin khách hỏi nằm ngoài cơ sở tri thức trên, hãy khéo léo phản hồi: "Dạ, thông tin này em xin phép ghi nhận để chuyển cho nhân viên hỗ trợ trực tiếp tư vấn kỹ hơn cho anh/chị nhé!" và đề xuất chuyển gặp nhân viên.
-      `;
-
-      // Load conversation history (last 10 messages) to provide memory to Gemini
-      const historyRes = await db.query(
-        `SELECT sender, original_text FROM messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT 10`,
-        [sessionId]
-      );
-
-      // Generate response using gemini-helper
-      const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text);
-
-      // Save AI's response to DB as 'system'
-      await db.query(`
-        INSERT INTO messages (session_id, sender, original_text, translated_text, language)
-        VALUES ($1, 'system', $2, $2, 'vi')
-      `, [sessionId, aiReply]);
-
-      // Send AI response back to the customer on Facebook/WhatsApp
-      await sendMultichannelMessage(platform, senderId, aiReply, projectId);
-
-    } else {
-      // An active session is assigned to a human agent.
-      sessionId = session.id;
-      const sessionLang = session.detected_language || await gemini.detectLanguage(text);
-
-      // Save customer's message with session language
+      // Save visitor's first message
       await db.query(`
         INSERT INTO messages (session_id, sender, original_text, translated_text, language)
         VALUES ($1, 'visitor', $2, $2, $3)
       `, [sessionId, text, sessionLang]);
 
-      console.log(`Active human session found for ${platform}:${senderId} on project ${projectId}. Message saved to trigger dashboard refresh.`);
+      // Ask for email
+      const askEmailMsg = mcVerifyMsg('ask_email', sessionLang);
+      await db.query(`
+        INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+        VALUES ($1, 'system', $2, $2, $3)
+      `, [sessionId, askEmailMsg, sessionLang]);
+      await sendMultichannelMessage(platform, senderId, askEmailMsg, projectId);
+      return;
     }
+
+    // Reopen closed session (keep verify state)
+    if (session.status !== 'active') {
+      await db.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [session.id]);
+    }
+    sessionId = session.id;
+
+    // ── STATE: WAITING FOR EMAIL ────────────────────────────────────
+    if (verifyState === 'email') {
+      const emailInput = text.trim();
+      const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput);
+
+      await db.query(`
+        INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+        VALUES ($1, 'visitor', $2, $2, $3)
+      `, [sessionId, text, sessionLang]);
+
+      if (!emailValid) {
+        const errMsg = mcVerifyMsg('invalid_email', sessionLang);
+        await db.query(`
+          INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+          VALUES ($1, 'system', $2, $2, $3)
+        `, [sessionId, errMsg, sessionLang]);
+        await sendMultichannelMessage(platform, senderId, errMsg, projectId);
+        return;
+      }
+
+      // Send OTP
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      await db.query(
+        `INSERT INTO otps (email, code, expires_at) VALUES ($1, $2, $3) ON CONFLICT (email) DO UPDATE SET code = $2, expires_at = $3`,
+        [emailInput, code, expiresAt]
+      );
+      await resend.sendOTPEmail(emailInput, code);
+
+      // Update session state
+      await db.query(
+        `UPDATE sessions SET visitor_email = $1, mc_verify_state = 'otp' WHERE id = $2`,
+        [emailInput, sessionId]
+      );
+
+      const otpSentMsg = mcVerifyMsg('otp_sent', sessionLang, emailInput);
+      await db.query(`
+        INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+        VALUES ($1, 'system', $2, $2, $3)
+      `, [sessionId, otpSentMsg, sessionLang]);
+      await sendMultichannelMessage(platform, senderId, otpSentMsg, projectId);
+      return;
+    }
+
+    // ── STATE: WAITING FOR OTP ──────────────────────────────────────
+    if (verifyState === 'otp') {
+      const otpInput = text.trim().replace(/\s/g, '');
+
+      await db.query(`
+        INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+        VALUES ($1, 'visitor', $2, $2, $3)
+      `, [sessionId, text, sessionLang]);
+
+      const otpRes = await db.query(`SELECT * FROM otps WHERE email = $1`, [session.visitor_email]);
+      const otpRow = otpRes.rows[0];
+      const isValid = otpRow && otpRow.code === otpInput && new Date(otpRow.expires_at) > new Date();
+
+      if (!isValid) {
+        const errMsg = mcVerifyMsg('wrong_otp', sessionLang);
+        await db.query(`
+          INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+          VALUES ($1, 'system', $2, $2, $3)
+        `, [sessionId, errMsg, sessionLang]);
+        await sendMultichannelMessage(platform, senderId, errMsg, projectId);
+        return;
+      }
+
+      // OTP correct — mark verified
+      await db.query(`DELETE FROM otps WHERE email = $1`, [session.visitor_email]);
+      await db.query(
+        `UPDATE sessions SET is_verified = true, mc_verify_state = 'done' WHERE id = $1`,
+        [sessionId]
+      );
+
+      const verifiedMsg = mcVerifyMsg('verified', sessionLang);
+      await db.query(`
+        INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+        VALUES ($1, 'system', $2, $2, $3)
+      `, [sessionId, verifiedMsg, sessionLang]);
+      await sendMultichannelMessage(platform, senderId, verifiedMsg, projectId);
+      return;
+    }
+
+    // ── STATE: VERIFIED (done) — normal chat flow ───────────────────
+
+    // Save customer's incoming message
+    if (!sessionLang) sessionLang = await gemini.detectLanguage(text);
+    await db.query(`
+      INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+      VALUES ($1, 'visitor', $2, $2, $3)
+    `, [sessionId, text, sessionLang]);
+
+    // If a human agent is assigned, just save the message — agent handles reply
+    if (session.assigned_admin_id) {
+      console.log(`Human agent session ${sessionId}: message saved, agent handles reply.`);
+      return;
+    }
+
+    // AI Chatbot flow
+    const kbRes = await db.query(
+      `SELECT cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+      [projectId]
+    );
+    const knowledgeContext = kbRes.rows[0]?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình.";
+
+    const systemInstruction = `
+      Bạn là một trợ lý tư vấn dịch vụ và sản phẩm cực kỳ chuyên nghiệp và thân thiện.
+
+      Hãy trả lời câu hỏi của khách hàng một cách ngắn gọn, súc tích (dưới 3 câu) để hiển thị tốt nhất trên thiết bị di động.
+      Giao tiếp bằng ngôn ngữ mà khách hàng đang sử dụng.
+
+      Dưới đây là TOÀN BỘ CƠ SỞ TRI THỨC được lấy từ trang web chính thức của chúng tôi. CHỈ trả lời dựa trên tài liệu này, không tự bịa thông tin:
+
+      === CƠ SỞ TRI THỨC CHÍNH THỨC ===
+      ${knowledgeContext}
+      === HẾT CƠ SỞ TRI THỨC ===
+
+      Nếu thông tin khách hỏi nằm ngoài cơ sở tri thức trên, hãy khéo léo phản hồi: "Dạ, thông tin này em xin phép ghi nhận để chuyển cho nhân viên hỗ trợ trực tiếp tư vấn kỹ hơn cho anh/chị nhé!" và đề xuất chuyển gặp nhân viên.
+    `;
+
+    const historyRes = await db.query(
+      `SELECT sender, original_text FROM messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT 10`,
+      [sessionId]
+    );
+
+    const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text);
+
+    await db.query(`
+      INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+      VALUES ($1, 'system', $2, $2, $3)
+    `, [sessionId, aiReply, sessionLang]);
+
+    await sendMultichannelMessage(platform, senderId, aiReply, projectId);
   } catch (error) {
     console.error('Webhook processing error:', error);
   }
