@@ -433,11 +433,28 @@ async function handleLogin() {
 // ----------------------------------------------------
 
 function initDashboard() {
+    loadAdminProfile();
     fetchSessions();
-    
-    // Start polling sessions every 7 seconds
     if (pollInterval) clearInterval(pollInterval);
     pollInterval = setInterval(fetchSessions, 7000);
+}
+
+async function loadAdminProfile() {
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/me`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const nameEl = document.getElementById('admin-profile-name');
+        const avatarEl = document.getElementById('admin-profile-avatar');
+        const badgeEl = document.getElementById('admin-profile-badge');
+        const manageBtn = document.getElementById('manage-admins-btn');
+        if (nameEl) nameEl.textContent = data.full_name || data.username;
+        if (avatarEl) avatarEl.textContent = (data.full_name || data.username || 'A')[0].toUpperCase();
+        if (badgeEl) badgeEl.style.display = 'flex';
+        if (manageBtn && data.role === 'superadmin') manageBtn.classList.remove('hide');
+    } catch (e) {
+        console.error('Failed to load admin profile:', e);
+    }
 }
 
 async function fetchSessions() {
@@ -949,15 +966,15 @@ async function sendMessage(e) {
     renderAdminMessages(false);
 
     try {
-        const response = await fetch(`${API_BASE}/api/chats/message`, {
+        const response = await authFetch(`${API_BASE}/api/chats/message`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 sessionId: currentSessionId,
                 sender: 'agent',
                 text,
-                targetLang: currentDetectedLang, // translate Vietnamese text into the visitor's language
-                adminLang: currentLang // lock the conversation language on first response
+                targetLang: currentDetectedLang,
+                adminLang: currentLang
             })
         });
 
@@ -1365,4 +1382,130 @@ async function saveChannelConfig(e) {
 applyTranslations(currentLang);
 
 // Auto login verify on load
+// --- ADMIN USER MANAGEMENT ---
+const adminMgmtModal = document.getElementById('admin-management-modal');
+const manageAdminsBtn = document.getElementById('manage-admins-btn');
+const adminMgmtCloseTopBtn = document.getElementById('admin-mgmt-close-top-btn');
+const adminMgmtCloseBtn = document.getElementById('admin-mgmt-close-btn');
+const adminUserForm = document.getElementById('admin-user-form');
+const adminListContainer = document.getElementById('admin-list-container');
+
+if (manageAdminsBtn) manageAdminsBtn.addEventListener('click', openAdminMgmt);
+if (adminMgmtCloseTopBtn) adminMgmtCloseTopBtn.addEventListener('click', closeAdminMgmt);
+if (adminMgmtCloseBtn) adminMgmtCloseBtn.addEventListener('click', closeAdminMgmt);
+if (adminUserForm) adminUserForm.addEventListener('submit', handleAdminUserSubmit);
+
+const adminFormId = document.getElementById('admin-form-id');
+const adminFormFullname = document.getElementById('admin-form-fullname');
+const adminFormUsername = document.getElementById('admin-form-username');
+const adminFormPassword = document.getElementById('admin-form-password');
+const adminFormRole = document.getElementById('admin-form-role');
+const adminFormActive = document.getElementById('admin-form-active');
+const adminFormStatusGroup = document.getElementById('admin-form-status-group');
+const adminFormTitle = document.getElementById('admin-form-title');
+const adminFormSubmitBtn = document.getElementById('admin-form-submit-btn');
+const adminFormCancelBtn = document.getElementById('admin-form-cancel-btn');
+if (adminFormCancelBtn) adminFormCancelBtn.addEventListener('click', resetAdminForm);
+
+function openAdminMgmt() {
+    if (adminMgmtModal) adminMgmtModal.classList.remove('hide');
+    loadAdminUsers();
+    resetAdminForm();
+}
+
+function closeAdminMgmt() {
+    if (adminMgmtModal) adminMgmtModal.classList.add('hide');
+}
+
+async function loadAdminUsers() {
+    if (!adminListContainer) return;
+    adminListContainer.innerHTML = '<p style="color:var(--text-secondary);font-size:13px;">Đang tải...</p>';
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/users`);
+        const users = await res.json();
+        if (!Array.isArray(users)) { adminListContainer.innerHTML = '<p style="color:red;font-size:12px;">Lỗi tải danh sách.</p>'; return; }
+        adminListContainer.innerHTML = users.map(u => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:rgba(255,255,255,0.04);border-radius:8px;border:1px solid rgba(255,255,255,0.07);">
+                <div>
+                    <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${escapeHtml(u.full_name)} <span style="font-size:11px;color:var(--text-secondary);">(${escapeHtml(u.username)})</span></div>
+                    <div style="font-size:11px;color:${u.role==='superadmin'?'var(--warning-color)':'var(--accent-color)'};">${u.role} · ${u.is_active ? '✓ Hoạt động' : '✗ Vô hiệu'}</div>
+                </div>
+                <div style="display:flex;gap:6px;">
+                    <button onclick="editAdminUser(${u.id})" style="padding:4px 10px;border-radius:6px;background:rgba(99,102,241,0.15);color:var(--accent-color);border:1px solid rgba(99,102,241,0.3);cursor:pointer;font-size:12px;">Sửa</button>
+                    <button onclick="deleteAdminUser(${u.id})" style="padding:4px 10px;border-radius:6px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.3);cursor:pointer;font-size:12px;">Xóa</button>
+                </div>
+            </div>
+        `).join('');
+    } catch(e) {
+        adminListContainer.innerHTML = '<p style="color:red;font-size:12px;">Lỗi kết nối.</p>';
+    }
+}
+
+function resetAdminForm() {
+    if (!adminUserForm) return;
+    adminUserForm.reset();
+    if (adminFormId) adminFormId.value = '';
+    if (adminFormTitle) adminFormTitle.textContent = 'Thêm nhân viên mới';
+    if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-user-add-line"></i> Lưu nhân viên';
+    if (adminFormCancelBtn) adminFormCancelBtn.style.display = 'none';
+    if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'none';
+    const pwLabel = document.getElementById('admin-form-password-label');
+    if (pwLabel) pwLabel.textContent = 'Mật khẩu';
+}
+
+async function editAdminUser(id) {
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/users`);
+        const users = await res.json();
+        const u = users.find(x => x.id === id);
+        if (!u) return;
+        if (adminFormId) adminFormId.value = u.id;
+        if (adminFormFullname) adminFormFullname.value = u.full_name;
+        if (adminFormUsername) adminFormUsername.value = u.username;
+        if (adminFormPassword) adminFormPassword.value = '';
+        if (adminFormRole) adminFormRole.value = u.role;
+        if (adminFormActive) adminFormActive.checked = u.is_active;
+        if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'flex';
+        if (adminFormTitle) adminFormTitle.textContent = 'Chỉnh sửa nhân viên';
+        if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-save-line"></i> Cập nhật';
+        if (adminFormCancelBtn) adminFormCancelBtn.style.display = 'inline-flex';
+        const pwLabel = document.getElementById('admin-form-password-label');
+        if (pwLabel) pwLabel.textContent = 'Mật khẩu mới (để trống nếu không đổi)';
+    } catch(e) { console.error(e); }
+}
+
+async function deleteAdminUser(id) {
+    if (!confirm('Xác nhận xóa tài khoản này?')) return;
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/users/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (res.ok) { loadAdminUsers(); }
+        else { alert('Lỗi: ' + (data.error || 'Không thể xóa.')); }
+    } catch(e) { alert('Lỗi kết nối.'); }
+}
+
+async function handleAdminUserSubmit(e) {
+    e.preventDefault();
+    const id = adminFormId ? adminFormId.value : '';
+    const payload = {
+        username: adminFormUsername?.value.trim(),
+        password: adminFormPassword?.value.trim(),
+        full_name: adminFormFullname?.value.trim(),
+        role: adminFormRole?.value,
+        is_active: adminFormActive?.checked ?? true
+    };
+    try {
+        const url = id ? `${API_BASE}/api/admin/users/${id}` : `${API_BASE}/api/admin/users`;
+        const method = id ? 'PUT' : 'POST';
+        const res = await authFetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok) { resetAdminForm(); loadAdminUsers(); }
+        else { alert('Lỗi: ' + (data.error || 'Không thể lưu.')); }
+    } catch(e) { alert('Lỗi kết nối.'); }
+}
+
 verifyAuthAndInit();
