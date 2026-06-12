@@ -138,9 +138,19 @@ Không bao quanh JSON bằng các khối mã markdown.`;
  * @param {string} userMessage The latest user message.
  * @returns {Promise<string>}
  */
-async function generateChatbotResponse(systemInstruction, history, userMessage) {
+const CHATBOT_FALLBACK = {
+  vi: 'Xin lỗi, hệ thống đang xử lý. Nhân viên sẽ hỗ trợ bạn sớm nhất!',
+  en: 'Sorry, our system is processing. A support agent will assist you shortly!',
+  ru: 'Извините, система обрабатывает запрос. Оператор свяжется с вами в ближайшее время!',
+  zh: '抱歉，系统正在处理中。客服人员将尽快与您联系！',
+};
+
+async function generateChatbotResponse(systemInstruction, history, userMessage, lang = 'vi') {
+  const fallback = CHATBOT_FALLBACK[lang] || CHATBOT_FALLBACK['en'];
+
   if (!ai) {
-    return 'Xin lỗi, hệ thống AI Chatbot hiện đang bảo trì. Nhân viên hỗ trợ sẽ liên hệ bạn sớm nhất!';
+    console.error('[Gemini] GEMINI_API_KEY not configured.');
+    return fallback;
   }
 
   try {
@@ -149,28 +159,18 @@ async function generateChatbotResponse(systemInstruction, history, userMessage) 
       systemInstruction: systemInstruction
     });
 
-    // Format chat history for Gemini API contents
     const contents = [];
-    
     for (let msg of history) {
       const role = msg.sender === 'visitor' ? 'user' : 'model';
-      contents.push({
-        role: role,
-        parts: [{ text: msg.original_text || msg.text || '' }]
-      });
+      contents.push({ role, parts: [{ text: msg.original_text || msg.text || '' }] });
     }
-
-    // Append current user message
-    contents.push({
-      role: 'user',
-      parts: [{ text: userMessage }]
-    });
+    contents.push({ role: 'user', parts: [{ text: userMessage }] });
 
     const chatResult = await model.generateContent({ contents });
     return chatResult.response.text().trim();
   } catch (error) {
-    console.error('Error generating Gemini chatbot response:', error.message);
-    return 'Cám ơn bạn đã gửi tin nhắn. Chúng tôi đã nhận được thông tin và sẽ phản hồi sớm nhất!';
+    console.error('[Gemini] generateChatbotResponse error:', error.message, '| status:', error.status);
+    return fallback;
   }
 }
 

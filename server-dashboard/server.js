@@ -659,7 +659,8 @@ app.post('/api/chats/message', async (req, res) => {
         );
 
         // Generate response using gemini-helper (slice to exclude the visitor's message we just inserted)
-        const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text);
+        const visitorLang = sessionRes.rows[0]?.detected_language || 'vi';
+        const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text, visitorLang);
 
         // Save AI reply as system sender
         const aiMsgRes = await db.query(
@@ -2037,7 +2038,7 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
       [sessionId]
     );
 
-    const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text);
+    const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text, finalLang);
 
     await db.query(`
       INSERT INTO messages (session_id, sender, original_text, translated_text, language)
