@@ -1934,12 +1934,11 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
         if (profile?.name) visitorName = profile.name;
         if (profile?.avatarUrl) visitorAvatar = profile.avatarUrl;
       }
-      sessionLang = await gemini.detectLanguage(text);
       sessionId = `mc-${platform}-${randomUUID()}`;
       await db.query(`
         INSERT INTO sessions (id, project_id, visitor_name, visitor_avatar, detected_language, status, platform, platform_sender_id, is_verified, show_in_dashboard)
-        VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, true, false)
-      `, [sessionId, projectId, visitorName, visitorAvatar, sessionLang, platform, senderId]);
+        VALUES ($1, $2, $3, $4, null, 'active', $5, $6, true, false)
+      `, [sessionId, projectId, visitorName, visitorAvatar, platform, senderId]);
     } else {
       if (session.status !== 'active') {
         await db.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [session.id]);
@@ -1961,15 +1960,15 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
       }
     }
 
-    // Detect / update session language
-    if (!sessionLang) {
-      sessionLang = await gemini.detectLanguage(text);
-      await db.query(`UPDATE sessions SET detected_language = $1 WHERE id = $2`, [sessionLang, sessionId]);
-    }
-
-    // Dịch tin nhắn visitor sang tiếng Việt cho admin đọc
+    // Dịch + detect ngôn ngữ trong 1 call duy nhất
     const { translatedText, detectedLang } = await gemini.translateText(text, 'vi');
-    const finalLang = detectedLang || sessionLang;
+    const finalLang = detectedLang || sessionLang || 'vi';
+
+    // Lưu ngôn ngữ detect được vào session nếu chưa có
+    if (!sessionLang) {
+      await db.query(`UPDATE sessions SET detected_language = $1 WHERE id = $2`, [finalLang, sessionId]);
+      sessionLang = finalLang;
+    }
 
     // Lưu tin nhắn visitor
     await db.query(`
