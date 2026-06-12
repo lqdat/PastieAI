@@ -59,7 +59,11 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 
 const fs = require('fs');
 
@@ -1743,8 +1747,40 @@ app.get('/api/multichannel/webhook', async (req, res) => {
   return res.sendStatus(400);
 });
 
+// Middleware to verify Meta Webhook signature (security check)
+function verifyMetaSignature(req, res, next) {
+  const signature = req.headers['x-hub-signature-256'];
+  const appSecret = process.env.META_APP_SECRET;
+
+  // If App Secret is not configured, we skip signature verification (dev fallback)
+  if (!appSecret) {
+    console.warn('WARNING: META_APP_SECRET is not configured in .env. Skipping webhook signature verification.');
+    return next();
+  }
+
+  if (!signature) {
+    console.error('Signature verification failed: Missing x-hub-signature-256 header.');
+    return res.status(401).send('Missing signature');
+  }
+
+  const parts = signature.split('=');
+  const signatureHash = parts[1];
+
+  const expectedHash = crypto
+    .createHmac('sha256', appSecret)
+    .update(req.rawBody || '')
+    .digest('hex');
+
+  if (signatureHash !== expectedHash) {
+    console.error('Signature verification failed: Hashes mismatch.');
+    return res.status(401).send('Invalid signature');
+  }
+
+  next();
+}
+
 // Incoming message handling (POST)
-app.post('/api/multichannel/webhook', async (req, res) => {
+app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
   // Always respond 200 OK immediately to Meta to acknowledge receipt and prevent retries
   res.sendStatus(200);
 

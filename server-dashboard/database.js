@@ -94,9 +94,12 @@ async function initializeDatabase() {
     await query(`
       CREATE TABLE IF NOT EXISTS channel_configs (
         project_id VARCHAR(100) PRIMARY KEY,
+        platform VARCHAR(20) DEFAULT 'whatsapp',
         fb_page_id VARCHAR(100),
+        messenger_page_id VARCHAR(100),
         messenger_page_access_token TEXT,
         ig_page_id VARCHAR(100),
+        instagram_page_id VARCHAR(100),
         instagram_access_token TEXT,
         whatsapp_phone_number_id VARCHAR(100),
         whatsapp_access_token TEXT,
@@ -104,6 +107,12 @@ async function initializeDatabase() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // Migration: Add columns to channel_configs if they do not exist
+    await query(`ALTER TABLE channel_configs ADD COLUMN IF NOT EXISTS platform VARCHAR(20) DEFAULT 'whatsapp';`);
+    await query(`ALTER TABLE channel_configs ADD COLUMN IF NOT EXISTS messenger_page_id VARCHAR(100);`);
+    await query(`ALTER TABLE channel_configs ADD COLUMN IF NOT EXISTS instagram_page_id VARCHAR(100);`);
+
 
     // Create messages table
     await query(`
