@@ -4,6 +4,7 @@ dist/
 
 # Environment secrets
 .env
+CREDENTIALS.md
 
 # System files
 .DS_Store
