@@ -13,6 +13,37 @@ const swaggerJsdoc = require('swagger-jsdoc');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ── Anti-spam: rate limit AI calls per session ────────────────────────────────
+const aiRateLimit = new Map(); // sessionId → { count, windowStart }
+const AI_RATE_MAX = 10;        // max AI responses per window
+const AI_RATE_WINDOW = 2 * 60 * 1000; // 2-minute window
+const AI_TEXT_MAX_LEN = 500;   // max chars sent to Gemini
+
+function isAiRateLimited(sessionId) {
+  const now = Date.now();
+  const entry = aiRateLimit.get(sessionId) || { count: 0, windowStart: now };
+  if (now - entry.windowStart > AI_RATE_WINDOW) {
+    aiRateLimit.set(sessionId, { count: 1, windowStart: now });
+    return false;
+  }
+  entry.count++;
+  aiRateLimit.set(sessionId, entry);
+  if (entry.count > AI_RATE_MAX) {
+    console.warn(`[RateLimit] Session ${sessionId}: ${entry.count} AI calls in 2min — skipping.`);
+    return true;
+  }
+  return false;
+}
+
+// Clean up stale entries every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - AI_RATE_WINDOW * 3;
+  for (const [key, val] of aiRateLimit.entries()) {
+    if (val.windowStart < cutoff) aiRateLimit.delete(key);
+  }
+}, 5 * 60 * 1000);
+// ─────────────────────────────────────────────────────────────────────────────
+
 // --- Swagger Configuration ---
 const swaggerOptions = {
   definition: {
@@ -623,53 +654,76 @@ app.post('/api/chats/message', async (req, res) => {
 
     // AI CHATBOT: If visitor sends a message and no human agent has taken over yet, auto-respond using the Knowledge Base!
     if (sender === 'visitor') {
-      const agentMsgCheck = await db.query(
-        "SELECT id FROM messages WHERE session_id = $1 AND sender = 'agent' LIMIT 1",
-        [sessionId]
-      );
-      const isHumanAgentActive = agentMsgCheck.rows.length > 0;
+      const sessionData = sessionRes.rows[0];
+      const visitorLang = sessionData?.detected_language || 'vi';
 
-      if (!isHumanAgentActive) {
-        // Load latest knowledge base context
-        const kbRes = await db.query(
-          `SELECT cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 1`,
-          [sessionRes.rows[0].project_id]
-        );
-        const knowledgeContext = kbRes.rows[0]?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình cho thương hiệu Pastie.";
+      // Keyword detection: visitor wants to speak to a human agent
+      const AGENT_KEYWORDS = /\b(cskh|gặp cskh|gap cskh|chăm sóc|cham soc|nhân viên|nhan vien|agent|support|tư vấn|tu van|gặp người|gap nguoi|người thật|nguoi that|con người|con nguoi|speak to|talk to|human|help me|trực tiếp|truc tiep|kết nối|ket noi)\b/i;
+      const wantsAgent = AGENT_KEYWORDS.test(text);
 
-        const systemInstruction = `
-          Bạn là một trợ lý tư vấn dịch vụ du lịch và phòng nghỉ cao cấp cực kỳ chuyên nghiệp và thân thiện của thương hiệu Pastie.
-          
-          Hãy trả lời các câu hỏi của khách hàng một cách ngắn gọn, súc tích (dưới 3 câu) để hiển thị tốt nhất trên thiết bị di động.
-          Giao tiếp bằng chính ngôn ngữ mà khách hàng đang sử dụng.
-          
-          Dưới đây là TOÀN BỘ CƠ SỞ TRI THỨC được lấy từ trang web chính thức của chúng tôi. CHỈ trả lời dựa trên tài liệu này, không tự bịa thông tin:
-          
-          === CƠ SỞ TRI THỨC CHÍNH THỨC ===
-          ${knowledgeContext}
-          === HẾT CƠ SỞ TRI THỨC ===
-          
-          Nếu thông tin khách hỏi nằm ngoài cơ sở tri thức trên, hãy khéo léo từ chối và đề xuất chuyển gặp nhân viên hỗ trợ trực tiếp.
-        `;
-
-        // Get conversation history (last 10 turns)
-        const historyRes = await db.query(
-          `SELECT sender, original_text FROM messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT 10`,
-          [sessionId]
-        );
-
-        // Generate response using gemini-helper (slice to exclude the visitor's message we just inserted)
-        const visitorLang = sessionRes.rows[0]?.detected_language || 'vi';
-        const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text, visitorLang);
-
-        // Save AI reply as system sender
+      if (wantsAgent && !sessionData.requested_agent) {
+        // Flag session so AI won't respond from now on
+        await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
+        const transferMsgs = {
+          vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳',
+          en: 'Connecting you with a support agent, please hold on ⏳',
+          ru: 'Соединяем вас с оператором поддержки, подождите ⏳',
+          zh: '正在为您连接客服人员，请稍候 ⏳',
+        };
+        const transferMsg = transferMsgs[visitorLang] || transferMsgs['vi'];
         const aiMsgRes = await db.query(
-          `INSERT INTO messages (session_id, sender, original_text, translated_text, language) 
-           VALUES ($1, 'system', $2, $2, 'vi') RETURNING *`,
-          [sessionId, aiReply]
+          `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+           VALUES ($1, 'system', $2, $2, $3) RETURNING *`,
+          [sessionId, transferMsg, visitorLang]
         );
         aiReplyMsg = aiMsgRes.rows[0];
+      } else if (!wantsAgent && !sessionData.requested_agent) {
+        // Only run AI if agent hasn't taken over and user hasn't requested agent
+        const agentMsgCheck = await db.query(
+          "SELECT id FROM messages WHERE session_id = $1 AND sender = 'agent' LIMIT 1",
+          [sessionId]
+        );
+        const isHumanAgentActive = agentMsgCheck.rows.length > 0;
+
+        if (!isHumanAgentActive) {
+          const kbRes = await db.query(
+            `SELECT cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+            [sessionData.project_id]
+          );
+          const knowledgeContext = kbRes.rows[0]?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình cho thương hiệu Pastie.";
+
+          const systemInstruction = `
+            Bạn là một trợ lý tư vấn dịch vụ du lịch và phòng nghỉ cao cấp cực kỳ chuyên nghiệp và thân thiện của thương hiệu Pastie.
+
+            Hãy trả lời các câu hỏi của khách hàng một cách ngắn gọn, súc tích (dưới 3 câu) để hiển thị tốt nhất trên thiết bị di động.
+            Giao tiếp bằng chính ngôn ngữ mà khách hàng đang sử dụng.
+
+            Dưới đây là TOÀN BỘ CƠ SỞ TRI THỨC được lấy từ trang web chính thức của chúng tôi. CHỈ trả lời dựa trên tài liệu này, không tự bịa thông tin:
+
+            === CƠ SỞ TRI THỨC CHÍNH THỨC ===
+            ${knowledgeContext}
+            === HẾT CƠ SỞ TRI THỨC ===
+
+            Nếu thông tin khách hỏi nằm ngoài cơ sở tri thức trên, hãy khéo léo từ chối và đề xuất chuyển gặp nhân viên hỗ trợ trực tiếp.
+          `;
+
+          const historyRes = await db.query(
+            `SELECT sender, original_text FROM messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT 10`,
+            [sessionId]
+          );
+
+          if (isAiRateLimited(sessionId)) return res.json({ success: true, message: msgRes.rows[0], aiReply: null });
+          const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text.substring(0, AI_TEXT_MAX_LEN), visitorLang);
+
+          const aiMsgRes = await db.query(
+            `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+             VALUES ($1, 'system', $2, $2, $3) RETURNING *`,
+            [sessionId, aiReply, visitorLang]
+          );
+          aiReplyMsg = aiMsgRes.rows[0];
+        }
       }
+      // If requested_agent = true and not wantsAgent → skip AI silently (wait for human)
     }
 
     res.json({
@@ -1979,7 +2033,7 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
     await db.query(`UPDATE sessions SET detected_language = $1 WHERE id = $2`, [finalLang, sessionId]);
 
     // ── DETECT: khách muốn gặp nhân viên → hiện lên dashboard ───────
-    const wantsAgent = /\b(nhân viên|nhan vien|agent|support|tư vấn|tu van|gặp người|gap nguoi|người thật|con người|speak to|talk to|human|help me|trực tiếp|truc tiep)\b/i.test(text);
+    const wantsAgent = /\b(cskh|gặp cskh|gap cskh|chăm sóc|cham soc|nhân viên|nhan vien|agent|support|tư vấn|tu van|gặp người|gap nguoi|người thật|nguoi that|con người|con nguoi|speak to|talk to|human|help me|trực tiếp|truc tiep|kết nối|ket noi)\b/i.test(text);
 
     if (wantsAgent && session?.show_in_dashboard === false) {
       await db.query(`UPDATE sessions SET show_in_dashboard = true WHERE id = $1`, [sessionId]);
@@ -2037,7 +2091,8 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
       [sessionId]
     );
 
-    const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text, finalLang);
+    if (isAiRateLimited(sessionId)) return;
+    const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text.substring(0, AI_TEXT_MAX_LEN), finalLang);
 
     await db.query(`
       INSERT INTO messages (session_id, sender, original_text, translated_text, language)
