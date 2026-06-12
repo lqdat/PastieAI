@@ -234,6 +234,7 @@ let adminIsLoadingMore = false;
 // DOM Elements
 const loginModal = document.getElementById('login-modal');
 const mainDashboard = document.getElementById('main-dashboard');
+const usernameInput = document.getElementById('admin-username-input');
 const passwordInput = document.getElementById('admin-password-input');
 const loginBtn = document.getElementById('login-btn');
 const loginErrorMsg = document.getElementById('login-error-msg');
@@ -350,6 +351,12 @@ function getToken() {
     return localStorage.getItem('pastie_admin_token') || '';
 }
 
+function authFetch(url, options = {}) {
+    const token = getToken();
+    const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${token}` };
+    return fetch(url, { ...options, headers });
+}
+
 async function verifyAuthAndInit() {
     const token = getToken();
     if (!token) {
@@ -358,11 +365,14 @@ async function verifyAuthAndInit() {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/api/admin/chats?token=${encodeURIComponent(token)}`);
+        const response = await fetch(`${API_BASE}/api/admin/chats`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         if (response.status === 200) {
             hideLogin();
             initDashboard();
         } else {
+            localStorage.removeItem('pastie_admin_token');
             showLogin();
         }
     } catch (e) {
@@ -384,8 +394,9 @@ function hideLogin() {
 }
 
 async function handleLogin() {
+    const username = usernameInput ? usernameInput.value.trim() : 'admin';
     const password = passwordInput.value.trim();
-    if (!password) return;
+    if (!username || !password) return;
 
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
 
@@ -394,13 +405,19 @@ async function handleLogin() {
     loginErrorMsg.style.display = 'none';
 
     try {
-        const response = await fetch(`${API_BASE}/api/admin/chats?token=${encodeURIComponent(password)}`);
-        if (response.status === 200) {
-            localStorage.setItem('pastie_admin_token', password);
+        const response = await fetch(`${API_BASE}/api/admin/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        const data = await response.json();
+        if (response.ok && data.token) {
+            localStorage.setItem('pastie_admin_token', data.token);
             hideLogin();
             initDashboard();
         } else {
             loginErrorMsg.style.display = 'block';
+            loginErrorMsg.textContent = data.error || (dict.loginError || 'Tài khoản hoặc mật khẩu không hợp lệ.');
             passwordInput.value = '';
         }
     } catch (e) {
@@ -424,9 +441,8 @@ function initDashboard() {
 }
 
 async function fetchSessions() {
-    const token = getToken();
     try {
-        const response = await fetch(`${API_BASE}/api/admin/chats?token=${encodeURIComponent(token)}&_=${Date.now()}`);
+        const response = await authFetch(`${API_BASE}/api/admin/chats?_=${Date.now()}`);
         if (response.status === 401) {
             showLogin();
             return;
@@ -737,7 +753,6 @@ async function selectSession(sessionId) {
 }
 
 async function loadMessages(sessionId, isLoadMore = false) {
-    const token = getToken();
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
 
     let fetchLimit = adminLimit;
@@ -750,7 +765,7 @@ async function loadMessages(sessionId, isLoadMore = false) {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/api/admin/chats/${sessionId}/messages?token=${encodeURIComponent(token)}&adminLang=${currentLang}&limit=${fetchLimit}&offset=${fetchOffset}&_=${Date.now()}`);
+        const response = await authFetch(`${API_BASE}/api/admin/chats/${sessionId}/messages?adminLang=${currentLang}&limit=${fetchLimit}&offset=${fetchOffset}&_=${Date.now()}`);
         const fetchedMessages = await response.json();
 
         if (!Array.isArray(fetchedMessages)) return;
@@ -1027,8 +1042,7 @@ async function deleteActiveSession() {
     deleteSessionBtn.innerHTML = `<i class="ri-loader-4-line"></i> ...`;
 
     try {
-        const token = getToken();
-        const response = await fetch(`${API_BASE}/api/admin/chats/${currentSessionId}?token=${encodeURIComponent(token)}`, {
+        const response = await authFetch(`${API_BASE}/api/admin/chats/${currentSessionId}`, {
             method: 'DELETE'
         });
         const data = await response.json();
@@ -1053,8 +1067,6 @@ function handleExport(format) {
     const token = getToken();
     const projectId = projectFilter.value;
     const url = `${API_BASE}/api/admin/export?format=${format}&projectId=${encodeURIComponent(projectId)}&token=${encodeURIComponent(token)}`;
-    
-    // Open in new window to trigger browser download dialog
     window.open(url, '_blank');
 }
 
@@ -1158,10 +1170,9 @@ if (kbSaveManualBtn) {
 
 async function openKnowledgeModal() {
     knowledgeModal.classList.remove('hide');
-    const token = getToken();
     const projectId = 'pastie-landingpage';
     try {
-        const response = await fetch(`${API_BASE}/api/admin/knowledge?projectId=${projectId}&token=${encodeURIComponent(token)}`);
+        const response = await authFetch(`${API_BASE}/api/admin/knowledge?projectId=${projectId}`);
         const data = await response.json();
         if (data.source_url) {
             kbUrlInput.value = data.source_url === 'manual' ? 'https://pastie-landingpage.vercel.app' : data.source_url;
@@ -1189,13 +1200,12 @@ async function syncKnowledgeFromUrl() {
         return;
     }
 
-    const token = getToken();
     kbSyncBtn.disabled = true;
     kbSyncBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang đồng bộ...`;
     kbSyncStatus.innerHTML = `<i class="ri-loader-4-line ri-spin" style="color: var(--accent-color);"></i> <span>Đang kết nối & cào dữ liệu từ ${url}...</span>`;
 
     try {
-        const response = await fetch(`${API_BASE}/api/admin/knowledge/sync?token=${encodeURIComponent(token)}`, {
+        const response = await authFetch(`${API_BASE}/api/admin/knowledge/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url, projectId: 'pastie-landingpage' })
@@ -1225,12 +1235,11 @@ async function saveKnowledgeManual() {
         return;
     }
 
-    const token = getToken();
     kbSaveManualBtn.disabled = true;
     kbSaveManualBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang lưu...`;
 
     try {
-        const response = await fetch(`${API_BASE}/api/admin/knowledge/manual?token=${encodeURIComponent(token)}`, {
+        const response = await authFetch(`${API_BASE}/api/admin/knowledge/manual`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ cleanedContent: text, projectId: 'pastie-landingpage' })
@@ -1286,10 +1295,9 @@ if (channelPlatformSelect) {
 
 async function openChannelModal() {
     channelModal.classList.remove('hide');
-    const token = getToken();
     const projectId = 'pastie-landingpage';
     try {
-        const response = await fetch(`${API_BASE}/api/admin/channels?projectId=${projectId}&token=${encodeURIComponent(token)}`);
+        const response = await authFetch(`${API_BASE}/api/admin/channels?projectId=${projectId}`);
         const data = await response.json();
         if (data.config) {
             const config = data.config;
@@ -1316,7 +1324,6 @@ function closeChannelModal() {
 
 async function saveChannelConfig(e) {
     e.preventDefault();
-    const token = getToken();
     const saveBtn = document.getElementById('channel-save-btn');
     saveBtn.disabled = true;
     saveBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang lưu...`;
@@ -1334,7 +1341,7 @@ async function saveChannelConfig(e) {
     };
     
     try {
-        const response = await fetch(`${API_BASE}/api/admin/channels?token=${encodeURIComponent(token)}`, {
+        const response = await authFetch(`${API_BASE}/api/admin/channels`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
