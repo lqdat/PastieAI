@@ -1723,8 +1723,8 @@ function parseWebhookEvent(body) {
  * @openapi
  * /api/multichannel/webhook:
  *   get:
- *     summary: Xác thực Webhook Meta (Facebook/Instagram/WhatsApp)
- *     description: Endpoint để Meta xác minh webhook. Hỗ trợ verify token qua env META_VERIFY_TOKEN hoặc bảng channel_configs (multi-project).
+ *     summary: Xac thuc Webhook Meta (Facebook/Instagram/WhatsApp)
+ *     description: Meta goi endpoint nay de xac minh webhook. Ho tro verify token qua env META_VERIFY_TOKEN hoac bang channel_configs.
  *     tags:
  *       - Multi-channel Webhook
  *     parameters:
@@ -1748,19 +1748,14 @@ function parseWebhookEvent(body) {
  *           example: chal_12345
  *     responses:
  *       200:
- *         description: Xác thực thành công, trả về hub.challenge
- *         content:
- *           text/plain:
- *             schema:
- *               type: string
- *               example: chal_12345
+ *         description: Xac thuc thanh cong, tra ve hub.challenge
  *       403:
- *         description: Token không khớp
+ *         description: Token khong khop
  *       400:
- *         description: Thiếu tham số bắt buộc
+ *         description: Thieu tham so bat buoc
  *   post:
- *     summary: Nhận tin nhắn từ Meta (Facebook Messenger / Instagram / WhatsApp)
- *     description: Nhận sự kiện webhook từ Meta. Nếu chưa có agent thì Gemini AI tự trả lời, nếu đang có agent thì lưu vào DB cho dashboard.
+ *     summary: Nhan tin nhan tu Meta (Messenger / Instagram / WhatsApp)
+ *     description: Nhan su kien webhook tu Meta. Tu dong phan luong Gemini AI hoac human agent.
  *     tags:
  *       - Multi-channel Webhook
  *     security:
@@ -1775,32 +1770,15 @@ function parseWebhookEvent(body) {
  *               object:
  *                 type: string
  *                 enum: [whatsapp_business_account, page, instagram]
- *                 example: whatsapp_business_account
  *               entry:
  *                 type: array
  *                 items:
  *                   type: object
- *             example:
- *               object: whatsapp_business_account
- *               entry:
- *                 - id: "123456789"
- *                   changes:
- *                     - value:
- *                         messaging_product: whatsapp
- *                         metadata:
- *                           phone_number_id: "987654321"
- *                         messages:
- *                           - from: "84901234567"
- *                             id: "wamid.xxx"
- *                             text:
- *                               body: "Xin chào!"
- *                             type: text
- *                       field: messages
  *     responses:
  *       200:
- *         description: Đã nhận sự kiện (luôn trả về 200 để Meta không retry)
+ *         description: Da nhan su kien (luon tra ve 200 de Meta khong retry)
  *       401:
- *         description: Signature không hợp lệ hoặc thiếu header x-hub-signature-256
+ *         description: Signature khong hop le
  */
 // Verification Webhook for Meta (GET)
 app.get('/api/multichannel/webhook', async (req, res) => {
