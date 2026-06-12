@@ -573,34 +573,49 @@ function renderSessionsList(sessions) {
 
         const statusText = session.status === 'active' ? dict.statusActive : dict.statusClosed;
 
-        const browserVal = session.browser || 'Chrome';
-        const deviceVal = session.device || 'Desktop';
-        const browserIcon = getBrowserIcon(browserVal);
-        const deviceIcon = getDeviceIcon(deviceVal);
+        const isMC = session.platform && session.platform !== 'widget';
 
         const avatarHtml = session.visitor_avatar
             ? `<img src="${session.visitor_avatar}" class="visitor-avatar-img" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
               + `<div class="visitor-avatar-initials" style="display:none">${(session.visitor_name || '?')[0].toUpperCase()}</div>`
             : `<div class="visitor-avatar-initials">${(session.visitor_name || '?')[0].toUpperCase()}</div>`;
 
-        const platformIcon = session.platform === 'messenger' ? 'ri-messenger-fill'
-            : session.platform === 'instagram' ? 'ri-instagram-fill'
-            : session.platform === 'whatsapp' ? 'ri-whatsapp-fill' : '';
+        const platformMeta = {
+            messenger: { icon: 'ri-messenger-fill',  label: 'Messenger', color: '#4267B2' },
+            instagram: { icon: 'ri-instagram-fill',  label: 'Instagram', color: '#C13584' },
+            whatsapp:  { icon: 'ri-whatsapp-fill',   label: 'WhatsApp',  color: '#25D366' },
+        };
+        const pm = platformMeta[session.platform] || null;
+
+        const avatarBadge = pm
+            ? `<i class="${pm.icon} visitor-platform-badge" style="color:${pm.color}"></i>`
+            : '';
+
+        let metaFooterRight = '';
+        if (isMC && pm) {
+            metaFooterRight = `<span class="session-platform-tag" style="color:${pm.color};background:${pm.color}22;border:1px solid ${pm.color}44;">
+                <i class="${pm.icon}"></i> ${pm.label}
+            </span>`;
+        } else {
+            const browserVal = session.browser || 'Chrome';
+            const deviceVal  = session.device  || 'Desktop';
+            metaFooterRight = `<span class="session-client-meta">
+                <i class="${getBrowserIcon(browserVal)}" title="Trình duyệt: ${browserVal}"></i>
+                <i class="${getDeviceIcon(deviceVal)}" title="Thiết bị: ${deviceVal}"></i>
+            </span>`;
+        }
 
         card.innerHTML = `
             <div class="session-card-header">
-                <div class="visitor-avatar-wrap">${avatarHtml}${platformIcon ? `<i class="${platformIcon} visitor-platform-badge"></i>` : ''}</div>
+                <div class="visitor-avatar-wrap">${avatarHtml}${avatarBadge}</div>
                 <div class="session-card-info">
-                    <span class="session-name" title="${session.visitor_name}">${session.visitor_name}</span>
+                    <span class="session-name" title="${session.visitor_name || ''}">${session.visitor_name || 'Khách hàng'}</span>
                     <span class="session-status-badge ${session.status}">${statusText}</span>
                 </div>
             </div>
             <div class="session-meta-footer">
                 <span class="session-project" title="${session.project_id}">${session.project_id}</span>
-                <span class="session-client-meta">
-                    <i class="${browserIcon}" title="Trình duyệt: ${browserVal}"></i>
-                    <i class="${deviceIcon}" title="Thiết bị: ${deviceVal}"></i>
-                </span>
+                ${metaFooterRight}
                 <span>${dateStr}</span>
             </div>
         `;
