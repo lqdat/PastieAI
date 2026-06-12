@@ -2147,7 +2147,7 @@ app.post('/api/admin/channels', checkAdminAuth, async (req, res) => {
   } = req.body;
 
   try {
-    const existsRes = await db.query('SELECT id FROM channel_configs WHERE project_id = $1 LIMIT 1', [projectId]);
+    const existsRes = await db.query('SELECT project_id FROM channel_configs WHERE project_id = $1 LIMIT 1', [projectId]);
     
     if (existsRes.rows.length > 0) {
       await db.query(`
