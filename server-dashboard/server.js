@@ -53,7 +53,7 @@ const swaggerOptions = {
 };
 
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
-app.use('/api', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 
 // Catch uncaught exceptions and unhandled rejections to prevent server from crashing
@@ -2208,6 +2208,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`-----------------------------------------------------`);
   console.log(`Pastie AI Chat Server is running on port ${PORT}`);
   console.log(`Admin Dashboard: http://localhost:${PORT}/admin`);
+  console.log(`API Docs:        http://localhost:${PORT}/docs`);
   console.log(`-----------------------------------------------------`);
   console.log(`[Env Configuration Check]`);
   console.log(`- DATABASE_URL: ${process.env.DATABASE_URL ? 'LOADED (Configured)' : 'MISSING ❌'}`);
