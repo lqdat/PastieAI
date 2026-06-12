@@ -159,11 +159,28 @@ async function generateChatbotResponse(systemInstruction, history, userMessage, 
       systemInstruction: systemInstruction
     });
 
-    const contents = [];
+    const raw = [];
     for (let msg of history) {
       const role = msg.sender === 'visitor' ? 'user' : 'model';
-      contents.push({ role, parts: [{ text: msg.original_text || msg.text || '' }] });
+      const text = (msg.original_text || msg.text || '').trim();
+      if (!text) continue;
+      raw.push({ role, text });
     }
+
+    // Gemini requires strictly alternating user/model turns starting with user.
+    // Merge consecutive same-role messages and drop leading model turns.
+    const merged = [];
+    for (const item of raw) {
+      if (merged.length > 0 && merged[merged.length - 1].role === item.role) {
+        merged[merged.length - 1].text += '\n' + item.text;
+      } else {
+        merged.push({ ...item });
+      }
+    }
+    // Must start with user
+    while (merged.length > 0 && merged[0].role !== 'user') merged.shift();
+
+    const contents = merged.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
     contents.push({ role: 'user', parts: [{ text: userMessage }] });
 
     const chatResult = await model.generateContent({ contents });
