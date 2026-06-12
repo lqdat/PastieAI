@@ -53,7 +53,7 @@ const swaggerOptions = {
 };
 
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use('/api', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 
 // Catch uncaught exceptions and unhandled rejections to prevent server from crashing
@@ -163,7 +163,11 @@ app.use(express.static(path.join(__dirname, '../widget')));
 
 // Redirect root path to admin dashboard
 app.get('/', (req, res) => {
-  res.redirect('/admin.html');
+  res.redirect('/admin');
+});
+
+app.get('/admin', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 
@@ -2203,7 +2207,7 @@ app.post('/api/admin/channels', checkAdminAuth, async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`-----------------------------------------------------`);
   console.log(`Pastie AI Chat Server is running on port ${PORT}`);
-  console.log(`Admin Dashboard: http://localhost:${PORT}/admin.html`);
+  console.log(`Admin Dashboard: http://localhost:${PORT}/admin`);
   console.log(`-----------------------------------------------------`);
   console.log(`[Env Configuration Check]`);
   console.log(`- DATABASE_URL: ${process.env.DATABASE_URL ? 'LOADED (Configured)' : 'MISSING ❌'}`);
