@@ -1931,10 +1931,11 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
     let resolvedPageToken = null;
     if (targetId) {
       const configLookup = await db.query(
-        `SELECT project_id, messenger_page_access_token, instagram_access_token FROM channel_configs
-         WHERE (platform = 'whatsapp' AND whatsapp_phone_number_id = $1)
-            OR (platform = 'messenger' AND messenger_page_id = $1)
-            OR (platform = 'instagram' AND instagram_page_id = $1)
+        `SELECT project_id, messenger_page_access_token, instagram_access_token
+         FROM channel_configs
+         WHERE whatsapp_phone_number_id = $1
+            OR messenger_page_id = $1
+            OR instagram_page_id = $1
          LIMIT 1`,
         [targetId]
       );
@@ -1942,21 +1943,9 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
         projectId = configLookup.rows[0].project_id;
         resolvedPageToken = configLookup.rows[0].messenger_page_access_token
           || configLookup.rows[0].instagram_access_token || null;
-      } else {
-        const fieldLookup = await db.query(
-          `SELECT project_id FROM channel_configs
-           WHERE whatsapp_phone_number_id = $1
-              OR messenger_page_id = $1
-              OR instagram_page_id = $1
-           LIMIT 1`,
-          [targetId]
-        );
-        if (fieldLookup.rows.length > 0) {
-          projectId = fieldLookup.rows[0].project_id;
-        }
       }
     }
-    console.log(`Mapped multi-channel targetId ${targetId} to project_id: ${projectId}`);
+    console.log(`Mapped targetId ${targetId} → project: ${projectId}, hasToken: ${!!resolvedPageToken}`);
 
     // 2. Get the most recent session for this user (any status) to check verify state
     const sessionRes = await db.query(
@@ -2011,6 +2000,19 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
       await db.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [session.id]);
     }
     sessionId = session.id;
+
+    // Update name/avatar if still default (e.g. "Facebook User") and token available
+    const isDefaultName = !session.visitor_name || session.visitor_name === 'Facebook User' || session.visitor_name === 'Instagram User';
+    if (isDefaultName && (platform === 'messenger' || platform === 'instagram') && resolvedPageToken) {
+      const profile = await fetchMessengerUserProfile(senderId, resolvedPageToken);
+      if (profile?.name) {
+        await db.query(
+          `UPDATE sessions SET visitor_name = $1, visitor_avatar = COALESCE(visitor_avatar, $2) WHERE id = $3`,
+          [profile.name, profile.avatarUrl, sessionId]
+        );
+        console.log(`Updated session ${sessionId} name to: ${profile.name}`);
+      }
+    }
 
     // ── STATE: WAITING FOR EMAIL ────────────────────────────────────
     if (verifyState === 'email') {
