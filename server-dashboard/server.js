@@ -663,6 +663,8 @@ app.post('/api/chats/message', async (req, res) => {
       const AGENT_KEYWORDS = /\b(cskh|gặp cskh|gap cskh|chăm sóc|cham soc|nhân viên|nhan vien|agent|support|tư vấn|tu van|gặp người|gap nguoi|người thật|nguoi that|con người|con nguoi|speak to|talk to|human|help me|trực tiếp|truc tiep|kết nối|ket noi|оператор|поддержка|помогите|помощь|сотрудник|консультант|связаться|человек|живой|клиентская|客服|人工|转人工|帮助|联系|工作人员|真人|支持)\b/i;
       const wantsAgent = AGENT_KEYWORDS.test(text);
 
+      console.log(`[LiveChat] Session ${sessionId} | requested_agent=${sessionData.requested_agent} | wantsAgent=${wantsAgent} | text="${text.substring(0, 50)}"`);
+
       if (wantsAgent && !sessionData.requested_agent) {
         // Flag session so AI won't respond from now on
         await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
@@ -679,6 +681,29 @@ app.post('/api/chats/message', async (req, res) => {
           [sessionId, transferMsg, visitorLang]
         );
         aiReplyMsg = aiMsgRes.rows[0];
+      } else if (sessionData.requested_agent) {
+        // Agent was requested — check if human has replied yet
+        const agentRepliedCheck = await db.query(
+          "SELECT id FROM messages WHERE session_id = $1 AND sender = 'agent' LIMIT 1",
+          [sessionId]
+        );
+        if (agentRepliedCheck.rows.length === 0) {
+          // No agent reply yet — send a waiting reminder
+          const waitMsgs = {
+            vi: 'Nhân viên đang tiếp nhận, vui lòng chờ trong giây lát ⏳',
+            en: 'An agent will be with you shortly, please hold on ⏳',
+            ru: 'Оператор уже принимает вашу заявку, подождите ⏳',
+            zh: '客服人员正在接待中，请稍候 ⏳',
+          };
+          const waitMsg = waitMsgs[visitorLang] || waitMsgs['vi'];
+          const aiMsgRes = await db.query(
+            `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+             VALUES ($1, 'system', $2, $2, $3) RETURNING *`,
+            [sessionId, waitMsg, visitorLang]
+          );
+          aiReplyMsg = aiMsgRes.rows[0];
+        }
+        // If agent has replied → true silence, agent handles it
       } else if (!wantsAgent && !sessionData.requested_agent) {
         // Only run AI if agent hasn't taken over and user hasn't requested agent
         const agentMsgCheck = await db.query(
@@ -715,7 +740,9 @@ app.post('/api/chats/message', async (req, res) => {
           );
 
           if (isAiRateLimited(sessionId)) return res.json({ success: true, message: msgRes.rows[0], aiReply: null });
+          console.log(`[LiveChat] Calling AI for session ${sessionId} | lang=${visitorLang} | KB=${kbRes.rows.length > 0 ? 'found' : 'empty'}`);
           const rawAiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text.substring(0, AI_TEXT_MAX_LEN), visitorLang);
+          console.log(`[LiveChat] AI reply for ${sessionId}: "${rawAiReply?.substring(0, 80)}"`);
 
           // Detect [TRANSFER] → auto set requested_agent flag
           let finalAiReply = rawAiReply;
@@ -731,9 +758,10 @@ app.post('/api/chats/message', async (req, res) => {
             [sessionId, finalAiReply, visitorLang]
           );
           aiReplyMsg = aiMsgRes.rows[0];
+        } else {
+          console.log(`[LiveChat] Session ${sessionId}: human agent active, skipping AI.`);
         }
       }
-      // If requested_agent = true and not wantsAgent → skip AI silently (wait for human)
     }
 
     res.json({
