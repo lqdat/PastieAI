@@ -18,21 +18,28 @@ const GROQ_MODEL = 'llama-3.3-70b-versatile';
 async function groqChat(systemPrompt, historyMerged, userMessage) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
   const messages = [
-    { role: 'system', content: systemPrompt },
+    { role: 'system', content: systemPrompt.substring(0, 6000) }, // cap system prompt to avoid context overflow
     ...historyMerged.map(m => ({
       role: m.role === 'model' ? 'assistant' : 'user',
       content: m.text
     })),
     { role: 'user', content: userMessage }
   ];
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: GROQ_MODEL, messages, max_tokens: 512, temperature: 0.7 })
-  });
-  const data = await res.json();
-  if (!data.choices?.[0]?.message?.content) throw new Error(JSON.stringify(data.error || data));
-  return data.choices[0].message.content.trim();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: GROQ_MODEL, messages, max_tokens: 512, temperature: 0.7 }),
+      signal: controller.signal
+    });
+    const data = await res.json();
+    if (!data.choices?.[0]?.message?.content) throw new Error(JSON.stringify(data.error || data));
+    return data.choices[0].message.content.trim();
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 // ─────────────────────────────────────────────────────────────────────────────
 

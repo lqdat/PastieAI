@@ -717,7 +717,8 @@ app.post('/api/chats/message', async (req, res) => {
             `SELECT cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 1`,
             [sessionData.project_id]
           );
-          const knowledgeContext = kbRes.rows[0]?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình cho thương hiệu Pastie.";
+          const rawKb = kbRes.rows[0]?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình cho thương hiệu Pastie.";
+          const knowledgeContext = rawKb.substring(0, 4000); // cap KB to prevent context overflow
 
           const systemInstruction = `
             Bạn là một trợ lý tư vấn dịch vụ du lịch và phòng nghỉ cao cấp cực kỳ chuyên nghiệp và thân thiện của thương hiệu Pastie.
