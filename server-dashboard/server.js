@@ -2157,12 +2157,9 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
       return;
     }
 
-    // ── Nếu agent đã trả lời → bỏ qua AI ───────────────────────────────
-    const agentMsgCheck = await db.query(
-      `SELECT id FROM messages WHERE session_id = $1 AND sender = 'agent' LIMIT 1`, [sessionId]
-    );
-    if (agentMsgCheck.rows.length > 0) {
-      console.log(`[MC] Human agent active for ${platform}:${senderId} — skipping AI.`);
+    // ── Đã chuyển sang agent → bỏ qua AI hoàn toàn ────────────────────
+    if (session?.show_in_dashboard === true) {
+      console.log(`[MC] Session ${sessionId} already transferred to agent — skipping AI.`);
       return;
     }
 
