@@ -189,6 +189,8 @@ setTimeout(seedSuperAdmin, 2500);
 
 // Serving admin dashboard statically from 'public' folder
 app.use(express.static(path.join(__dirname, 'public')));
+app.get('/privacy-policy', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
+app.get('/terms', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
 // Serve widget files statically (as a fallback)
 app.use(express.static(path.join(__dirname, '../widget')));
 
