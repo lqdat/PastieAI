@@ -2453,6 +2453,36 @@ app.post('/api/admin/channels', checkAdminAuth, async (req, res) => {
 });
 
 
+// ── Debug: test AI endpoint ───────────────────────────────────────────────────
+app.get('/api/test-ai', async (req, res) => {
+  const msg = req.query.msg || 'xin chào';
+  const start = Date.now();
+  try {
+    const reply = await gemini.generateChatbotResponse(
+      'Bạn là trợ lý AI của Pastie. Hãy trả lời ngắn gọn bằng tiếng Việt.',
+      [],
+      msg,
+      'vi'
+    );
+    res.json({ ok: true, reply, ms: Date.now() - start, groq_key: process.env.GROQ_API_KEY ? 'SET' : 'MISSING' });
+  } catch (e) {
+    res.json({ ok: false, error: e.message, ms: Date.now() - start });
+  }
+});
+
+// ── Debug: check session state ────────────────────────────────────────────────
+app.get('/api/debug/session/:sessionId', async (req, res) => {
+  try {
+    const s = await db.query('SELECT id, project_id, status, requested_agent, show_in_dashboard, detected_language, platform FROM sessions WHERE id = $1', [req.params.sessionId]);
+    if (s.rows.length === 0) return res.json({ error: 'session not found' });
+    const msgs = await db.query("SELECT sender, LEFT(original_text,50) as text FROM messages WHERE session_id = $1 ORDER BY created_at DESC LIMIT 5", [req.params.sessionId]);
+    res.json({ session: s.rows[0], last_messages: msgs.rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Start Server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`-----------------------------------------------------`);
@@ -2463,6 +2493,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Env Configuration Check]`);
   console.log(`- DATABASE_URL: ${process.env.DATABASE_URL ? 'LOADED (Configured)' : 'MISSING ❌'}`);
   console.log(`- GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? 'LOADED (Configured)' : 'MISSING ❌'}`);
+  console.log(`- GROQ_API_KEY: ${process.env.GROQ_API_KEY ? 'LOADED (Configured)' : 'MISSING ❌'}`);
   console.log(`- RESEND_API_KEY: ${process.env.RESEND_API_KEY ? 'LOADED (Configured)' : 'MISSING ❌'}`);
   console.log(`- SENDER_EMAIL: ${process.env.SENDER_EMAIL ? `LOADED (${process.env.SENDER_EMAIL})` : 'MISSING (Using onboarding@resend.dev fallback) ⚠️'}`);
   console.log(`-----------------------------------------------------`);
