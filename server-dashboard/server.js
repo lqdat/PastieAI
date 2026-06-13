@@ -706,7 +706,7 @@ app.post('/api/chats/message', async (req, res) => {
             ${knowledgeContext}
             === HẾT CƠ SỞ TRI THỨC ===
 
-            Nếu thông tin khách hỏi nằm ngoài cơ sở tri thức trên, hãy khéo léo từ chối và đề xuất chuyển gặp nhân viên hỗ trợ trực tiếp.
+            QUY TẮC BẮT BUỘC: Nếu câu hỏi nằm ngoài cơ sở tri thức trên, BẮT BUỘC bắt đầu câu trả lời bằng "[TRANSFER]" rồi mới viết nội dung. Ví dụ: "[TRANSFER] Câu hỏi này cần nhân viên hỗ trợ trực tiếp, vui lòng chờ trong giây lát ⏳"
           `;
 
           const historyRes = await db.query(
@@ -715,12 +715,20 @@ app.post('/api/chats/message', async (req, res) => {
           );
 
           if (isAiRateLimited(sessionId)) return res.json({ success: true, message: msgRes.rows[0], aiReply: null });
-          const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text.substring(0, AI_TEXT_MAX_LEN), visitorLang);
+          const rawAiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text.substring(0, AI_TEXT_MAX_LEN), visitorLang);
+
+          // Detect [TRANSFER] → auto set requested_agent flag
+          let finalAiReply = rawAiReply;
+          if (rawAiReply.startsWith('[TRANSFER]')) {
+            finalAiReply = rawAiReply.replace('[TRANSFER]', '').trim();
+            await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
+            console.log(`[LiveChat] AI cannot answer → auto-flagged session ${sessionId} for agent transfer.`);
+          }
 
           const aiMsgRes = await db.query(
             `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
              VALUES ($1, 'system', $2, $2, $3) RETURNING *`,
-            [sessionId, aiReply, visitorLang]
+            [sessionId, finalAiReply, visitorLang]
           );
           aiReplyMsg = aiMsgRes.rows[0];
         }
@@ -2175,7 +2183,7 @@ IMPORTANT: You MUST reply in ${replyLangName} only.
 ${knowledgeContext}
 === END OF KNOWLEDGE BASE ===
 
-If the question is outside the knowledge base, politely suggest speaking with a human support agent.`;
+CRITICAL RULE: If the customer's question cannot be answered using the knowledge base above, you MUST start your reply with exactly "[TRANSFER]" followed by a polite message telling them a human agent will assist them. Example: "[TRANSFER] Câu hỏi này cần nhân viên hỗ trợ trực tiếp, vui lòng chờ trong giây lát ⏳"`;
 
     const historyRes = await db.query(
       `SELECT sender, original_text FROM messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT 10`,
@@ -2183,8 +2191,18 @@ If the question is outside the knowledge base, politely suggest speaking with a 
     );
 
     if (isAiRateLimited(sessionId)) return;
-    const aiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text.substring(0, AI_TEXT_MAX_LEN), finalLang);
-    await sendAndSave(aiReply);
+    const rawAiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text.substring(0, AI_TEXT_MAX_LEN), finalLang);
+
+    // Detect [TRANSFER] marker → auto transfer to agent
+    if (rawAiReply.startsWith('[TRANSFER]')) {
+      const aiReply = rawAiReply.replace('[TRANSFER]', '').trim();
+      await db.query(`UPDATE sessions SET show_in_dashboard = true WHERE id = $1`, [sessionId]);
+      console.log(`[MC] AI cannot answer → auto-transferred session ${sessionId} to dashboard.`);
+      await sendAndSave(aiReply);
+      return;
+    }
+
+    await sendAndSave(rawAiReply);
 
   } catch (error) {
     console.error('Webhook processing error:', error);
