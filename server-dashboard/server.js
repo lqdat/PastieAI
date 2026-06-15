@@ -2578,6 +2578,20 @@ app.get('/api/debug/session/:sessionId', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// ── Debug: check KB content ───────────────────────────────────────────────────
+app.get('/api/debug/kb', async (req, res) => {
+  try {
+    const projectId = req.query.project || 'pastie-landingpage';
+    const kb = await db.query(
+      'SELECT project_id, source_url, updated_at, LENGTH(cleaned_content) as content_len, LEFT(cleaned_content, 500) as preview FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 1',
+      [projectId]
+    );
+    if (kb.rows.length === 0) return res.json({ found: false, project_id: projectId });
+    res.json({ found: true, ...kb.rows[0] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Start Server
