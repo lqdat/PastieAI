@@ -48,7 +48,7 @@ async function translateText(text, targetLang) {
   // 1. Try Gemini
   if (ai) {
     try {
-      const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const targetLangName = { vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese' }[targetLang.toLowerCase()] || targetLang;
       const prompt = `You are a real-time chat translator. Translate the following text into ${targetLangName}.
 Input text: "${text}"
@@ -124,7 +124,7 @@ Không bao quanh JSON bằng các khối mã markdown.`;
 
   if (ai) {
     try {
-      const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const result = await model.generateContent(prompt);
       return tryParse(result.response.text().trim());
     } catch (error) {
@@ -206,7 +206,7 @@ async function detectLanguage(text) {
   if (!text?.trim()) return 'en';
   try {
     if (ai) {
-      const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const prompt = `Detect the language of the following text. Return ONLY a 2-letter ISO 639-1 language code (e.g. "vi", "en", "ru", "zh"). No explanation, just the code.\n\nText: "${text.substring(0, 200)}"`;
       const result = await model.generateContent(prompt);
       const lang = result.response.text().trim().toLowerCase().replace(/[^a-z]/g, '');
