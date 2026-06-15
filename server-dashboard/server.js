@@ -2318,32 +2318,55 @@ CRITICAL RULE: If the customer's question cannot be answered using the knowledge
 
 
 function cleanHtmlToText(html) {
-  // 1. Remove script and style tags completely
-  let text = html.replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, '');
-  text = text.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, '');
-  
-  // 2. Replace heading and block tags with newlines to preserve structural spacing
-  text = text.replace(/<\/h[1-6]>/gi, '\n');
-  text = text.replace(/<\/p>/gi, '\n');
-  text = text.replace(/<\/div>/gi, '\n');
-  text = text.replace(/<br\s*\/?>/gi, '\n');
-  text = text.replace(/<li>/gi, '\n- ');
-  
-  // 3. Remove all other HTML tags
+  let text = html;
+  // Remove noise elements entirely
+  text = text.replace(/<(script|style|nav|header|footer|aside|noscript|iframe|svg|form|button)[^>]*>([\s\S]*?)<\/\1>/gi, '');
+  text = text.replace(/<(script|style|nav|header|footer|aside)[^>]*\/>/gi, '');
+  // Block tags → newlines
+  text = text.replace(/<\/?(h[1-6]|p|div|section|article|li|tr|br)[^>]*>/gi, '\n');
+  // Strip remaining tags
   text = text.replace(/<[^>]+>/g, ' ');
-  
-  // 4. Decode common HTML entities
-  text = text.replace(/&nbsp;/gi, ' ')
-             .replace(/&amp;/gi, '&')
-             .replace(/&lt;/gi, '<')
-             .replace(/&gt;/gi, '>')
-             .replace(/&quot;/gi, '"')
-             .replace(/&#39;/gi, "'");
-
-  // 5. Compress spacing and newlines
-  text = text.replace(/[ \t]+/g, ' '); // Horizontal spaces
-  text = text.replace(/\n\s*\n+/g, '\n\n'); // Multiple newlines
+  // Decode entities
+  text = text.replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+             .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'");
+  // Remove lines that are just icons, arrows, short nav words (< 4 chars or pure symbols)
+  text = text.split('\n').filter(line => {
+    const t = line.trim();
+    return t.length > 4 && !/^[→←↑↓▶►•·–—\-–\/\\|<>{}[\]()#*@]+$/.test(t);
+  }).join('\n');
+  text = text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n');
   return text.trim();
+}
+
+async function extractKBWithAI(roughText, sourceUrl) {
+  const prompt = `Bạn là chuyên gia trích xuất nội dung website cho hệ thống chatbot AI.
+
+Dưới đây là nội dung text được lấy từ trang web: ${sourceUrl}
+
+NHIỆM VỤ: Trích xuất CHỈ những thông tin hữu ích để trả lời câu hỏi của khách hàng:
+- Mô tả dịch vụ / sản phẩm
+- Bảng giá, gói dịch vụ
+- Thông tin liên hệ, địa chỉ, email, số điện thoại
+- FAQ / câu hỏi thường gặp
+- Về chúng tôi, lịch sử, đội ngũ
+- Tính năng nổi bật
+
+LOẠI BỎ HOÀN TOÀN: menu điều hướng, tên button, copyright, social links, "Bắt đầu", "Đăng nhập", icon text, cookie notice, loading text.
+
+Viết lại dưới dạng cấu trúc rõ ràng dùng ## cho tiêu đề, - cho bullet points. Ngắn gọn, xúc tích.
+
+NỘI DUNG WEB:
+"""
+${roughText.substring(0, 10000)}
+"""`;
+
+  try {
+    const result = await gemini.generateChatbotResponse('Bạn là chuyên gia xử lý nội dung. Chỉ trả về nội dung được yêu cầu, không giải thích.', [], prompt, 'vi');
+    return result || roughText.substring(0, 6000);
+  } catch (e) {
+    console.warn('[KB] AI extraction failed, using rough text:', e.message);
+    return roughText.substring(0, 6000);
+  }
 }
 
 // 4. GET Knowledge Base status & text
@@ -2384,11 +2407,14 @@ app.post('/api/admin/knowledge/sync', checkAdminAuth, async (req, res) => {
     }
 
     const html = await response.text();
-    const cleanedContent = cleanHtmlToText(html);
+    const roughText = cleanHtmlToText(html);
 
-    if (cleanedContent.length < 50) {
+    if (roughText.length < 50) {
       return res.status(400).json({ error: 'Nội dung trang web quá ngắn hoặc không thể cào được văn bản hữu ích.' });
     }
+
+    // Use AI to extract only business-relevant content
+    const cleanedContent = await extractKBWithAI(roughText, url);
 
     // Upsert record
     const existsRes = await db.query('SELECT id FROM knowledge_base WHERE project_id = $1 LIMIT 1', [projectId]);
