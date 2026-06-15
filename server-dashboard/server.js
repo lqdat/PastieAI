@@ -490,9 +490,22 @@ app.post('/api/otp/verify', async (req, res) => {
     }
 
     await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, assigned_admin_id) 
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, assigned_admin_id)
        VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8)`,
       [sessionId, projectId, finalName, email, finalLang, browser, device, assignedAdminId]
+    );
+
+    // Insert AI greeting message
+    const greetings = {
+      vi: `Xin chào ${finalName}! 👋 Tôi là trợ lý AI của Pastie. Bạn cần hỗ trợ gì?`,
+      en: `Hello ${finalName}! 👋 I'm Pastie's AI assistant. How can I help you today?`,
+      ru: `Здравствуйте, ${finalName}! 👋 Я ИИ-ассистент Pastie. Чем могу помочь вам?`,
+      zh: `您好，${finalName}！👋 我是Pastie的AI助手，很高兴为您服务！有什么可以帮助您？`,
+    };
+    const greetingText = greetings[finalLang] || greetings['vi'];
+    await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'agent', $2, $2, $3)`,
+      [sessionId, greetingText, finalLang]
     );
 
     res.json({ success: true, sessionId, name: finalName });

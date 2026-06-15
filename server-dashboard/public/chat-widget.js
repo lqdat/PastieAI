@@ -21,8 +21,12 @@
     let state = {
         isOpen: false,
         step: 'chat',
-        // 'ai' = anonymous AI chat | 'init' = OTP form | 'otp' = OTP code | 'human' = human agent
-        mode: sessionStorage.getItem('pastie_chat_session_id') ? 'human' : 'ai',
+        // 'init' = OTP form | 'otp' = OTP code | 'ai' = verified AI chat | 'human' = human agent
+        mode: (function() {
+            const sid = sessionStorage.getItem('pastie_chat_session_id');
+            if (!sid) return 'init';
+            return sessionStorage.getItem('pastie_chat_mode') || 'ai';
+        })(),
         sessionId: sessionStorage.getItem('pastie_chat_session_id') || null,
         visitorName: sessionStorage.getItem('pastie_chat_visitor_name') || '',
         visitorEmail: sessionStorage.getItem('pastie_chat_visitor_email') || '',
@@ -47,8 +51,8 @@
         vi: {
             headerTitle: 'Hỗ Trợ Trực Tuyến',
             headerStatus: 'Đang hoạt động • AI song ngữ',
-            initTitle: 'Kết nối nhân viên',
-            initDesc: 'Vui lòng điền thông tin để kết nối trực tiếp với nhân viên hỗ trợ của chúng tôi.',
+            initTitle: 'Bắt đầu trò chuyện',
+            initDesc: 'Vui lòng điền tên và email của bạn để bắt đầu chat với AI hỗ trợ của chúng tôi.',
             initNameLabel: 'Họ tên của bạn',
             initNamePlaceholder: 'Nguyễn Văn A...',
             initEmailLabel: 'Địa chỉ Email',
@@ -87,8 +91,8 @@
         en: {
             headerTitle: 'Live Support',
             headerStatus: 'Online • Bilingual AI',
-            initTitle: 'Connect with Agent',
-            initDesc: 'Please fill in your information to connect with our support team.',
+            initTitle: 'Start a Conversation',
+            initDesc: 'Please enter your name and email to start chatting with our AI assistant.',
             initNameLabel: 'Your Name',
             initNamePlaceholder: 'John Doe...',
             initEmailLabel: 'Email Address',
@@ -127,8 +131,8 @@
         ru: {
             headerTitle: 'Живая Поддержка',
             headerStatus: 'Онлайн • Двуязычный ИИ',
-            initTitle: 'Связаться с оператором',
-            initDesc: 'Пожалуйста, заполните форму для связи с нашей службой поддержки.',
+            initTitle: 'Начать разговор',
+            initDesc: 'Пожалуйста, введите ваше имя и email, чтобы начать чат с нашим ИИ-ассистентом.',
             initNameLabel: 'Ваше имя',
             initNamePlaceholder: 'Иван Иванов...',
             initEmailLabel: 'Электронная почта',
@@ -167,8 +171,8 @@
         zh: {
             headerTitle: '在线支持',
             headerStatus: '在线 • 双语 AI',
-            initTitle: '联系客服',
-            initDesc: '请填写您的信息以直接联系我们的客服团队。',
+            initTitle: '开始对话',
+            initDesc: '请输入您的姓名和邮箱，开始与我们的AI助手对话。',
             initNameLabel: '您的姓名',
             initNamePlaceholder: '张三...',
             initEmailLabel: '电子邮件',
@@ -396,13 +400,12 @@
         if (!btn) return;
         const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
 
-        if (state.mode === 'ai') {
+        if (state.mode === 'ai' && state.sessionId) {
             btn.className = 'pastie-chat-header-action-btn meet-cskh';
             btn.textContent = t.btnMeetCSKH || 'Gặp CSKH';
             btn.style.display = 'block';
             btn.onclick = () => {
                 state.requestingAgent = true;
-                if (!state.isOpen) toggleChatWindow();
                 switchView('init');
             };
         } else if (state.mode === 'human' && state.sessionId) {
@@ -430,21 +433,24 @@
             });
         } catch(e) {}
 
-        // Clear session, switch back to fresh AI mode
+        // Clear session, go back to init form
         state.sessionId = null;
-        state.mode = 'ai';
+        state.mode = 'init';
         state.messages = [];
         state.lastMessageCount = 0;
         state.offset = 0;
         state.hasMore = true;
         state.requestingAgent = false;
+        state.visitorName = '';
+        state.visitorEmail = '';
         sessionStorage.removeItem('pastie_chat_session_id');
+        sessionStorage.removeItem('pastie_chat_mode');
         sessionStorage.removeItem('pastie_chat_visitor_name');
         sessionStorage.removeItem('pastie_chat_visitor_email');
         stopPolling();
 
         if (btn) btn.disabled = false;
-        switchView('chat');
+        switchView('init');
         updateHeaderActionButton();
     }
 
@@ -458,6 +464,10 @@
         };
         Object.values(views).forEach(v => { if (v) v.classList.add('pastie-chat-hide'); });
         if (views[step]) views[step].classList.remove('pastie-chat-hide');
+
+        // Show "Back to AI" only when escalating from existing session
+        const backBtn = document.getElementById('btn-back-to-ai');
+        if (backBtn) backBtn.style.display = (state.requestingAgent && state.sessionId) ? 'block' : 'none';
 
         if (step === 'chat') {
             if (state.sessionId) {
@@ -493,16 +503,12 @@
             if (miniEl) miniEl.classList.remove('show');
 
             // Decide which view to show
-            if (state.mode === 'human' && state.sessionId) {
+            if (state.sessionId && (state.mode === 'ai' || state.mode === 'human')) {
                 switchView('chat');
-            } else if (state.mode === 'init') {
-                switchView('init');
             } else if (state.mode === 'otp') {
                 switchView('otp');
             } else {
-                // 'ai' mode — show chat directly
-                state.mode = 'ai';
-                switchView('chat');
+                switchView('init');
             }
             updateHeaderActionButton();
         } else {
@@ -559,27 +565,6 @@
     }
 
     // --- API Network Calls ---
-
-    // Create anonymous session (no OTP, for immediate AI chat)
-    async function createAnonymousSession() {
-        try {
-            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/anonymous`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, visitorLang: state.detectedLang || 'vi' })
-            });
-            const data = await res.json();
-            if (data.success && data.sessionId) {
-                state.sessionId = data.sessionId;
-                sessionStorage.setItem('pastie_chat_session_id', data.sessionId);
-                startPolling();
-                return data.sessionId;
-            }
-        } catch(e) {
-            console.error('Failed to create anonymous session:', e);
-        }
-        return null;
-    }
 
     // Send OTP for GẶP CSKH flow
     async function sendOTP() {
@@ -660,6 +645,7 @@
                 if (res.ok && data.success) {
                     state.mode = 'human';
                     state.requestingAgent = false;
+                    sessionStorage.setItem('pastie_chat_mode', 'human');
                     switchView('chat');
                     loadMessageHistory();
                 } else {
@@ -681,10 +667,11 @@
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
-                    state.mode = 'human';
+                    state.mode = 'ai';
                     state.sessionId = data.sessionId;
                     state.requestingAgent = false;
                     sessionStorage.setItem('pastie_chat_session_id', data.sessionId);
+                    sessionStorage.setItem('pastie_chat_mode', 'ai');
                     switchView('chat');
                 } else {
                     errorEl.textContent = data.error || t.otpErrorInvalid;
@@ -718,14 +705,8 @@
         if (!text) return;
         inputEl.value = '';
 
-        // In 'ai' mode: auto-create anonymous session if not exists
-        if (state.mode === 'ai' && !state.sessionId) {
-            const newSessionId = await createAnonymousSession();
-            if (!newSessionId) {
-                console.error('[Widget] Failed to create anonymous session');
-                return;
-            }
-        }
+        // Must have a session (created via OTP) before sending
+        if (!state.sessionId) return;
 
         if ((state.mode === 'ai' || state.mode === 'human') && state.sessionId) {
             // Add temp message to show immediately
@@ -1014,11 +995,12 @@
         if (submitInitBtn) submitInitBtn.addEventListener('click', sendOTP);
         if (submitOtpBtn) submitOtpBtn.addEventListener('click', verifyOTP);
         if (resendOtpBtn) resendOtpBtn.addEventListener('click', sendOTP);
-        if (backToAiBtn) backToAiBtn.addEventListener('click', () => {
-            state.requestingAgent = false;
-            state.mode = state.sessionId ? 'ai' : 'ai';
-            switchView('chat');
-        });
+        if (backToAiBtn) {
+            backToAiBtn.addEventListener('click', () => {
+                state.requestingAgent = false;
+                switchView('chat');
+            });
+        }
 
         // Chat form
         const chatForm = document.getElementById('pastie-chat-form');
@@ -1045,13 +1027,12 @@
             }
         });
 
-        // Initial state: go straight to chat view
+        // Initial state
         if (state.sessionId) {
-            state.mode = 'human';
+            switchView('chat'); // existing session → chat
         } else {
-            state.mode = 'ai';
+            switchView('init'); // no session → show form first
         }
-        switchView('chat');
         updateHeaderActionButton();
 
         // Hash listener
