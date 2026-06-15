@@ -731,7 +731,7 @@ app.post('/api/chats/message', async (req, res) => {
             [sessionData.project_id]
           );
           const rawKb = kbRes.rows[0]?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình cho thương hiệu Pastie.";
-          const knowledgeContext = rawKb.substring(0, 4000); // cap KB to prevent context overflow
+          const knowledgeContext = rawKb.substring(0, 8000);
 
           const systemInstruction = `
             Bạn là một trợ lý tư vấn dịch vụ du lịch và phòng nghỉ cao cấp cực kỳ chuyên nghiệp và thân thiện của thương hiệu Pastie.
@@ -2387,6 +2387,29 @@ app.get('/api/admin/knowledge', checkAdminAuth, async (req, res) => {
   }
 });
 
+// Helper: fetch page content using Jina AI Reader (handles JS/SPA sites)
+async function fetchWithJina(url) {
+  const jinaUrl = `https://r.jina.ai/${url}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(jinaUrl, {
+      headers: {
+        'Accept': 'text/plain',
+        'X-Return-Format': 'markdown',
+        'X-With-Images-Summary': 'false',
+        'X-With-Links-Summary': 'false'
+      },
+      signal: controller.signal
+    });
+    if (!res.ok) throw new Error(`Jina HTTP ${res.status}`);
+    const text = await res.text();
+    return text;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // 5. POST Knowledge Base sync from URL
 app.post('/api/admin/knowledge/sync', checkAdminAuth, async (req, res) => {
   const { url, projectId = 'pastie-landingpage' } = req.body;
@@ -2395,50 +2418,60 @@ app.post('/api/admin/knowledge/sync', checkAdminAuth, async (req, res) => {
   }
 
   try {
-    console.log(`Bắt đầu cào dữ liệu tri thức tự động từ: ${url}`);
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
-    });
+    console.log(`[KB] Syncing from: ${url}`);
+    let rawText = '';
+    let fetchMethod = 'jina';
 
-    if (!response.ok) {
-      return res.status(response.status).json({ error: `Không thể tải trang web. Mã lỗi HTTP: ${response.status}` });
+    // 1. Try Jina AI Reader first (handles SPA/JS-rendered sites)
+    try {
+      rawText = await fetchWithJina(url);
+      console.log(`[KB] Jina fetch OK: ${rawText.length} chars`);
+    } catch (jinaErr) {
+      console.warn(`[KB] Jina failed (${jinaErr.message}), falling back to direct fetch`);
+      fetchMethod = 'direct';
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PastieBot/1.0)' },
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const html = await response.text();
+      rawText = cleanHtmlToText(html);
     }
 
-    const html = await response.text();
-    const roughText = cleanHtmlToText(html);
-
-    if (roughText.length < 50) {
-      return res.status(400).json({ error: 'Nội dung trang web quá ngắn hoặc không thể cào được văn bản hữu ích.' });
+    if (rawText.length < 100) {
+      return res.status(400).json({ error: 'Không lấy được nội dung từ trang web. Vui lòng kiểm tra URL hoặc nhập thủ công.' });
     }
 
-    // Use AI to extract only business-relevant content
-    const cleanedContent = await extractKBWithAI(roughText, url);
+    console.log(`[KB] Raw content: ${rawText.length} chars via ${fetchMethod}. Running AI extraction...`);
 
-    // Upsert record
+    // 2. AI extraction — filter to business-relevant content only
+    const cleanedContent = await extractKBWithAI(rawText, url);
+
+    console.log(`[KB] AI extracted: ${cleanedContent.length} chars`);
+
+    // 3. Upsert to database
     const existsRes = await db.query('SELECT id FROM knowledge_base WHERE project_id = $1 LIMIT 1', [projectId]);
-    
     if (existsRes.rows.length > 0) {
       await db.query(
         'UPDATE knowledge_base SET source_url = $1, raw_html = $2, cleaned_content = $3, updated_at = CURRENT_TIMESTAMP WHERE project_id = $4',
-        [url, html, cleanedContent, projectId]
+        [url, rawText.substring(0, 50000), cleanedContent, projectId]
       );
     } else {
       await db.query(
         'INSERT INTO knowledge_base (project_id, source_url, raw_html, cleaned_content) VALUES ($1, $2, $3, $4)',
-        [projectId, url, html, cleanedContent]
+        [projectId, url, rawText.substring(0, 50000), cleanedContent]
       );
     }
 
-    res.json({ 
-      success: true, 
-      message: 'Đồng bộ cơ sở tri thức từ Landing Page thành công!', 
-      characterCount: cleanedContent.length 
+    res.json({
+      success: true,
+      message: `Đồng bộ thành công qua ${fetchMethod === 'jina' ? 'Jina AI Reader' : 'direct fetch'}!`,
+      characterCount: cleanedContent.length,
+      rawLength: rawText.length
     });
   } catch (error) {
-    console.error('Knowledge sync error:', error);
-    res.status(500).json({ error: 'Lỗi hệ thống khi đồng bộ tri thức: ' + error.message });
+    console.error('[KB] Sync error:', error);
+    res.status(500).json({ error: 'Lỗi khi đồng bộ: ' + error.message });
   }
 });
 
