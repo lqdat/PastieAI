@@ -930,7 +930,75 @@ app.post('/api/chats/session/close', async (req, res) => {
   }
 });
 
-// 4b. Update Session Language
+// 4b. Create Anonymous Session (no OTP, for AI-first chat widget)
+app.post('/api/chats/session/anonymous', async (req, res) => {
+  const { projectId = 'pastie-landingpage', visitorLang = 'vi' } = req.body;
+  const sessionId = randomUUID();
+  const ua = req.headers['user-agent'] || '';
+  const { browser, device } = parseUserAgent(ua);
+
+  let assignedAdminId = null;
+  try {
+    const leastLoadRes = await db.query(`
+      SELECT a.id, a.full_name, COUNT(s.id) as active_count
+      FROM admins a
+      LEFT JOIN sessions s ON s.assigned_admin_id = a.id AND s.status = 'active'
+      WHERE a.role = 'subadmin' AND a.is_active = TRUE
+      GROUP BY a.id, a.full_name ORDER BY active_count ASC, a.id ASC LIMIT 1
+    `);
+    if (leastLoadRes.rows.length > 0) assignedAdminId = leastLoadRes.rows[0].id;
+    else {
+      const superRes = await db.query("SELECT id FROM admins WHERE role = 'superadmin' AND is_active = TRUE LIMIT 1");
+      if (superRes.rows.length > 0) assignedAdminId = superRes.rows[0].id;
+    }
+  } catch {}
+
+  try {
+    await db.query(
+      `INSERT INTO sessions (id, project_id, visitor_name, detected_language, is_verified, status, browser, device, assigned_admin_id)
+       VALUES ($1, $2, 'Khách ẩn danh', $3, FALSE, 'active', $4, $5, $6)`,
+      [sessionId, projectId, visitorLang, browser, device, assignedAdminId]
+    );
+    res.json({ success: true, sessionId });
+  } catch (error) {
+    console.error('Anonymous session create error:', error);
+    res.status(500).json({ error: 'Lỗi tạo phiên chat.' });
+  }
+});
+
+// 4c. Request Agent — OTP verify then update existing session (for GẶP CSKH from AI chat)
+app.post('/api/chats/session/request-agent', async (req, res) => {
+  const { sessionId, email, name, code } = req.body;
+  if (!sessionId || !email || !code) {
+    return res.status(400).json({ error: 'Thiếu sessionId, email hoặc code.' });
+  }
+  try {
+    const otpRes = await db.query('SELECT * FROM otps WHERE email = $1', [email]);
+    if (otpRes.rows.length === 0) return res.status(400).json({ error: 'Không tìm thấy mã OTP cho email này.' });
+    const { code: savedCode, expires_at: expiresAt } = otpRes.rows[0];
+    if (savedCode !== code) return res.status(400).json({ error: 'Mã OTP không chính xác.' });
+    if (new Date() > new Date(expiresAt)) return res.status(400).json({ error: 'Mã OTP đã hết hạn.' });
+
+    await db.query('DELETE FROM otps WHERE email = $1', [email]);
+    const finalName = name || 'Khách hàng';
+    await db.query(
+      `UPDATE sessions SET visitor_email = $1, visitor_name = $2, is_verified = TRUE, requested_agent = TRUE WHERE id = $3`,
+      [email, finalName, sessionId]
+    );
+    const lang = (await db.query('SELECT detected_language FROM sessions WHERE id = $1', [sessionId])).rows[0]?.detected_language || 'vi';
+    const waitMsgs = { vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳', en: 'Connecting you with a support agent, please hold on ⏳', ru: 'Соединяем вас с оператором, подождите ⏳', zh: '正在为您连接客服，请稍候 ⏳' };
+    await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3)`,
+      [sessionId, waitMsgs[lang] || waitMsgs['vi'], lang]
+    );
+    res.json({ success: true, sessionId, name: finalName });
+  } catch (error) {
+    console.error('Request agent error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống.' });
+  }
+});
+
+// 4d. Update Session Language
 app.post('/api/chats/session/language', async (req, res) => {
   const { sessionId, language } = req.body;
   if (!sessionId || !language) {
