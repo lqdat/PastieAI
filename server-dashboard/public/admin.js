@@ -445,11 +445,9 @@ async function loadAdminProfile() {
         if (!res.ok) return;
         const data = await res.json();
         const nameEl = document.getElementById('admin-profile-name');
-        const avatarEl = document.getElementById('admin-profile-avatar');
         const badgeEl = document.getElementById('admin-profile-badge');
         const manageBtn = document.getElementById('manage-admins-btn');
         if (nameEl) nameEl.textContent = data.full_name || data.username;
-        if (avatarEl) avatarEl.textContent = (data.full_name || data.username || 'A')[0].toUpperCase();
         if (badgeEl) badgeEl.style.display = 'flex';
         if (manageBtn && data.role === 'superadmin') manageBtn.classList.remove('hide');
     } catch (e) {
