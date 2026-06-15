@@ -1210,6 +1210,36 @@ if (detailLangSelect) {
 
 // --- AI KNOWLEDGE BASE SETTINGS DIALOG ---
 const knowledgeModal = document.getElementById('knowledge-modal');
+// --- SETTINGS DROPDOWN TOGGLE ---
+const settingsTriggerBtn = document.getElementById('settings-trigger-btn');
+const settingsDropdownMenu = document.getElementById('settings-dropdown-menu');
+if (settingsTriggerBtn) {
+    settingsTriggerBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = !settingsDropdownMenu.classList.contains('hide');
+        if (isOpen) {
+            settingsDropdownMenu.classList.add('hide');
+            settingsTriggerBtn.classList.remove('open');
+        } else {
+            settingsDropdownMenu.classList.remove('hide');
+            settingsTriggerBtn.classList.add('open');
+        }
+    });
+}
+document.addEventListener('click', (e) => {
+    if (settingsDropdownMenu && !settingsDropdownMenu.classList.contains('hide')) {
+        if (!document.getElementById('settings-dropdown-wrapper').contains(e.target)) {
+            settingsDropdownMenu.classList.add('hide');
+            settingsTriggerBtn && settingsTriggerBtn.classList.remove('open');
+        }
+    }
+});
+function closeSettingsDropdown() {
+    settingsDropdownMenu && settingsDropdownMenu.classList.add('hide');
+    settingsTriggerBtn && settingsTriggerBtn.classList.remove('open');
+}
+
+// --- AI KNOWLEDGE BASE ---
 const knowledgeSettingsBtn = document.getElementById('knowledge-settings-btn');
 const kbSyncBtn = document.getElementById('kb-sync-btn');
 const kbSaveManualBtn = document.getElementById('kb-save-manual-btn');
@@ -1219,7 +1249,7 @@ const kbTextArea = document.getElementById('kb-text-area');
 const kbSyncStatus = document.getElementById('kb-sync-status');
 
 if (knowledgeSettingsBtn) {
-    knowledgeSettingsBtn.addEventListener('click', openKnowledgeModal);
+    knowledgeSettingsBtn.addEventListener('click', () => { closeSettingsDropdown(); openKnowledgeModal(); });
 }
 if (kbCloseBtn) {
     kbCloseBtn.addEventListener('click', closeKnowledgeModal);
@@ -1235,8 +1265,11 @@ async function openKnowledgeModal() {
     knowledgeModal.classList.remove('hide');
     const projectId = 'pastie-landingpage';
     try {
-        const response = await authFetch(`${API_BASE}/api/admin/knowledge?projectId=${projectId}`);
-        const data = await response.json();
+        const [kbResp, kwResp] = await Promise.all([
+            authFetch(`${API_BASE}/api/admin/knowledge?projectId=${projectId}`),
+            authFetch(`${API_BASE}/api/admin/keywords?projectId=${projectId}`)
+        ]);
+        const data = await kbResp.json();
         if (data.source_url) {
             kbUrlInput.value = data.source_url === 'manual' ? 'https://pastie-landingpage.vercel.app' : data.source_url;
             kbTextArea.value = data.cleaned_content || '';
@@ -1247,6 +1280,9 @@ async function openKnowledgeModal() {
             kbSyncStatus.innerHTML = `<i class="ri-information-line" style="color: var(--accent-color);"></i> <span>Chưa có cơ sở dữ liệu tri thức nào được cấu hình.</span>`;
             kbTextArea.value = '';
         }
+        // Load keywords
+        const kwData = await kwResp.json();
+        renderKeywordTags(kwData.keywords || []);
     } catch (e) {
         console.error('Error fetching knowledge settings:', e);
     }
@@ -1319,8 +1355,78 @@ async function saveKnowledgeManual() {
         alert('Lỗi kết nối mạng: ' + err.message);
     } finally {
         kbSaveManualBtn.disabled = false;
-        kbSaveManualBtn.innerHTML = `<i class="ri-save-line"></i> Lưu thủ công`;
+        kbSaveManualBtn.innerHTML = `<i class="ri-save-line"></i> Lưu nội dung`;
     }
+}
+
+// --- TRANSFER KEYWORDS ---
+let currentKeywords = [];
+
+function renderKeywordTags(keywords) {
+    currentKeywords = keywords;
+    const container = document.getElementById('keyword-tags-container');
+    if (!container) return;
+    if (!keywords.length) {
+        container.innerHTML = `<span class="keyword-tag-empty" style="color:var(--text-secondary);font-size:12px;font-style:italic;">Chưa có từ khóa nào...</span>`;
+        return;
+    }
+    container.innerHTML = keywords.map((kw, i) => `
+        <span class="keyword-tag">
+            ${kw}
+            <button onclick="removeKeyword(${i})" title="Xóa"><i class="ri-close-line"></i></button>
+        </span>
+    `).join('');
+}
+
+window.removeKeyword = function(index) {
+    currentKeywords.splice(index, 1);
+    renderKeywordTags(currentKeywords);
+};
+
+const keywordInput = document.getElementById('keyword-input');
+const keywordAddBtn = document.getElementById('keyword-add-btn');
+const keywordSaveBtn = document.getElementById('keyword-save-btn');
+const keywordStatus = document.getElementById('keyword-status');
+
+function addKeyword() {
+    const val = keywordInput ? keywordInput.value.trim() : '';
+    if (!val) return;
+    if (currentKeywords.includes(val)) {
+        if (keywordStatus) keywordStatus.innerHTML = `<i class="ri-error-warning-line" style="color:#fbbf24;"></i> Từ khóa đã tồn tại`;
+        return;
+    }
+    currentKeywords.push(val);
+    renderKeywordTags(currentKeywords);
+    if (keywordInput) keywordInput.value = '';
+    if (keywordStatus) keywordStatus.innerHTML = '';
+}
+
+if (keywordAddBtn) keywordAddBtn.addEventListener('click', addKeyword);
+if (keywordInput) keywordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addKeyword(); } });
+
+if (keywordSaveBtn) {
+    keywordSaveBtn.addEventListener('click', async () => {
+        keywordSaveBtn.disabled = true;
+        keywordSaveBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang lưu...`;
+        try {
+            const res = await authFetch(`${API_BASE}/api/admin/keywords`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ keywords: currentKeywords, projectId: 'pastie-landingpage' })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                if (keywordStatus) keywordStatus.innerHTML = `<i class="ri-checkbox-circle-line" style="color:#34d399;"></i> Đã lưu ${currentKeywords.length} từ khóa`;
+            } else {
+                if (keywordStatus) keywordStatus.innerHTML = `<i class="ri-error-warning-line" style="color:#f87171;"></i> ${data.error || 'Lỗi lưu'}`;
+            }
+        } catch (e) {
+            if (keywordStatus) keywordStatus.innerHTML = `<i class="ri-error-warning-line" style="color:#f87171;"></i> Lỗi kết nối`;
+        } finally {
+            keywordSaveBtn.disabled = false;
+            keywordSaveBtn.innerHTML = `<i class="ri-save-line"></i> Lưu từ khóa`;
+        }
+    });
 }
 
 // --- META CHANNEL SETTINGS DIALOG ---
@@ -1331,7 +1437,7 @@ const channelConfigForm = document.getElementById('channel-config-form');
 const channelPlatformSelect = document.getElementById('channel-platform');
 
 if (channelSettingsBtn) {
-    channelSettingsBtn.addEventListener('click', openChannelModal);
+    channelSettingsBtn.addEventListener('click', () => { closeSettingsDropdown(); openChannelModal(); });
 }
 if (channelCloseBtn) {
     channelCloseBtn.addEventListener('click', closeChannelModal);
@@ -1436,7 +1542,7 @@ const adminMgmtCloseBtn = document.getElementById('admin-mgmt-close-btn');
 const adminUserForm = document.getElementById('admin-user-form');
 const adminListContainer = document.getElementById('admin-list-container');
 
-if (manageAdminsBtn) manageAdminsBtn.addEventListener('click', openAdminMgmt);
+if (manageAdminsBtn) manageAdminsBtn.addEventListener('click', () => { closeSettingsDropdown(); openAdminMgmt(); });
 if (adminMgmtCloseTopBtn) adminMgmtCloseTopBtn.addEventListener('click', closeAdminMgmt);
 if (adminMgmtCloseBtn) adminMgmtCloseBtn.addEventListener('click', closeAdminMgmt);
 if (adminUserForm) adminUserForm.addEventListener('submit', handleAdminUserSubmit);

@@ -946,3 +946,155 @@ button {
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* ── Admin Profile Badge ── */
+.admin-profile-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.05);
+    padding: 5px 12px 5px 6px;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.1);
+    cursor: default;
+}
+.admin-profile-badge span {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.admin-avatar-small {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: bold;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+/* ── Settings Dropdown ── */
+.settings-dropdown-wrapper {
+    position: relative;
+}
+.settings-trigger-btn {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 14px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+.settings-trigger-btn:hover {
+    background: rgba(255,255,255,0.09);
+    border-color: rgba(255,255,255,0.18);
+}
+.settings-trigger-btn .chevron-icon {
+    font-size: 16px;
+    transition: transform 0.2s ease;
+}
+.settings-trigger-btn.open .chevron-icon {
+    transform: rotate(180deg);
+}
+.settings-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 240px;
+    background: #12102a;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+    z-index: 1000;
+    padding: 8px;
+    animation: dropdownFadeIn 0.15s ease;
+}
+.settings-dropdown-menu.hide { display: none; }
+@keyframes dropdownFadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.sdm-group { padding: 2px 0; }
+.sdm-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    padding: 6px 10px 4px;
+}
+.sdm-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 10px;
+    border: none;
+    background: transparent;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    text-align: left;
+}
+.sdm-item:hover { background: rgba(255,255,255,0.07); }
+.sdm-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+}
+.sdm-text { display: flex; flex-direction: column; }
+.sdm-text span { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.sdm-text small { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
+.sdm-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.07);
+    margin: 6px 4px;
+}
+
+/* ── Keyword Tags ── */
+.keyword-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(239,68,68,0.12);
+    border: 1px solid rgba(239,68,68,0.25);
+    color: #fca5a5;
+    border-radius: 20px;
+    padding: 4px 10px 4px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    animation: tagIn 0.15s ease;
+}
+@keyframes tagIn {
+    from { opacity: 0; transform: scale(0.85); }
+    to   { opacity: 1; transform: scale(1); }
+}
+.keyword-tag button {
+    background: none;
+    border: none;
+    color: #f87171;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+}
+.keyword-tag button:hover { opacity: 1; }
+

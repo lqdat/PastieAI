@@ -726,6 +726,31 @@ app.post('/api/chats/message', async (req, res) => {
         const isHumanAgentActive = agentMsgCheck.rows.length > 0;
 
         if (!isHumanAgentActive) {
+          // Check transfer keywords before running AI
+          try {
+            const kwRes = await db.query('SELECT keywords FROM transfer_keywords WHERE project_id = $1', [sessionData.project_id]);
+            const keywords = kwRes.rows[0]?.keywords || [];
+            const msgLower = text.toLowerCase();
+            const triggered = keywords.find(kw => kw && msgLower.includes(kw.toLowerCase()));
+            if (triggered) {
+              const transferMsgs = {
+                vi: `Cảm ơn bạn! Tôi sẽ kết nối bạn với nhân viên hỗ trợ ngay bây giờ ⏳`,
+                en: `Thank you! Connecting you with a support agent now ⏳`,
+                ru: `Спасибо! Соединяю вас с оператором ⏳`,
+                zh: `谢谢！正在为您转接客服人员 ⏳`,
+              };
+              const transferMsg = transferMsgs[visitorLang] || transferMsgs['vi'];
+              await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
+              const kwMsgRes = await db.query(
+                `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3) RETURNING *`,
+                [sessionId, transferMsg, visitorLang]
+              );
+              aiReplyMsg = kwMsgRes.rows[0];
+              console.log(`[LiveChat] Keyword "${triggered}" triggered agent transfer for session ${sessionId}`);
+              return res.json({ success: true, message: msgRes.rows[0], aiReply: aiReplyMsg });
+            }
+          } catch (kwErr) { /* table may not exist yet — ignore */ }
+
           const kbRes = await db.query(
             `SELECT cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 1`,
             [sessionData.project_id]
@@ -2637,6 +2662,41 @@ app.get('/api/debug/session/:sessionId', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// ── Transfer Keywords API ─────────────────────────────────────────────────────
+app.get('/api/admin/keywords', checkAdminAuth, async (req, res) => {
+  const { projectId = 'pastie-landingpage' } = req.query;
+  try {
+    await db.query(`CREATE TABLE IF NOT EXISTS transfer_keywords (
+      project_id TEXT PRIMARY KEY,
+      keywords JSONB NOT NULL DEFAULT '[]',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    const r = await db.query('SELECT keywords FROM transfer_keywords WHERE project_id = $1', [projectId]);
+    res.json({ keywords: r.rows[0]?.keywords || [] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/admin/keywords', checkAdminAuth, async (req, res) => {
+  const { keywords = [], projectId = 'pastie-landingpage' } = req.body;
+  try {
+    await db.query(`CREATE TABLE IF NOT EXISTS transfer_keywords (
+      project_id TEXT PRIMARY KEY,
+      keywords JSONB NOT NULL DEFAULT '[]',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db.query(
+      `INSERT INTO transfer_keywords (project_id, keywords) VALUES ($1, $2)
+       ON CONFLICT (project_id) DO UPDATE SET keywords = $2, updated_at = NOW()`,
+      [projectId, JSON.stringify(keywords)]
+    );
+    res.json({ success: true, count: keywords.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Debug: check KB content ───────────────────────────────────────────────────
 app.get('/api/debug/kb', async (req, res) => {
   try {
