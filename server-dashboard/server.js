@@ -2558,7 +2558,7 @@ app.get('/api/test-gemini', async (req, res) => {
   try {
     const { GoogleGenerativeAI } = require('@google/generative-ai');
     const ai = new GoogleGenerativeAI(apiKey);
-    const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
     const result = await model.generateContent(msg);
     const text = result.response.text().trim();
     res.json({ ok: true, reply: text, ms: Date.now() - start, key_prefix: apiKey.substring(0, 6), model: 'gemini-1.5-flash' });
