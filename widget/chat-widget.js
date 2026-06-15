@@ -395,6 +395,11 @@
     }
     window.minimizePastieChat = minimizePastieChat;
 
+    function openPastieChat() {
+        if (!state.isOpen) toggleChatWindow();
+    }
+    window.openPastieChat = openPastieChat;
+
     function updateHeaderActionButton() {
         const btn = document.getElementById('pastie-chat-header-action-btn');
         if (!btn) return;
