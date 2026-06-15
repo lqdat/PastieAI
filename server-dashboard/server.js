@@ -2541,13 +2541,29 @@ app.get('/api/test-ai', async (req, res) => {
   try {
     const reply = await gemini.generateChatbotResponse(
       'Bạn là trợ lý AI của Pastie. Hãy trả lời ngắn gọn bằng tiếng Việt.',
-      [],
-      msg,
-      'vi'
+      [], msg, 'vi'
     );
     res.json({ ok: true, reply, ms: Date.now() - start, groq_key: process.env.GROQ_API_KEY ? 'SET' : 'MISSING' });
   } catch (e) {
     res.json({ ok: false, error: e.message, ms: Date.now() - start });
+  }
+});
+
+// ── Debug: test Gemini directly ───────────────────────────────────────────────
+app.get('/api/test-gemini', async (req, res) => {
+  const msg = req.query.msg || 'say hello in one sentence';
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return res.json({ ok: false, error: 'GEMINI_API_KEY not set', key_prefix: null });
+  const start = Date.now();
+  try {
+    const { GoogleGenerativeAI } = require('@google/generative-ai');
+    const ai = new GoogleGenerativeAI(apiKey);
+    const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const result = await model.generateContent(msg);
+    const text = result.response.text().trim();
+    res.json({ ok: true, reply: text, ms: Date.now() - start, key_prefix: apiKey.substring(0, 6) });
+  } catch (e) {
+    res.json({ ok: false, error: e.message, ms: Date.now() - start, key_prefix: apiKey.substring(0, 6) });
   }
 });
 
