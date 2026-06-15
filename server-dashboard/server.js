@@ -495,7 +495,7 @@ app.post('/api/otp/verify', async (req, res) => {
       [sessionId, projectId, finalName, email, finalLang, browser, device, assignedAdminId]
     );
 
-    // Insert AI greeting message
+    // Insert AI greeting message (sender='system' so isHumanAgentActive stays false)
     const greetings = {
       vi: `Xin chào ${finalName}! 👋 Tôi là trợ lý AI của Pastie. Bạn cần hỗ trợ gì?`,
       en: `Hello ${finalName}! 👋 I'm Pastie's AI assistant. How can I help you today?`,
@@ -504,7 +504,7 @@ app.post('/api/otp/verify', async (req, res) => {
     };
     const greetingText = greetings[finalLang] || greetings['vi'];
     await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'agent', $2, $2, $3)`,
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3)`,
       [sessionId, greetingText, finalLang]
     );
 
