@@ -433,11 +433,63 @@ async function handleLogin() {
 }
 
 // ----------------------------------------------------
+// BROWSER NOTIFICATIONS
+// ----------------------------------------------------
+
+const notifiedMsgCount = {}; // track last notified count per session
+
+function requestNotificationPermission() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+}
+
+function showNewMessageNotification(session, unread) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (document.visibilityState === 'visible' && session.id === currentSessionId) return;
+
+    const name = session.visitor_name || 'Khách hàng';
+    const preview = session.last_message_preview
+        ? session.last_message_preview.substring(0, 80)
+        : `${unread} tin nhắn mới`;
+
+    const n = new Notification(`💬 ${name}`, {
+        body: preview,
+        icon: '/favicon.ico',
+        tag: `pastie-chat-${session.id}`,
+        renotify: true,
+        silent: false,
+    });
+
+    n.onclick = () => {
+        window.focus();
+        selectSession(session.id);
+        n.close();
+    };
+
+    // Play alert sound
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.3);
+    } catch {}
+}
+
+// ----------------------------------------------------
 // DASHBOARD INITIALIZATION & POLLING
 // ----------------------------------------------------
 
 function initDashboard() {
     loadAdminProfile();
+    requestNotificationPermission();
     fetchSessions();
     if (pollInterval) clearInterval(pollInterval);
     pollInterval = setInterval(fetchSessions, 7000);
@@ -470,12 +522,21 @@ async function fetchSessions() {
         const data = await response.json();
         sessionsList = data;
 
-        // Sync seen counts from DB into local map
+        // Sync seen counts from DB + trigger notifications for new messages
         data.forEach(s => {
             const dbSeen = parseInt(s.seen_message_count);
-            // Only update if DB has a value (-1 means never opened)
             if (dbSeen >= 0) seenMessageCount[s.id] = dbSeen;
             else if (!(s.id in seenMessageCount)) seenMessageCount[s.id] = -1;
+
+            // Notify if new messages arrived since last notification check
+            const totalMsgs = parseInt(s.message_count) || 0;
+            const lastNotified = notifiedMsgCount[s.id] ?? totalMsgs; // init = current, no spam on first load
+            if (totalMsgs > lastNotified && s.id !== currentSessionId) {
+                const seen = seenMessageCount[s.id];
+                const unread = (seen === -1 || seen === undefined) ? totalMsgs - 1 : Math.max(0, totalMsgs - seen);
+                if (unread > 0) showNewMessageNotification(s, unread);
+            }
+            notifiedMsgCount[s.id] = totalMsgs;
         });
 
         // Real-time synchronization of the visitor's selected language in the dropdown
