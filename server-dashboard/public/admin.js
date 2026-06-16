@@ -1429,6 +1429,34 @@ if (keywordSaveBtn) {
     });
 }
 
+// --- CHAT HISTORY SYNTHESIS ---
+const synthesisRunBtn = document.getElementById('synthesis-run-btn');
+const synthesisStatus = document.getElementById('synthesis-status');
+
+if (synthesisRunBtn) {
+    synthesisRunBtn.addEventListener('click', async () => {
+        synthesisRunBtn.disabled = true;
+        synthesisRunBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang tổng hợp...`;
+        if (synthesisStatus) synthesisStatus.textContent = 'Đang phân tích lịch sử chat...';
+        try {
+            const res = await authFetch(`${API_BASE}/api/admin/kb/synthesize`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: currentProjectFilter || undefined })
+            });
+            const data = await res.json();
+            if (synthesisStatus) synthesisStatus.textContent = data.success
+                ? `✅ ${data.message}`
+                : `❌ ${data.error}`;
+        } catch (e) {
+            if (synthesisStatus) synthesisStatus.textContent = '❌ Lỗi kết nối máy chủ';
+        } finally {
+            synthesisRunBtn.disabled = false;
+            synthesisRunBtn.innerHTML = `<i class="ri-brain-line"></i> Tổng hợp ngay`;
+        }
+    });
+}
+
 // --- META CHANNEL SETTINGS DIALOG ---
 const channelModal = document.getElementById('channel-modal');
 const channelSettingsBtn = document.getElementById('channel-settings-btn');

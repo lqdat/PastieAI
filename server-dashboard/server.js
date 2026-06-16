@@ -7,6 +7,7 @@ const { randomUUID } = require('crypto');
 const db = require('./database');
 const gemini = require('./gemini-helper');
 const resend = require('./resend-helper');
+const cron = require('node-cron');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 
@@ -755,11 +756,15 @@ app.post('/api/chats/message', async (req, res) => {
           } catch (kwErr) { /* table may not exist yet — ignore */ }
 
           const kbRes = await db.query(
-            `SELECT cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+            `SELECT source_url, cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 5`,
             [sessionData.project_id]
           );
-          const rawKb = kbRes.rows[0]?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình cho thương hiệu Pastie.";
-          const knowledgeContext = rawKb.substring(0, 8000);
+          const websiteKb = kbRes.rows.find(r => r.source_url !== 'chat-synthesis')?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình cho thương hiệu Pastie.";
+          const chatKb = kbRes.rows.find(r => r.source_url === 'chat-synthesis')?.cleaned_content || '';
+          const rawKb = chatKb
+            ? `${websiteKb}\n\n=== TRI THỨC TỪ HỘI THOẠI THỰC TẾ ===\n${chatKb}`
+            : websiteKb;
+          const knowledgeContext = rawKb.substring(0, 10000);
           const langNameMap = { vi: 'Tiếng Việt', en: 'English', ru: 'Русский (Russian)', zh: '中文 (Chinese)' };
           const replyLangName = langNameMap[visitorLang] || 'Tiếng Việt';
 
@@ -2329,10 +2334,14 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
 
     // ── AI CHATBOT ────────────────────────────────────────────────────────
     const kbRes = await db.query(
-      `SELECT cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+      `SELECT source_url, cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 5`,
       [projectId]
     );
-    const knowledgeContext = kbRes.rows[0]?.cleaned_content || 'Bạn là trợ lý hỗ trợ thương hiệu Pastie.';
+    const websiteKb = kbRes.rows.find(r => r.source_url !== 'chat-synthesis')?.cleaned_content || 'Bạn là trợ lý hỗ trợ thương hiệu Pastie.';
+    const chatKb = kbRes.rows.find(r => r.source_url === 'chat-synthesis')?.cleaned_content || '';
+    const knowledgeContext = chatKb
+      ? `${websiteKb}\n\n=== TRI THỨC TỪ HỘI THOẠI THỰC TẾ ===\n${chatKb}`.substring(0, 10000)
+      : websiteKb.substring(0, 8000);
     const langNameMap = { vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese' };
     const replyLangName = langNameMap[finalLang] || 'the same language as the customer';
 
@@ -2751,6 +2760,125 @@ app.get('/api/debug/kb', async (req, res) => {
   }
 });
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ── Chat History → Knowledge Base Synthesis (runs every 3 days) ───────────────
+async function synthesizeChatKnowledge(projectId) {
+  try {
+    console.log(`[KB Synthesis] Starting for project: ${projectId}`);
+
+    // Fetch sessions from the last 3 days
+    const sessionsRes = await db.query(
+      `SELECT id FROM sessions WHERE project_id = $1 AND status = 'closed'
+       AND updated_at >= NOW() - INTERVAL '3 days'`,
+      [projectId]
+    );
+    if (sessionsRes.rows.length === 0) {
+      console.log(`[KB Synthesis] No closed sessions in last 3 days for ${projectId}.`);
+      return;
+    }
+
+    const sessionIds = sessionsRes.rows.map(r => r.id);
+
+    // Fetch all messages for these sessions
+    const msgsRes = await db.query(
+      `SELECT s.id as session_id, m.sender, m.original_text
+       FROM messages m
+       JOIN sessions s ON m.session_id = s.id
+       WHERE m.session_id = ANY($1)
+         AND m.sender IN ('visitor', 'agent', 'ai')
+         AND LENGTH(COALESCE(m.original_text, '')) > 5
+       ORDER BY s.id, m.created_at ASC`,
+      [sessionIds]
+    );
+
+    if (msgsRes.rows.length === 0) {
+      console.log(`[KB Synthesis] No messages found for synthesis.`);
+      return;
+    }
+
+    // Group messages into conversations
+    const conversations = {};
+    for (const msg of msgsRes.rows) {
+      if (!conversations[msg.session_id]) conversations[msg.session_id] = [];
+      const role = msg.sender === 'visitor' ? 'Khách' : 'Hỗ trợ';
+      conversations[msg.session_id].push(`${role}: ${msg.original_text}`);
+    }
+
+    const rawConversations = Object.values(conversations)
+      .map((lines, i) => `--- Hội thoại ${i + 1} ---\n${lines.join('\n')}`)
+      .join('\n\n');
+
+    const prompt = `Bạn là chuyên gia tổng hợp tri thức từ lịch sử chat thực tế của khách hàng.
+
+NHIỆM VỤ: Đọc các cuộc hội thoại bên dưới và trích xuất ra các cặp Q&A hữu ích cùng thông tin hay được hỏi.
+Định dạng đầu ra: danh sách các mục "Câu hỏi: ... | Trả lời: ..." + phần "Các chủ đề hay gặp".
+Bỏ qua những câu tầm thường, ngắn, hoặc không liên quan đến dịch vụ.
+
+LỊCH SỬ CHAT:
+${rawConversations.substring(0, 12000)}
+
+Tổng hợp:`;
+
+    const synthesized = await gemini.generateChatbotResponse(
+      'Bạn là chuyên gia tổng hợp nội dung, chỉ trả về nội dung được yêu cầu.',
+      [], prompt, 'vi'
+    );
+
+    if (!synthesized || synthesized.length < 50) {
+      console.log(`[KB Synthesis] Synthesized content too short, skipping save.`);
+      return;
+    }
+
+    // Save as a separate KB row (source_url = 'chat-synthesis')
+    const existsRes = await db.query(
+      `SELECT id FROM knowledge_base WHERE project_id = $1 AND source_url = 'chat-synthesis' LIMIT 1`,
+      [projectId]
+    );
+    if (existsRes.rows.length > 0) {
+      await db.query(
+        `UPDATE knowledge_base SET cleaned_content = $1, updated_at = CURRENT_TIMESTAMP WHERE project_id = $2 AND source_url = 'chat-synthesis'`,
+        [synthesized, projectId]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO knowledge_base (project_id, source_url, raw_html, cleaned_content) VALUES ($1, 'chat-synthesis', '', $2)`,
+        [projectId, synthesized]
+      );
+    }
+
+    console.log(`[KB Synthesis] Done for ${projectId}. Saved ${synthesized.length} chars.`);
+  } catch (err) {
+    console.error(`[KB Synthesis] Error for ${projectId}:`, err.message);
+  }
+}
+
+async function runSynthesisForAllProjects() {
+  try {
+    const projects = await db.query(`SELECT DISTINCT project_id FROM sessions WHERE status = 'closed'`);
+    for (const row of projects.rows) {
+      await synthesizeChatKnowledge(row.project_id);
+    }
+  } catch (err) {
+    console.error('[KB Synthesis] Failed to fetch projects:', err.message);
+  }
+}
+
+// Run every 3 days at 02:00 AM
+cron.schedule('0 2 */3 * *', () => {
+  console.log('[KB Synthesis] Cron triggered — synthesizing chat history into KB...');
+  runSynthesisForAllProjects();
+});
+
+// Manual trigger endpoint for admin
+app.post('/api/admin/kb/synthesize', checkAdminAuth, async (req, res) => {
+  const { projectId } = req.body;
+  if (projectId) {
+    synthesizeChatKnowledge(projectId).catch(console.error);
+    return res.json({ success: true, message: `Synthesis started for ${projectId}` });
+  }
+  runSynthesisForAllProjects().catch(console.error);
+  res.json({ success: true, message: 'Synthesis started for all projects' });
+});
 
 // Start Server
 app.listen(PORT, '0.0.0.0', () => {
