@@ -2889,15 +2889,34 @@ app.post('/api/admin/kb/synthesize', checkAdminAuth, async (req, res) => {
 
 // ── Read receipts table (created synchronously before server starts) ──────────
 async function ensureReadReceiptsTable() {
+  // Migration: drop table if admin_id column has wrong type (uuid or text) — safe since it's pure tracking data
+  try {
+    await db.query(`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'session_read_receipts'
+            AND column_name = 'admin_id'
+            AND data_type <> 'integer'
+        ) THEN
+          DROP TABLE IF EXISTS session_read_receipts;
+        END IF;
+      END $$;
+    `);
+  } catch (e) {
+    console.error('[ReadReceipts] Migration check error:', e.message);
+  }
+
   await db.query(`
     CREATE TABLE IF NOT EXISTS session_read_receipts (
       session_id TEXT NOT NULL,
-      admin_id TEXT NOT NULL,
+      admin_id INT NOT NULL,
       seen_message_count INTEGER NOT NULL DEFAULT 0,
       last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (session_id, admin_id)
     )
   `);
+  console.log('[ReadReceipts] Table ready.');
 }
 
 // Mark session as read for current admin
