@@ -1509,7 +1509,7 @@ if (keywordSaveBtn) {
             const res = await authFetch(`${API_BASE}/api/admin/keywords`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ keywords: currentKeywords, projectId: 'pastie-landingpage' })
+                body: JSON.stringify({ keywords: currentKeywords, projectId: currentProjectFilter || 'pastie-landingpage' })
             });
             const data = await res.json();
             if (res.ok) {
@@ -1535,8 +1535,9 @@ if (keywordSettingsBtn) {
     keywordSettingsBtn.addEventListener('click', async () => {
         closeSettingsDropdown();
         if (keywordModal) keywordModal.classList.remove('hide');
+        const pid = currentProjectFilter || 'pastie-landingpage';
         try {
-            const res = await authFetch(`${API_BASE}/api/admin/keywords?projectId=pastie-landingpage`);
+            const res = await authFetch(`${API_BASE}/api/admin/keywords?projectId=${encodeURIComponent(pid)}`);
             const data = await res.json();
             renderKeywordTags(data.keywords || []);
         } catch(e) { console.error('Error loading keywords:', e); }
