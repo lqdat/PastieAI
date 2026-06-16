@@ -1564,7 +1564,10 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
   
   try {
     let queryText = `
-      SELECT s.*, a.full_name as assigned_admin_name, a.avatar_url as assigned_admin_avatar
+      SELECT s.*, a.full_name as assigned_admin_name, a.avatar_url as assigned_admin_avatar,
+        (SELECT COUNT(*) FROM messages WHERE session_id = s.id) as message_count,
+        (SELECT MAX(created_at) FROM messages WHERE session_id = s.id) as last_message_at,
+        (SELECT original_text FROM messages WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1) as last_message_preview
       FROM sessions s
       LEFT JOIN admins a ON s.assigned_admin_id = a.id
     `;

@@ -224,6 +224,9 @@ let sessionsList = [];
 let pollInterval = null;
 let messagePollInterval = null;
 
+// Unread message tracking
+const seenMessageCount = {};
+
 // Admin lazy loading pagination state
 let adminMessages = [];
 let adminOffset = 0;
@@ -562,14 +565,27 @@ function renderSessionsList(sessions) {
     // Helper to generate a clean session card
     function createSessionCard(session) {
         const card = document.createElement('div');
-        card.className = `session-card ${session.id === currentSessionId ? 'active-selected' : ''}`;
+        const totalMsgsForClass = parseInt(session.message_count) || 0;
+        const seenForClass = seenMessageCount[session.id] || 0;
+        const hasUnread = session.id !== currentSessionId && totalMsgsForClass > seenForClass;
+        card.className = `session-card ${session.id === currentSessionId ? 'active-selected' : ''} ${hasUnread ? 'has-unread' : ''}`;
         card.setAttribute('data-id', session.id);
         
         const locale = currentLang === 'vi' ? 'vi-VN' : currentLang === 'zh' ? 'zh-CN' : currentLang === 'ru' ? 'ru-RU' : 'en-US';
-        const dateStr = new Date(session.created_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) 
-            + ' ' + new Date(session.created_at).toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
+        const msgTime = session.last_message_at || session.created_at;
+        const dateStr = new Date(msgTime).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+            + ' ' + new Date(msgTime).toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
 
         const statusText = session.status === 'active' ? dict.statusActive : dict.statusClosed;
+
+        const totalMsgs = parseInt(session.message_count) || 0;
+        const seen = seenMessageCount[session.id] || 0;
+        const unread = session.id === currentSessionId ? 0 : Math.max(0, totalMsgs - seen);
+        const unreadBadge = unread > 0 ? `<span class="session-unread-badge">${unread > 99 ? '99+' : unread}</span>` : '';
+
+        const preview = session.last_message_preview
+            ? session.last_message_preview.substring(0, 45) + (session.last_message_preview.length > 45 ? '…' : '')
+            : '';
 
         const isMC = session.platform && session.platform !== 'widget';
 
@@ -607,14 +623,20 @@ function renderSessionsList(sessions) {
             <div class="session-card-header">
                 <div class="visitor-avatar-wrap">${avatarHtml}${avatarBadge}</div>
                 <div class="session-card-info">
-                    <span class="session-name" title="${session.visitor_name || ''}">${session.visitor_name || 'Khách hàng'}</span>
-                    <span class="session-status-badge ${session.status}">${statusText}</span>
+                    <div class="session-card-top-row">
+                        <span class="session-name" title="${session.visitor_name || ''}">${session.visitor_name || 'Khách hàng'}</span>
+                        <span class="session-card-time">${dateStr}</span>
+                    </div>
+                    <div class="session-card-bottom-row">
+                        <span class="session-status-badge ${session.status}">${statusText}</span>
+                        ${unreadBadge}
+                    </div>
                 </div>
             </div>
+            ${preview ? `<div class="session-card-preview">${escapeHtml(preview)}</div>` : ''}
             <div class="session-meta-footer">
                 <span class="session-project" title="${session.project_id}">${session.project_id}</span>
                 ${metaFooterRight}
-                <span>${dateStr}</span>
             </div>
         `;
 
@@ -689,7 +711,11 @@ function renderSessionsList(sessions) {
 
 async function selectSession(sessionId) {
     currentSessionId = sessionId;
-    
+
+    // Mark session as seen (clear unread badge)
+    const sess = sessionsList.find(s => s.id === sessionId);
+    if (sess) seenMessageCount[sessionId] = parseInt(sess.message_count) || 0;
+
     // Reset pagination states for the newly selected session
     adminMessages = [];
     adminOffset = 0;
@@ -864,6 +890,9 @@ async function loadMessages(sessionId, isLoadMore = false) {
                 adminMessages = merged;
             }
         }
+
+        // Update seen count for current session so unread badge stays cleared
+        if (currentSessionId) seenMessageCount[currentSessionId] = adminMessages.length;
 
         renderAdminMessages(isLoadMore);
     } catch (e) {

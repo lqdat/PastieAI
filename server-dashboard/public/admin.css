@@ -119,6 +119,69 @@ button {
     box-shadow: 0 6px 16px 0 var(--danger-glow);
 }
 
+/* --- Header Action Buttons (compact) --- */
+.assignee-selector-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+}
+.assignee-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+    white-space: nowrap;
+}
+.assignee-select {
+    background: transparent;
+    border: none;
+    color: var(--accent-color);
+    font-weight: 600;
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+}
+.header-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+.header-action-btn i { font-size: 15px; }
+.header-action-btn.close-btn {
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--success-color);
+    border-color: rgba(16, 185, 129, 0.25);
+}
+.header-action-btn.close-btn:hover {
+    background: rgba(16, 185, 129, 0.22);
+    border-color: rgba(16, 185, 129, 0.45);
+    transform: translateY(-1px);
+}
+.header-action-btn.delete-btn {
+    background: rgba(239, 68, 68, 0.08);
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.2);
+    padding: 7px 12px;
+}
+.header-action-btn.delete-btn:hover {
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.4);
+    transform: translateY(-1px);
+}
+
 .icon-btn {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--panel-border);
@@ -301,7 +364,7 @@ button {
 
 /* --- Session Card --- */
 .session-card {
-    padding: 16px;
+    padding: 12px 14px;
     border-radius: 12px;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--panel-border);
@@ -313,19 +376,23 @@ button {
     flex-shrink: 0;
 }
 .session-card:hover {
-    background: var(--panel-hover);
-    border-color: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(99, 102, 241, 0.3);
+    transform: translateX(2px);
 }
 .session-card.active-selected {
-    background: rgba(99, 102, 241, 0.1);
+    background: rgba(99, 102, 241, 0.12);
     border-color: var(--accent-color);
-    box-shadow: inset 0 0 10px rgba(99, 102, 241, 0.1);
+    box-shadow: 0 0 0 1px rgba(99,102,241,0.2), inset 0 0 12px rgba(99, 102, 241, 0.08);
+}
+.session-card.has-unread {
+    border-left: 3px solid var(--accent-color);
+    background: rgba(99, 102, 241, 0.06);
 }
 .session-card-header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
+    align-items: flex-start;
+    gap: 10px;
     width: 100%;
 }
 .visitor-avatar-wrap {
@@ -333,31 +400,31 @@ button {
     flex-shrink: 0;
 }
 .visitor-avatar-img {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
     border-radius: 50%;
     object-fit: cover;
     border: 2px solid rgba(99, 102, 241, 0.35);
     display: block;
 }
 .visitor-avatar-initials {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
     border-radius: 50%;
-    background: rgba(99, 102, 241, 0.18);
+    background: linear-gradient(135deg, rgba(99,102,241,0.25), rgba(99,102,241,0.1));
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 15px;
     font-weight: 700;
     color: var(--accent-color);
-    border: 2px solid rgba(99, 102, 241, 0.35);
+    border: 2px solid rgba(99, 102, 241, 0.3);
 }
 .visitor-platform-badge {
     position: absolute;
     bottom: -2px;
     right: -2px;
-    font-size: 12px;
+    font-size: 13px;
     background: #1a1a2e;
     border-radius: 50%;
     padding: 1px;
@@ -369,13 +436,29 @@ button {
     flex: 1;
     min-width: 0;
     display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.session-card-top-row {
+    display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 6px;
 }
+.session-card-bottom-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.session-card-time {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
 .session-name {
     font-weight: 600;
-    font-size: 14.5px;
+    font-size: 14px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -383,20 +466,55 @@ button {
     min-width: 0;
 }
 .session-status-badge {
-    font-size: 10px;
-    padding: 2px 6px;
+    font-size: 9.5px;
+    padding: 2px 7px;
     border-radius: 20px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
+    letter-spacing: 0.3px;
     flex-shrink: 0;
 }
 .session-status-badge.active {
-    background: rgba(16, 185, 129, 0.15);
+    background: rgba(16, 185, 129, 0.12);
     color: var(--success-color);
+    border: 1px solid rgba(16, 185, 129, 0.2);
 }
 .session-status-badge.closed {
-    background: rgba(148, 163, 184, 0.15);
+    background: rgba(148, 163, 184, 0.08);
+    color: var(--text-muted);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+}
+.session-unread-badge {
+    background: var(--accent-color);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+    box-shadow: 0 0 8px rgba(99,102,241,0.5);
+    animation: pulse-badge 2s ease-in-out infinite;
+}
+@keyframes pulse-badge {
+    0%, 100% { box-shadow: 0 0 6px rgba(99,102,241,0.5); }
+    50% { box-shadow: 0 0 14px rgba(99,102,241,0.8); }
+}
+.session-card-preview {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+    padding: 0 2px;
+}
+.session-card.has-unread .session-card-preview {
     color: var(--text-secondary);
+    font-weight: 500;
 }
 .session-email {
     font-size: 13px;
@@ -406,9 +524,9 @@ button {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 12px;
+    font-size: 11.5px;
     color: var(--text-muted);
-    margin-top: 4px;
+    margin-top: 2px;
     gap: 6px;
     width: 100%;
 }

@@ -140,15 +140,20 @@
                         </div>
                     </div>
                     <div id="chat-header-actions" class="hide" style="display: flex; gap: 8px; align-items: center;">
-                        <div id="assignee-selector-container" style="display: flex; align-items: center; gap: 6px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); padding: 6px 12px; border-radius: 8px; font-size: 13px;">
-                            <i class="ri-user-follow-line" style="color: var(--accent-color);"></i>
-                            <span style="color: var(--text-secondary); font-weight: 500;">Phân công:</span>
-                            <select id="chat-assignee-select" style="background: transparent; border: none; color: var(--accent-color); font-weight: 600; font-family: inherit; font-size: 13px; outline: none; cursor: pointer;">
+                        <div id="assignee-selector-container" class="assignee-selector-wrap">
+                            <i class="ri-user-follow-line" style="color: var(--accent-color); font-size: 14px;"></i>
+                            <span class="assignee-label" data-i18n="assignLabel">Phân công:</span>
+                            <select id="chat-assignee-select" class="assignee-select">
                                 <!-- Will be populated dynamically -->
                             </select>
                         </div>
-                        <button id="close-session-btn" class="danger-btn"><i class="ri-close-circle-line"></i> <span data-i18n="closeChat">Đóng cuộc chat</span></button>
-                        <button id="delete-session-btn" class="danger-btn" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);"><i class="ri-delete-bin-line"></i> <span data-i18n="deleteChat">Xóa cuộc chat</span></button>
+                        <button id="close-session-btn" class="header-action-btn close-btn" title="Đóng cuộc chat">
+                            <i class="ri-checkbox-circle-line"></i>
+                            <span data-i18n="closeChat">Đóng chat</span>
+                        </button>
+                        <button id="delete-session-btn" class="header-action-btn delete-btn" title="Xóa cuộc chat">
+                            <i class="ri-delete-bin-line"></i>
+                        </button>
                     </div>
                 </div>
 
