@@ -223,10 +223,10 @@
 
     // --- UI Dynamic Injection ---
     function injectAssets() {
-        if (!document.querySelector('link[href*="Outfit"]')) {
+        if (!document.querySelector('link[href*="Be+Vietnam+Pro"]')) {
             const fontLink = document.createElement('link');
             fontLink.rel = 'stylesheet';
-            fontLink.href = 'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap';
+            fontLink.href = 'https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap';
             document.head.appendChild(fontLink);
         }
         if (!document.querySelector('link[href*="remixicon"]')) {
@@ -409,10 +409,7 @@
             btn.className = 'pastie-chat-header-action-btn meet-cskh';
             btn.textContent = t.btnMeetCSKH || 'Gặp CSKH';
             btn.style.display = 'block';
-            btn.onclick = () => {
-                state.requestingAgent = true;
-                switchView('init');
-            };
+            btn.onclick = () => requestAgentDirect();
         } else if (state.mode === 'human' && state.sessionId) {
             btn.className = 'pastie-chat-header-action-btn close-cskh';
             btn.textContent = t.btnCloseCSKH || 'Kết thúc';
@@ -421,6 +418,29 @@
         } else {
             btn.style.display = 'none';
         }
+    }
+
+    // Email/name were already verified when the chat started — go straight to agent, no OTP needed.
+    async function requestAgentDirect() {
+        if (!state.sessionId) return;
+        const btn = document.getElementById('pastie-chat-header-action-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i>`; }
+        try {
+            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/request-agent-direct`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: state.sessionId })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                state.mode = 'human';
+                sessionStorage.setItem('pastie_chat_mode', 'human');
+                switchView('chat');
+                loadMessageHistory();
+            }
+        } catch(e) {}
+        if (btn) btn.disabled = false;
+        updateHeaderActionButton();
     }
 
     async function handleEndChatSession() {
@@ -539,6 +559,9 @@
             if (!lastMsg) return;
             if (lastMsg.sender === 'agent') {
                 senderEl.textContent = t.miniSenderAgent;
+                textEl.textContent = lastMsg.translated_text || lastMsg.original_text;
+            } else if (lastMsg.sender === 'ai') {
+                senderEl.textContent = t.miniSenderAI;
                 textEl.textContent = lastMsg.translated_text || lastMsg.original_text;
             } else if (lastMsg.sender === 'visitor') {
                 senderEl.textContent = t.miniSenderVisitor;
@@ -834,7 +857,7 @@
             const loadMoreBtn = document.createElement('button');
             loadMoreBtn.className = 'pastie-chat-loadmore-btn';
             loadMoreBtn.id = 'btn-load-older';
-            loadMoreBtn.style.cssText = 'background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);color:var(--widget-text);font-family:Outfit,sans-serif;font-size:11px;font-weight:600;border-radius:20px;padding:6px 16px;cursor:pointer;transition:all 0.2s';
+            loadMoreBtn.style.cssText = 'background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);color:var(--widget-text);font-family:"Be Vietnam Pro",sans-serif;font-size:11px;font-weight:600;border-radius:20px;padding:6px 16px;cursor:pointer;transition:all 0.2s';
             loadMoreBtn.textContent = state.isLoadingMore ? t.loadingMore : t.loadOlder;
             loadMoreBtn.onmouseover = () => { loadMoreBtn.style.background = 'rgba(255,255,255,0.15)'; };
             loadMoreBtn.onmouseout = () => { loadMoreBtn.style.background = 'rgba(255,255,255,0.08)'; };
@@ -866,7 +889,7 @@
             if (msg.sender === 'visitor') {
                 const primaryText = msg.translated_text || msg.original_text;
                 displayHtml = `<div class="pastie-msg-bubble"><div>${escapeHtml(primaryText)}</div></div><div class="pastie-msg-time">${timeStr}</div>`;
-            } else if (msg.sender === 'agent') {
+            } else if (msg.sender === 'agent' || msg.sender === 'ai') {
                 const primaryText = msg.translated_text || msg.original_text;
                 displayHtml = `<div class="pastie-msg-bubble"><div>${escapeHtml(primaryText)}</div></div><div class="pastie-msg-time">${timeStr}</div>`;
             } else {
@@ -955,9 +978,13 @@
     // Handle URL hash to trigger human chat (#chat-with-human)
     function checkHashForHumanChat() {
         if (window.location.hash === '#chat-with-human') {
-            state.requestingAgent = true;
             if (!state.isOpen) toggleChatWindow();
-            switchView('init');
+            if (state.sessionId && state.mode === 'ai') {
+                requestAgentDirect();
+            } else {
+                state.requestingAgent = true;
+                switchView('init');
+            }
             try { history.pushState('', document.title, window.location.pathname + window.location.search); } catch(e) {}
         }
     }

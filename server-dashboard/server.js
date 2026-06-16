@@ -495,7 +495,7 @@ app.post('/api/otp/verify', async (req, res) => {
       [sessionId, projectId, finalName, email, finalLang, browser, device, assignedAdminId]
     );
 
-    // Insert AI greeting message (sender='system' so isHumanAgentActive stays false)
+    // Insert AI greeting message (sender='ai' — renders as a normal chat bubble, not a human agent, and is_human_agent_active check ignores it)
     const greetings = {
       vi: `Xin chào ${finalName}! 👋 Tôi là trợ lý AI của Pastie. Bạn cần hỗ trợ gì?`,
       en: `Hello ${finalName}! 👋 I'm Pastie's AI assistant. How can I help you today?`,
@@ -504,7 +504,7 @@ app.post('/api/otp/verify', async (req, res) => {
     };
     const greetingText = greetings[finalLang] || greetings['vi'];
     await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3)`,
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'ai', $2, $2, $3)`,
       [sessionId, greetingText, finalLang]
     );
 
@@ -641,9 +641,10 @@ app.post('/api/chats/message', async (req, res) => {
       [sessionId, sender, text, translatedText, detectedLang, senderAdminId]
     );
 
-    // Update session detected language if it's the first message from the visitor, or update with visitorLang if provided
+    // Update session detected language — prioritize the language actually detected from the message text
+    // over the widget's static UI language (visitorLang), so the AI replies in the language the visitor is typing in.
     if (sender === 'visitor') {
-      const updateLang = visitorLang || detectedLang;
+      const updateLang = detectedLang || visitorLang;
       if (updateLang) {
         await db.query('UPDATE sessions SET detected_language = $1 WHERE id = $2', [updateLang, sessionId]);
       }
@@ -670,7 +671,8 @@ app.post('/api/chats/message', async (req, res) => {
     // AI CHATBOT: If visitor sends a message and no human agent has taken over yet, auto-respond using the Knowledge Base!
     if (sender === 'visitor') {
       const sessionData = sessionRes.rows[0];
-      const visitorLang = sessionData?.detected_language || 'vi';
+      // Use the language just detected from THIS message first (most accurate), fall back to session's stored language
+      const visitorLang = detectedLang || sessionData?.detected_language || 'vi';
 
       // Keyword detection: visitor wants to speak to a human agent
       const AGENT_KEYWORDS = /\b(cskh|gặp cskh|gap cskh|chăm sóc|cham soc|nhân viên|nhan vien|agent|support|tư vấn|tu van|gặp người|gap nguoi|người thật|nguoi that|con người|con nguoi|speak to|talk to|human|help me|trực tiếp|truc tiep|kết nối|ket noi|оператор|поддержка|помогите|помощь|сотрудник|консультант|связаться|человек|живой|клиентская|客服|人工|转人工|帮助|联系|工作人员|真人|支持)\b/i;
@@ -757,12 +759,14 @@ app.post('/api/chats/message', async (req, res) => {
           );
           const rawKb = kbRes.rows[0]?.cleaned_content || "Bạn là một trợ lý ảo hỗ trợ nhiệt tình cho thương hiệu Pastie.";
           const knowledgeContext = rawKb.substring(0, 8000);
+          const langNameMap = { vi: 'Tiếng Việt', en: 'English', ru: 'Русский (Russian)', zh: '中文 (Chinese)' };
+          const replyLangName = langNameMap[visitorLang] || 'Tiếng Việt';
 
           const systemInstruction = `
             Bạn là một trợ lý tư vấn dịch vụ du lịch và phòng nghỉ cao cấp cực kỳ chuyên nghiệp và thân thiện của thương hiệu Pastie.
 
             Hãy trả lời các câu hỏi của khách hàng một cách ngắn gọn, súc tích (dưới 3 câu) để hiển thị tốt nhất trên thiết bị di động.
-            Giao tiếp bằng chính ngôn ngữ mà khách hàng đang sử dụng.
+            QUY TẮC NGÔN NGỮ BẮT BUỘC: Khách hàng đang viết bằng ${replyLangName}. Bạn PHẢI trả lời TOÀN BỘ bằng ${replyLangName}, tuyệt đối không trộn lẫn ngôn ngữ khác.
 
             Dưới đây là TOÀN BỘ CƠ SỞ TRI THỨC được lấy từ trang web chính thức của chúng tôi. CHỈ trả lời dựa trên tài liệu này, không tự bịa thông tin:
 
@@ -793,7 +797,7 @@ app.post('/api/chats/message', async (req, res) => {
 
           const aiMsgRes = await db.query(
             `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
-             VALUES ($1, 'system', $2, $2, $3) RETURNING *`,
+             VALUES ($1, 'ai', $2, $2, $3) RETURNING *`,
             [sessionId, finalAiReply, visitorLang]
           );
           aiReplyMsg = aiMsgRes.rows[0];
@@ -1001,6 +1005,30 @@ app.post('/api/chats/session/anonymous', async (req, res) => {
   } catch (error) {
     console.error('Anonymous session create error:', error);
     res.status(500).json({ error: 'Lỗi tạo phiên chat.' });
+  }
+});
+
+// 4c-direct. Request Agent — for an already-verified session, skip OTP entirely (email/name were verified at chat start)
+app.post('/api/chats/session/request-agent-direct', async (req, res) => {
+  const { sessionId } = req.body;
+  if (!sessionId) return res.status(400).json({ error: 'Thiếu sessionId.' });
+  try {
+    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    if (sessionRes.rows.length === 0) return res.status(404).json({ error: 'Không tìm thấy phiên chat.' });
+    const session = sessionRes.rows[0];
+    if (!session.is_verified) return res.status(400).json({ error: 'Phiên chat chưa được xác thực.' });
+
+    await db.query('UPDATE sessions SET requested_agent = TRUE WHERE id = $1', [sessionId]);
+    const lang = session.detected_language || 'vi';
+    const waitMsgs = { vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳', en: 'Connecting you with a support agent, please hold on ⏳', ru: 'Соединяем вас с оператором, подождите ⏳', zh: '正在为您连接客服，请稍候 ⏳' };
+    await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3)`,
+      [sessionId, waitMsgs[lang] || waitMsgs['vi'], lang]
+    );
+    res.json({ success: true, sessionId });
+  } catch (error) {
+    console.error('Request agent (direct) error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống.' });
   }
 });
 

@@ -7,7 +7,7 @@
     --widget-text-sec: #f1b5c2;
     --widget-glass-blur: blur(20px);
     
-    font-family: 'Outfit', sans-serif;
+    font-family: 'Be Vietnam Pro', sans-serif;
     position: fixed;
     bottom: 24px;
     right: 24px;
@@ -263,6 +263,9 @@
 .pastie-msg.agent {
     align-self: flex-start;
 }
+.pastie-msg.ai {
+    align-self: flex-start;
+}
 .pastie-msg.system {
     align-self: center;
     max-width: 90%;
@@ -280,6 +283,12 @@
     border-bottom-right-radius: 4px;
 }
 .agent .pastie-msg-bubble {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--widget-border);
+    color: var(--widget-text);
+    border-bottom-left-radius: 4px;
+}
+.ai .pastie-msg-bubble {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--widget-border);
     color: var(--widget-text);
@@ -306,6 +315,9 @@
     align-self: flex-end;
 }
 .agent .pastie-msg-time {
+    align-self: flex-start;
+}
+.ai .pastie-msg-time {
     align-self: flex-start;
 }
 
@@ -393,7 +405,7 @@ iframe[id^="tidio-chat"] {
     color: #f8fafc;
     padding: 8px 16px;
     border-radius: 20px;
-    font-family: 'Outfit', sans-serif;
+    font-family: 'Be Vietnam Pro', sans-serif;
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
@@ -468,7 +480,7 @@ iframe[id^="tidio-chat"] {
     transform: translateY(10px) scale(0.95);
     pointer-events: none;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    font-family: 'Outfit', sans-serif;
+    font-family: 'Be Vietnam Pro', sans-serif;
     cursor: pointer;
 }
 
@@ -560,7 +572,7 @@ iframe[id^="tidio-chat"] {
 .pastie-chat-header-action-btn {
     border: none;
     outline: none;
-    font-family: 'Outfit', sans-serif;
+    font-family: 'Be Vietnam Pro', sans-serif;
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;

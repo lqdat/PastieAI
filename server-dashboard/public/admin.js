@@ -938,7 +938,7 @@ function renderAdminMessages(isLoadMore = false) {
                 </div>
                 <div class="message-time">${timeStr}</div>
             `;
-        } else if (msg.sender === 'agent') {
+        } else if (msg.sender === 'agent' || msg.sender === 'ai') {
             const hasTranslation = msg.translated_text && msg.translated_text !== msg.original_text;
             innerHtml = `
                 <div class="message-bubble">
