@@ -838,6 +838,16 @@
                     state.messages = merged;
                 }
             }
+
+            // Auto-switch to human mode if agent has replied
+            if (state.mode !== 'human') {
+                const hasAgentMsg = state.messages.some(m => m.sender === 'agent');
+                if (hasAgentMsg) {
+                    state.mode = 'human';
+                    sessionStorage.setItem('pastie_chat_mode', 'human');
+                }
+            }
+
             renderMessageThread(isLoadMore);
         } catch(e) {
             console.error('Failed to load message history:', e);
@@ -904,9 +914,9 @@
             threadContainer.appendChild(bubbleWrap);
         });
 
-        // Show typing indicator if last message is from visitor (AI/agent thinking)
+        // Show typing indicator only in AI mode (human agents don't need it)
         const lastMsg = state.messages[state.messages.length - 1];
-        if (lastMsg && lastMsg.sender === 'visitor') {
+        if (lastMsg && lastMsg.sender === 'visitor' && state.mode === 'ai') {
             state.isTyping = true;
             appendTypingBubble();
         } else {

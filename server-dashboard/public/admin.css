@@ -545,6 +545,10 @@ button {
     align-self: flex-end;
     margin-right: 4px;
 }
+.ai .message-time {
+    align-self: flex-end;
+    margin-right: 4px;
+}
 
 /* --- Empty / Welcome States --- */
 .empty-state, .chat-welcome-state {
