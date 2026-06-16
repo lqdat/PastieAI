@@ -224,8 +224,15 @@ let sessionsList = [];
 let pollInterval = null;
 let messagePollInterval = null;
 
-// Unread message tracking
-const seenMessageCount = {};
+// Unread message tracking — persisted in localStorage so refresh doesn't reset badges
+const SEEN_KEY = 'pastie_seen_msgs';
+function loadSeenCounts() {
+    try { return JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'); } catch { return {}; }
+}
+function saveSeenCounts() {
+    try { localStorage.setItem(SEEN_KEY, JSON.stringify(seenMessageCount)); } catch {}
+}
+const seenMessageCount = loadSeenCounts();
 
 // Admin lazy loading pagination state
 let adminMessages = [];
@@ -712,9 +719,9 @@ function renderSessionsList(sessions) {
 async function selectSession(sessionId) {
     currentSessionId = sessionId;
 
-    // Mark session as seen (clear unread badge)
+    // Mark session as seen (clear unread badge) and persist
     const sess = sessionsList.find(s => s.id === sessionId);
-    if (sess) seenMessageCount[sessionId] = parseInt(sess.message_count) || 0;
+    if (sess) { seenMessageCount[sessionId] = parseInt(sess.message_count) || 0; saveSeenCounts(); }
 
     // Reset pagination states for the newly selected session
     adminMessages = [];
@@ -892,7 +899,7 @@ async function loadMessages(sessionId, isLoadMore = false) {
         }
 
         // Update seen count for current session so unread badge stays cleared
-        if (currentSessionId) seenMessageCount[currentSessionId] = adminMessages.length;
+        if (currentSessionId) { seenMessageCount[currentSessionId] = adminMessages.length; saveSeenCounts(); }
 
         renderAdminMessages(isLoadMore);
     } catch (e) {
