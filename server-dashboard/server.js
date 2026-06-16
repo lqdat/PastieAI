@@ -334,14 +334,15 @@ app.post('/api/otp/send', async (req, res) => {
 
     // Send email via Resend
     const sent = await resend.sendOTPEmail(email, code);
-    if (!sent) {
-      return res.status(500).json({ error: 'Không thể gửi email OTP. Vui lòng liên hệ quản trị viên.' });
+    if (!sent.ok) {
+      console.error('[OTP Send] Failed:', sent.reason);
+      return res.status(500).json({ error: `Không thể gửi email OTP: ${sent.reason}` });
     }
 
     res.json({ success: true, message: 'Mã OTP đã được gửi về email của bạn.' });
   } catch (error) {
     console.error('OTP Send Error:', error);
-    res.status(500).json({ error: 'Lỗi hệ thống khi xử lý OTP.' });
+    res.status(500).json({ error: `Lỗi hệ thống khi xử lý OTP: ${error.message}` });
   }
 });
 
@@ -2677,6 +2678,16 @@ app.get('/api/test-gemini', async (req, res) => {
   } catch (e) {
     res.json({ ok: false, error: e.message, ms: Date.now() - start, key_prefix: apiKey.substring(0, 6) });
   }
+});
+
+// ── Debug: test Resend email sending ─────────────────────────────────────────
+app.get('/api/test-resend', async (req, res) => {
+  const to = req.query.to || process.env.SENDER_EMAIL;
+  const apiKey = process.env.RESEND_API_KEY;
+  const sender = process.env.SENDER_EMAIL || 'onboarding@resend.dev';
+  if (!apiKey) return res.json({ ok: false, error: 'RESEND_API_KEY not set', sender, to });
+  const result = await resend.sendOTPEmail(to, '123456');
+  res.json({ ok: result.ok, reason: result.reason, key_prefix: apiKey.substring(0, 6), sender, to });
 });
 
 // ── Debug: check session state ────────────────────────────────────────────────
