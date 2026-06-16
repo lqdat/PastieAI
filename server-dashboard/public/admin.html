@@ -64,6 +64,10 @@
                                 <span class="sdm-icon" style="background:rgba(99,102,241,0.15);color:#818cf8;"><i class="ri-brain-line"></i></span>
                                 <div class="sdm-text"><span>AI Knowledge Base</span><small>Train & quản lý tri thức</small></div>
                             </button>
+                            <button id="keyword-settings-btn" class="sdm-item">
+                                <span class="sdm-icon" style="background:rgba(239,68,68,0.12);color:#f87171;"><i class="ri-user-voice-line"></i></span>
+                                <div class="sdm-text"><span>Từ khóa chuyển Agent</span><small>Tự động kết nối nhân viên</small></div>
+                            </button>
                             <button id="channel-settings-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(16,185,129,0.15);color:#34d399;"><i class="ri-whatsapp-line"></i></span>
                                 <div class="sdm-text"><span>Meta Channels</span><small>FB, Instagram, WhatsApp</small></div>
@@ -230,8 +234,36 @@
     </div>
 
     <!-- AI Knowledge Base Modal -->
+    <!-- Transfer Keywords Modal -->
+    <div id="keyword-modal" class="modal-overlay hide">
+        <div class="login-box glass-panel" style="max-width: 520px; width: 90%; max-height: 85vh; overflow-y: auto;">
+            <div class="brand-header" style="margin-bottom: 20px;">
+                <div class="brand-logo" style="background: rgba(239,68,68,0.12); color: #f87171; width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px auto; font-size: 24px;"><i class="ri-user-voice-line"></i></div>
+                <h2 style="font-size: 20px; margin-bottom: 4px;">Từ khóa chuyển Agent</h2>
+                <p style="font-size: 13px; color: var(--text-secondary);">Khi khách nhắn những từ này → AI tự động chuyển sang nhân viên hỗ trợ</p>
+            </div>
+
+            <div id="keyword-tags-container" style="min-height: 48px; display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; margin-bottom: 12px;">
+                <span class="keyword-tag-empty" style="color: var(--text-secondary); font-size: 12px; font-style: italic;">Chưa có từ khóa nào...</span>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <input type="text" id="keyword-input" placeholder='Nhập từ khóa rồi nhấn Enter... (vd: giá, tư vấn, gặp nhân viên)' style="flex: 1; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px; outline: none;">
+                <button id="keyword-add-btn" class="secondary-btn" style="white-space: nowrap; background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.25);"><i class="ri-add-line"></i> Thêm</button>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <div id="keyword-status" style="font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;"></div>
+                <div style="display: flex; gap: 8px;">
+                    <button id="keyword-modal-close-btn" class="secondary-btn" style="background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.1);"><i class="ri-close-line"></i> Đóng</button>
+                    <button id="keyword-save-btn" class="primary-btn" style="width: auto; padding: 8px 20px; background: rgba(239,68,68,0.8); box-shadow: 0 4px 12px rgba(239,68,68,0.3);"><i class="ri-save-line"></i> Lưu</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="knowledge-modal" class="modal-overlay hide">
-        <div class="login-box glass-panel" style="max-width: 650px; width: 90%;">
+        <div class="login-box glass-panel" style="max-width: 650px; width: 90%; max-height: 85vh; overflow-y: auto;">
             <div class="brand-header" style="margin-bottom: 20px;">
                 <div class="brand-logo" style="background: rgba(99, 102, 241, 0.15); color: var(--accent-color); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto; font-size: 28px;"><i class="ri-brain-line"></i></div>
                 <h2 style="font-size: 22px; margin-bottom: 6px;">AI Knowledge Base Settings</h2>
@@ -262,33 +294,6 @@
             <div style="display: flex; justify-content: space-between; gap: 12px; margin-bottom: 24px;">
                 <button id="kb-save-manual-btn" class="primary-btn" style="flex: 1; background: var(--success-color); box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.3);"><i class="ri-save-line"></i> Lưu nội dung</button>
                 <button id="kb-close-btn" class="secondary-btn" style="background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.1); width: 100px;"><i class="ri-close-line"></i> Đóng</button>
-            </div>
-
-            <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin-bottom: 20px;">
-
-            <!-- Transfer Keywords Section -->
-            <div class="form-group">
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-                    <div style="width: 32px; height: 32px; background: rgba(239,68,68,0.12); border-radius: 8px; display:flex; align-items:center; justify-content:center; color:#f87171; font-size:16px; flex-shrink:0;"><i class="ri-user-voice-line"></i></div>
-                    <div>
-                        <label style="display: block; font-size: 13px; font-weight: 700; color: var(--text-primary);">Từ khóa chuyển Agent</label>
-                        <small style="color: var(--text-secondary); font-size: 11px;">Khi khách nhắn những từ này → AI tự động chuyển sang nhân viên hỗ trợ</small>
-                    </div>
-                </div>
-
-                <div id="keyword-tags-container" style="min-height: 40px; display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; margin-bottom: 10px;">
-                    <span class="keyword-tag-empty" style="color: var(--text-secondary); font-size: 12px; font-style: italic;">Chưa có từ khóa nào...</span>
-                </div>
-
-                <div style="display: flex; gap: 8px;">
-                    <input type="text" id="keyword-input" placeholder='Nhập từ khóa rồi nhấn Enter hoặc "Thêm"... (vd: giá, tư vấn, gặp nhân viên)' style="flex: 1; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px; outline: none;">
-                    <button id="keyword-add-btn" class="secondary-btn" style="white-space: nowrap; background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.25);"><i class="ri-add-line"></i> Thêm</button>
-                </div>
-
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 12px;">
-                    <div id="keyword-status" style="font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;"></div>
-                    <button id="keyword-save-btn" class="primary-btn" style="width: auto; padding: 8px 20px; background: rgba(239,68,68,0.8); box-shadow: 0 4px 12px rgba(239,68,68,0.3);"><i class="ri-save-line"></i> Lưu từ khóa</button>
-                </div>
             </div>
 
             <!-- Chat History Synthesis Section -->

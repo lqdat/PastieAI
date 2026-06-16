@@ -1368,10 +1368,7 @@ async function openKnowledgeModal() {
     knowledgeModal.classList.remove('hide');
     const projectId = 'pastie-landingpage';
     try {
-        const [kbResp, kwResp] = await Promise.all([
-            authFetch(`${API_BASE}/api/admin/knowledge?projectId=${projectId}`),
-            authFetch(`${API_BASE}/api/admin/keywords?projectId=${projectId}`)
-        ]);
+        const kbResp = await authFetch(`${API_BASE}/api/admin/knowledge?projectId=${projectId}`);
         const data = await kbResp.json();
         if (data.source_url) {
             kbUrlInput.value = data.source_url === 'manual' ? 'https://pastie-landingpage.vercel.app' : data.source_url;
@@ -1383,9 +1380,6 @@ async function openKnowledgeModal() {
             kbSyncStatus.innerHTML = `<i class="ri-information-line" style="color: var(--accent-color);"></i> <span>Chưa có cơ sở dữ liệu tri thức nào được cấu hình.</span>`;
             kbTextArea.value = '';
         }
-        // Load keywords
-        const kwData = await kwResp.json();
-        renderKeywordTags(kwData.keywords || []);
     } catch (e) {
         console.error('Error fetching knowledge settings:', e);
     }
@@ -1527,9 +1521,29 @@ if (keywordSaveBtn) {
             if (keywordStatus) keywordStatus.innerHTML = `<i class="ri-error-warning-line" style="color:#f87171;"></i> Lỗi kết nối`;
         } finally {
             keywordSaveBtn.disabled = false;
-            keywordSaveBtn.innerHTML = `<i class="ri-save-line"></i> Lưu từ khóa`;
+            keywordSaveBtn.innerHTML = `<i class="ri-save-line"></i> Lưu`;
         }
     });
+}
+
+// --- KEYWORD MODAL (standalone) ---
+const keywordModal = document.getElementById('keyword-modal');
+const keywordSettingsBtn = document.getElementById('keyword-settings-btn');
+const keywordModalCloseBtn = document.getElementById('keyword-modal-close-btn');
+
+if (keywordSettingsBtn) {
+    keywordSettingsBtn.addEventListener('click', async () => {
+        closeSettingsDropdown();
+        if (keywordModal) keywordModal.classList.remove('hide');
+        try {
+            const res = await authFetch(`${API_BASE}/api/admin/keywords?projectId=pastie-landingpage`);
+            const data = await res.json();
+            renderKeywordTags(data.keywords || []);
+        } catch(e) { console.error('Error loading keywords:', e); }
+    });
+}
+if (keywordModalCloseBtn) {
+    keywordModalCloseBtn.addEventListener('click', () => keywordModal && keywordModal.classList.add('hide'));
 }
 
 // --- CHAT HISTORY SYNTHESIS ---

@@ -86,7 +86,8 @@
             btnMeetCSKH: 'Gặp CSKH',
             btnCloseCSKH: 'Kết thúc',
             confirmEndChat: 'Bạn có chắc chắn muốn kết thúc cuộc trò chuyện?',
-            backToAI: 'Quay lại AI'
+            backToAI: 'Quay lại AI',
+            sessionEnded: 'Cuộc trò chuyện đã kết thúc. AI tiếp tục hỗ trợ bạn ↓'
         },
         en: {
             headerTitle: 'Live Support',
@@ -126,7 +127,8 @@
             btnMeetCSKH: 'Meet Agent',
             btnCloseCSKH: 'End Chat',
             confirmEndChat: 'Are you sure you want to end this conversation?',
-            backToAI: 'Back to AI'
+            backToAI: 'Back to AI',
+            sessionEnded: 'This conversation has ended. AI will continue to assist you ↓'
         },
         ru: {
             headerTitle: 'Живая Поддержка',
@@ -166,7 +168,8 @@
             btnMeetCSKH: 'Оператор',
             btnCloseCSKH: 'Завершить',
             confirmEndChat: 'Вы уверены, что хотите завершить разговор?',
-            backToAI: 'Назад к ИИ'
+            backToAI: 'Назад к ИИ',
+            sessionEnded: 'Разговор завершён. ИИ продолжит вам помогать ↓'
         },
         zh: {
             headerTitle: '在线支持',
@@ -206,7 +209,8 @@
             btnMeetCSKH: '联系客服',
             btnCloseCSKH: '结束',
             confirmEndChat: '您确定要结束对话吗？',
-            backToAI: '返回AI'
+            backToAI: '返回AI',
+            sessionEnded: '对话已结束，AI将继续为您服务 ↓'
         }
     };
 
@@ -481,6 +485,38 @@
         if (btn) btn.disabled = false;
         switchView('init');
         updateHeaderActionButton();
+    }
+
+    async function autoRestartAISession() {
+        state.sessionId = null;
+        state.mode = 'ai';
+        state.messages = [];
+        state.lastMessageCount = 0;
+        state.offset = 0;
+        state.hasMore = true;
+        state.requestingAgent = false;
+        sessionStorage.removeItem('pastie_chat_session_id');
+        sessionStorage.removeItem('pastie_chat_mode');
+        stopPolling();
+
+        try {
+            const r = await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/anonymous`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, visitorLang: state.detectedLang || 'vi' })
+            });
+            const d = await r.json();
+            if (d.success) {
+                state.sessionId = d.sessionId;
+                sessionStorage.setItem('pastie_chat_session_id', d.sessionId);
+                sessionStorage.setItem('pastie_chat_mode', 'ai');
+                startPolling();
+                loadMessageHistory();
+                updateHeaderActionButton();
+            }
+        } catch(e) {
+            console.error('[Widget] autoRestartAISession failed:', e);
+        }
     }
 
     // --- DOM Actions & Navigation ---
@@ -765,13 +801,7 @@
                 });
 
                 if (res.status === 404 || res.status === 410) {
-                    // Session expired — restart fresh AI session
-                    state.sessionId = null;
-                    state.mode = 'ai';
-                    state.messages = [];
-                    sessionStorage.removeItem('pastie_chat_session_id');
-                    stopPolling();
-                    switchView('chat');
+                    await autoRestartAISession();
                     return;
                 }
 
@@ -800,12 +830,7 @@
         try {
             const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/messages?visitorLang=${state.detectedLang}&limit=${fetchLimit}&offset=${fetchOffset}&_=${Date.now()}`);
             if (res.status === 404 || res.status === 410) {
-                state.sessionId = null;
-                state.mode = 'ai';
-                state.messages = [];
-                sessionStorage.removeItem('pastie_chat_session_id');
-                stopPolling();
-                switchView('chat');
+                await autoRestartAISession();
                 return;
             }
             const fetchedMessages = await res.json();
