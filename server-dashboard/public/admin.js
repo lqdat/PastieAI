@@ -922,7 +922,9 @@ function renderAdminMessages(isLoadMore = false) {
 
     adminMessages.forEach(msg => {
         const wrapper = document.createElement('div');
-        wrapper.className = `message-wrapper ${msg.sender}`;
+        // Use 'agent' CSS class for 'ai' sender so it inherits agent bubble styling
+        const displayClass = msg.sender === 'ai' ? 'agent' : msg.sender;
+        wrapper.className = `message-wrapper ${displayClass}`;
 
         const locale = currentLang === 'vi' ? 'vi-VN' : currentLang === 'zh' ? 'zh-CN' : currentLang === 'ru' ? 'ru-RU' : 'en-US';
         const timeStr = new Date(msg.created_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
