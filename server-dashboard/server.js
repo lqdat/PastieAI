@@ -2887,16 +2887,18 @@ app.post('/api/admin/kb/synthesize', checkAdminAuth, async (req, res) => {
   res.json({ success: true, message: 'Synthesis started for all projects' });
 });
 
-// ── Read receipts table ────────────────────────────────────────────────────────
-db.query(`
-  CREATE TABLE IF NOT EXISTS session_read_receipts (
-    session_id TEXT NOT NULL,
-    admin_id UUID NOT NULL,
-    seen_message_count INTEGER NOT NULL DEFAULT 0,
-    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (session_id, admin_id)
-  )
-`).catch(e => console.error('[DB] Failed to create session_read_receipts:', e.message));
+// ── Read receipts table (created synchronously before server starts) ──────────
+async function ensureReadReceiptsTable() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS session_read_receipts (
+      session_id TEXT NOT NULL,
+      admin_id TEXT NOT NULL,
+      seen_message_count INTEGER NOT NULL DEFAULT 0,
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (session_id, admin_id)
+    )
+  `);
+}
 
 // Mark session as read for current admin
 app.post('/api/admin/chats/:sessionId/read', checkAdminAuth, async (req, res) => {
@@ -2920,7 +2922,9 @@ app.post('/api/admin/chats/:sessionId/read', checkAdminAuth, async (req, res) =>
 });
 
 // Start Server
-app.listen(PORT, '0.0.0.0', () => {
+async function startServer() {
+  await ensureReadReceiptsTable();
+  app.listen(PORT, '0.0.0.0', () => {
   console.log(`-----------------------------------------------------`);
   console.log(`Pastie AI Chat Server is running on port ${PORT}`);
   console.log(`Admin Dashboard: http://localhost:${PORT}/admin`);
@@ -2933,4 +2937,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`- RESEND_API_KEY: ${process.env.RESEND_API_KEY ? 'LOADED (Configured)' : 'MISSING ❌'}`);
   console.log(`- SENDER_EMAIL: ${process.env.SENDER_EMAIL ? `LOADED (${process.env.SENDER_EMAIL})` : 'MISSING (Using onboarding@resend.dev fallback) ⚠️'}`);
   console.log(`-----------------------------------------------------`);
-});
+  });
+}
+startServer().catch(console.error);
