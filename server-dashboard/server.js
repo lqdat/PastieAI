@@ -1563,15 +1563,19 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
   const { projectId } = req.query;
   
   try {
+    const adminId = req.admin.id;
+    const params = [adminId];
+
     let queryText = `
       SELECT s.*, a.full_name as assigned_admin_name, a.avatar_url as assigned_admin_avatar,
         (SELECT COUNT(*) FROM messages WHERE session_id = s.id) as message_count,
         (SELECT MAX(created_at) FROM messages WHERE session_id = s.id) as last_message_at,
-        (SELECT original_text FROM messages WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1) as last_message_preview
+        (SELECT original_text FROM messages WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1) as last_message_preview,
+        COALESCE(rr.seen_message_count, -1) as seen_message_count
       FROM sessions s
       LEFT JOIN admins a ON s.assigned_admin_id = a.id
+      LEFT JOIN session_read_receipts rr ON rr.session_id = s.id AND rr.admin_id = $1
     `;
-    const params = [];
 
     // Chỉ hiện multichannel session khi đã chuyển sang agent (show_in_dashboard=true)
     // Live chat widget (platform='widget' hoặc null) luôn hiện
@@ -2881,6 +2885,38 @@ app.post('/api/admin/kb/synthesize', checkAdminAuth, async (req, res) => {
   }
   runSynthesisForAllProjects().catch(console.error);
   res.json({ success: true, message: 'Synthesis started for all projects' });
+});
+
+// ── Read receipts table ────────────────────────────────────────────────────────
+db.query(`
+  CREATE TABLE IF NOT EXISTS session_read_receipts (
+    session_id TEXT NOT NULL,
+    admin_id UUID NOT NULL,
+    seen_message_count INTEGER NOT NULL DEFAULT 0,
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (session_id, admin_id)
+  )
+`).catch(e => console.error('[DB] Failed to create session_read_receipts:', e.message));
+
+// Mark session as read for current admin
+app.post('/api/admin/chats/:sessionId/read', checkAdminAuth, async (req, res) => {
+  const { sessionId } = req.params;
+  const adminId = req.admin.id;
+  try {
+    const countRes = await db.query('SELECT COUNT(*) FROM messages WHERE session_id = $1', [sessionId]);
+    const count = parseInt(countRes.rows[0].count) || 0;
+    await db.query(
+      `INSERT INTO session_read_receipts (session_id, admin_id, seen_message_count, last_seen_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (session_id, admin_id) DO UPDATE
+       SET seen_message_count = $3, last_seen_at = NOW()`,
+      [sessionId, adminId, count]
+    );
+    res.json({ success: true, seen_message_count: count });
+  } catch (e) {
+    console.error('[Read receipt] error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Start Server

@@ -224,15 +224,9 @@ let sessionsList = [];
 let pollInterval = null;
 let messagePollInterval = null;
 
-// Unread message tracking — persisted in localStorage so refresh doesn't reset badges
-const SEEN_KEY = 'pastie_seen_msgs';
-function loadSeenCounts() {
-    try { return JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'); } catch { return {}; }
-}
-function saveSeenCounts() {
-    try { localStorage.setItem(SEEN_KEY, JSON.stringify(seenMessageCount)); } catch {}
-}
-const seenMessageCount = loadSeenCounts();
+// Unread tracking — seenMessageCount is synced from DB via sessions API
+// -1 = never opened by this admin (show as unread if has messages)
+const seenMessageCount = {};
 
 // Admin lazy loading pagination state
 let adminMessages = [];
@@ -475,7 +469,15 @@ async function fetchSessions() {
 
         const data = await response.json();
         sessionsList = data;
-        
+
+        // Sync seen counts from DB into local map
+        data.forEach(s => {
+            const dbSeen = parseInt(s.seen_message_count);
+            // Only update if DB has a value (-1 means never opened)
+            if (dbSeen >= 0) seenMessageCount[s.id] = dbSeen;
+            else if (!(s.id in seenMessageCount)) seenMessageCount[s.id] = -1;
+        });
+
         // Real-time synchronization of the visitor's selected language in the dropdown
         if (currentSessionId) {
             const currentActiveSession = data.find(s => s.id === currentSessionId);
@@ -573,8 +575,8 @@ function renderSessionsList(sessions) {
     function createSessionCard(session) {
         const card = document.createElement('div');
         const totalMsgsForClass = parseInt(session.message_count) || 0;
-        const seenForClass = seenMessageCount[session.id] || 0;
-        const hasUnread = session.id !== currentSessionId && totalMsgsForClass > seenForClass;
+        const seenForClass = seenMessageCount[session.id];
+        const hasUnread = session.id !== currentSessionId && (seenForClass === undefined || seenForClass === -1 ? totalMsgsForClass > 1 : totalMsgsForClass > seenForClass);
         card.className = `session-card ${session.id === currentSessionId ? 'active-selected' : ''} ${hasUnread ? 'has-unread' : ''}`;
         card.setAttribute('data-id', session.id);
         
@@ -586,8 +588,10 @@ function renderSessionsList(sessions) {
         const statusText = session.status === 'active' ? dict.statusActive : dict.statusClosed;
 
         const totalMsgs = parseInt(session.message_count) || 0;
-        const seen = seenMessageCount[session.id] || 0;
-        const unread = session.id === currentSessionId ? 0 : Math.max(0, totalMsgs - seen);
+        const seen = seenMessageCount[session.id];
+        const unread = session.id === currentSessionId ? 0
+            : (seen === undefined || seen === -1) ? (totalMsgs > 1 ? totalMsgs - 1 : 0)
+            : Math.max(0, totalMsgs - seen);
         const unreadBadge = unread > 0 ? `<span class="session-unread-badge">${unread > 99 ? '99+' : unread}</span>` : '';
 
         const preview = session.last_message_preview
@@ -719,9 +723,13 @@ function renderSessionsList(sessions) {
 async function selectSession(sessionId) {
     currentSessionId = sessionId;
 
-    // Mark session as seen (clear unread badge) and persist
+    // Mark session as read in DB (async, no need to await)
+    authFetch(`${API_BASE}/api/admin/chats/${sessionId}/read`, { method: 'POST' })
+        .then(r => r.json()).then(d => { if (d.seen_message_count !== undefined) seenMessageCount[sessionId] = d.seen_message_count; })
+        .catch(() => {});
+    // Optimistically clear badge in UI immediately
     const sess = sessionsList.find(s => s.id === sessionId);
-    if (sess) { seenMessageCount[sessionId] = parseInt(sess.message_count) || 0; saveSeenCounts(); }
+    if (sess) seenMessageCount[sessionId] = parseInt(sess.message_count) || 0;
 
     // Reset pagination states for the newly selected session
     adminMessages = [];
@@ -898,8 +906,8 @@ async function loadMessages(sessionId, isLoadMore = false) {
             }
         }
 
-        // Update seen count for current session so unread badge stays cleared
-        if (currentSessionId) { seenMessageCount[currentSessionId] = adminMessages.length; saveSeenCounts(); }
+        // Keep local seen count in sync while admin is viewing
+        if (currentSessionId) seenMessageCount[currentSessionId] = adminMessages.length;
 
         renderAdminMessages(isLoadMore);
     } catch (e) {
