@@ -236,28 +236,54 @@
     <!-- AI Knowledge Base Modal -->
     <!-- Transfer Keywords Modal -->
     <div id="keyword-modal" class="modal-overlay hide">
-        <div class="login-box glass-panel" style="max-width: 520px; width: 90%; max-height: 85vh; overflow-y: auto;">
-            <div class="brand-header" style="margin-bottom: 20px;">
-                <div class="brand-logo" style="background: rgba(239,68,68,0.12); color: #f87171; width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px auto; font-size: 24px;"><i class="ri-user-voice-line"></i></div>
-                <h2 style="font-size: 20px; margin-bottom: 4px;">Từ khóa chuyển Agent</h2>
-                <p style="font-size: 13px; color: var(--text-secondary);">Khi khách nhắn những từ này → AI tự động chuyển sang nhân viên hỗ trợ</p>
-            </div>
-
-            <div id="keyword-tags-container" style="min-height: 48px; display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; margin-bottom: 12px;">
-                <span class="keyword-tag-empty" style="color: var(--text-secondary); font-size: 12px; font-style: italic;">Chưa có từ khóa nào...</span>
-            </div>
-
-            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
-                <input type="text" id="keyword-input" placeholder='Nhập từ khóa rồi nhấn Enter... (vd: giá, tư vấn, gặp nhân viên)' style="flex: 1; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px; outline: none;">
-                <button id="keyword-add-btn" class="secondary-btn" style="white-space: nowrap; background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.25);"><i class="ri-add-line"></i> Thêm</button>
-            </div>
-
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-                <div id="keyword-status" style="font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;"></div>
-                <div style="display: flex; gap: 8px;">
-                    <button id="keyword-modal-close-btn" class="secondary-btn" style="background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.1);"><i class="ri-close-line"></i> Đóng</button>
-                    <button id="keyword-save-btn" class="primary-btn" style="width: auto; padding: 8px 20px; background: rgba(239,68,68,0.8); box-shadow: 0 4px 12px rgba(239,68,68,0.3);"><i class="ri-save-line"></i> Lưu</button>
+        <div class="login-box glass-panel" style="max-width: 560px; width: 90%; max-height: 88vh; overflow-y: auto;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:40px;height:40px;background:rgba(239,68,68,0.12);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#f87171;font-size:20px;flex-shrink:0;"><i class="ri-user-voice-line"></i></div>
+                    <div>
+                        <h2 style="font-size:17px;margin:0 0 2px;font-weight:700;">Từ khóa chuyển Agent</h2>
+                        <p style="font-size:12px;color:var(--text-secondary);margin:0;">Khi khách nhắn những từ này → AI tự động chuyển sang nhân viên</p>
+                    </div>
                 </div>
+                <button id="keyword-modal-close-btn" style="background:transparent;border:none;color:var(--text-secondary);cursor:pointer;font-size:20px;padding:4px;"><i class="ri-close-line"></i></button>
+            </div>
+
+            <!-- Built-in system keywords -->
+            <div style="margin-bottom:16px;">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-secondary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <i class="ri-shield-check-line" style="color:#818cf8;"></i> Từ khóa mặc định hệ thống (tự động, không thể xóa)
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:10px;">
+                    <span style="padding:3px 10px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);border-radius:20px;font-size:11px;color:#a5b4fc;">cskh</span>
+                    <span style="padding:3px 10px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);border-radius:20px;font-size:11px;color:#a5b4fc;">nhân viên</span>
+                    <span style="padding:3px 10px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);border-radius:20px;font-size:11px;color:#a5b4fc;">agent</span>
+                    <span style="padding:3px 10px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);border-radius:20px;font-size:11px;color:#a5b4fc;">support</span>
+                    <span style="padding:3px 10px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);border-radius:20px;font-size:11px;color:#a5b4fc;">tư vấn</span>
+                    <span style="padding:3px 10px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);border-radius:20px;font-size:11px;color:#a5b4fc;">gặp người</span>
+                    <span style="padding:3px 10px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);border-radius:20px;font-size:11px;color:#a5b4fc;">speak to human</span>
+                    <span style="padding:3px 10px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);border-radius:20px;font-size:11px;color:#a5b4fc;">оператор</span>
+                    <span style="padding:3px 10px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);border-radius:20px;font-size:11px;color:#a5b4fc;">客服</span>
+                    <span style="padding:3px 10px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);border-radius:20px;font-size:11px;color:#a5b4fc;">人工</span>
+                    <span style="padding:3px 10px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);border-radius:20px;font-size:11px;color:#a5b4fc;">... và nhiều hơn</span>
+                </div>
+            </div>
+
+            <!-- Custom keywords -->
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-secondary);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                <i class="ri-add-circle-line" style="color:#f87171;"></i> Từ khóa tùy chỉnh của bạn
+            </div>
+            <div id="keyword-tags-container" style="min-height:48px;display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:rgba(0,0,0,0.15);border:1px solid rgba(255,255,255,0.07);border-radius:10px;margin-bottom:12px;">
+                <span class="keyword-tag-empty" style="color:var(--text-secondary);font-size:12px;font-style:italic;">Chưa có từ khóa tùy chỉnh nào...</span>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-bottom:16px;">
+                <input type="text" id="keyword-input" placeholder='Nhập từ khóa rồi nhấn Enter... (vd: giá phòng, đặt tour, ưu đãi)' style="flex:1;padding:10px 12px;border-radius:8px;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-family:inherit;font-size:13px;outline:none;">
+                <button id="keyword-add-btn" class="secondary-btn" style="white-space:nowrap;background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.25);"><i class="ri-add-line"></i> Thêm</button>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                <div id="keyword-status" style="font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;"></div>
+                <button id="keyword-save-btn" class="primary-btn" style="width:auto;padding:8px 24px;background:rgba(239,68,68,0.85);box-shadow:0 4px 12px rgba(239,68,68,0.3);"><i class="ri-save-line"></i> Lưu từ khóa</button>
             </div>
         </div>
     </div>
