@@ -2177,7 +2177,7 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
       sessionId = `mc-${platform}-${randomUUID()}`;
       await db.query(`
         INSERT INTO sessions (id, project_id, visitor_name, visitor_avatar, detected_language, status, platform, platform_sender_id, is_verified, show_in_dashboard)
-        VALUES ($1, $2, $3, $4, null, 'active', $5, $6, true, false)
+        VALUES ($1, $2, $3, $4, null, 'active', $5, $6, true, true)
       `, [sessionId, projectId, visitorName, visitorAvatar, platform, senderId]);
     } else {
       if (session.status !== 'active') {
