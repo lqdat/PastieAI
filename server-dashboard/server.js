@@ -2707,6 +2707,44 @@ app.get('/api/test-resend', async (req, res) => {
 });
 
 // ── Debug: check session state ────────────────────────────────────────────────
+// ── Debug: check channel config + recent WhatsApp sessions ──────────────────
+app.get('/api/debug/channels', async (req, res) => {
+  try {
+    const configs = await db.query(`
+      SELECT project_id, platform,
+        CASE WHEN whatsapp_phone_number_id != '' THEN 'SET' ELSE 'MISSING' END as wa_phone_id,
+        CASE WHEN whatsapp_access_token != '' THEN 'SET' ELSE 'MISSING' END as wa_token,
+        CASE WHEN messenger_page_id != '' THEN 'SET' ELSE 'MISSING' END as fb_page_id,
+        CASE WHEN instagram_page_id != '' THEN 'SET' ELSE 'MISSING' END as ig_page_id,
+        meta_verify_token, updated_at
+      FROM channel_configs
+    `);
+    const recentSessions = await db.query(`
+      SELECT id, project_id, platform, visitor_name, show_in_dashboard, status, created_at
+      FROM sessions WHERE platform IN ('whatsapp','instagram','messenger')
+      ORDER BY created_at DESC LIMIT 10
+    `);
+    res.json({
+      channel_configs: configs.rows,
+      recent_mc_sessions: recentSessions.rows,
+      env: {
+        META_VERIFY_TOKEN: process.env.META_VERIFY_TOKEN ? 'SET' : 'MISSING',
+        META_APP_SECRET: process.env.META_APP_SECRET ? 'SET' : 'MISSING (signature check skipped)',
+        WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID ? 'SET' : 'MISSING',
+        WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN ? 'SET' : 'MISSING',
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Debug: raw webhook logger (nhận payload từ Meta) ────────────────────────
+app.post('/api/debug/webhook-echo', (req, res) => {
+  console.log('[WebhookEcho]', JSON.stringify(req.body, null, 2)); // eslint-disable-line
+  res.json({ received: req.body });
+});
+
 app.get('/api/debug/session/:sessionId', async (req, res) => {
   try {
     const s = await db.query('SELECT id, project_id, status, requested_agent, show_in_dashboard, detected_language, platform FROM sessions WHERE id = $1', [req.params.sessionId]);
