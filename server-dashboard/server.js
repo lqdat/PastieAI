@@ -2388,6 +2388,19 @@ app.get('/api/test-resend', async (req, res) => {
 
 // ── Debug: check session state ────────────────────────────────────────────────
 // ── Debug: check channel config + recent WhatsApp sessions ──────────────────
+// Echo endpoint — captures exact payload ManyChat sends (no auth required for debugging)
+const manychatEchoLog = [];
+app.post('/api/debug/manychat-echo', (req, res) => {
+  const entry = { time: new Date().toISOString(), headers: req.headers, body: req.body };
+  manychatEchoLog.unshift(entry);
+  if (manychatEchoLog.length > 10) manychatEchoLog.pop();
+  console.log('[ManyChatEcho]', JSON.stringify(entry));
+  res.json({ received: true });
+});
+app.get('/api/debug/manychat-echo', (req, res) => {
+  res.json(manychatEchoLog);
+});
+
 app.get('/api/debug/channels', async (req, res) => {
   try {
     const configs = await db.query(`
