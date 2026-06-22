@@ -1862,49 +1862,9 @@ app.get('/api/admin/export', checkAdminAuth, async (req, res) => {
  * Sends a message back to the customer on their respective platform using the Meta Graph APIs.
  * Supports WhatsApp, Messenger, and Instagram.
  */
-async function sendManyChatMessage(subscriberId, text) {
-  const apiKey = process.env.MANYCHAT_API_KEY;
-  if (!apiKey) {
-    console.warn('[ManyChat] MANYCHAT_API_KEY not set — cannot send message.');
-    return;
-  }
-  try {
-    const res = await fetch('https://api.manychat.com/fb/sending/sendContent', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        subscriber_id: Number(subscriberId),
-        data: {
-          version: 'v2',
-          content: {
-            messages: [{ type: 'text', text }]
-          }
-        },
-        message_tag: 'ACCOUNT_UPDATE'
-      })
-    });
-    const data = await res.json();
-    if (data.status !== 'success') {
-      console.warn('[ManyChat] Send failed:', JSON.stringify(data));
-    } else {
-      console.log('[ManyChat] Message sent to subscriber', subscriberId);
-    }
-  } catch (err) {
-    console.error('[ManyChat] sendManyChatMessage error:', err.message);
-  }
-}
-
 async function sendMultichannelMessage(platform, recipientId, text, projectId = 'pastie-landingpage') {
   try {
-    // ManyChat routing (commented out — use Meta directly for now)
-    // if (platform && platform.startsWith('manychat')) {
-    //   await sendManyChatMessage(recipientId, text);
-    //   return;
-    // }
-
+    // 1. Fetch channel config for this project from Database
     const configRes = await db.query('SELECT * FROM channel_configs WHERE project_id = $1', [projectId]);
     const config = configRes.rows[0];
 
@@ -1912,48 +1872,92 @@ async function sendMultichannelMessage(platform, recipientId, text, projectId = 
       const whatsappPhoneId = config?.whatsapp_phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
       const whatsappToken = config?.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
       if (!whatsappPhoneId || !whatsappToken) {
-        console.warn(`WARNING: WhatsApp credentials missing for project ${projectId}.`);
+        console.warn(`WARNING: WhatsApp credentials missing for project ${projectId}. Cannot send message.`);
         return;
       }
-      const res = await fetch(`https://graph.facebook.com/v20.0/${whatsappPhoneId}/messages`, {
+      
+      const url = `https://graph.facebook.com/v20.0/${whatsappPhoneId}/messages`;
+      const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${whatsappToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: recipientId, type: 'text', text: { body: text } })
+        headers: {
+          'Authorization': `Bearer ${whatsappToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: recipientId,
+          type: "text",
+          text: { body: text }
+        })
       });
-      console.log('WhatsApp send:', await res.json());
-    } else if (platform === 'messenger' || platform === 'instagram') {
-      const pageToken = platform === 'instagram'
-        ? (config?.instagram_access_token || process.env.INSTAGRAM_ACCESS_TOKEN)
-        : (config?.messenger_page_access_token || process.env.MESSENGER_PAGE_ACCESS_TOKEN);
+      const data = await response.json();
+      console.log('WhatsApp send response:', data);
+    } 
+    else if (platform === 'messenger' || platform === 'instagram') {
+      let pageToken = '';
+      if (platform === 'instagram') {
+        pageToken = config?.instagram_access_token || process.env.INSTAGRAM_ACCESS_TOKEN;
+      } else {
+        pageToken = config?.messenger_page_access_token || process.env.MESSENGER_PAGE_ACCESS_TOKEN;
+      }
       if (!pageToken) {
-        console.warn(`WARNING: Page token for ${platform} missing for project ${projectId}.`);
+        console.warn(`WARNING: Page access token for ${platform} missing for project ${projectId}. Cannot send message.`);
         return;
       }
-      const res = await fetch(`https://graph.facebook.com/v20.0/me/messages?access_token=${pageToken}`, {
+        
+      const url = `https://graph.facebook.com/v20.0/me/messages?access_token=${pageToken}`;
+      const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipient: { id: recipientId }, message: { text } })
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          recipient: { id: recipientId },
+          message: { text: text }
+        })
       });
-      console.log(`${platform} send:`, await res.json());
+      const data = await response.json();
+      console.log(`${platform} send response:`, data);
     }
   } catch (error) {
-    console.error(`Error sending to ${platform}:`, error.message);
+    console.error(`Error sending message to multi-channel platform ${platform}:`, error.message);
   }
 }
 
+/**
+ * Trả về tin nhắn xác thực OTP đa ngôn ngữ cho multi-channel.
+ * Hỗ trợ: vi, en, ru, zh — mặc định en nếu ngôn ngữ khác.
+ */
+/**
+ * Lấy tên thật của người dùng Messenger qua Graph API.
+ * Trả về { name, avatarUrl } hoặc null nếu thất bại.
+ */
 async function fetchMessengerUserProfile(psid, pageAccessToken) {
   try {
-    const res = await fetch(`https://graph.facebook.com/v20.0/${psid}?fields=name,profile_pic&access_token=${pageAccessToken}`);
+    const url = `https://graph.facebook.com/v20.0/${psid}?fields=name,profile_pic&access_token=${pageAccessToken}`;
+    const res = await fetch(url);
     const data = await res.json();
-    if (data.error) { console.warn(`[Profile] PSID=${psid} error:`, data.error.message); return null; }
-    return { name: data.name || null, avatarUrl: data.profile_pic || null };
+    if (data.error) {
+      console.warn(`[Profile] PSID=${psid} error:`, data.error.message, '| code:', data.error.code);
+      return null;
+    }
+    console.log(`[Profile] PSID=${psid} → name="${data.name}", hasPic=${!!data.profile_pic}`);
+    return {
+      name: data.name || null,
+      avatarUrl: data.profile_pic || null
+    };
   } catch (e) {
     console.warn(`[Profile] PSID=${psid} fetch failed:`, e.message);
     return null;
   }
 }
 
+/**
+ * Parses disparate Meta payloads into a unified format.
+ */
 function parseWebhookEvent(body) {
+  // 1. WhatsApp Cloud API Payload
   if (body.object === 'whatsapp_business_account') {
     const entry = body.entry?.[0];
     const change = entry?.changes?.[0]?.value;
@@ -1962,14 +1966,16 @@ function parseWebhookEvent(body) {
     if (message) {
       return {
         platform: 'whatsapp',
-        senderId: message.from,
-        targetId: phoneId || '',
+        senderId: message.from, // Visitor's phone number
+        targetId: phoneId || '', // Target business phone number ID
         name: change.contacts?.[0]?.profile?.name || `WhatsApp User (${message.from})`,
-        text: message.text?.body || '[Media]',
+        text: message.text?.body || '[Phương tiện/Media]',
         messageId: message.id
       };
     }
   }
+
+  // 2. Facebook Messenger or Instagram Graph API Payload
   if (body.object === 'page' || body.object === 'instagram') {
     const entry = body.entry?.[0];
     const messaging = entry?.messaging?.[0];
@@ -1977,77 +1983,189 @@ function parseWebhookEvent(body) {
       const isInstagram = body.object === 'instagram';
       return {
         platform: isInstagram ? 'instagram' : 'messenger',
-        senderId: messaging.sender.id,
-        targetId: messaging.recipient.id,
-        name: isInstagram ? 'Instagram User' : 'Facebook User',
-        text: messaging.message.text || '[Media]',
+        senderId: messaging.sender.id, // PSID (Page-Scoped ID) or IGSID
+        targetId: messaging.recipient.id, // Target Page ID receiving message
+        name: isInstagram ? `Instagram User` : `Facebook User`,
+        text: messaging.message.text || '[Phương tiện/Media]',
         messageId: messaging.message.mid
       };
     }
   }
+
   return null;
 }
 
-function verifyMetaSignature(req, res, next) {
-  const signature = req.headers['x-hub-signature-256'];
-  const appSecret = process.env.META_APP_SECRET;
-  if (!appSecret) { return next(); }
-  if (!signature) { return res.status(401).send('Missing signature'); }
-  const signatureHash = signature.split('=')[1];
-  const expectedHash = crypto.createHmac('sha256', appSecret).update(req.rawBody || '').digest('hex');
-  if (signatureHash !== expectedHash) { return res.status(401).send('Invalid signature'); }
-  next();
-}
-
+/**
+ * @openapi
+ * /api/multichannel/webhook:
+ *   get:
+ *     summary: Xac thuc Webhook Meta (Facebook/Instagram/WhatsApp)
+ *     description: Meta goi endpoint nay de xac minh webhook. Ho tro verify token qua env META_VERIFY_TOKEN hoac bang channel_configs.
+ *     tags:
+ *       - Multi-channel Webhook
+ *     parameters:
+ *       - in: query
+ *         name: hub.mode
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: subscribe
+ *       - in: query
+ *         name: hub.verify_token
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: pastie_verify_token_2026
+ *       - in: query
+ *         name: hub.challenge
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: chal_12345
+ *     responses:
+ *       200:
+ *         description: Xac thuc thanh cong, tra ve hub.challenge
+ *       403:
+ *         description: Token khong khop
+ *       400:
+ *         description: Thieu tham so bat buoc
+ *   post:
+ *     summary: Nhan tin nhan tu Meta (Messenger / Instagram / WhatsApp)
+ *     description: Nhan su kien webhook tu Meta. Tu dong phan luong Gemini AI hoac human agent.
+ *     tags:
+ *       - Multi-channel Webhook
+ *     security:
+ *       - MetaSignature: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               object:
+ *                 type: string
+ *                 enum: [whatsapp_business_account, page, instagram]
+ *               entry:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *     responses:
+ *       200:
+ *         description: Da nhan su kien (luon tra ve 200 de Meta khong retry)
+ *       401:
+ *         description: Signature khong hop le
+ */
+// Verification Webhook for Meta (GET)
 app.get('/api/multichannel/webhook', async (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
-  const defaultToken = process.env.META_VERIFY_TOKEN || 'pastie_verify_token_2026';
-  if (mode === 'subscribe') {
-    if (token === defaultToken) { return res.status(200).send(challenge); }
-    try {
-      const r = await db.query('SELECT project_id FROM channel_configs WHERE meta_verify_token = $1 LIMIT 1', [token]);
-      if (r.rows.length > 0) { return res.status(200).send(challenge); }
-    } catch (e) { console.error('Verify token DB error:', e.message); }
-    return res.sendStatus(403);
+
+  const defaultVerifyToken = process.env.META_VERIFY_TOKEN || 'pastie_verify_token_2026';
+
+  if (mode && token) {
+    if (mode === 'subscribe') {
+      // 1. Check default env verify token first
+      if (token === defaultVerifyToken) {
+        console.log('WEBHOOK_VERIFIED: Webhook Meta successfully verified via Env Token!');
+        return res.status(200).send(challenge);
+      }
+      
+      // 2. Search database channel configurations for matching verification tokens
+      try {
+        const dbVerifyRes = await db.query('SELECT project_id FROM channel_configs WHERE meta_verify_token = $1 LIMIT 1', [token]);
+        if (dbVerifyRes.rows.length > 0) {
+          console.log(`WEBHOOK_VERIFIED: Webhook Meta successfully verified via DB Token for project ${dbVerifyRes.rows[0].project_id}!`);
+          return res.status(200).send(challenge);
+        }
+      } catch (err) {
+        console.error('Error during DB verify token verification:', err.message);
+      }
+
+      console.warn('WEBHOOK_VERIFICATION_FAILED: Tokens mismatch.');
+      return res.sendStatus(403);
+    }
   }
   return res.sendStatus(400);
 });
 
+// Middleware to verify Meta Webhook signature (security check)
+function verifyMetaSignature(req, res, next) {
+  const signature = req.headers['x-hub-signature-256'];
+  const appSecret = process.env.META_APP_SECRET;
+
+  // If App Secret is not configured, we skip signature verification (dev fallback)
+  if (!appSecret) {
+    console.warn('WARNING: META_APP_SECRET is not configured in .env. Skipping webhook signature verification.');
+    return next();
+  }
+
+  if (!signature) {
+    console.error('Signature verification failed: Missing x-hub-signature-256 header.');
+    return res.status(401).send('Missing signature');
+  }
+
+  const parts = signature.split('=');
+  const signatureHash = parts[1];
+
+  const expectedHash = crypto
+    .createHmac('sha256', appSecret)
+    .update(req.rawBody || '')
+    .digest('hex');
+
+  if (signatureHash !== expectedHash) {
+    console.error('Signature verification failed: Hashes mismatch.');
+    return res.status(401).send('Invalid signature');
+  }
+
+  next();
+}
+
+// Incoming message handling (POST)
 app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
+  // Always respond 200 OK immediately to Meta to acknowledge receipt and prevent retries
   res.sendStatus(200);
-  console.log('[Webhook] RAW body:', JSON.stringify(req.body).substring(0, 500));
+
   const event = parseWebhookEvent(req.body);
-  console.log('[Webhook] Parsed event:', event ? `${event.platform} from ${event.senderId}` : 'NULL (ignored)');
   if (!event) return;
 
   const { platform, senderId, targetId, name, text } = event;
-  console.log(`[Webhook] ${platform} from ${senderId}: ${text}`);
-
+  console.log(`Webhook received message from ${platform} (senderId: ${senderId}, targetId: ${targetId}): ${text}`);
+  
   try {
-    let projectId = 'pastie-landingpage';
+    // 1. Resolve project_id based on targetId dynamically
+    let projectId = 'pastie-landingpage'; // Default/fallback project
     let resolvedPageToken = null;
     if (targetId) {
-      const r = await db.query(
-        `SELECT project_id, messenger_page_access_token, instagram_access_token FROM channel_configs
-         WHERE whatsapp_phone_number_id = $1 OR messenger_page_id = $1 OR instagram_page_id = $1 LIMIT 1`,
+      const configLookup = await db.query(
+        `SELECT project_id, messenger_page_access_token, instagram_access_token
+         FROM channel_configs
+         WHERE whatsapp_phone_number_id = $1
+            OR messenger_page_id = $1
+            OR instagram_page_id = $1
+         LIMIT 1`,
         [targetId]
       );
-      if (r.rows.length > 0) {
-        projectId = r.rows[0].project_id;
-        resolvedPageToken = r.rows[0].messenger_page_access_token || r.rows[0].instagram_access_token || null;
+      if (configLookup.rows.length > 0) {
+        projectId = configLookup.rows[0].project_id;
+        resolvedPageToken = configLookup.rows[0].messenger_page_access_token
+          || configLookup.rows[0].instagram_access_token || null;
       }
     }
+    console.log(`Mapped targetId ${targetId} → project: ${projectId}, hasToken: ${!!resolvedPageToken}`);
 
+    // 2. Get the most recent session for this user (any status) to check verify state
     const sessionRes = await db.query(
       `SELECT * FROM sessions WHERE platform = $1 AND platform_sender_id = $2 AND project_id = $3 ORDER BY created_at DESC LIMIT 1`,
       [platform, senderId, projectId]
     );
+
     let session = sessionRes.rows[0];
     let sessionId;
     let sessionLang = session?.detected_language || null;
 
+    // ── BRAND NEW USER: tạo session ẩn khỏi dashboard ──────────────
     if (!session) {
       let visitorName = name;
       let visitorAvatar = null;
@@ -2057,54 +2175,180 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
         if (profile?.avatarUrl) visitorAvatar = profile.avatarUrl;
       }
       sessionId = `mc-${platform}-${randomUUID()}`;
-      await db.query(
-        `INSERT INTO sessions (id, project_id, visitor_name, visitor_avatar, detected_language, status, platform, platform_sender_id, is_verified, show_in_dashboard)
-         VALUES ($1, $2, $3, $4, null, 'active', $5, $6, true, true)`,
-        [sessionId, projectId, visitorName, visitorAvatar, platform, senderId]
-      );
+      await db.query(`
+        INSERT INTO sessions (id, project_id, visitor_name, visitor_avatar, detected_language, status, platform, platform_sender_id, is_verified, show_in_dashboard)
+        VALUES ($1, $2, $3, $4, null, 'active', $5, $6, true, true)
+      `, [sessionId, projectId, visitorName, visitorAvatar, platform, senderId]);
     } else {
-      if (session.status !== 'active') await db.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [session.id]);
+      if (session.status !== 'active') {
+        await db.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [session.id]);
+      }
       sessionId = session.id;
-      const isDefaultName = !session.visitor_name || session.visitor_name === 'Facebook User' || session.visitor_name === 'Instagram User';
+
+      // Cập nhật tên thật nếu vẫn là tên mặc định
+      const isDefaultName = !session.visitor_name
+        || session.visitor_name === 'Facebook User'
+        || session.visitor_name === 'Instagram User';
       if (isDefaultName && (platform === 'messenger' || platform === 'instagram') && resolvedPageToken) {
         const profile = await fetchMessengerUserProfile(senderId, resolvedPageToken);
-        if (profile?.name) await db.query(`UPDATE sessions SET visitor_name = $1, visitor_avatar = COALESCE(visitor_avatar, $2) WHERE id = $3`, [profile.name, profile.avatarUrl, sessionId]);
+        if (profile?.name) {
+          await db.query(
+            `UPDATE sessions SET visitor_name = $1, visitor_avatar = COALESCE(visitor_avatar, $2) WHERE id = $3`,
+            [profile.name, profile.avatarUrl, sessionId]
+          );
+        }
       }
     }
 
+    // Dịch + detect ngôn ngữ trong 1 call duy nhất
     const { translatedText, detectedLang } = await gemini.translateText(text, 'vi');
     const finalLang = detectedLang || sessionLang || 'vi';
-    if (!sessionLang) await db.query(`UPDATE sessions SET detected_language = $1 WHERE id = $2`, [finalLang, sessionId]);
+    if (!sessionLang) {
+      await db.query(`UPDATE sessions SET detected_language = $1 WHERE id = $2`, [finalLang, sessionId]);
+    }
 
+    // Helper: lưu tin nhắn system + gửi về platform
     const sendAndSave = async (msgText) => {
-      await db.query(`INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3)`, [sessionId, msgText, finalLang]);
+      await db.query(`
+        INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+        VALUES ($1, 'system', $2, $2, $3)
+      `, [sessionId, msgText, finalLang]);
       await sendMultichannelMessage(platform, senderId, msgText, projectId);
     };
+
+    // Helper: lưu tin nhắn visitor
     const saveVisitor = async () => {
-      await db.query(`INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'visitor', $2, $3, $4)`, [sessionId, text, translatedText, finalLang]);
+      await db.query(`
+        INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+        VALUES ($1, 'visitor', $2, $3, $4)
+      `, [sessionId, text, translatedText, finalLang]);
     };
 
+    // ── OTP VERIFICATION FLOW ────────────────────────────────────────────
+    const MC_MSGS = {
+      ask_email: {
+        vi: 'Xin chào! Vui lòng cung cấp địa chỉ email để xác thực và bắt đầu chat 📧',
+        en: 'Hello! Please provide your email address to verify and start chatting 📧',
+        ru: 'Привет! Укажите ваш email для верификации и начала чата 📧',
+        zh: '您好！请提供您的电子邮件地址进行验证 📧',
+      },
+      otp_sent: {
+        vi: (e) => `Mã OTP đã gửi đến ${e}. Nhập mã 6 chữ số để xác thực ✉️`,
+        en: (e) => `OTP sent to ${e}. Enter the 6-digit code to verify ✉️`,
+        ru: (e) => `OTP отправлен на ${e}. Введите 6-значный код ✉️`,
+        zh: (e) => `验证码已发送至 ${e}，请输入6位数字验证码 ✉️`,
+      },
+      invalid_email: {
+        vi: 'Email không hợp lệ. Vui lòng nhập đúng định dạng (ví dụ: ten@gmail.com)',
+        en: 'Invalid email. Please enter a valid address (e.g. name@gmail.com)',
+        ru: 'Неверный email. Введите корректный адрес (например: name@gmail.com)',
+        zh: '邮箱格式无效，请输入正确的邮箱（如：name@gmail.com）',
+      },
+      invalid_otp: {
+        vi: 'Mã OTP không đúng hoặc đã hết hạn. Vui lòng thử lại.',
+        en: 'Invalid or expired OTP. Please try again.',
+        ru: 'Неверный или истёкший OTP. Попробуйте снова.',
+        zh: '验证码无效或已过期，请重试。',
+      },
+      verified_ok: {
+        vi: '✅ Xác thực thành công! Tôi có thể giúp gì cho bạn?',
+        en: '✅ Verified! How can I help you today?',
+        ru: '✅ Верификация прошла! Чем могу помочь?',
+        zh: '✅ 验证成功！请问有什么可以帮您的？',
+      },
+    };
+    const getMsg = (key, lang, ...args) => {
+      const m = MC_MSGS[key];
+      const fn = m[lang] || m['en'];
+      return typeof fn === 'function' ? fn(...args) : fn;
+    };
+
+    const verifyState = session?.mc_verify_state || null;
+
+    // State: null → chưa hỏi email
+    if (verifyState === null) {
+      await saveVisitor();
+      await db.query(`UPDATE sessions SET mc_verify_state = 'awaiting_email' WHERE id = $1`, [sessionId]);
+      await sendAndSave(getMsg('ask_email', finalLang));
+      return;
+    }
+
+    // State: awaiting_email → user vừa gửi email
+    if (verifyState === 'awaiting_email') {
+      await saveVisitor();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(text.trim())) {
+        await sendAndSave(getMsg('invalid_email', finalLang));
+        return;
+      }
+      const email = text.trim().toLowerCase();
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      await db.query(
+        `INSERT INTO otps (email, code, expires_at) VALUES ($1, $2, $3)
+         ON CONFLICT (email) DO UPDATE SET code = $2, expires_at = $3`,
+        [email, code, expiresAt]
+      );
+      await resend.sendOTPEmail(email, code);
+      await db.query(`UPDATE sessions SET mc_verify_state = 'awaiting_otp', visitor_email = $1 WHERE id = $2`, [email, sessionId]);
+      await sendAndSave(getMsg('otp_sent', finalLang, email));
+      return;
+    }
+
+    // State: awaiting_otp → user vừa gửi mã OTP
+    if (verifyState === 'awaiting_otp') {
+      await saveVisitor();
+      const email = session.visitor_email;
+      const otpRes = await db.query('SELECT * FROM otps WHERE email = $1', [email]);
+      const otp = otpRes.rows[0];
+      if (!otp || otp.code !== text.trim() || new Date() > new Date(otp.expires_at)) {
+        await sendAndSave(getMsg('invalid_otp', finalLang));
+        return;
+      }
+      await db.query('DELETE FROM otps WHERE email = $1', [email]);
+      await db.query(`UPDATE sessions SET mc_verify_state = 'verified', is_verified = true WHERE id = $1`, [sessionId]);
+      await sendAndSave(getMsg('verified_ok', finalLang));
+      return;
+    }
+
+    // State: verified → flow bình thường
+    // ── Lưu tin nhắn visitor ─────────────────────────────────────────────
     await saveVisitor();
     await db.query(`UPDATE sessions SET detected_language = $1 WHERE id = $2`, [finalLang, sessionId]);
 
+    // ── DETECT: khách muốn gặp nhân viên ────────────────────────────────
     const AGENT_KEYWORDS = /\b(cskh|gặp cskh|gap cskh|chăm sóc|cham soc|nhân viên|nhan vien|agent|support|tư vấn|tu van|gặp người|gap nguoi|người thật|nguoi that|con người|con nguoi|speak to|talk to|human|help me|trực tiếp|truc tiep|kết nối|ket noi|оператор|поддержка|помогите|помощь|сотрудник|консультант|связаться|человек|живой|клиентская|客服|人工|转人工|帮助|联系|工作人员|真人|支持)\b/i;
+    const wantsAgent = AGENT_KEYWORDS.test(text);
 
-    if (AGENT_KEYWORDS.test(text) && !session?.requested_agent) {
-      await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
-      const transferMsg = { vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳', en: 'Connecting you with a support agent, please hold on ⏳', ru: 'Соединяем вас с оператором поддержки, подождите ⏳', zh: '正在为您连接客服人员，请稍候 ⏳' }[finalLang] || 'Connecting you with a support agent ⏳';
+    if (wantsAgent && session?.show_in_dashboard === false) {
+      await db.query(`UPDATE sessions SET show_in_dashboard = true WHERE id = $1`, [sessionId]);
+      console.log(`[MC] Session ${sessionId} transferred to dashboard.`);
+      const transferMsg = {
+        vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳',
+        en: 'Connecting you with a support agent, please hold on ⏳',
+        ru: 'Соединяем вас с оператором поддержки, подождите ⏳',
+        zh: '正在为您连接客服人员，请稍候 ⏳',
+      }[finalLang] || 'Connecting you with a support agent ⏳';
       await sendAndSave(transferMsg);
       return;
     }
 
-    if (session?.requested_agent) {
-      console.log(`[Webhook] Session ${sessionId} with human agent — skipping AI.`);
+    // ── Đã chuyển sang agent → bỏ qua AI hoàn toàn ────────────────────
+    if (session?.show_in_dashboard === true) {
+      console.log(`[MC] Session ${sessionId} already transferred to agent — skipping AI.`);
       return;
     }
 
-    const kbRes = await db.query(`SELECT source_url, cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 5`, [projectId]);
+    // ── AI CHATBOT ────────────────────────────────────────────────────────
+    const kbRes = await db.query(
+      `SELECT source_url, cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 5`,
+      [projectId]
+    );
     const websiteKb = kbRes.rows.find(r => r.source_url !== 'chat-synthesis')?.cleaned_content || 'Bạn là trợ lý hỗ trợ thương hiệu Pastie.';
     const chatKb = kbRes.rows.find(r => r.source_url === 'chat-synthesis')?.cleaned_content || '';
-    const knowledgeContext = chatKb ? `${websiteKb}\n\n=== TRI THỨC TỪ HỘI THOẠI THỰC TẾ ===\n${chatKb}`.substring(0, 10000) : websiteKb.substring(0, 8000);
+    const knowledgeContext = chatKb
+      ? `${websiteKb}\n\n=== TRI THỨC TỪ HỘI THOẠI THỰC TẾ ===\n${chatKb}`.substring(0, 10000)
+      : websiteKb.substring(0, 8000);
     const langNameMap = { vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese' };
     const replyLangName = langNameMap[finalLang] || 'the same language as the customer';
 
@@ -2116,26 +2360,31 @@ IMPORTANT: You MUST reply in ${replyLangName} only.
 ${knowledgeContext}
 === END OF KNOWLEDGE BASE ===
 
-CRITICAL RULE: If the customer's question cannot be answered using the knowledge base above, you MUST start your reply with exactly "[TRANSFER]" followed by a polite message telling them a human agent will assist them.`;
+CRITICAL RULE: If the customer's question cannot be answered using the knowledge base above, you MUST start your reply with exactly "[TRANSFER]" followed by a polite message telling them a human agent will assist them. Example: "[TRANSFER] Câu hỏi này cần nhân viên hỗ trợ trực tiếp, vui lòng chờ trong giây lát ⏳"`;
 
-    const historyRes = await db.query(`SELECT sender, original_text FROM messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT 10`, [sessionId]);
+    const historyRes = await db.query(
+      `SELECT sender, original_text FROM messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT 10`,
+      [sessionId]
+    );
+
     if (isAiRateLimited(sessionId)) return;
     const rawAiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text.substring(0, AI_TEXT_MAX_LEN), finalLang);
 
+    // Detect [TRANSFER] marker → auto transfer to agent
     if (rawAiReply.startsWith('[TRANSFER]')) {
       const aiReply = rawAiReply.replace('[TRANSFER]', '').trim();
-      await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
+      await db.query(`UPDATE sessions SET show_in_dashboard = true WHERE id = $1`, [sessionId]);
+      console.log(`[MC] AI cannot answer → auto-transferred session ${sessionId} to dashboard.`);
       await sendAndSave(aiReply);
       return;
     }
+
     await sendAndSave(rawAiReply);
 
   } catch (error) {
-    console.error('[Webhook] Processing error:', error);
+    console.error('Webhook processing error:', error);
   }
 });
-
-// TODO: ManyChat Pro integration — ask Claude to restore /api/manychat/incoming when ready
 
 
 function cleanHtmlToText(html) {
@@ -2458,57 +2707,6 @@ app.get('/api/test-resend', async (req, res) => {
 });
 
 // ── Debug: check session state ────────────────────────────────────────────────
-// ── Debug: check channel config + recent WhatsApp sessions ──────────────────
-// Echo endpoint — captures exact payload ManyChat sends (no auth required for debugging)
-const manychatEchoLog = [];
-app.post('/api/debug/manychat-echo', (req, res) => {
-  const entry = { time: new Date().toISOString(), headers: req.headers, body: req.body };
-  manychatEchoLog.unshift(entry);
-  if (manychatEchoLog.length > 10) manychatEchoLog.pop();
-  console.log('[ManyChatEcho]', JSON.stringify(entry));
-  res.json({ received: true });
-});
-app.get('/api/debug/manychat-echo', (req, res) => {
-  res.json(manychatEchoLog);
-});
-
-app.get('/api/debug/channels', async (req, res) => {
-  try {
-    const configs = await db.query(`
-      SELECT project_id, platform,
-        CASE WHEN whatsapp_phone_number_id != '' THEN 'SET' ELSE 'MISSING' END as wa_phone_id,
-        CASE WHEN whatsapp_access_token != '' THEN 'SET' ELSE 'MISSING' END as wa_token,
-        CASE WHEN messenger_page_id != '' THEN 'SET' ELSE 'MISSING' END as fb_page_id,
-        CASE WHEN instagram_page_id != '' THEN 'SET' ELSE 'MISSING' END as ig_page_id,
-        meta_verify_token, updated_at
-      FROM channel_configs
-    `);
-    const recentSessions = await db.query(`
-      SELECT id, project_id, platform, visitor_name, show_in_dashboard, status, created_at
-      FROM sessions WHERE platform IN ('whatsapp','instagram','messenger')
-      ORDER BY created_at DESC LIMIT 10
-    `);
-    res.json({
-      channel_configs: configs.rows,
-      recent_mc_sessions: recentSessions.rows,
-      env: {
-        META_VERIFY_TOKEN: process.env.META_VERIFY_TOKEN ? 'SET' : 'MISSING',
-        META_APP_SECRET: process.env.META_APP_SECRET ? 'SET' : 'MISSING (signature check skipped)',
-        WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID ? 'SET' : 'MISSING',
-        WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN ? 'SET' : 'MISSING',
-      }
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── Debug: raw webhook logger (nhận payload từ Meta) ────────────────────────
-app.post('/api/debug/webhook-echo', (req, res) => {
-  console.log('[WebhookEcho]', JSON.stringify(req.body, null, 2)); // eslint-disable-line
-  res.json({ received: req.body });
-});
-
 app.get('/api/debug/session/:sessionId', async (req, res) => {
   try {
     const s = await db.query('SELECT id, project_id, status, requested_agent, show_in_dashboard, detected_language, platform FROM sessions WHERE id = $1', [req.params.sessionId]);
