@@ -2122,10 +2122,18 @@ function verifyMetaSignature(req, res, next) {
   next();
 }
 
+// In-memory webhook log (last 20 calls) — view at GET /api/debug/webhook-log
+const _webhookLog = [];
+app.get('/api/debug/webhook-log', (req, res) => res.json(_webhookLog));
+
 // Incoming message handling (POST)
 app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
   // Always respond 200 OK immediately to Meta to acknowledge receipt and prevent retries
   res.sendStatus(200);
+
+  const entry = { time: new Date().toISOString(), body: req.body };
+  _webhookLog.unshift(entry);
+  if (_webhookLog.length > 20) _webhookLog.pop();
 
   const event = parseWebhookEvent(req.body);
   if (!event) return;
