@@ -1897,137 +1897,216 @@ async function sendManyChatMessage(subscriberId, text) {
   }
 }
 
-async function sendMultichannelMessage(platform, recipientId, text) {
-  if (platform && platform.startsWith('manychat')) {
-    await sendManyChatMessage(recipientId, text);
+async function sendMultichannelMessage(platform, recipientId, text, projectId = 'pastie-landingpage') {
+  try {
+    // ManyChat routing (commented out — use Meta directly for now)
+    // if (platform && platform.startsWith('manychat')) {
+    //   await sendManyChatMessage(recipientId, text);
+    //   return;
+    // }
+
+    const configRes = await db.query('SELECT * FROM channel_configs WHERE project_id = $1', [projectId]);
+    const config = configRes.rows[0];
+
+    if (platform === 'whatsapp') {
+      const whatsappPhoneId = config?.whatsapp_phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID;
+      const whatsappToken = config?.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN;
+      if (!whatsappPhoneId || !whatsappToken) {
+        console.warn(`WARNING: WhatsApp credentials missing for project ${projectId}.`);
+        return;
+      }
+      const res = await fetch(`https://graph.facebook.com/v20.0/${whatsappPhoneId}/messages`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${whatsappToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: recipientId, type: 'text', text: { body: text } })
+      });
+      console.log('WhatsApp send:', await res.json());
+    } else if (platform === 'messenger' || platform === 'instagram') {
+      const pageToken = platform === 'instagram'
+        ? (config?.instagram_access_token || process.env.INSTAGRAM_ACCESS_TOKEN)
+        : (config?.messenger_page_access_token || process.env.MESSENGER_PAGE_ACCESS_TOKEN);
+      if (!pageToken) {
+        console.warn(`WARNING: Page token for ${platform} missing for project ${projectId}.`);
+        return;
+      }
+      const res = await fetch(`https://graph.facebook.com/v20.0/me/messages?access_token=${pageToken}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient: { id: recipientId }, message: { text } })
+      });
+      console.log(`${platform} send:`, await res.json());
+    }
+  } catch (error) {
+    console.error(`Error sending to ${platform}:`, error.message);
   }
 }
 
-/**
- * Trả về tin nhắn xác thực OTP đa ngôn ngữ cho multi-channel.
- * Hỗ trợ: vi, en, ru, zh — mặc định en nếu ngôn ngữ khác.
- */
-/**
- * Lấy tên thật của người dùng Messenger qua Graph API.
- * Trả về { name, avatarUrl } hoặc null nếu thất bại.
- */
-
-// Meta webhook endpoints removed — using ManyChat integration instead.
-
-/**
- * ManyChat incoming endpoint — receives messages forwarded from ManyChat flows.
- * ManyChat External Request body should include:
- *   manychat_id, first_name, last_name, message_text, channel,
- *   messenger_user_id (PSID), instagram_user_id, whatsapp_phone, project_id
- */
-app.post('/api/manychat/incoming', async (req, res) => {
-  console.log('[ManyChat] Incoming request body:', JSON.stringify(req.body));
-  console.log('[ManyChat] Auth header:', req.headers['authorization']);
-
-  const authHeader = req.headers['authorization'];
-  const MANYCHAT_SECRET = process.env.MANYCHAT_SECRET || 'PastieSecretManyChat2026';
-  if (!authHeader || authHeader !== `Bearer ${MANYCHAT_SECRET}`) {
-    console.warn('[ManyChat] Auth failed. Expected:', `Bearer ${MANYCHAT_SECRET}`);
-    return res.sendStatus(401);
+async function fetchMessengerUserProfile(psid, pageAccessToken) {
+  try {
+    const res = await fetch(`https://graph.facebook.com/v20.0/${psid}?fields=name,profile_pic&access_token=${pageAccessToken}`);
+    const data = await res.json();
+    if (data.error) { console.warn(`[Profile] PSID=${psid} error:`, data.error.message); return null; }
+    return { name: data.name || null, avatarUrl: data.profile_pic || null };
+  } catch (e) {
+    console.warn(`[Profile] PSID=${psid} fetch failed:`, e.message);
+    return null;
   }
+}
 
-  const {
-    manychat_id,
-    first_name,
-    last_name,
-    message_text,
-    channel,
-    project_id = 'pastie-landingpage'
-  } = req.body;
-
-  console.log(`[ManyChat] manychat_id=${manychat_id} channel=${channel} message="${message_text}"`);
-
-  if (!manychat_id || !message_text) {
-    console.warn('[ManyChat] Missing fields. Body:', req.body);
-    return res.status(400).json({ error: 'Missing manychat_id or message_text' });
-  }
-
-  // Return 200 immediately so ManyChat doesn't timeout
-  res.status(200).json({ success: true });
-
-  (async () => {
-    try {
-      const visitorName = `${first_name || ''} ${last_name || ''}`.trim() || `User (${manychat_id})`;
-      // e.g. "manychat-facebook", "manychat-instagram", "manychat-whatsapp"
-      const channelMap = { facebook: 'manychat-facebook', instagram: 'manychat-instagram', whatsapp: 'manychat-whatsapp' };
-      const platform = channelMap[channel] || 'manychat-facebook';
-      const sessionId = `mc-manychat-${manychat_id}`;
-
-      // Find or create session
-      let sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
-      let session = sessionRes.rows[0];
-
-      if (!session) {
-        await db.query(
-          `INSERT INTO sessions (id, project_id, visitor_name, detected_language, status, platform, platform_sender_id, is_verified, show_in_dashboard)
-           VALUES ($1, $2, $3, null, 'active', $4, $5, true, true)`,
-          [sessionId, project_id, visitorName, platform, String(manychat_id)]
-        );
-        session = { id: sessionId, show_in_dashboard: true, detected_language: null, status: 'active', requested_agent: false };
-      } else if (session.status !== 'active') {
-        await db.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [sessionId]);
-      }
-
-      // Translate + detect language
-      const { translatedText, detectedLang } = await gemini.translateText(message_text, 'vi');
-      const finalLang = detectedLang || session.detected_language || 'vi';
-      if (!session.detected_language) {
-        await db.query(`UPDATE sessions SET detected_language = $1 WHERE id = $2`, [finalLang, sessionId]);
-      }
-
-      const sendAndSave = async (msgText) => {
-        await db.query(
-          `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3)`,
-          [sessionId, msgText, finalLang]
-        );
-        await sendManyChatMessage(manychat_id, msgText);
+function parseWebhookEvent(body) {
+  if (body.object === 'whatsapp_business_account') {
+    const entry = body.entry?.[0];
+    const change = entry?.changes?.[0]?.value;
+    const message = change?.messages?.[0];
+    const phoneId = change?.metadata?.phone_number_id;
+    if (message) {
+      return {
+        platform: 'whatsapp',
+        senderId: message.from,
+        targetId: phoneId || '',
+        name: change.contacts?.[0]?.profile?.name || `WhatsApp User (${message.from})`,
+        text: message.text?.body || '[Media]',
+        messageId: message.id
       };
+    }
+  }
+  if (body.object === 'page' || body.object === 'instagram') {
+    const entry = body.entry?.[0];
+    const messaging = entry?.messaging?.[0];
+    if (messaging && messaging.message) {
+      const isInstagram = body.object === 'instagram';
+      return {
+        platform: isInstagram ? 'instagram' : 'messenger',
+        senderId: messaging.sender.id,
+        targetId: messaging.recipient.id,
+        name: isInstagram ? 'Instagram User' : 'Facebook User',
+        text: messaging.message.text || '[Media]',
+        messageId: messaging.message.mid
+      };
+    }
+  }
+  return null;
+}
 
-      // Save visitor message
+function verifyMetaSignature(req, res, next) {
+  const signature = req.headers['x-hub-signature-256'];
+  const appSecret = process.env.META_APP_SECRET;
+  if (!appSecret) { return next(); }
+  if (!signature) { return res.status(401).send('Missing signature'); }
+  const signatureHash = signature.split('=')[1];
+  const expectedHash = crypto.createHmac('sha256', appSecret).update(req.rawBody || '').digest('hex');
+  if (signatureHash !== expectedHash) { return res.status(401).send('Invalid signature'); }
+  next();
+}
+
+app.get('/api/multichannel/webhook', async (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  const defaultToken = process.env.META_VERIFY_TOKEN || 'pastie_verify_token_2026';
+  if (mode === 'subscribe') {
+    if (token === defaultToken) { return res.status(200).send(challenge); }
+    try {
+      const r = await db.query('SELECT project_id FROM channel_configs WHERE meta_verify_token = $1 LIMIT 1', [token]);
+      if (r.rows.length > 0) { return res.status(200).send(challenge); }
+    } catch (e) { console.error('Verify token DB error:', e.message); }
+    return res.sendStatus(403);
+  }
+  return res.sendStatus(400);
+});
+
+app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
+  res.sendStatus(200);
+  const event = parseWebhookEvent(req.body);
+  if (!event) return;
+
+  const { platform, senderId, targetId, name, text } = event;
+  console.log(`[Webhook] ${platform} from ${senderId}: ${text}`);
+
+  try {
+    let projectId = 'pastie-landingpage';
+    let resolvedPageToken = null;
+    if (targetId) {
+      const r = await db.query(
+        `SELECT project_id, messenger_page_access_token, instagram_access_token FROM channel_configs
+         WHERE whatsapp_phone_number_id = $1 OR messenger_page_id = $1 OR instagram_page_id = $1 LIMIT 1`,
+        [targetId]
+      );
+      if (r.rows.length > 0) {
+        projectId = r.rows[0].project_id;
+        resolvedPageToken = r.rows[0].messenger_page_access_token || r.rows[0].instagram_access_token || null;
+      }
+    }
+
+    const sessionRes = await db.query(
+      `SELECT * FROM sessions WHERE platform = $1 AND platform_sender_id = $2 AND project_id = $3 ORDER BY created_at DESC LIMIT 1`,
+      [platform, senderId, projectId]
+    );
+    let session = sessionRes.rows[0];
+    let sessionId;
+    let sessionLang = session?.detected_language || null;
+
+    if (!session) {
+      let visitorName = name;
+      let visitorAvatar = null;
+      if ((platform === 'messenger' || platform === 'instagram') && resolvedPageToken) {
+        const profile = await fetchMessengerUserProfile(senderId, resolvedPageToken);
+        if (profile?.name) visitorName = profile.name;
+        if (profile?.avatarUrl) visitorAvatar = profile.avatarUrl;
+      }
+      sessionId = `mc-${platform}-${randomUUID()}`;
       await db.query(
-        `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'visitor', $2, $3, $4)`,
-        [sessionId, message_text, translatedText, finalLang]
+        `INSERT INTO sessions (id, project_id, visitor_name, visitor_avatar, detected_language, status, platform, platform_sender_id, is_verified, show_in_dashboard)
+         VALUES ($1, $2, $3, $4, null, 'active', $5, $6, true, true)`,
+        [sessionId, projectId, visitorName, visitorAvatar, platform, senderId]
       );
-
-      // Check if already transferred to human agent
-      if (session.show_in_dashboard === true && session.requested_agent) {
-        console.log(`[ManyChat] Session ${sessionId} with human agent — skipping AI.`);
-        return;
+    } else {
+      if (session.status !== 'active') await db.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [session.id]);
+      sessionId = session.id;
+      const isDefaultName = !session.visitor_name || session.visitor_name === 'Facebook User' || session.visitor_name === 'Instagram User';
+      if (isDefaultName && (platform === 'messenger' || platform === 'instagram') && resolvedPageToken) {
+        const profile = await fetchMessengerUserProfile(senderId, resolvedPageToken);
+        if (profile?.name) await db.query(`UPDATE sessions SET visitor_name = $1, visitor_avatar = COALESCE(visitor_avatar, $2) WHERE id = $3`, [profile.name, profile.avatarUrl, sessionId]);
       }
+    }
 
-      // Detect transfer keywords
-      const AGENT_KEYWORDS = /\b(cskh|gặp cskh|gap cskh|chăm sóc|cham soc|nhân viên|nhan vien|agent|support|tư vấn|tu van|gặp người|gap nguoi|người thật|nguoi that|con người|con nguoi|speak to|talk to|human|help me|trực tiếp|truc tiep|kết nối|ket noi|оператор|поддержка|помогите|помощь|сотрудник|консультант|связаться|человек|живой|клиентская|客服|人工|转人工|帮助|联系|工作人员|真人|支持)\b/i;
-      if (AGENT_KEYWORDS.test(message_text)) {
-        await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
-        const transferMsg = {
-          vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳',
-          en: 'Connecting you with a support agent, please hold on ⏳',
-          ru: 'Соединяем вас с оператором поддержки, подождите ⏳',
-          zh: '正在为您连接客服人员，请稍候 ⏳',
-        }[finalLang] || 'Connecting you with a support agent ⏳';
-        await sendAndSave(transferMsg);
-        return;
-      }
+    const { translatedText, detectedLang } = await gemini.translateText(text, 'vi');
+    const finalLang = detectedLang || sessionLang || 'vi';
+    if (!sessionLang) await db.query(`UPDATE sessions SET detected_language = $1 WHERE id = $2`, [finalLang, sessionId]);
 
-      // AI chatbot
-      const kbRes = await db.query(
-        `SELECT source_url, cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 5`,
-        [project_id]
-      );
-      const websiteKb = kbRes.rows.find(r => r.source_url !== 'chat-synthesis')?.cleaned_content || 'Bạn là trợ lý hỗ trợ thương hiệu Pastie.';
-      const chatKb = kbRes.rows.find(r => r.source_url === 'chat-synthesis')?.cleaned_content || '';
-      const knowledgeContext = chatKb
-        ? `${websiteKb}\n\n=== TRI THỨC TỪ HỘI THOẠI THỰC TẾ ===\n${chatKb}`.substring(0, 10000)
-        : websiteKb.substring(0, 8000);
-      const langNameMap = { vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese' };
-      const replyLangName = langNameMap[finalLang] || 'the same language as the customer';
+    const sendAndSave = async (msgText) => {
+      await db.query(`INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3)`, [sessionId, msgText, finalLang]);
+      await sendMultichannelMessage(platform, senderId, msgText, projectId);
+    };
+    const saveVisitor = async () => {
+      await db.query(`INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'visitor', $2, $3, $4)`, [sessionId, text, translatedText, finalLang]);
+    };
 
-      const systemInstruction = `You are a professional and friendly customer support assistant for Pastie brand.
+    await saveVisitor();
+    await db.query(`UPDATE sessions SET detected_language = $1 WHERE id = $2`, [finalLang, sessionId]);
+
+    const AGENT_KEYWORDS = /\b(cskh|gặp cskh|gap cskh|chăm sóc|cham soc|nhân viên|nhan vien|agent|support|tư vấn|tu van|gặp người|gap nguoi|người thật|nguoi that|con người|con nguoi|speak to|talk to|human|help me|trực tiếp|truc tiep|kết nối|ket noi|оператор|поддержка|помогите|помощь|сотрудник|консультант|связаться|человек|живой|клиентская|客服|人工|转人工|帮助|联系|工作人员|真人|支持)\b/i;
+
+    if (AGENT_KEYWORDS.test(text) && !session?.requested_agent) {
+      await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
+      const transferMsg = { vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳', en: 'Connecting you with a support agent, please hold on ⏳', ru: 'Соединяем вас с оператором поддержки, подождите ⏳', zh: '正在为您连接客服人员，请稍候 ⏳' }[finalLang] || 'Connecting you with a support agent ⏳';
+      await sendAndSave(transferMsg);
+      return;
+    }
+
+    if (session?.requested_agent) {
+      console.log(`[Webhook] Session ${sessionId} with human agent — skipping AI.`);
+      return;
+    }
+
+    const kbRes = await db.query(`SELECT source_url, cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 5`, [projectId]);
+    const websiteKb = kbRes.rows.find(r => r.source_url !== 'chat-synthesis')?.cleaned_content || 'Bạn là trợ lý hỗ trợ thương hiệu Pastie.';
+    const chatKb = kbRes.rows.find(r => r.source_url === 'chat-synthesis')?.cleaned_content || '';
+    const knowledgeContext = chatKb ? `${websiteKb}\n\n=== TRI THỨC TỪ HỘI THOẠI THỰC TẾ ===\n${chatKb}`.substring(0, 10000) : websiteKb.substring(0, 8000);
+    const langNameMap = { vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese' };
+    const replyLangName = langNameMap[finalLang] || 'the same language as the customer';
+
+    const systemInstruction = `You are a professional and friendly customer support assistant for Pastie brand.
 Reply concisely (max 3 sentences) for best display on mobile devices.
 IMPORTANT: You MUST reply in ${replyLangName} only.
 
@@ -2035,36 +2114,26 @@ IMPORTANT: You MUST reply in ${replyLangName} only.
 ${knowledgeContext}
 === END OF KNOWLEDGE BASE ===
 
-CRITICAL RULE: If the customer's question cannot be answered using the knowledge base above, you MUST start your reply with exactly "[TRANSFER]" followed by a polite message telling them a human agent will assist them. Example: "[TRANSFER] Câu hỏi này cần nhân viên hỗ trợ trực tiếp, vui lòng chờ trong giây lát ⏳"`;
+CRITICAL RULE: If the customer's question cannot be answered using the knowledge base above, you MUST start your reply with exactly "[TRANSFER]" followed by a polite message telling them a human agent will assist them.`;
 
-      const historyRes = await db.query(
-        `SELECT sender, original_text FROM messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT 10`,
-        [sessionId]
-      );
+    const historyRes = await db.query(`SELECT sender, original_text FROM messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT 10`, [sessionId]);
+    if (isAiRateLimited(sessionId)) return;
+    const rawAiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text.substring(0, AI_TEXT_MAX_LEN), finalLang);
 
-      if (isAiRateLimited(sessionId)) return;
-      const rawAiReply = await gemini.generateChatbotResponse(
-        systemInstruction,
-        historyRes.rows.slice(0, -1),
-        message_text.substring(0, AI_TEXT_MAX_LEN),
-        finalLang
-      );
-
-      if (rawAiReply.startsWith('[TRANSFER]')) {
-        const aiReply = rawAiReply.replace('[TRANSFER]', '').trim();
-        await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
-        console.log(`[ManyChat] AI cannot answer → transferred session ${sessionId}`);
-        await sendAndSave(aiReply);
-        return;
-      }
-
-      await sendAndSave(rawAiReply);
-
-    } catch (err) {
-      console.error('[ManyChat] Async processing error:', err);
+    if (rawAiReply.startsWith('[TRANSFER]')) {
+      const aiReply = rawAiReply.replace('[TRANSFER]', '').trim();
+      await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
+      await sendAndSave(aiReply);
+      return;
     }
-  })();
+    await sendAndSave(rawAiReply);
+
+  } catch (error) {
+    console.error('[Webhook] Processing error:', error);
+  }
 });
+
+// TODO: ManyChat Pro integration — ask Claude to restore /api/manychat/incoming when ready
 
 
 function cleanHtmlToText(html) {
