@@ -2017,7 +2017,9 @@ app.get('/api/multichannel/webhook', async (req, res) => {
 
 app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
   res.sendStatus(200);
+  console.log('[Webhook] RAW body:', JSON.stringify(req.body).substring(0, 500));
   const event = parseWebhookEvent(req.body);
+  console.log('[Webhook] Parsed event:', event ? `${event.platform} from ${event.senderId}` : 'NULL (ignored)');
   if (!event) return;
 
   const { platform, senderId, targetId, name, text } = event;
