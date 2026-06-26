@@ -2769,9 +2769,14 @@ app.get('/api/admin/channels', checkAdminAuth, async (req, res) => {
   const projectId = req.query.projectId || 'pastie-landingpage';
   try {
     const configRes = await db.query('SELECT * FROM channel_configs WHERE project_id = $1', [projectId]);
+    const row = configRes.rows[0];
+    // Return Pancake config — stored in messenger_page_id/messenger_page_access_token columns
     res.json({
       success: true,
-      config: configRes.rows[0] || null
+      config: {
+        pancake_page_id: row?.messenger_page_id || process.env.PANCAKE_PAGE_ID || '',
+        pancake_page_access_token: row?.messenger_page_access_token || process.env.PANCAKE_PAGE_ACCESS_TOKEN || '',
+      }
     });
   } catch (error) {
     console.error('Fetch channel configurations error:', error);
@@ -2779,73 +2784,43 @@ app.get('/api/admin/channels', checkAdminAuth, async (req, res) => {
   }
 });
 
-// 2. POST Save/Upsert Channel configurations for a project
+// POST Save Pancake channel config
 app.post('/api/admin/channels', checkAdminAuth, async (req, res) => {
   const {
     projectId = 'pastie-landingpage',
-    platform = 'whatsapp',
-    whatsappPhoneNumberId = '',
-    whatsappAccessToken = '',
-    messengerPageId = '',
-    messengerPageAccessToken = '',
-    instagramPageId = '',
-    instagramAccessToken = '',
-    metaVerifyToken = 'pastie_verify_token_2026'
+    pancakePageId = '',
+    pancakePageAccessToken = ''
   } = req.body;
+
+  const pageId    = pancakePageId.trim();
+  const pageToken = pancakePageAccessToken.trim();
 
   try {
     const existsRes = await db.query('SELECT project_id FROM channel_configs WHERE project_id = $1 LIMIT 1', [projectId]);
-    
     if (existsRes.rows.length > 0) {
       await db.query(`
-        UPDATE channel_configs 
-        SET platform = $1, 
-            whatsapp_phone_number_id = $2, 
-            whatsapp_access_token = $3, 
-            messenger_page_id = $4, 
-            messenger_page_access_token = $5, 
-            instagram_page_id = $6, 
-            instagram_access_token = $7, 
-            meta_verify_token = $8,
+        UPDATE channel_configs
+        SET platform = 'pancake',
+            messenger_page_id = $1,
+            messenger_page_access_token = $2,
             updated_at = CURRENT_TIMESTAMP
-        WHERE project_id = $9
-      `, [
-        platform,
-        whatsappPhoneNumberId.trim(),
-        whatsappAccessToken.trim(),
-        messengerPageId.trim(),
-        messengerPageAccessToken.trim(),
-        instagramPageId.trim(),
-        instagramAccessToken.trim(),
-        metaVerifyToken.trim(),
-        projectId
-      ]);
+        WHERE project_id = $3
+      `, [pageId, pageToken, projectId]);
     } else {
       await db.query(`
-        INSERT INTO channel_configs (
-          project_id, platform, 
-          whatsapp_phone_number_id, whatsapp_access_token, 
-          messenger_page_id, messenger_page_access_token, 
-          instagram_page_id, instagram_access_token, 
-          meta_verify_token
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      `, [
-        projectId,
-        platform,
-        whatsappPhoneNumberId.trim(),
-        whatsappAccessToken.trim(),
-        messengerPageId.trim(),
-        messengerPageAccessToken.trim(),
-        instagramPageId.trim(),
-        instagramAccessToken.trim(),
-        metaVerifyToken.trim()
-      ]);
+        INSERT INTO channel_configs (project_id, platform, messenger_page_id, messenger_page_access_token)
+        VALUES ($1, 'pancake', $2, $3)
+      `, [projectId, pageId, pageToken]);
     }
 
-    res.json({ success: true, message: 'Lưu cấu hình tích hợp đa kênh thành công!' });
+    // Update env immediately so polling loop picks up new token without restart
+    if (pageId)    process.env.PANCAKE_PAGE_ID = pageId;
+    if (pageToken) process.env.PANCAKE_PAGE_ACCESS_TOKEN = pageToken;
+
+    res.json({ success: true });
   } catch (error) {
     console.error('Save channel configurations error:', error);
-    res.status(500).json({ error: 'Lỗi hệ thống khi lưu cấu hình tích hợp kênh: ' + error.message });
+    res.status(500).json({ error: 'Lỗi hệ thống: ' + error.message });
   }
 });
 

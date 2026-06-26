@@ -1583,12 +1583,11 @@ if (synthesisRunBtn) {
     });
 }
 
-// --- META CHANNEL SETTINGS DIALOG ---
+// --- PANCAKE CHANNEL SETTINGS DIALOG ---
 const channelModal = document.getElementById('channel-modal');
 const channelSettingsBtn = document.getElementById('channel-settings-btn');
 const channelCloseBtn = document.getElementById('channel-close-btn');
 const channelConfigForm = document.getElementById('channel-config-form');
-const channelPlatformSelect = document.getElementById('channel-platform');
 
 if (channelSettingsBtn) {
     channelSettingsBtn.addEventListener('click', () => { closeSettingsDropdown(); openChannelModal(); });
@@ -1599,42 +1598,17 @@ if (channelCloseBtn) {
 if (channelConfigForm) {
     channelConfigForm.addEventListener('submit', saveChannelConfig);
 }
-if (channelPlatformSelect) {
-    channelPlatformSelect.addEventListener('change', (e) => {
-        const platform = e.target.value;
-        document.getElementById('whatsapp-fields').classList.add('hide');
-        document.getElementById('messenger-fields').classList.add('hide');
-        document.getElementById('instagram-fields').classList.add('hide');
-        
-        if (platform === 'whatsapp') {
-            document.getElementById('whatsapp-fields').classList.remove('hide');
-        } else if (platform === 'messenger') {
-            document.getElementById('messenger-fields').classList.remove('hide');
-        } else if (platform === 'instagram') {
-            document.getElementById('instagram-fields').classList.remove('hide');
-        }
-    });
-}
 
 async function openChannelModal() {
     channelModal.classList.remove('hide');
-    const projectId = 'pastie-landingpage';
+    const statusEl = document.getElementById('channel-status-msg');
+    statusEl.style.display = 'none';
     try {
-        const response = await authFetch(`${API_BASE}/api/admin/channels?projectId=${projectId}`);
+        const response = await authFetch(`${API_BASE}/api/admin/channels?projectId=pastie-landingpage`);
         const data = await response.json();
         if (data.config) {
-            const config = data.config;
-            document.getElementById('channel-platform').value = config.platform || 'whatsapp';
-            document.getElementById('channel-meta-verify-token').value = config.meta_verify_token || 'pastie_verify_token_2026';
-            document.getElementById('channel-whatsapp-phone-id').value = config.whatsapp_phone_number_id || '';
-            document.getElementById('channel-whatsapp-token').value = config.whatsapp_access_token || '';
-            document.getElementById('channel-messenger-page-id').value = config.messenger_page_id || '';
-            document.getElementById('channel-messenger-token').value = config.messenger_page_access_token || '';
-            document.getElementById('channel-instagram-page-id').value = config.instagram_page_id || '';
-            document.getElementById('channel-instagram-token').value = config.instagram_access_token || '';
-            
-            // Trigger change event to show the correct fields group
-            channelPlatformSelect.dispatchEvent(new Event('change'));
+            document.getElementById('channel-pancake-page-id').value = data.config.pancake_page_id || '';
+            document.getElementById('channel-pancake-token').value = data.config.pancake_page_access_token || '';
         }
     } catch (e) {
         console.error('Error fetching channel settings:', e);
@@ -1645,24 +1619,27 @@ function closeChannelModal() {
     channelModal.classList.add('hide');
 }
 
+function showChannelStatus(msg, isError = false) {
+    const el = document.getElementById('channel-status-msg');
+    el.textContent = msg;
+    el.style.display = 'block';
+    el.style.background = isError ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)';
+    el.style.color = isError ? '#f87171' : '#34d399';
+    el.style.border = isError ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(16,185,129,0.3)';
+}
+
 async function saveChannelConfig(e) {
     e.preventDefault();
     const saveBtn = document.getElementById('channel-save-btn');
     saveBtn.disabled = true;
     saveBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang lưu...`;
-    
+
     const payload = {
         projectId: 'pastie-landingpage',
-        platform: document.getElementById('channel-platform').value,
-        metaVerifyToken: document.getElementById('channel-meta-verify-token').value,
-        whatsappPhoneNumberId: document.getElementById('channel-whatsapp-phone-id').value,
-        whatsappAccessToken: document.getElementById('channel-whatsapp-token').value,
-        messengerPageId: document.getElementById('channel-messenger-page-id').value,
-        messengerPageAccessToken: document.getElementById('channel-messenger-token').value,
-        instagramPageId: document.getElementById('channel-instagram-page-id').value,
-        instagramAccessToken: document.getElementById('channel-instagram-token').value
+        pancakePageId: document.getElementById('channel-pancake-page-id').value.trim(),
+        pancakePageAccessToken: document.getElementById('channel-pancake-token').value.trim()
     };
-    
+
     try {
         const response = await authFetch(`${API_BASE}/api/admin/channels`, {
             method: 'POST',
@@ -1671,13 +1648,12 @@ async function saveChannelConfig(e) {
         });
         const data = await response.json();
         if (response.ok && data.success) {
-            alert('Lưu cấu hình kênh tích hợp Meta thành công!');
-            closeChannelModal();
+            showChannelStatus('✅ Đã lưu cấu hình Pancake. Polling sẽ dùng token mới ngay lập tức.');
         } else {
-            alert('Lỗi: ' + (data.error || 'Không thể lưu cấu hình.'));
+            showChannelStatus('❌ ' + (data.error || 'Không thể lưu cấu hình.'), true);
         }
     } catch (err) {
-        alert('Lỗi kết nối: ' + err.message);
+        showChannelStatus('❌ Lỗi kết nối: ' + err.message, true);
     } finally {
         saveBtn.disabled = false;
         saveBtn.innerHTML = `<i class="ri-save-line"></i> Lưu cấu hình`;
