@@ -667,12 +667,17 @@ function renderSessionsList(sessions) {
             : `<div class="visitor-avatar-initials">${(session.visitor_name || '?')[0].toUpperCase()}</div>`;
 
         const platformMeta = {
-            messenger:          { icon: 'ri-messenger-fill',  label: 'Messenger', color: '#4267B2' },
-            instagram:          { icon: 'ri-instagram-fill',  label: 'Instagram', color: '#C13584' },
-            whatsapp:           { icon: 'ri-whatsapp-fill',   label: 'WhatsApp',  color: '#25D366' },
+            messenger:            { icon: 'ri-messenger-fill',  label: 'Messenger', color: '#4267B2' },
+            instagram:            { icon: 'ri-instagram-fill',  label: 'Instagram', color: '#C13584' },
+            whatsapp:             { icon: 'ri-whatsapp-fill',   label: 'WhatsApp',  color: '#25D366' },
             'manychat-facebook':  { icon: 'ri-messenger-fill',  label: 'Messenger', color: '#4267B2' },
             'manychat-instagram': { icon: 'ri-instagram-fill',  label: 'Instagram', color: '#C13584' },
             'manychat-whatsapp':  { icon: 'ri-whatsapp-fill',   label: 'WhatsApp',  color: '#25D366' },
+            // Pancake platforms
+            facebook:             { icon: 'ri-messenger-fill',  label: 'Facebook',  color: '#4267B2' },
+            zalo:                 { icon: 'ri-chat-3-fill',     label: 'Zalo',      color: '#0068FF' },
+            tiktok:               { icon: 'ri-tiktok-fill',     label: 'TikTok',    color: '#010101' },
+            pancake:              { icon: 'ri-chat-smile-2-fill', label: 'Pancake', color: '#FF6B35' },
         };
         const pm = platformMeta[session.platform] || null;
 
@@ -824,7 +829,7 @@ async function selectSession(sessionId) {
             chatHeaderAvatar.innerHTML = `<img src="${session.visitor_avatar}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid rgba(99,102,241,0.4);" alt="" onerror="this.parentElement.style.display='none'">`;
         } else {
             const initials = (session.visitor_name || '?')[0].toUpperCase();
-            const isSocial = ['messenger','instagram','whatsapp'].includes(session.platform) || (session.platform || '').startsWith('manychat');
+            const isSocial = ['messenger','instagram','whatsapp','facebook','zalo','tiktok','pancake'].includes(session.platform) || (session.platform || '').startsWith('manychat');
             if (isSocial) {
                 chatHeaderAvatar.style.display = 'block';
                 chatHeaderAvatar.innerHTML = `<div style="width:44px;height:44px;border-radius:50%;background:rgba(99,102,241,0.2);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--accent-color);border:2px solid rgba(99,102,241,0.4);">${initials}</div>`;

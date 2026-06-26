@@ -2395,6 +2395,246 @@ CRITICAL RULE: If the customer's question cannot be answered using the knowledge
 });
 
 
+// ── PANCAKE INTEGRATION (Polling mode — 3s interval) ──────────────────────
+
+function pancakePlatformFromPageId(pageId) {
+  if (!pageId) return process.env.PANCAKE_PAGE_PLATFORM || 'facebook';
+  if (pageId.startsWith('fb_')) return 'facebook';
+  if (pageId.startsWith('ig_')) return 'instagram';
+  if (pageId.startsWith('zalo_')) return 'zalo';
+  if (pageId.startsWith('tt_')) return 'tiktok';
+  // Numeric ID without prefix (from REST API) — use configured platform
+  return process.env.PANCAKE_PAGE_PLATFORM || 'facebook';
+}
+
+async function sendPancakeMessage(pageId, conversationId, text) {
+  const token = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
+  if (!token) {
+    console.warn('[Pancake] PANCAKE_PAGE_ACCESS_TOKEN not configured — cannot send reply');
+    return;
+  }
+  try {
+    const url = `https://pages.fm/api/public_api/v1/pages/${encodeURIComponent(pageId)}/conversations/${encodeURIComponent(conversationId)}/messages?page_access_token=${token}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text })
+    });
+    const data = await res.json();
+    if (!data.success) console.warn('[Pancake] Send message warning:', data);
+    else console.log(`[Pancake] Sent reply to conversation ${conversationId}`);
+  } catch (err) {
+    console.error('[Pancake] Send message error:', err.message);
+  }
+}
+
+async function processPancakeMessage(msg) {
+  if (!msg || msg.type !== 'INBOX' || !msg.message || !msg.from?.id) return;
+
+  const pageId         = msg.page_id;
+  const conversationId = msg.conversation_id;
+  const senderName     = msg.from.name || 'Pancake User';
+  const text           = msg.message;
+  const platform       = pancakePlatformFromPageId(pageId);
+
+  console.log(`[Pancake] ${platform} from "${senderName}": ${text}`);
+
+  const projectId = 'pastie-landingpage';
+
+  const sessionRes = await db.query(
+    `SELECT * FROM sessions WHERE platform = $1 AND platform_sender_id = $2 AND project_id = $3 ORDER BY created_at DESC LIMIT 1`,
+    [platform, conversationId, projectId]
+  );
+
+  let session = sessionRes.rows[0];
+  let sessionId;
+  let sessionLang = session?.detected_language || null;
+
+  if (!session) {
+    sessionId = `pc-${platform}-${randomUUID()}`;
+    await db.query(`
+      INSERT INTO sessions (id, project_id, visitor_name, detected_language, status, platform, platform_sender_id, is_verified, show_in_dashboard)
+      VALUES ($1, $2, $3, null, 'active', $4, $5, true, true)
+    `, [sessionId, projectId, senderName, platform, conversationId]);
+  } else {
+    if (session.status !== 'active') {
+      await db.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [session.id]);
+    }
+    sessionId = session.id;
+  }
+
+  const { translatedText, detectedLang } = await gemini.translateText(text, 'vi');
+  const finalLang = detectedLang || sessionLang || 'vi';
+  if (!sessionLang) {
+    await db.query(`UPDATE sessions SET detected_language = $1 WHERE id = $2`, [finalLang, sessionId]);
+  }
+
+  const sendAndSave = async (msgText) => {
+    await db.query(`
+      INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+      VALUES ($1, 'system', $2, $2, $3)
+    `, [sessionId, msgText, finalLang]);
+    await sendPancakeMessage(pageId, conversationId, msgText);
+  };
+
+  await db.query(`
+    INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+    VALUES ($1, 'visitor', $2, $3, $4)
+  `, [sessionId, text, translatedText, finalLang]);
+
+  if (session?.show_in_dashboard === true) {
+    console.log(`[Pancake] Session ${sessionId} is with agent — skipping AI.`);
+    return;
+  }
+
+  const AGENT_KEYWORDS = /\b(cskh|gặp cskh|gap cskh|chăm sóc|cham soc|nhân viên|nhan vien|agent|support|tư vấn|tu van|gặp người|gap nguoi|người thật|nguoi that|con người|con nguoi|speak to|talk to|human|help me|trực tiếp|truc tiep|kết nối|ket noi|оператор|поддержка|помогите|помощь|сотрудник|консультант|связаться|человек|живой|клиентская|客服|人工|转人工|帮助|联系|工作人员|真人|支持)\b/i;
+  if (AGENT_KEYWORDS.test(text)) {
+    await db.query(`UPDATE sessions SET show_in_dashboard = true WHERE id = $1`, [sessionId]);
+    const transferMsg = {
+      vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳',
+      en: 'Connecting you with a support agent, please hold on ⏳',
+      ru: 'Соединяем вас с оператором поддержки, подождите ⏳',
+      zh: '正在为您连接客服人员，请稍候 ⏳',
+    }[finalLang] || 'Connecting you with a support agent ⏳';
+    await sendAndSave(transferMsg);
+    return;
+  }
+
+  const kbRes = await db.query(
+    `SELECT source_url, cleaned_content FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 5`,
+    [projectId]
+  );
+  const websiteKb = kbRes.rows.find(r => r.source_url !== 'chat-synthesis')?.cleaned_content || 'Bạn là trợ lý hỗ trợ thương hiệu Pastie.';
+  const chatKb    = kbRes.rows.find(r => r.source_url === 'chat-synthesis')?.cleaned_content || '';
+  const knowledgeContext = chatKb
+    ? `${websiteKb}\n\n=== TRI THỨC TỪ HỘI THOẠI THỰC TẾ ===\n${chatKb}`.substring(0, 10000)
+    : websiteKb.substring(0, 8000);
+
+  const langNameMap = { vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese' };
+  const replyLangName = langNameMap[finalLang] || 'the same language as the customer';
+
+  const systemInstruction = `You are a professional and friendly customer support assistant for Pastie brand.
+Reply concisely (max 3 sentences) for best display on mobile devices.
+IMPORTANT: You MUST reply in ${replyLangName} only.
+
+=== OFFICIAL KNOWLEDGE BASE ===
+${knowledgeContext}
+=== END OF KNOWLEDGE BASE ===
+
+CRITICAL RULE: If the customer's question cannot be answered using the knowledge base above, you MUST start your reply with exactly "[TRANSFER]" followed by a polite message telling them a human agent will assist them. Example: "[TRANSFER] Câu hỏi này cần nhân viên hỗ trợ trực tiếp, vui lòng chờ trong giây lát ⏳"`;
+
+  const historyRes = await db.query(
+    `SELECT sender, original_text FROM messages WHERE session_id = $1 ORDER BY created_at ASC LIMIT 10`,
+    [sessionId]
+  );
+
+  if (isAiRateLimited(sessionId)) return;
+  const rawAiReply = await gemini.generateChatbotResponse(systemInstruction, historyRes.rows.slice(0, -1), text.substring(0, AI_TEXT_MAX_LEN), finalLang);
+
+  if (rawAiReply.startsWith('[TRANSFER]')) {
+    const aiReply = rawAiReply.replace('[TRANSFER]', '').trim();
+    await db.query(`UPDATE sessions SET show_in_dashboard = true WHERE id = $1`, [sessionId]);
+    console.log(`[Pancake] AI auto-transferred session ${sessionId}.`);
+    await sendAndSave(aiReply);
+    return;
+  }
+
+  await sendAndSave(rawAiReply);
+}
+
+// Polling state
+let _pancakeLastPollAt = Date.now();
+const _pancakeSeenIds = new Set();
+const _pancakeLog = [];
+app.get('/api/debug/pancake-log', (_req, res) => res.json(_pancakeLog));
+
+// List Pancake pages — truyền ?access_token=USER_ACCESS_TOKEN để xem page_id
+app.get('/api/debug/pancake-pages', async (req, res) => {
+  const token = req.query.access_token;
+  if (!token) return res.status(400).json({ error: 'Missing ?access_token=YOUR_PANCAKE_PERSONAL_TOKEN' });
+  try {
+    const r = await fetch(`https://pages.fm/api/v1/pages?access_token=${token}`);
+    const data = await r.json();
+    const pages = (data.pages || []).map(p => ({
+      id: p.id,
+      platform: p.platform,
+      name: p.name,
+      avatar_url: p.avatar_url,
+    }));
+    res.json({ pages, hint: 'Dùng "id" làm PANCAKE_PAGE_ID trong .env' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+async function pollPancakeMessages() {
+  const token  = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
+  const pageId = process.env.PANCAKE_PAGE_ID;
+  if (!token || !pageId) return;
+
+  const now   = Date.now();
+  const since = Math.floor((_pancakeLastPollAt - 5000) / 1000); // 5s overlap to avoid gaps
+  _pancakeLastPollAt = now;
+
+  try {
+    // 1. Fetch conversations updated since last poll
+    const convRes = await fetch(
+      `https://pages.fm/api/public_api/v2/pages/${encodeURIComponent(pageId)}/conversations?page_access_token=${token}&since=${since}`
+    );
+    if (!convRes.ok) return;
+    const convData = await convRes.json();
+    const conversations = convData.conversations || [];
+    if (!conversations.length) return;
+
+    // 2. For each conversation, fetch latest messages
+    for (const conv of conversations) {
+      const msgRes = await fetch(
+        `https://pages.fm/api/public_api/v1/pages/${encodeURIComponent(pageId)}/conversations/${encodeURIComponent(conv.id)}/messages?page_access_token=${token}`
+      );
+      if (!msgRes.ok) continue;
+      const msgData = await msgRes.json();
+      const messages = msgData.messages || [];
+
+      for (const msg of messages) {
+        // Skip already processed messages
+        if (_pancakeSeenIds.has(msg.id)) continue;
+        _pancakeSeenIds.add(msg.id);
+
+        // Skip messages older than 60s (startup backlog)
+        const msgTime = new Date(msg.inserted_at).getTime();
+        if (msgTime < now - 60_000) continue;
+
+        // Skip page's own outgoing messages (from.id equals page sender or no text)
+        if (!msg.message || msg.from?.id === pageId) continue;
+
+        const logEntry = { time: new Date().toISOString(), msg_id: msg.id, from: msg.from?.name, text: msg.message };
+        _pancakeLog.unshift(logEntry);
+        if (_pancakeLog.length > 50) _pancakeLog.pop();
+
+        // Process asynchronously so one slow message doesn't block others
+        processPancakeMessage({ ...msg, page_id: pageId }).catch(err =>
+          console.error('[Pancake] processPancakeMessage error:', err.message)
+        );
+      }
+    }
+  } catch (err) {
+    console.error('[Pancake Poll] Error:', err.message);
+  }
+}
+
+// Clear seen IDs every hour to prevent unbounded memory growth
+setInterval(() => { _pancakeSeenIds.clear(); }, 60 * 60 * 1000);
+
+// Start polling (delay 5s after server start to let DB connect)
+setTimeout(() => {
+  setInterval(pollPancakeMessages, 3000);
+  console.log('[Pancake] Polling started (3s interval)');
+}, 5000);
+
+// ──────────────────────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────────────────────
+
 function cleanHtmlToText(html) {
   let text = html;
   // Remove noise elements entirely
