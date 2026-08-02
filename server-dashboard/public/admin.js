@@ -361,24 +361,31 @@ function authFetch(url, options = {}) {
     return fetch(url, { ...options, headers });
 }
 
-async function verifyAuthAndInit() {
-    // SSO: nếu URL có ?sso=<token> -> đổi lấy phiên đăng nhập (không cần nhập user/mật khẩu)
+// Đổi token SSO (?sso=) lấy phiên đăng nhập. Trả true nếu thành công. Chỉ xoá ?sso khi thành công.
+async function doSsoLogin() {
+    const params = new URLSearchParams(window.location.search);
+    const sso = params.get('sso');
+    if (!sso) return false;
     try {
-        const params = new URLSearchParams(window.location.search);
-        const sso = params.get('sso');
-        if (sso) {
-            const r = await fetch(`${API_BASE}/api/admin/sso`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: sso })
-            });
-            const d = await r.json().catch(() => ({}));
-            if (r.ok && d.token) localStorage.setItem('pastie_admin_token', d.token);
-            // xoá ?sso khỏi URL cho gọn & tránh lộ token
+        const r = await fetch(`${API_BASE}/api/admin/sso`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: sso })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.token) {
+            localStorage.setItem('pastie_admin_token', d.token);
             params.delete('sso');
             window.history.replaceState({}, '', window.location.pathname + (params.toString() ? '?' + params.toString() : ''));
+            return true;
         }
-    } catch (e) { console.error('SSO error:', e); }
+        console.warn('SSO thất bại:', r.status, d.error);
+        return false;
+    } catch (e) { console.error('SSO error:', e); return false; }
+}
+
+async function verifyAuthAndInit() {
+    await doSsoLogin(); // tự động thử nếu URL có ?sso
 
     const token = getToken();
     if (!token) {
@@ -408,6 +415,12 @@ function showLogin() {
     mainDashboard.classList.add('hide');
     if (pollInterval) clearInterval(pollInterval);
     if (messagePollInterval) clearInterval(messagePollInterval);
+    // Nếu có ?sso= thì hiện nút "Đăng nhập bằng DealPhuQuoc (SSO)"
+    const hasSso = new URLSearchParams(window.location.search).get('sso');
+    const b = document.getElementById('sso-login-btn');
+    const dv = document.getElementById('sso-divider');
+    if (b) b.style.display = hasSso ? 'block' : 'none';
+    if (dv) dv.style.display = hasSso ? 'block' : 'none';
 }
 
 function hideLogin() {
@@ -505,8 +518,10 @@ function showNewMessageNotification(session, unread) {
 // DASHBOARD INITIALIZATION & POLLING
 // ----------------------------------------------------
 
-function initDashboard() {
-    loadAdminProfile();
+let CURRENT_ADMIN = null;
+async function initDashboard() {
+    await loadAdminProfile();   // biết role + project_id trước khi dựng filter
+    await loadProjects();        // tải registry dự án
     requestNotificationPermission();
     fetchSessions();
     if (pollInterval) clearInterval(pollInterval);
@@ -518,12 +533,14 @@ async function loadAdminProfile() {
         const res = await authFetch(`${API_BASE}/api/admin/me`);
         if (!res.ok) return;
         const data = await res.json();
+        const admin = data.admin || data; // /me trả { admin: {...} }
+        CURRENT_ADMIN = admin;
         const nameEl = document.getElementById('admin-profile-name');
         const badgeEl = document.getElementById('admin-profile-badge');
         const manageBtn = document.getElementById('manage-admins-btn');
-        if (nameEl) nameEl.textContent = data.full_name || data.username;
+        if (nameEl) nameEl.textContent = admin.full_name || admin.username;
         if (badgeEl) badgeEl.style.display = 'flex';
-        if (manageBtn && data.role === 'superadmin') manageBtn.classList.remove('hide');
+        if (manageBtn && admin.role === 'superadmin') manageBtn.classList.remove('hide');
     } catch (e) {
         console.error('Failed to load admin profile:', e);
     }
@@ -579,20 +596,92 @@ async function fetchSessions() {
 function updateProjectFilterDropdown(sessions) {
     const existingValue = projectFilter.value;
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
-    
-    // Extract unique project IDs (luôn kèm 'dealphuquoc' để chọn được KB kể cả khi chưa có chat)
-    const projects = [...new Set([...sessions.map(s => s.project_id), 'dealphuquoc'])].filter(Boolean);
-    
-    // Rebuild options keeping "Tất cả"
-    projectFilter.innerHTML = `<option value="" data-i18n="allProjects">${dict.allProjects}</option>`;
-    projects.forEach(p => {
+
+    // Nguồn chính = registry dự án (PROJECTS). Kèm project_id lạ từ session (fallback).
+    const map = new Map();
+    (PROJECTS || []).forEach(p => map.set(p.id, p.name || p.id));
+    (sessions || []).forEach(s => { if (s.project_id && !map.has(s.project_id)) map.set(s.project_id, s.project_id); });
+
+    // Chỉ superadmin có tuỳ chọn "Tất cả dự án"; tài khoản scoped thì không.
+    const isScoped = CURRENT_ADMIN && CURRENT_ADMIN.role !== 'superadmin' && CURRENT_ADMIN.project_id;
+    projectFilter.innerHTML = isScoped ? '' : `<option value="">${dict.allProjects}</option>`;
+    map.forEach((name, id) => {
         const opt = document.createElement('option');
-        opt.value = p;
-        opt.textContent = p;
+        opt.value = id;
+        opt.textContent = name;
         projectFilter.appendChild(opt);
     });
 
-    projectFilter.value = existingValue;
+    // Tài khoản scoped: khoá filter về đúng project của mình
+    if (isScoped) { projectFilter.value = CURRENT_ADMIN.project_id; projectFilter.disabled = true; currentProjectFilter = CURRENT_ADMIN.project_id; }
+    else { projectFilter.value = existingValue; }
+}
+
+// ===== Registry dự án (multi-project) =====
+let PROJECTS = [];
+async function loadProjects() {
+    try {
+        const r = await authFetch(`${API_BASE}/api/admin/projects`);
+        if (!r.ok) return;
+        PROJECTS = await r.json();
+    } catch (e) { console.error('loadProjects error:', e); PROJECTS = []; }
+    updateProjectFilterDropdown([]);
+    fillAdminProjectSelect();
+    renderProjectList();
+}
+
+function fillAdminProjectSelect() {
+    const sel = document.getElementById('admin-form-project');
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— Tất cả dự án (toàn quyền) —</option>';
+    (PROJECTS || []).forEach(p => {
+        const o = document.createElement('option');
+        o.value = p.id; o.textContent = `${p.name} (${p.id})`;
+        sel.appendChild(o);
+    });
+    sel.value = cur;
+}
+
+function renderProjectList() {
+    const box = document.getElementById('project-list');
+    if (!box) return;
+    box.innerHTML = '';
+    if (!PROJECTS.length) { box.innerHTML = '<span style="font-size:12px;color:var(--text-secondary);">Chưa có dự án nào.</span>'; return; }
+    PROJECTS.forEach(p => {
+        const chip = document.createElement('span');
+        chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:20px;background:rgba(99,102,241,0.15);color:var(--accent-color);border:1px solid rgba(99,102,241,0.3);font-size:12px;';
+        chip.innerHTML = `${p.name} <small style="opacity:.6">${p.id}</small>`;
+        const del = document.createElement('button');
+        del.textContent = '×'; del.title = 'Xoá khỏi danh sách';
+        del.style.cssText = 'background:none;border:none;color:inherit;cursor:pointer;font-size:15px;line-height:1;';
+        del.onclick = () => deleteProject(p.id);
+        chip.appendChild(del);
+        box.appendChild(chip);
+    });
+}
+
+async function addProject() {
+    const inp = document.getElementById('project-new-name');
+    const name = inp ? inp.value.trim() : '';
+    if (!name) return;
+    try {
+        const r = await authFetch(`${API_BASE}/api/admin/projects`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) { if (inp) inp.value = ''; await loadProjects(); }
+        else alert('Lỗi: ' + (d.error || 'Không tạo được dự án.'));
+    } catch (e) { alert('Lỗi kết nối.'); }
+}
+
+async function deleteProject(id) {
+    if (!confirm(`Xoá dự án "${id}" khỏi danh sách? (không xoá chat/KB đã có)`)) return;
+    try {
+        const r = await authFetch(`${API_BASE}/api/admin/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (r.ok) await loadProjects(); else alert('Lỗi xoá dự án.');
+    } catch (e) { alert('Lỗi kết nối.'); }
 }
 
 function getBrowserIcon(browser) {
@@ -1280,6 +1369,26 @@ function escapeHtml(text) {
 // Event Bindings
 loginBtn.addEventListener('click', handleLogin);
 passwordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(); });
+
+// Quản lý dự án: nút thêm + Enter
+const projectAddBtn = document.getElementById('project-add-btn');
+if (projectAddBtn) projectAddBtn.addEventListener('click', addProject);
+const projectNewName = document.getElementById('project-new-name');
+if (projectNewName) projectNewName.addEventListener('keypress', (e) => { if (e.key === 'Enter') addProject(); });
+
+// Nút đăng nhập SSO (chỉ hiện khi URL có ?sso=)
+const ssoLoginBtn = document.getElementById('sso-login-btn');
+if (ssoLoginBtn) {
+    ssoLoginBtn.addEventListener('click', async () => {
+        ssoLoginBtn.disabled = true;
+        const ok = await doSsoLogin();
+        if (ok) { hideLogin(); initDashboard(); }
+        else {
+            ssoLoginBtn.disabled = false;
+            if (loginErrorMsg) { loginErrorMsg.textContent = 'Đăng nhập SSO thất bại (token sai hoặc hết hạn).'; loginErrorMsg.style.display = 'block'; }
+        }
+    });
+}
 
 projectFilter.addEventListener('change', (e) => {
     currentProjectFilter = e.target.value;

@@ -1411,6 +1411,54 @@ app.post('/api/admin/logout', checkAdminAuth, async (req, res) => {
   }
 });
 
+// ===== Quản lý DỰ ÁN (multi-project) =====
+// Liệt kê dự án: superadmin thấy tất cả; subadmin scoped chỉ thấy dự án của mình.
+app.get('/api/admin/projects', checkAdminAuth, async (req, res) => {
+  try {
+    if (req.admin.role !== 'superadmin' && req.admin.project_id) {
+      const one = await db.query('SELECT id, name FROM projects WHERE id = $1', [req.admin.project_id]);
+      return res.json(one.rows);
+    }
+    const all = await db.query('SELECT id, name, created_at FROM projects ORDER BY created_at ASC, id ASC');
+    res.json(all.rows);
+  } catch (e) {
+    console.error('List projects error:', e);
+    res.status(500).json({ error: 'Lỗi tải danh sách dự án.' });
+  }
+});
+
+// Tạo dự án mới (chỉ superadmin). id = slug không dấu, dùng làm project_id ở widget (data-project).
+app.post('/api/admin/projects', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'superadmin') return res.status(403).json({ error: 'Chỉ Admin tổng được tạo dự án.' });
+  let { id, name } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'Cần tên dự án.' });
+  const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd')
+    .toLowerCase().trim().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  id = slug(id || name); // không nhập mã -> tự sinh từ tên
+  if (!id) return res.status(400).json({ error: 'Mã dự án không hợp lệ.' });
+  try {
+    const exists = await db.query('SELECT id FROM projects WHERE id = $1', [id]);
+    if (exists.rows.length) return res.status(400).json({ error: 'Mã dự án đã tồn tại.' });
+    const r = await db.query('INSERT INTO projects (id, name) VALUES ($1, $2) RETURNING id, name, created_at', [id, name.trim()]);
+    res.status(201).json({ success: true, project: r.rows[0] });
+  } catch (e) {
+    console.error('Create project error:', e);
+    res.status(500).json({ error: 'Lỗi tạo dự án.' });
+  }
+});
+
+// Xoá dự án (chỉ superadmin). Không xoá chat/KB cũ; chỉ gỡ khỏi registry.
+app.delete('/api/admin/projects/:id', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'superadmin') return res.status(403).json({ error: 'Chỉ Admin tổng được xoá dự án.' });
+  try {
+    await db.query('DELETE FROM projects WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Delete project error:', e);
+    res.status(500).json({ error: 'Lỗi xoá dự án.' });
+  }
+});
+
 // Get Current Admin Info
 app.get('/api/admin/me', checkAdminAuth, async (req, res) => {
   res.json({

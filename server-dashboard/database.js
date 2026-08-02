@@ -46,6 +46,22 @@ async function initializeDatabase() {
     // NULL = xem tất cả project (dùng cho superadmin hoặc subadmin toàn quyền).
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS project_id VARCHAR(100);`);
 
+    // Registry dự án (multi-project): mỗi dự án 1 dòng; KB + tài khoản gắn theo project_id này.
+    await query(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id VARCHAR(100) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    // Seed các dự án mặc định (idempotent)
+    await query(`
+      INSERT INTO projects (id, name) VALUES
+        ('pastie-landingpage', 'Pastie Landing'),
+        ('dealphuquoc', 'DealPhuQuoc')
+      ON CONFLICT (id) DO NOTHING;
+    `);
+
     // Create admin_sessions table
     await query(`
       CREATE TABLE IF NOT EXISTS admin_sessions (
