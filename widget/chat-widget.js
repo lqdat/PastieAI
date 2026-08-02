@@ -519,6 +519,35 @@
         }
     }
 
+    // Tạo phiên chat ĐÃ XÁC THỰC từ danh tính có sẵn (user đã đăng nhập) — bỏ form + OTP.
+    async function identifyAndStart(name, email) {
+        if (!email || state.sessionId) return;
+        state.visitorName = name || 'Khách';
+        state.visitorEmail = email;
+        sessionStorage.setItem('pastie_chat_visitor_name', state.visitorName);
+        sessionStorage.setItem('pastie_chat_visitor_email', state.visitorEmail);
+        try {
+            const r = await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/identified`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, name: state.visitorName, email, visitorLang: state.detectedLang || 'vi' })
+            });
+            const d = await r.json();
+            if (d.success && d.sessionId) {
+                state.sessionId = d.sessionId;
+                state.mode = 'ai';
+                sessionStorage.setItem('pastie_chat_session_id', d.sessionId);
+                sessionStorage.setItem('pastie_chat_mode', 'ai');
+                switchView('chat');
+            } else {
+                switchView('init');
+            }
+        } catch (e) {
+            console.error('[Widget] identifyAndStart failed:', e);
+            switchView('init');
+        }
+    }
+
     // --- DOM Actions & Navigation ---
     function switchView(step) {
         state.step = step;
@@ -1098,9 +1127,18 @@
             }
         });
 
+        // API nhận diện từ web ngoài (khi user đã đăng nhập): điền sẵn danh tính, bỏ form + OTP.
+        window.PastieChat = window.PastieChat || {};
+        window.PastieChat.identify = (u) => { if (u && u.email) identifyAndStart(u.name, u.email); };
+        window.addEventListener('pastie:identify', (e) => window.PastieChat.identify(e.detail || {}));
+
         // Initial state
+        const preset = window.PastieChatUser;
         if (state.sessionId) {
             switchView('chat'); // existing session → chat
+        } else if (preset && preset.email) {
+            switchView('chat');              // hiện khung chat ngay
+            identifyAndStart(preset.name, preset.email); // tạo phiên đã xác thực, bỏ OTP
         } else {
             switchView('init'); // no session → show form first
         }

@@ -362,6 +362,24 @@ function authFetch(url, options = {}) {
 }
 
 async function verifyAuthAndInit() {
+    // SSO: nếu URL có ?sso=<token> -> đổi lấy phiên đăng nhập (không cần nhập user/mật khẩu)
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const sso = params.get('sso');
+        if (sso) {
+            const r = await fetch(`${API_BASE}/api/admin/sso`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: sso })
+            });
+            const d = await r.json().catch(() => ({}));
+            if (r.ok && d.token) localStorage.setItem('pastie_admin_token', d.token);
+            // xoá ?sso khỏi URL cho gọn & tránh lộ token
+            params.delete('sso');
+            window.history.replaceState({}, '', window.location.pathname + (params.toString() ? '?' + params.toString() : ''));
+        }
+    } catch (e) { console.error('SSO error:', e); }
+
     const token = getToken();
     if (!token) {
         showLogin();

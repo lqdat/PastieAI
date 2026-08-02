@@ -1018,6 +1018,44 @@ app.post('/api/chats/session/anonymous', async (req, res) => {
   }
 });
 
+// 4b-identified. Tạo session ĐÃ XÁC THỰC từ danh tính có sẵn (user đã đăng nhập ở web ngoài) — bỏ OTP.
+app.post('/api/chats/session/identified', async (req, res) => {
+  const { projectId = 'pastie-landingpage', name, email, visitorLang = 'vi' } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'Thiếu email.' });
+  const sessionId = randomUUID();
+  const ua = req.headers['user-agent'] || '';
+  const { browser, device } = parseUserAgent(ua);
+
+  let assignedAdminId = null;
+  try {
+    const leastLoadRes = await db.query(`
+      SELECT a.id, COUNT(s.id) as active_count
+      FROM admins a
+      LEFT JOIN sessions s ON s.assigned_admin_id = a.id AND s.status = 'active'
+      WHERE a.role = 'subadmin' AND a.is_active = TRUE
+        AND (a.project_id = $1 OR a.project_id IS NULL)
+      GROUP BY a.id ORDER BY active_count ASC, a.id ASC LIMIT 1
+    `, [projectId]);
+    if (leastLoadRes.rows.length > 0) assignedAdminId = leastLoadRes.rows[0].id;
+    else {
+      const superRes = await db.query("SELECT id FROM admins WHERE role = 'superadmin' AND is_active = TRUE LIMIT 1");
+      if (superRes.rows.length > 0) assignedAdminId = superRes.rows[0].id;
+    }
+  } catch {}
+
+  try {
+    await db.query(
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, assigned_admin_id)
+       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8)`,
+      [sessionId, projectId, name || 'Khách', email, visitorLang, browser, device, assignedAdminId]
+    );
+    res.json({ success: true, sessionId });
+  } catch (error) {
+    console.error('Identified session create error:', error);
+    res.status(500).json({ error: 'Lỗi tạo phiên chat.' });
+  }
+});
+
 // 4c-direct. Request Agent — for an already-verified session, skip OTP entirely (email/name were verified at chat start)
 app.post('/api/chats/session/request-agent-direct', async (req, res) => {
   const { sessionId } = req.body;
@@ -1292,6 +1330,61 @@ app.post('/api/admin/login', async (req, res) => {
   } catch (error) {
     console.error('Admin login error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi đăng nhập.' });
+  }
+});
+
+// SSO đăng nhập từ hệ thống ngoài (vd DealPhuQuoc). Token ký HMAC-SHA256 bằng CHAT_SSO_SECRET chung.
+// Payload: base64url(JSON{email,name,project,role,exp}) + '.' + base64url(hmac). Provision subadmin scoped theo project.
+app.post('/api/admin/sso', async (req, res) => {
+  const secret = process.env.CHAT_SSO_SECRET;
+  if (!secret) return res.status(500).json({ error: 'SSO chưa được cấu hình (thiếu CHAT_SSO_SECRET).' });
+  const { token } = req.body || {};
+  const [body, sig] = String(token || '').split('.');
+  if (!body || !sig) return res.status(400).json({ error: 'Token SSO không hợp lệ.' });
+
+  const expected = crypto.createHmac('sha256', secret).update(body).digest('base64url');
+  // so sánh an toàn theo thời gian
+  const ok = sig.length === expected.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+  if (!ok) return res.status(401).json({ error: 'Chữ ký SSO không hợp lệ.' });
+
+  let payload;
+  try { payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); } catch { return res.status(400).json({ error: 'Payload SSO lỗi.' }); }
+  if (!payload.exp || Date.now() > Number(payload.exp)) return res.status(401).json({ error: 'Token SSO đã hết hạn.' });
+  if (!payload.email) return res.status(400).json({ error: 'Thiếu email trong token SSO.' });
+
+  const project = payload.project || 'dealphuquoc';
+  const username = `sso:${String(payload.email).toLowerCase()}`;
+  const fullName = payload.name || payload.email;
+
+  try {
+    // Provision/cập nhật subadmin scoped đúng project (luôn giới hạn trong project, không cấp superadmin)
+    let admin = (await db.query('SELECT * FROM admins WHERE username = $1', [username])).rows[0];
+    if (!admin) {
+      const ph = await hashPassword(randomUUID()); // mật khẩu ngẫu nhiên, không dùng để đăng nhập trực tiếp
+      admin = (await db.query(
+        `INSERT INTO admins (username, password_hash, full_name, role, project_id, is_active)
+         VALUES ($1, $2, $3, 'subadmin', $4, TRUE) RETURNING *`,
+        [username, ph, fullName, project]
+      )).rows[0];
+    } else {
+      admin = (await db.query(
+        `UPDATE admins SET full_name = $1, project_id = $2, is_active = TRUE WHERE id = $3 RETURNING *`,
+        [fullName, project, admin.id]
+      )).rows[0];
+    }
+
+    const sessionToken = randomUUID();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await db.query('INSERT INTO admin_sessions (token, admin_id, expires_at) VALUES ($1, $2, $3)', [sessionToken, admin.id, expiresAt]);
+
+    res.json({
+      success: true,
+      token: sessionToken,
+      admin: { id: admin.id, username: admin.username, role: admin.role, full_name: admin.full_name, project_id: admin.project_id }
+    });
+  } catch (error) {
+    console.error('SSO login error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi đăng nhập SSO.' });
   }
 });
 
