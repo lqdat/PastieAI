@@ -11,7 +11,7 @@
     position: fixed;
     bottom: 24px;
     right: 24px;
-    z-index: 999999;
+    z-index: 39; /* dưới header/menu của trang (thường z-40/50) để không chặn click */
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -397,7 +397,7 @@ iframe[id^="tidio-chat"] {
     position: fixed;
     bottom: 95px;
     right: 24px;
-    z-index: 999998;
+    z-index: 38;
     background: rgba(15, 12, 30, 0.85);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
@@ -475,7 +475,7 @@ iframe[id^="tidio-chat"] {
     display: flex;
     align-items: center;
     gap: 10px;
-    z-index: 999997;
+    z-index: 37;
     opacity: 0;
     transform: translateY(10px) scale(0.95);
     pointer-events: none;
