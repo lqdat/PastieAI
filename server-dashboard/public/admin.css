@@ -1216,8 +1216,13 @@ button {
 /* ============ RESPONSIVE ============ */
 .mobile-only, .tablet-only { display: none !important; }
 
-/* --- Tablet / laptop nhỏ: 2 cột, panel chi tiết thành drawer phải --- */
-@media (max-width: 1100px) {
+/* --- Màn trung bình: co bớt 2 cột bên cho khung chat rộng hơn --- */
+@media (max-width: 1400px) {
+  .dashboard-body { grid-template-columns: 280px 1fr 280px; }
+}
+
+/* --- Tablet / khung nhúng hẹp: 2 cột, panel chi tiết thành drawer phải --- */
+@media (max-width: 1200px) {
   .dashboard-container { padding: 14px; gap: 14px; }
   .dashboard-body { grid-template-columns: 300px 1fr !important; }
   .tablet-only { display: inline-flex !important; }
