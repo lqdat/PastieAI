@@ -562,8 +562,8 @@ function updateProjectFilterDropdown(sessions) {
     const existingValue = projectFilter.value;
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     
-    // Extract unique project IDs
-    const projects = [...new Set(sessions.map(s => s.project_id))].filter(Boolean);
+    // Extract unique project IDs (luôn kèm 'dealphuquoc' để chọn được KB kể cả khi chưa có chat)
+    const projects = [...new Set([...sessions.map(s => s.project_id), 'dealphuquoc'])].filter(Boolean);
     
     // Rebuild options keeping "Tất cả"
     projectFilter.innerHTML = `<option value="" data-i18n="allProjects">${dict.allProjects}</option>`;
@@ -1374,7 +1374,8 @@ if (kbSaveManualBtn) {
 
 async function openKnowledgeModal() {
     knowledgeModal.classList.remove('hide');
-    const projectId = 'pastie-landingpage';
+    // KB theo project đang chọn (mặc định pastie-landingpage nếu chọn "Tất cả")
+    const projectId = currentProjectFilter || 'pastie-landingpage';
     try {
         const kbResp = await authFetch(`${API_BASE}/api/admin/knowledge?projectId=${projectId}`);
         const data = await kbResp.json();
@@ -1412,7 +1413,7 @@ async function syncKnowledgeFromUrl() {
         const response = await authFetch(`${API_BASE}/api/admin/knowledge/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, projectId: 'pastie-landingpage' })
+            body: JSON.stringify({ url, projectId: currentProjectFilter || 'pastie-landingpage' })
         });
         
         const data = await response.json();
@@ -1446,7 +1447,7 @@ async function saveKnowledgeManual() {
         const response = await authFetch(`${API_BASE}/api/admin/knowledge/manual`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cleanedContent: text, projectId: 'pastie-landingpage' })
+            body: JSON.stringify({ cleanedContent: text, projectId: currentProjectFilter || 'pastie-landingpage' })
         });
         
         const data = await response.json();
@@ -1682,6 +1683,7 @@ const adminFormFullname = document.getElementById('admin-form-fullname');
 const adminFormUsername = document.getElementById('admin-form-username');
 const adminFormPassword = document.getElementById('admin-form-password');
 const adminFormRole = document.getElementById('admin-form-role');
+const adminFormProject = document.getElementById('admin-form-project');
 const adminFormActive = document.getElementById('admin-form-active');
 const adminFormStatusGroup = document.getElementById('admin-form-status-group');
 const adminFormTitle = document.getElementById('admin-form-title');
@@ -1746,6 +1748,7 @@ async function editAdminUser(id) {
         if (adminFormUsername) adminFormUsername.value = u.username;
         if (adminFormPassword) adminFormPassword.value = '';
         if (adminFormRole) adminFormRole.value = u.role;
+        if (adminFormProject) adminFormProject.value = u.project_id || '';
         if (adminFormActive) adminFormActive.checked = u.is_active;
         if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'flex';
         if (adminFormTitle) adminFormTitle.textContent = 'Chỉnh sửa nhân viên';
@@ -1774,6 +1777,7 @@ async function handleAdminUserSubmit(e) {
         password: adminFormPassword?.value.trim(),
         full_name: adminFormFullname?.value.trim(),
         role: adminFormRole?.value,
+        project_id: adminFormProject?.value.trim() || null,
         is_active: adminFormActive?.checked ?? true
     };
     try {

@@ -222,7 +222,7 @@ async function checkAdminAuth(req, res, next) {
   try {
     // 1. Check if token exists in admin_sessions and joins admins
     const sessionRes = await db.query(
-      `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.role, a.avatar_url, a.is_active 
+      `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.role, a.avatar_url, a.is_active, a.project_id
        FROM admin_sessions s
        JOIN admins a ON s.admin_id = a.id
        WHERE s.token = $1`,
@@ -253,6 +253,7 @@ async function checkAdminAuth(req, res, next) {
       full_name: adminSession.full_name,
       role: adminSession.role,
       avatar_url: adminSession.avatar_url,
+      project_id: adminSession.project_id, // null = xem mọi project
       token: token
     };
 
@@ -467,15 +468,17 @@ app.post('/api/otp/verify', async (req, res) => {
     // Auto-assignment algorithm (Least Active Load)
     let assignedAdminId = null;
     try {
+      // Ưu tiên subadmin gắn đúng project (hoặc toàn quyền project_id IS NULL)
       const leastLoadRes = await db.query(`
         SELECT a.id, a.full_name, COUNT(s.id) as active_count
         FROM admins a
         LEFT JOIN sessions s ON s.assigned_admin_id = a.id AND s.status = 'active'
         WHERE a.role = 'subadmin' AND a.is_active = TRUE
+          AND (a.project_id = $1 OR a.project_id IS NULL)
         GROUP BY a.id, a.full_name
         ORDER BY active_count ASC, a.id ASC
         LIMIT 1
-      `);
+      `, [projectId]);
       if (leastLoadRes.rows.length > 0) {
         assignedAdminId = leastLoadRes.rows[0].id;
         console.log(`Auto-assigned conversation ${sessionId} to sub-admin ${leastLoadRes.rows[0].full_name} (Active chats: ${leastLoadRes.rows[0].active_count})`);
@@ -992,8 +995,9 @@ app.post('/api/chats/session/anonymous', async (req, res) => {
       FROM admins a
       LEFT JOIN sessions s ON s.assigned_admin_id = a.id AND s.status = 'active'
       WHERE a.role = 'subadmin' AND a.is_active = TRUE
+        AND (a.project_id = $1 OR a.project_id IS NULL)
       GROUP BY a.id, a.full_name ORDER BY active_count ASC, a.id ASC LIMIT 1
-    `);
+    `, [projectId]);
     if (leastLoadRes.rows.length > 0) assignedAdminId = leastLoadRes.rows[0].id;
     else {
       const superRes = await db.query("SELECT id FROM admins WHERE role = 'superadmin' AND is_active = TRUE LIMIT 1");
@@ -1281,7 +1285,8 @@ app.post('/api/admin/login', async (req, res) => {
         role: admin.role,
         full_name: admin.full_name,
         avatar_url: admin.avatar_url,
-        is_active: admin.is_active
+        is_active: admin.is_active,
+        project_id: admin.project_id
       }
     });
   } catch (error) {
@@ -1332,7 +1337,7 @@ app.get('/api/admin/users', checkAdminAuth, async (req, res) => {
 
   try {
     const result = await db.query(
-      'SELECT id, username, role, full_name, avatar_url, is_active, created_at FROM admins ORDER BY role DESC, username ASC'
+      'SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_at FROM admins ORDER BY role DESC, username ASC'
     );
     res.json(result.rows);
   } catch (error) {
@@ -1347,7 +1352,7 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
     return res.status(403).json({ error: 'Quyền hạn bị từ chối. Chỉ Admin tổng mới có quyền quản lý nhân viên.' });
   }
 
-  const { username, password, full_name, role, avatar_url } = req.body;
+  const { username, password, full_name, role, avatar_url, project_id } = req.body;
   if (!username || !password || !full_name || !role) {
     return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ: username, password, full_name, role.' });
   }
@@ -1361,11 +1366,13 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
 
     const passwordHash = await hashPassword(password);
     const avatar = avatar_url || '';
+    // project_id rỗng/không nhập -> null (xem mọi project). Superadmin bỏ qua scope.
+    const scope = role === 'superadmin' ? null : (project_id && project_id.trim() ? project_id.trim() : null);
 
     const insertRes = await db.query(
-      `INSERT INTO admins (username, password_hash, full_name, role, avatar_url, is_active) 
-       VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING id, username, role, full_name, avatar_url, is_active, created_at`,
-      [username, passwordHash, full_name, role, avatar]
+      `INSERT INTO admins (username, password_hash, full_name, role, avatar_url, project_id, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE) RETURNING id, username, role, full_name, avatar_url, project_id, is_active, created_at`,
+      [username, passwordHash, full_name, role, avatar, scope]
     );
 
     res.status(201).json({
@@ -1386,7 +1393,7 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
   }
 
   const { id } = req.params;
-  const { username, password, full_name, role, avatar_url, is_active } = req.body;
+  const { username, password, full_name, role, avatar_url, is_active, project_id } = req.body;
 
   try {
     // Verify admin exists
@@ -1415,6 +1422,10 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
     const updatedRole = role || currentAdmin.role;
     const updatedAvatar = avatar_url !== undefined ? avatar_url : currentAdmin.avatar_url;
     const updatedIsActive = is_active !== undefined ? is_active : currentAdmin.is_active;
+    // Scope project: superadmin luôn null (xem mọi project); subadmin lấy giá trị mới nếu có, giữ nguyên nếu không gửi.
+    const updatedProject = updatedRole === 'superadmin'
+      ? null
+      : (project_id !== undefined ? (project_id && project_id.trim() ? project_id.trim() : null) : currentAdmin.project_id);
 
     // Do not allow deactivating themselves
     if (id === req.admin.id && !updatedIsActive) {
@@ -1422,10 +1433,10 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
     }
 
     const updateRes = await db.query(
-      `UPDATE admins 
-       SET username = $1, password_hash = $2, full_name = $3, role = $4, avatar_url = $5, is_active = $6 
-       WHERE id = $7 RETURNING id, username, role, full_name, avatar_url, is_active, created_at`,
-      [updatedUsername, passwordHash, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, id]
+      `UPDATE admins
+       SET username = $1, password_hash = $2, full_name = $3, role = $4, avatar_url = $5, is_active = $6, project_id = $7
+       WHERE id = $8 RETURNING id, username, role, full_name, avatar_url, project_id, is_active, created_at`,
+      [updatedUsername, passwordHash, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, updatedProject, id]
     );
 
     res.json({
@@ -1580,9 +1591,11 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
     // Chỉ hiện multichannel session khi đã chuyển sang agent (show_in_dashboard=true)
     // Live chat widget (platform='widget' hoặc null) luôn hiện
     const conditions = [`(s.platform IS NULL OR s.platform = 'widget' OR s.show_in_dashboard = true)`];
-    if (projectId) {
+    // Phân quyền: tài khoản gắn project (không phải superadmin) BẮT BUỘC chỉ xem project của mình.
+    const scopedProject = req.admin.role !== 'superadmin' && req.admin.project_id ? req.admin.project_id : projectId;
+    if (scopedProject) {
       conditions.push(`s.project_id = $${params.length + 1}`);
-      params.push(projectId);
+      params.push(scopedProject);
     }
     queryText += ' WHERE ' + conditions.join(' AND ');
     queryText += ' ORDER BY s.created_at DESC';
@@ -1641,7 +1654,15 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res)
 
   try {
     // Check if session has a locked admin_language
-    const sessionRes = await db.query('SELECT admin_language FROM sessions WHERE id = $1', [sessionId]);
+    const sessionRes = await db.query('SELECT admin_language, project_id FROM sessions WHERE id = $1', [sessionId]);
+    // Phân quyền: tài khoản gắn project không được xem hội thoại của project khác.
+    if (
+      sessionRes.rows.length > 0 &&
+      req.admin.role !== 'superadmin' && req.admin.project_id &&
+      sessionRes.rows[0].project_id !== req.admin.project_id
+    ) {
+      return res.status(403).json({ error: 'Bạn không có quyền xem hội thoại thuộc project khác.' });
+    }
     let targetLang = adminLang;
     if (sessionRes.rows.length > 0 && sessionRes.rows[0].admin_language) {
       targetLang = sessionRes.rows[0].admin_language;
