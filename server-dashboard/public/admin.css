@@ -1215,6 +1215,7 @@ button {
 
 /* ============ RESPONSIVE ============ */
 .mobile-only, .tablet-only { display: none !important; }
+.details-backdrop { display: none; }
 
 /* --- Màn trung bình: co bớt 2 cột bên cho khung chat rộng hơn --- */
 @media (max-width: 1400px) {
@@ -1232,6 +1233,10 @@ button {
     transform: translateX(105%); transition: transform .25s ease;
   }
   .dashboard-body.details-open .details-sidebar { transform: translateX(0); }
+  .dashboard-body.details-open .details-backdrop {
+    display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 290;
+    backdrop-filter: blur(2px);
+  }
 }
 
 /* --- Mobile: 1 cột, chuyển view danh sách <-> chat --- */

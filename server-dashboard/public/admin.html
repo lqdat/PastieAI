@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r2">
+    <link rel="stylesheet" href="admin.css?v=r3">
 </head>
 <body>
     <!-- Gradient background decor -->
@@ -188,8 +188,9 @@
 
             <!-- Details Sidebar -->
             <aside class="details-sidebar glass-panel hide" id="details-sidebar-container">
-                <div class="details-header">
+                <div class="details-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
                     <h3 data-i18n="detailsTitle">Thông tin chi tiết</h3>
+                    <button id="details-close-btn" class="icon-btn tablet-only" title="Đóng"><i class="ri-close-line"></i></button>
                 </div>
                 <div class="details-body">
                     <div class="detail-card">
@@ -234,6 +235,9 @@
                     </div>
                 </div>
             </aside>
+
+            <!-- Nền mờ khi mở panel chi tiết ở màn nhỏ -->
+            <div id="details-backdrop" class="details-backdrop"></div>
         </div>
     </div>
 
@@ -478,6 +482,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r1"></script>
+    <script src="admin.js?v=r3"></script>
 </body>
 </html>

@@ -257,6 +257,8 @@ const dashboardBody = document.getElementById('dashboard-body');
 // Responsive: nút quay lại (mobile) + nút xem chi tiết (tablet)
 document.getElementById('mobile-back-btn')?.addEventListener('click', () => dashboardBody?.classList.remove('chat-open'));
 document.getElementById('details-toggle-btn')?.addEventListener('click', () => dashboardBody?.classList.toggle('details-open'));
+document.getElementById('details-close-btn')?.addEventListener('click', () => dashboardBody?.classList.remove('details-open'));
+document.getElementById('details-backdrop')?.addEventListener('click', () => dashboardBody?.classList.remove('details-open'));
 const detailLang = document.getElementById('detail-lang');
 const detailTags = document.getElementById('detail-tags');
 const detailSummary = document.getElementById('detail-summary');
