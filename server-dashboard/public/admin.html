@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css">
+    <link rel="stylesheet" href="admin.css?v=r1">
 </head>
 <body>
     <!-- Gradient background decor -->
@@ -116,7 +116,7 @@
         </header>
 
         <!-- Lower Grid -->
-        <div class="dashboard-body">
+        <div class="dashboard-body" id="dashboard-body">
             <!-- Sidebar: Sessions List -->
             <aside class="sessions-sidebar glass-panel">
                 <div class="sidebar-header">
@@ -132,6 +132,7 @@
             <main class="chat-main glass-panel">
                 <!-- Chat Window Header -->
                 <div class="chat-header" id="active-chat-header">
+                    <button id="mobile-back-btn" class="icon-btn mobile-only" title="Quay lại" style="margin-right:4px;"><i class="ri-arrow-left-line"></i></button>
                     <div class="visitor-details-header" style="display:flex;align-items:center;gap:12px;">
                         <div id="chat-header-avatar" style="display:none;flex-shrink:0;"></div>
                         <div>
@@ -146,6 +147,7 @@
                         </div>
                     </div>
                     <div id="chat-header-actions" class="hide" style="display: flex; gap: 8px; align-items: center;">
+                        <button id="details-toggle-btn" class="icon-btn tablet-only" title="Thông tin chi tiết"><i class="ri-information-line"></i></button>
                         <div id="assignee-selector-container" class="assignee-selector-wrap">
                             <i class="ri-user-follow-line" style="color: var(--accent-color); font-size: 14px;"></i>
                             <span class="assignee-label" data-i18n="assignLabel">Phân công:</span>
@@ -476,6 +478,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=proj1"></script>
+    <script src="admin.js?v=r1"></script>
 </body>
 </html>

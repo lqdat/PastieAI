@@ -253,6 +253,10 @@ const chatInputContainer = document.getElementById('chat-input-container');
 const chatForm = document.getElementById('chat-form');
 const chatInput = document.getElementById('chat-input');
 const detailsSidebar = document.getElementById('details-sidebar-container');
+const dashboardBody = document.getElementById('dashboard-body');
+// Responsive: nút quay lại (mobile) + nút xem chi tiết (tablet)
+document.getElementById('mobile-back-btn')?.addEventListener('click', () => dashboardBody?.classList.remove('chat-open'));
+document.getElementById('details-toggle-btn')?.addEventListener('click', () => dashboardBody?.classList.toggle('details-open'));
 const detailLang = document.getElementById('detail-lang');
 const detailTags = document.getElementById('detail-tags');
 const detailSummary = document.getElementById('detail-summary');
@@ -987,6 +991,7 @@ async function selectSession(sessionId) {
     chatHeaderActions.classList.remove('hide');
     chatInputContainer.classList.remove('hide');
     detailsSidebar.classList.remove('hide');
+    dashboardBody?.classList.add('chat-open'); // mobile: chuyển sang khung chat
 
     // Update details side panel
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];

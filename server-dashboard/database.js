@@ -114,6 +114,20 @@ async function initializeDatabase() {
       );
     `);
 
+    // Seed KB mặc định cho dự án DealPhuQuoc (chỉ tạo nếu project này chưa có KB nào)
+    await query(`
+      INSERT INTO knowledge_base (project_id, source_url, raw_html, cleaned_content)
+      SELECT 'dealphuquoc', 'manual', '', $kb$DealPhuQuoc là nền tảng đặt chỗ nghỉ tại Phú Quốc: villa, homestay, căn hộ, khách sạn.
+- Đặt phòng online, thanh toán VietQR, xác nhận tức thì qua email.
+- Tìm kiếm thông minh: khách gõ nhu cầu tự nhiên (vd "villa có hồ bơi riêng gần biển") sẽ ra đúng chỗ phù hợp.
+- Mỗi đơn có thể kèm voucher địa phương: tour 4 đảo, thuê xe máy, ưu đãi ăn uống từ đối tác bản địa.
+- Giá đã gồm VAT; ngày lễ/cuối tuần có thể áp giá cao hơn.
+- Khách chọn giờ nhận phòng và voucher khi đặt.
+- Chính sách hỗ trợ: nếu cần gặp người thật, khách bấm "Gặp CSKH" trong khung chat.
+Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằng tiếng Việt; nếu khách hỏi ngoài phạm vi thì mời để lại thông tin để CSKH liên hệ.$kb$
+      WHERE NOT EXISTS (SELECT 1 FROM knowledge_base WHERE project_id = 'dealphuquoc');
+    `);
+
     // Create channel_configs table
     await query(`
       CREATE TABLE IF NOT EXISTS channel_configs (
