@@ -50,9 +50,9 @@
     const TRANSLATIONS = {
         vi: {
             headerTitle: 'Hỗ Trợ Trực Tuyến',
-            headerStatus: 'Đang hoạt động • AI song ngữ',
+            headerStatus: 'Đang hoạt động • Hỗ trợ song ngữ',
             initTitle: 'Bắt đầu trò chuyện',
-            initDesc: 'Vui lòng điền tên và email của bạn để bắt đầu chat với AI hỗ trợ của chúng tôi.',
+            initDesc: 'Vui lòng điền tên và email của bạn để bắt đầu chat với bộ phận hỗ trợ của chúng tôi.',
             initNameLabel: 'Họ tên của bạn',
             initNamePlaceholder: 'Nguyễn Văn A...',
             initEmailLabel: 'Địa chỉ Email',
@@ -71,29 +71,29 @@
             otpErrorInvalid: 'Mã xác thực không hợp lệ hoặc đã hết hạn.',
             otpErrorConn: 'Lỗi kết nối máy chủ.',
             chatInputPlaceholder: 'Nhập tin nhắn...',
-            chatThinking: 'AI đang suy nghĩ...',
+            chatThinking: 'Đang soạn phản hồi...',
             loadingSend: 'Đang xử lý...',
             loadingVerify: 'Xác thực...',
             defaultError: 'Có lỗi xảy ra.',
             typingText: 'Nhân viên đang nhập...',
-            chatStartWelcome: 'Chào mừng! Vui lòng gửi câu hỏi của bạn. Hệ thống AI dịch thuật tự động đã sẵn sàng.',
+            chatStartWelcome: 'Chào mừng! Vui lòng gửi câu hỏi của bạn. Hệ thống dịch tự động đã sẵn sàng.',
             loadOlder: 'Xem tin nhắn cũ hơn',
             loadingMore: 'Đang tải...',
             miniSenderAgent: 'Hỗ trợ',
             miniSenderVisitor: 'Bạn',
             miniSenderSystem: 'Hệ thống',
-            miniSenderAI: 'AI Trợ lý',
+            miniSenderAI: 'Trợ lý',
             btnMeetCSKH: 'Gặp CSKH',
             btnCloseCSKH: 'Kết thúc',
             confirmEndChat: 'Bạn có chắc chắn muốn kết thúc cuộc trò chuyện?',
-            backToAI: 'Quay lại AI',
-            sessionEnded: 'Cuộc trò chuyện đã kết thúc. AI tiếp tục hỗ trợ bạn ↓'
+            backToAI: 'Quay lại trợ lý',
+            sessionEnded: 'Cuộc trò chuyện đã kết thúc. Hệ thống tiếp tục hỗ trợ bạn ↓'
         },
         en: {
             headerTitle: 'Live Support',
-            headerStatus: 'Online • Bilingual AI',
+            headerStatus: 'Online • Bilingual support',
             initTitle: 'Start a Conversation',
-            initDesc: 'Please enter your name and email to start chatting with our AI assistant.',
+            initDesc: 'Please enter your name and email to start chatting with our support team.',
             initNameLabel: 'Your Name',
             initNamePlaceholder: 'John Doe...',
             initEmailLabel: 'Email Address',
@@ -112,29 +112,29 @@
             otpErrorInvalid: 'Invalid or expired OTP.',
             otpErrorConn: 'Server connection error.',
             chatInputPlaceholder: 'Type a message...',
-            chatThinking: 'AI is thinking...',
+            chatThinking: 'Preparing a reply...',
             loadingSend: 'Processing...',
             loadingVerify: 'Verifying...',
             defaultError: 'An error occurred.',
             typingText: 'Agent is typing...',
-            chatStartWelcome: 'Welcome! Send your question and our bilingual AI will respond.',
+            chatStartWelcome: 'Welcome! Send your question and our bilingual support will respond.',
             loadOlder: 'Load older messages',
             loadingMore: 'Loading...',
             miniSenderAgent: 'Support',
             miniSenderVisitor: 'You',
             miniSenderSystem: 'System',
-            miniSenderAI: 'AI Assistant',
+            miniSenderAI: 'Assistant',
             btnMeetCSKH: 'Meet Agent',
             btnCloseCSKH: 'End Chat',
             confirmEndChat: 'Are you sure you want to end this conversation?',
-            backToAI: 'Back to AI',
-            sessionEnded: 'This conversation has ended. AI will continue to assist you ↓'
+            backToAI: 'Back to assistant',
+            sessionEnded: 'This conversation has ended. We will continue to assist you ↓'
         },
         ru: {
             headerTitle: 'Живая Поддержка',
-            headerStatus: 'Онлайн • Двуязычный ИИ',
+            headerStatus: 'Онлайн • Двуязычная поддержка',
             initTitle: 'Начать разговор',
-            initDesc: 'Пожалуйста, введите ваше имя и email, чтобы начать чат с нашим ИИ-ассистентом.',
+            initDesc: 'Пожалуйста, введите ваше имя и email, чтобы начать чат с нашей службой поддержки.',
             initNameLabel: 'Ваше имя',
             initNamePlaceholder: 'Иван Иванов...',
             initEmailLabel: 'Электронная почта',
@@ -153,29 +153,29 @@
             otpErrorInvalid: 'Неверный или просроченный OTP.',
             otpErrorConn: 'Ошибка подключения к серверу.',
             chatInputPlaceholder: 'Введите сообщение...',
-            chatThinking: 'ИИ думает...',
+            chatThinking: 'Готовим ответ...',
             loadingSend: 'Обработка...',
             loadingVerify: 'Проверка...',
             defaultError: 'Произошла ошибка.',
             typingText: 'Оператор печатает...',
-            chatStartWelcome: 'Добро пожаловать! Задайте вопрос, и наш ИИ ответит вам.',
+            chatStartWelcome: 'Добро пожаловать! Задайте вопрос, и наша поддержка ответит вам.',
             loadOlder: 'Загрузить старые сообщения',
             loadingMore: 'Загрузка...',
             miniSenderAgent: 'Поддержка',
             miniSenderVisitor: 'Вы',
             miniSenderSystem: 'Система',
-            miniSenderAI: 'ИИ Ассистент',
+            miniSenderAI: 'Ассистент',
             btnMeetCSKH: 'Оператор',
             btnCloseCSKH: 'Завершить',
             confirmEndChat: 'Вы уверены, что хотите завершить разговор?',
-            backToAI: 'Назад к ИИ',
-            sessionEnded: 'Разговор завершён. ИИ продолжит вам помогать ↓'
+            backToAI: 'Назад к ассистенту',
+            sessionEnded: 'Разговор завершён. Мы продолжим вам помогать ↓'
         },
         zh: {
             headerTitle: '在线支持',
-            headerStatus: '在线 • 双语 AI',
+            headerStatus: '在线 • 双语支持',
             initTitle: '开始对话',
-            initDesc: '请输入您的姓名和邮箱，开始与我们的AI助手对话。',
+            initDesc: '请输入您的姓名和邮箱，开始与我们的客服对话。',
             initNameLabel: '您的姓名',
             initNamePlaceholder: '张三...',
             initEmailLabel: '电子邮件',
@@ -194,23 +194,23 @@
             otpErrorInvalid: 'OTP无效或已过期。',
             otpErrorConn: '服务器连接错误。',
             chatInputPlaceholder: '输入消息...',
-            chatThinking: 'AI正在思考...',
+            chatThinking: '正在生成回复...',
             loadingSend: '处理中...',
             loadingVerify: '验证中...',
             defaultError: '发生错误。',
             typingText: '客服正在输入...',
-            chatStartWelcome: '欢迎！请发送您的问题，我们的双语AI将为您解答。',
+            chatStartWelcome: '欢迎！请发送您的问题，我们的双语客服将为您解答。',
             loadOlder: '加载更多旧消息',
             loadingMore: '加载中...',
             miniSenderAgent: '客服',
             miniSenderVisitor: '您',
             miniSenderSystem: '系统',
-            miniSenderAI: 'AI助手',
+            miniSenderAI: '助手',
             btnMeetCSKH: '联系客服',
             btnCloseCSKH: '结束',
             confirmEndChat: '您确定要结束对话吗？',
-            backToAI: '返回AI',
-            sessionEnded: '对话已结束，AI将继续为您服务 ↓'
+            backToAI: '返回助手',
+            sessionEnded: '对话已结束，我们将继续为您服务 ↓'
         }
     };
 
@@ -226,7 +226,7 @@
     } catch(e) {}
 
     // --- UI Dynamic Injection ---
-    const WIDGET_CSS = `#pastie-chat-widget-root{--widget-accent:#ff758f;--widget-bg:rgba(25,15,22,.88);--widget-border:rgba(255,255,255,.08);--widget-text:#f8fafc;--widget-text-sec:#f1b5c2;--widget-glass-blur:blur(20px);font-family:'Be Vietnam Pro',sans-serif;position:fixed;bottom:24px;right:24px;z-index:999999;display:flex;flex-direction:column;align-items:flex-end;gap:16px}.pastie-chat-launcher{width:60px;height:60px;border-radius:50%;background:var(--widget-accent);color:#fff;box-shadow:0 8px 24px rgba(255,117,143,.35);display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;transition:all .3s cubic-bezier(.4,0,.2,1);position:relative}.pastie-chat-launcher:hover{transform:scale(1.08) translateY(-2px);box-shadow:0 12px 30px rgba(255,117,143,.45)}.pastie-chat-launcher i{font-size:26px;transition:transform .4s}.pastie-chat-launcher.active i{transform:rotate(90deg)}.pastie-chat-badge{position:absolute;top:0;right:0;width:14px;height:14px;background:#f43f5e;border:2px solid #fff;border-radius:50%;display:none;animation:pulse-dot 2s infinite}@keyframes pulse-dot{0%{transform:scale(.9);opacity:1}50%{transform:scale(1.2);opacity:.8}100%{transform:scale(.9);opacity:1}}.pastie-chat-window{width:380px;height:520px;border:1px solid var(--widget-border);background:var(--widget-bg);backdrop-filter:var(--widget-glass-blur);-webkit-backdrop-filter:var(--widget-glass-blur);border-radius:20px;box-shadow:0 12px 40px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden;opacity:0;transform:scale(.9) translateY(20px);pointer-events:none;transition:all .3s cubic-bezier(.4,0,.2,1);transform-origin:bottom right}.pastie-chat-window.open{opacity:1;transform:scale(1) translateY(0);pointer-events:auto}.pastie-chat-header{padding:18px 20px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--widget-border);display:flex;align-items:center;gap:12px}.pastie-chat-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#ff758f,#ff9eae);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px}.pastie-chat-header-info{flex-grow:1}.pastie-chat-header-info h4{margin:0;color:var(--widget-text);font-size:15px;font-weight:600}.pastie-chat-header-info p{margin:2px 0 0;color:var(--widget-text-sec);font-size:11px;display:flex;align-items:center;gap:4px}.pastie-chat-status-dot{width:6px;height:6px;background:#10b981;border-radius:50%;display:inline-block}.pastie-chat-body{flex-grow:1;overflow-y:auto;position:relative;display:flex;flex-direction:column}.pastie-chat-view{padding:24px;display:flex;flex-direction:column;justify-content:center;height:100%}.pastie-chat-view h3{margin:0 0 8px;color:var(--widget-text);font-size:18px;font-weight:600}.pastie-chat-view p{margin:0 0 20px;color:var(--widget-text-sec);font-size:13.5px;line-height:1.5}.pastie-chat-form-group{margin-bottom:16px;display:flex;flex-direction:column;gap:6px}.pastie-chat-form-group label{font-size:11px;font-weight:600;text-transform:uppercase;color:var(--widget-text-sec);letter-spacing:.5px}.pastie-chat-form-group input{width:100%;padding:12px 16px;background:rgba(255,255,255,.04);border:1px solid var(--widget-border);border-radius:10px;color:var(--widget-text);font-family:inherit;font-size:14px;outline:none;transition:all .3s;box-sizing:border-box}.pastie-chat-form-group input:focus{border-color:var(--widget-accent);background:rgba(255,255,255,.08)}.pastie-chat-error{color:#f43f5e;font-size:13px;margin-bottom:12px;display:none}.pastie-chat-btn{background:var(--widget-accent);color:#fff;border:none;padding:12px;border-radius:10px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .3s;box-shadow:0 4px 12px rgba(255,117,143,.3);width:100%}.pastie-chat-btn:hover:not(:disabled){background:#ff4d6d;transform:translateY(-1px)}.pastie-chat-btn:disabled{opacity:.6;cursor:not-allowed}.pastie-chat-btn-link{background:transparent;border:none;color:var(--widget-text-sec);font-family:inherit;font-size:12px;cursor:pointer;text-decoration:underline;margin-top:14px;align-self:center}.pastie-chat-btn-link:hover{color:var(--widget-text)}.pastie-chat-thread{flex-grow:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px}.pastie-msg{display:flex;flex-direction:column;max-width:80%}.pastie-msg.visitor{align-self:flex-end}.pastie-msg.agent,.pastie-msg.ai{align-self:flex-start}.pastie-msg.system{align-self:center;max-width:90%}.pastie-msg-bubble{padding:12px 16px;border-radius:16px;font-size:13.5px;line-height:1.45}.visitor .pastie-msg-bubble{background:var(--widget-accent);color:#fff;border-bottom-right-radius:4px}.agent .pastie-msg-bubble,.ai .pastie-msg-bubble{background:rgba(255,255,255,.05);border:1px solid var(--widget-border);color:var(--widget-text);border-bottom-left-radius:4px}.system .pastie-msg-bubble{background:rgba(255,255,255,.03);border:1px solid var(--widget-border);color:var(--widget-text-sec);padding:4px 12px;border-radius:20px;font-size:11.5px;text-align:center}.pastie-msg-time{font-size:9.5px;color:var(--widget-text-sec);margin-top:4px}.visitor .pastie-msg-time{align-self:flex-end}.agent .pastie-msg-time,.ai .pastie-msg-time{align-self:flex-start}.pastie-chat-footer{padding:14px 16px 18px;border-top:1px solid var(--widget-border)}.pastie-chat-input-row{display:flex;gap:8px}.pastie-chat-input-row input{flex-grow:1;background:rgba(255,255,255,.04);border:1px solid var(--widget-border);border-radius:10px;padding:10px 14px;color:var(--widget-text);font-family:inherit;font-size:13.5px;outline:none}.pastie-chat-input-row input:focus{border-color:var(--widget-accent)}.pastie-chat-send-btn{width:38px;height:38px;border-radius:10px;background:var(--widget-accent);color:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .2s;flex-shrink:0}.pastie-chat-send-btn:hover{transform:scale(1.05)}.pastie-chat-hide{display:none!important}.pastie-chat-thread::-webkit-scrollbar{width:4px}.pastie-chat-thread::-webkit-scrollbar-track{background:transparent}.pastie-chat-thread::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:10px}.pastie-ai-toggle-pill{position:fixed;bottom:95px;right:24px;z-index:999998;background:rgba(15,12,30,.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);color:#f8fafc;padding:8px 16px;border-radius:20px;font-family:'Be Vietnam Pro',sans-serif;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.35);display:flex;align-items:center;gap:8px;transition:all .3s cubic-bezier(.4,0,.2,1)}.pastie-ai-toggle-pill:hover{transform:translateY(-2px);background:var(--widget-accent);border-color:var(--widget-accent)}.pastie-typing-indicator-bubble{padding:10px 14px!important}.pastie-typing-indicator{display:flex;align-items:center;gap:6px;height:14px}.pastie-typing-dot{width:6px;height:6px;background:rgba(255,255,255,.7);border-radius:50%;animation:pastieBouncing 1.4s infinite ease-in-out both}.pastie-typing-dot:nth-child(1){animation-delay:-.32s}.pastie-typing-dot:nth-child(2){animation-delay:-.16s}@keyframes pastieBouncing{0%,80%,100%{transform:scale(.3);opacity:.3}40%{transform:scale(1);opacity:1}}.pastie-chat-mini-bubble{position:absolute;bottom:80px;right:0;width:280px;background:var(--widget-bg);backdrop-filter:var(--widget-glass-blur);-webkit-backdrop-filter:var(--widget-glass-blur);border:1px solid var(--widget-border);border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.35);padding:8px 12px;display:flex;align-items:center;gap:10px;z-index:999997;opacity:0;transform:translateY(10px) scale(.95);pointer-events:none;transition:all .3s cubic-bezier(.4,0,.2,1);font-family:'Be Vietnam Pro',sans-serif;cursor:pointer}.pastie-chat-mini-bubble.show{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}.pastie-chat-mini-bubble::after{content:'';position:absolute;bottom:-6px;right:24px;width:12px;height:12px;background:rgba(25,15,22,.94);border-right:1px solid var(--widget-border);border-bottom:1px solid var(--widget-border);transform:rotate(45deg)}.pastie-chat-mini-body{display:flex;gap:10px;align-items:center;flex-grow:1;overflow:hidden}.pastie-chat-mini-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#ff758f,#ff9eae);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0}.pastie-chat-mini-text-container{display:flex;flex-direction:column;gap:2px;flex-grow:1;overflow:hidden}.pastie-chat-mini-sender{display:none}.pastie-chat-mini-text{font-size:13px;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4;text-align:left}.pastie-chat-mini-close{background:transparent;border:none;color:rgba(255,255,255,.4);cursor:pointer;padding:2px;display:flex;align-items:center;justify-content:center;font-size:16px;transition:color .2s,transform .2s;border-radius:4px;flex-shrink:0;margin-left:4px}.pastie-chat-mini-close:hover{color:#f8fafc;background:rgba(255,255,255,.08)}.pastie-chat-header-action-btn{border:none;outline:none;font-family:'Be Vietnam Pro',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:6px 12px;border-radius:20px;cursor:pointer;transition:all .3s cubic-bezier(.4,0,.2,1);display:none;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.15)}.pastie-chat-header-action-btn:hover{transform:translateY(-1px)}.pastie-chat-header-action-btn.meet-cskh{background:linear-gradient(135deg,#10b981,#059669);color:#fff;box-shadow:0 4px 12px rgba(16,185,129,.25)}.pastie-chat-header-action-btn.meet-cskh:hover{background:linear-gradient(135deg,#34d399,#10b981);box-shadow:0 6px 16px rgba(16,185,129,.35)}.pastie-chat-header-action-btn.close-cskh{background:linear-gradient(135deg,#f43f5e,#e11d48);color:#fff;box-shadow:0 4px 12px rgba(244,63,94,.25)}.pastie-chat-header-action-btn.close-cskh:hover{background:linear-gradient(135deg,#fb7185,#f43f5e);box-shadow:0 6px 16px rgba(244,63,94,.35)}`;
+    const WIDGET_CSS = `#pastie-chat-widget-root{--widget-accent:#ff758f;--widget-bg:rgba(25,15,22,.88);--widget-border:rgba(255,255,255,.08);--widget-text:#f8fafc;--widget-text-sec:#f1b5c2;--widget-glass-blur:blur(20px);font-family:'Be Vietnam Pro',sans-serif;position:fixed;bottom:24px;right:24px;z-index:39;display:flex;flex-direction:column;align-items:flex-end;gap:16px}.pastie-chat-launcher{width:60px;height:60px;border-radius:50%;background:var(--widget-accent);color:#fff;box-shadow:0 8px 24px rgba(255,117,143,.35);display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;transition:all .3s cubic-bezier(.4,0,.2,1);position:relative}.pastie-chat-launcher:hover{transform:scale(1.08) translateY(-2px);box-shadow:0 12px 30px rgba(255,117,143,.45)}.pastie-chat-launcher i{font-size:26px;transition:transform .4s}.pastie-chat-launcher.active i{transform:rotate(90deg)}.pastie-chat-badge{position:absolute;top:0;right:0;width:14px;height:14px;background:#f43f5e;border:2px solid #fff;border-radius:50%;display:none;animation:pulse-dot 2s infinite}@keyframes pulse-dot{0%{transform:scale(.9);opacity:1}50%{transform:scale(1.2);opacity:.8}100%{transform:scale(.9);opacity:1}}.pastie-chat-window{width:380px;height:520px;border:1px solid var(--widget-border);background:var(--widget-bg);backdrop-filter:var(--widget-glass-blur);-webkit-backdrop-filter:var(--widget-glass-blur);border-radius:20px;box-shadow:0 12px 40px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden;opacity:0;transform:scale(.9) translateY(20px);pointer-events:none;transition:all .3s cubic-bezier(.4,0,.2,1);transform-origin:bottom right}.pastie-chat-window.open{opacity:1;transform:scale(1) translateY(0);pointer-events:auto}.pastie-chat-header{padding:18px 20px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--widget-border);display:flex;align-items:center;gap:12px}.pastie-chat-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#ff758f,#ff9eae);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px}.pastie-chat-header-info{flex-grow:1}.pastie-chat-header-info h4{margin:0;color:var(--widget-text);font-size:15px;font-weight:600}.pastie-chat-header-info p{margin:2px 0 0;color:var(--widget-text-sec);font-size:11px;display:flex;align-items:center;gap:4px}.pastie-chat-status-dot{width:6px;height:6px;background:#10b981;border-radius:50%;display:inline-block}.pastie-chat-body{flex-grow:1;overflow-y:auto;position:relative;display:flex;flex-direction:column}.pastie-chat-view{padding:24px;display:flex;flex-direction:column;justify-content:center;height:100%}.pastie-chat-view h3{margin:0 0 8px;color:var(--widget-text);font-size:18px;font-weight:600}.pastie-chat-view p{margin:0 0 20px;color:var(--widget-text-sec);font-size:13.5px;line-height:1.5}.pastie-chat-form-group{margin-bottom:16px;display:flex;flex-direction:column;gap:6px}.pastie-chat-form-group label{font-size:11px;font-weight:600;text-transform:uppercase;color:var(--widget-text-sec);letter-spacing:.5px}.pastie-chat-form-group input{width:100%;padding:12px 16px;background:rgba(255,255,255,.04);border:1px solid var(--widget-border);border-radius:10px;color:var(--widget-text);font-family:inherit;font-size:14px;outline:none;transition:all .3s;box-sizing:border-box}.pastie-chat-form-group input:focus{border-color:var(--widget-accent);background:rgba(255,255,255,.08)}.pastie-chat-error{color:#f43f5e;font-size:13px;margin-bottom:12px;display:none}.pastie-chat-btn{background:var(--widget-accent);color:#fff;border:none;padding:12px;border-radius:10px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .3s;box-shadow:0 4px 12px rgba(255,117,143,.3);width:100%}.pastie-chat-btn:hover:not(:disabled){background:#ff4d6d;transform:translateY(-1px)}.pastie-chat-btn:disabled{opacity:.6;cursor:not-allowed}.pastie-chat-btn-link{background:transparent;border:none;color:var(--widget-text-sec);font-family:inherit;font-size:12px;cursor:pointer;text-decoration:underline;margin-top:14px;align-self:center}.pastie-chat-btn-link:hover{color:var(--widget-text)}.pastie-chat-thread{flex-grow:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px}.pastie-msg{display:flex;flex-direction:column;max-width:80%}.pastie-msg.visitor{align-self:flex-end}.pastie-msg.agent,.pastie-msg.ai{align-self:flex-start}.pastie-msg.system{align-self:center;max-width:90%}.pastie-msg-bubble{padding:12px 16px;border-radius:16px;font-size:13.5px;line-height:1.45}.visitor .pastie-msg-bubble{background:var(--widget-accent);color:#fff;border-bottom-right-radius:4px}.agent .pastie-msg-bubble,.ai .pastie-msg-bubble{background:rgba(255,255,255,.05);border:1px solid var(--widget-border);color:var(--widget-text);border-bottom-left-radius:4px}.system .pastie-msg-bubble{background:rgba(255,255,255,.03);border:1px solid var(--widget-border);color:var(--widget-text-sec);padding:4px 12px;border-radius:20px;font-size:11.5px;text-align:center}.pastie-msg-time{font-size:9.5px;color:var(--widget-text-sec);margin-top:4px}.visitor .pastie-msg-time{align-self:flex-end}.agent .pastie-msg-time,.ai .pastie-msg-time{align-self:flex-start}.pastie-chat-footer{padding:14px 16px 18px;border-top:1px solid var(--widget-border)}.pastie-chat-input-row{display:flex;gap:8px}.pastie-chat-input-row input{flex-grow:1;background:rgba(255,255,255,.04);border:1px solid var(--widget-border);border-radius:10px;padding:10px 14px;color:var(--widget-text);font-family:inherit;font-size:13.5px;outline:none}.pastie-chat-input-row input:focus{border-color:var(--widget-accent)}.pastie-chat-send-btn{width:38px;height:38px;border-radius:10px;background:var(--widget-accent);color:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .2s;flex-shrink:0}.pastie-chat-send-btn:hover{transform:scale(1.05)}.pastie-chat-hide{display:none!important}.pastie-chat-thread::-webkit-scrollbar{width:4px}.pastie-chat-thread::-webkit-scrollbar-track{background:transparent}.pastie-chat-thread::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:10px}.pastie-ai-toggle-pill{position:fixed;bottom:95px;right:24px;z-index:38;background:rgba(15,12,30,.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);color:#f8fafc;padding:8px 16px;border-radius:20px;font-family:'Be Vietnam Pro',sans-serif;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.35);display:flex;align-items:center;gap:8px;transition:all .3s cubic-bezier(.4,0,.2,1)}.pastie-ai-toggle-pill:hover{transform:translateY(-2px);background:var(--widget-accent);border-color:var(--widget-accent)}.pastie-typing-indicator-bubble{padding:10px 14px!important}.pastie-typing-indicator{display:flex;align-items:center;gap:6px;height:14px}.pastie-typing-dot{width:6px;height:6px;background:rgba(255,255,255,.7);border-radius:50%;animation:pastieBouncing 1.4s infinite ease-in-out both}.pastie-typing-dot:nth-child(1){animation-delay:-.32s}.pastie-typing-dot:nth-child(2){animation-delay:-.16s}@keyframes pastieBouncing{0%,80%,100%{transform:scale(.3);opacity:.3}40%{transform:scale(1);opacity:1}}.pastie-chat-mini-bubble{position:absolute;bottom:80px;right:0;width:280px;background:var(--widget-bg);backdrop-filter:var(--widget-glass-blur);-webkit-backdrop-filter:var(--widget-glass-blur);border:1px solid var(--widget-border);border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.35);padding:8px 12px;display:flex;align-items:center;gap:10px;z-index:37;opacity:0;transform:translateY(10px) scale(.95);pointer-events:none;transition:all .3s cubic-bezier(.4,0,.2,1);font-family:'Be Vietnam Pro',sans-serif;cursor:pointer}.pastie-chat-mini-bubble.show{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}.pastie-chat-mini-bubble::after{content:'';position:absolute;bottom:-6px;right:24px;width:12px;height:12px;background:rgba(25,15,22,.94);border-right:1px solid var(--widget-border);border-bottom:1px solid var(--widget-border);transform:rotate(45deg)}.pastie-chat-mini-body{display:flex;gap:10px;align-items:center;flex-grow:1;overflow:hidden}.pastie-chat-mini-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#ff758f,#ff9eae);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0}.pastie-chat-mini-text-container{display:flex;flex-direction:column;gap:2px;flex-grow:1;overflow:hidden}.pastie-chat-mini-sender{display:none}.pastie-chat-mini-text{font-size:13px;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4;text-align:left}.pastie-chat-mini-close{background:transparent;border:none;color:rgba(255,255,255,.4);cursor:pointer;padding:2px;display:flex;align-items:center;justify-content:center;font-size:16px;transition:color .2s,transform .2s;border-radius:4px;flex-shrink:0;margin-left:4px}.pastie-chat-mini-close:hover{color:#f8fafc;background:rgba(255,255,255,.08)}.pastie-chat-header-action-btn{border:none;outline:none;font-family:'Be Vietnam Pro',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:6px 12px;border-radius:20px;cursor:pointer;transition:all .3s cubic-bezier(.4,0,.2,1);display:none;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.15)}.pastie-chat-header-action-btn:hover{transform:translateY(-1px)}.pastie-chat-header-action-btn.meet-cskh{background:linear-gradient(135deg,#10b981,#059669);color:#fff;box-shadow:0 4px 12px rgba(16,185,129,.25)}.pastie-chat-header-action-btn.meet-cskh:hover{background:linear-gradient(135deg,#34d399,#10b981);box-shadow:0 6px 16px rgba(16,185,129,.35)}.pastie-chat-header-action-btn.close-cskh{background:linear-gradient(135deg,#f43f5e,#e11d48);color:#fff;box-shadow:0 4px 12px rgba(244,63,94,.25)}.pastie-chat-header-action-btn.close-cskh:hover{background:linear-gradient(135deg,#fb7185,#f43f5e);box-shadow:0 6px 16px rgba(244,63,94,.35)}`;
 
     function injectAssets() {
         if (!document.querySelector('#pastie-widget-style')) {
@@ -282,7 +282,7 @@
                             <span id="txt-btn-submit-init">${t.initBtnSubmit}</span> <i class="ri-arrow-right-line"></i>
                         </button>
                         <button class="pastie-chat-btn-link" id="btn-back-to-ai" style="margin-top: 12px; margin-bottom: 0;">
-                            <i class="ri-robot-2-line"></i> <span id="txt-btn-back-to-ai">${t.backToAI}</span>
+                            <i class="ri-customer-service-2-line"></i> <span id="txt-btn-back-to-ai">${t.backToAI}</span>
                         </button>
                     </div>
                     <!-- Screen 2: OTP Verification -->
@@ -516,6 +516,35 @@
             }
         } catch(e) {
             console.error('[Widget] autoRestartAISession failed:', e);
+        }
+    }
+
+    // Tạo phiên chat ĐÃ XÁC THỰC từ danh tính có sẵn (user đã đăng nhập) — bỏ form + OTP.
+    async function identifyAndStart(name, email) {
+        if (!email || state.sessionId) return;
+        state.visitorName = name || 'Khách';
+        state.visitorEmail = email;
+        sessionStorage.setItem('pastie_chat_visitor_name', state.visitorName);
+        sessionStorage.setItem('pastie_chat_visitor_email', state.visitorEmail);
+        try {
+            const r = await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/identified`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, name: state.visitorName, email, visitorLang: state.detectedLang || 'vi' })
+            });
+            const d = await r.json();
+            if (d.success && d.sessionId) {
+                state.sessionId = d.sessionId;
+                state.mode = 'ai';
+                sessionStorage.setItem('pastie_chat_session_id', d.sessionId);
+                sessionStorage.setItem('pastie_chat_mode', 'ai');
+                switchView('chat');
+            } else {
+                switchView('init');
+            }
+        } catch (e) {
+            console.error('[Widget] identifyAndStart failed:', e);
+            switchView('init');
         }
     }
 
@@ -1098,9 +1127,18 @@
             }
         });
 
+        // API nhận diện từ web ngoài (khi user đã đăng nhập): điền sẵn danh tính, bỏ form + OTP.
+        window.PastieChat = window.PastieChat || {};
+        window.PastieChat.identify = (u) => { if (u && u.email) identifyAndStart(u.name, u.email); };
+        window.addEventListener('pastie:identify', (e) => window.PastieChat.identify(e.detail || {}));
+
         // Initial state
+        const preset = window.PastieChatUser;
         if (state.sessionId) {
             switchView('chat'); // existing session → chat
+        } else if (preset && preset.email) {
+            switchView('chat');              // hiện khung chat ngay
+            identifyAndStart(preset.name, preset.email); // tạo phiên đã xác thực, bỏ OTP
         } else {
             switchView('init'); // no session → show form first
         }
