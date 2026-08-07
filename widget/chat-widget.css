@@ -612,4 +612,7 @@ iframe[id^="tidio-chat"] {
     box-shadow: 0 6px 16px rgba(244, 63, 94, 0.35);
 }
 
+/* Pastie logo avatar */
+.pastie-chat-avatar,.pastie-chat-mini-avatar{background:#fff;overflow:hidden;padding:3px}
+.pastie-chat-avatar img,.pastie-chat-mini-avatar img{width:100%;height:100%;object-fit:contain;display:block}
 

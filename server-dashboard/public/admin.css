@@ -222,6 +222,13 @@ button {
     color: var(--accent-color);
     margin-bottom: 12px;
 }
+.brand-logo-img {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+}
 .login-box h2 {
     font-size: 24px;
     margin-bottom: 8px;
@@ -294,6 +301,12 @@ button {
 }
 .logo i {
     color: var(--accent-color);
+}
+.logo-img {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+    flex-shrink: 0;
 }
 .project-selector {
     display: flex;
