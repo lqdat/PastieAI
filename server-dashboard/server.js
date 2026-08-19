@@ -433,8 +433,8 @@ function getClientIp(req) {
   return ip.split(',')[0].trim().replace(/^::ffff:/, '');
 }
 
-async function findActiveSessionForClient(projectId, email, clientIp, browser, device) {
-  const result = await db.query(
+async function findActiveSessionForClient(projectId, email, clientIp, browser, device, queryRunner = db) {
+  const result = await queryRunner.query(
     `SELECT id FROM sessions
      WHERE project_id = $1
        AND LOWER(visitor_email) = LOWER($2)
@@ -445,6 +445,22 @@ async function findActiveSessionForClient(projectId, email, clientIp, browser, d
      ORDER BY created_at DESC
      LIMIT 1`,
     [projectId, email, clientIp, browser, device]
+  );
+  return result.rows[0] || null;
+}
+
+async function findActiveAnonymousSessionForClient(projectId, clientIp, browser, device, queryRunner = db) {
+  const result = await queryRunner.query(
+    `SELECT id FROM sessions
+     WHERE project_id = $1
+       AND visitor_email IS NULL
+       AND status = 'active'
+       AND client_ip = $2
+       AND browser = $3
+       AND device = $4
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [projectId, clientIp, browser, device]
   );
   return result.rows[0] || null;
 }
@@ -1012,14 +1028,31 @@ app.post('/api/chats/session/close', async (req, res) => {
 // 4b. Create Anonymous Session (no OTP, for AI-first chat widget)
 app.post('/api/chats/session/anonymous', async (req, res) => {
   const { projectId = 'pastie-landingpage', visitorLang = 'vi' } = req.body;
-  const sessionId = randomUUID();
   const ua = req.headers['user-agent'] || '';
   const { browser, device } = parseUserAgent(ua);
   const clientIp = getClientIp(req);
-
-  let assignedAdminId = null;
+  let client;
   try {
-    const leastLoadRes = await db.query(`
+    client = await db.pool.connect();
+    await client.query('BEGIN');
+
+    // Serialise creates for the same anonymous client. This prevents duplicate
+    // sessions when the widget is initialised more than once simultaneously.
+    const fingerprint = `anonymous:${projectId}:${clientIp}:${browser}:${device}`;
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [fingerprint]);
+
+    const existingSession = await findActiveAnonymousSessionForClient(
+      projectId, clientIp, browser, device, client
+    );
+    if (existingSession) {
+      await client.query('COMMIT');
+      return res.json({ success: true, sessionId: existingSession.id, reused: true });
+    }
+
+    const sessionId = randomUUID();
+    let assignedAdminId = null;
+    try {
+      const leastLoadRes = await client.query(`
       SELECT a.id, a.full_name, COUNT(s.id) as active_count
       FROM admins a
       LEFT JOIN sessions s ON s.assigned_admin_id = a.id AND s.status = 'active'
@@ -1027,23 +1060,26 @@ app.post('/api/chats/session/anonymous', async (req, res) => {
         AND (a.project_id = $1 OR a.project_id IS NULL)
       GROUP BY a.id, a.full_name ORDER BY active_count ASC, a.id ASC LIMIT 1
     `, [projectId]);
-    if (leastLoadRes.rows.length > 0) assignedAdminId = leastLoadRes.rows[0].id;
-    else {
-      const superRes = await db.query("SELECT id FROM admins WHERE role = 'superadmin' AND is_active = TRUE LIMIT 1");
-      if (superRes.rows.length > 0) assignedAdminId = superRes.rows[0].id;
-    }
-  } catch {}
+      if (leastLoadRes.rows.length > 0) assignedAdminId = leastLoadRes.rows[0].id;
+      else {
+        const superRes = await client.query("SELECT id FROM admins WHERE role = 'superadmin' AND is_active = TRUE LIMIT 1");
+        if (superRes.rows.length > 0) assignedAdminId = superRes.rows[0].id;
+      }
+    } catch {}
 
-  try {
-    await db.query(
+    await client.query(
       `INSERT INTO sessions (id, project_id, visitor_name, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id)
        VALUES ($1, $2, 'Khách ẩn danh', $3, FALSE, 'active', $4, $5, $6, $7)`,
       [sessionId, projectId, visitorLang, browser, device, clientIp, assignedAdminId]
     );
+    await client.query('COMMIT');
     res.json({ success: true, sessionId });
   } catch (error) {
+    if (client) await client.query('ROLLBACK');
     console.error('Anonymous session create error:', error);
     res.status(500).json({ error: 'Lỗi tạo phiên chat.' });
+  } finally {
+    client?.release();
   }
 });
 
