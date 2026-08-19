@@ -1388,11 +1388,11 @@ button {
   .dashboard-header { min-height: calc(58px + env(safe-area-inset-top)); height: calc(58px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 14px 0; border-radius: 0; flex-wrap: nowrap; gap: 10px; border-left: 0; border-right: 0; background: rgba(255,255,255,.96); }
   .header-left { gap: 10px; width: auto; min-width: 0; flex: 1; justify-content: flex-start; }
   .logo { gap: 8px; min-width: 0; }
-  .logo span { display: block; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .logo-img { width: 28px; height: 28px; }
-  .project-selector { padding: 5px 8px; max-width: 122px; }
+  .logo span { display: block; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .logo-img { width: 31px; height: 31px; }
+  .project-selector { padding: 7px 9px; max-width: 138px; }
   .project-selector i { display: none; }
-  .project-selector select { font-size: 12px; max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
+  .project-selector select { font-size: 13px; max-width: 112px; overflow: hidden; text-overflow: ellipsis; }
   .header-right { gap: 4px; flex-wrap: nowrap; }
   .settings-trigger-btn span, .settings-trigger-btn .chevron-icon, .lang-selector, .admin-profile-badge { display: none !important; }
   .settings-trigger-btn { padding: 8px !important; min-width: 36px; justify-content: center; }
@@ -1415,19 +1415,23 @@ button {
 
   .sessions-sidebar { border-radius: 0; border: 0; background: transparent; }
   .sidebar-header { padding: 18px 16px 12px; border-bottom: 0; }
-  .sidebar-header h3 { font-size: 18px; }
+  .sidebar-header h3 { font-size: 21px; }
   .sessions-list { padding: 0 12px 18px; gap: 9px; }
   .session-group-header { margin: 12px 4px 2px; padding: 11px 12px; border-radius: 12px; }
-  .session-card { padding: 14px; border-radius: 16px; gap: 8px; background: rgba(255,255,255,0.035); }
+  .session-card { padding: 16px; border-radius: 17px; gap: 9px; background: rgba(255,255,255,0.035); }
   .session-card { background: rgba(255,255,255,.92); box-shadow: 0 5px 16px rgba(116,41,85,.05); }
   .session-card.active-selected { background: #fff; border-color: var(--accent-color); box-shadow: 0 0 0 2px rgba(239,43,157,.13), 0 8px 18px rgba(239,43,157,.12); }
   .session-card.has-unread { border-left-color: var(--accent-color); background: #fff5fb; }
   .visitor-avatar-initials { background: linear-gradient(135deg, #ffe2f1, #fff4fa); color: var(--accent-color); border-color: rgba(239,43,157,.28); }
   .session-card:active { transform: scale(.985); }
-  .visitor-avatar-img, .visitor-avatar-initials { width: 44px; height: 44px; }
-  .session-name { font-size: 15px; }
-  .session-card-preview { font-size: 13px; }
-  .session-meta-footer { font-size: 11px; margin-top: 3px; }
+  .visitor-avatar-img, .visitor-avatar-initials { width: 48px; height: 48px; font-size: 17px; }
+  .session-name { font-size: 17px; }
+  .session-card-time { font-size: 12px; }
+  .session-status-badge { font-size: 10.5px; padding: 3px 8px; }
+  .session-card-preview { font-size: 14px; }
+  .session-meta-footer { font-size: 12.5px; margin-top: 4px; }
+  .session-client-meta { font-size: 15px; gap: 8px; }
+  .session-client-meta i { font-size: 17px; }
 
   /* Mặc định: hiện danh sách, ẩn khung chat */
   .chat-main { display: none; }
@@ -1444,14 +1448,17 @@ button {
 
   .chat-header { min-height: 62px; padding: 10px 12px; flex-wrap: nowrap; gap: 8px; }
   .visitor-details-header { gap: 8px !important; min-width: 0; flex: 1; }
-  .visitor-details-header h3 { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .visitor-details-header p { max-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #chat-header-avatar > * { width: 34px !important; height: 34px !important; font-size: 14px !important; }
+  .visitor-details-header h3 { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .visitor-details-header p { max-width: 140px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #chat-header-avatar > * { width: 38px !important; height: 38px !important; font-size: 16px !important; }
   #chat-header-actions { gap: 5px !important; }
   #assignee-selector-container, #close-session-btn span, #claim-chat-btn span { display: none; }
-  #close-session-btn, #claim-chat-btn, #delete-session-btn { width: 36px; height: 36px; padding: 0; justify-content: center; }
-  .chat-messages { padding: 16px 12px; gap: 14px; }
+  #close-session-btn, #claim-chat-btn, #delete-session-btn { width: 42px; height: 42px; padding: 0; justify-content: center; }
+  #close-session-btn i, #claim-chat-btn i, #delete-session-btn i { font-size: 18px; }
+  .chat-messages { padding: 18px 14px; gap: 16px; }
   .message-wrapper { max-width: 88%; }
+  .message-bubble { font-size: 16px; padding: 15px 17px; }
+  .message-time { font-size: 11px; }
   .chat-input-area { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
   .chat-input-area .chat-form { gap: 8px; }
   .chat-input-area input { min-height: 46px; font-size: 16px; }
@@ -1485,6 +1492,16 @@ button {
   #admin-form-active { width: 18px !important; min-height: 18px !important; height: 18px; margin: 0; accent-color: var(--accent-color); flex: 0 0 18px; }
   #admin-form-status-group label { font-size: 13px !important; color: var(--text-primary) !important; }
   #admin-mgmt-close-btn { width: 100% !important; min-height: 44px; border-color: rgba(239,43,157,.18) !important; color: var(--text-primary) !important; background: #fff7fb !important; }
+}
+
+@media (max-width: 390px) {
+  .dashboard-header { padding-inline: 10px; gap: 6px; }
+  .header-left { gap: 6px; }
+  .logo { gap: 6px; }
+  .logo span { font-size: 15px; }
+  .project-selector { max-width: 112px; }
+  .project-selector select { max-width: 86px; }
+  .header-right { gap: 2px; }
 }
 /* Login actions: same width, dropdown stays aligned with the SSO button. */
 .login-action-btn { width: min(100%, 320px); margin-inline: auto; justify-content: center; }
