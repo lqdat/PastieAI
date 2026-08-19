@@ -4,6 +4,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const { randomUUID } = require('crypto');
+const webpush = require('web-push');
 const db = require('./database');
 const gemini = require('./gemini-helper');
 const resend = require('./resend-helper');
@@ -19,6 +20,36 @@ const aiRateLimit = new Map(); // sessionId → { count, windowStart }
 const AI_RATE_MAX = 10;        // max AI responses per window
 const AI_RATE_WINDOW = 2 * 60 * 1000; // 2-minute window
 const AI_TEXT_MAX_LEN = 500;   // max chars sent to Gemini
+
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:support@pastie.vn', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+} else {
+  console.warn('[Push] Web Push chưa bật: thiếu VAPID_PUBLIC_KEY hoặc VAPID_PRIVATE_KEY.');
+}
+
+async function notifyAgentTransfer(session, preview = '') {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !session?.id || !session?.project_id) return;
+  try {
+    const subscriptions = await db.query(
+      `SELECT ps.id, ps.endpoint, ps.p256dh, ps.auth
+       FROM push_subscriptions ps JOIN admins a ON a.id = ps.admin_id
+       WHERE a.is_active = TRUE AND a.role IN ('superadmin', 'project_admin', 'agent')
+         AND (a.role = 'superadmin' OR a.project_id = $1)`,
+      [session.project_id]
+    );
+    const payload = JSON.stringify({ title: 'Khách cần nhân viên hỗ trợ', body: `${session.visitor_name || 'Khách hàng'}: ${(preview || 'AI đã chuyển cuộc trò chuyện cho Agent.').slice(0, 120)}`, sessionId: session.id, projectId: session.project_id, tag: `agent-transfer-${session.id}` });
+    await Promise.all(subscriptions.rows.map(async (sub) => {
+      try {
+        await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload, { TTL: 120 });
+      } catch (error) {
+        if ([404, 410].includes(error.statusCode)) await db.query('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
+        else console.warn('[Push] Gửi notification thất bại:', error.statusCode || error.message);
+      }
+    }));
+  } catch (error) { console.error('[Push] Không thể thông báo Agent:', error.message); }
+}
 
 function isAiRateLimited(sessionId) {
   const now = Date.now();
@@ -262,6 +293,28 @@ async function checkAdminAuth(req, res, next) {
     console.error('Auth middleware error:', error);
     return res.status(500).json({ error: 'Internal server error during authentication.' });
   }
+}
+
+const ADMIN_ROLES = new Set(['superadmin', 'project_admin', 'agent']);
+const isSuperAdmin = (admin) => admin?.role === 'superadmin';
+const isProjectAdmin = (admin) => admin?.role === 'project_admin';
+const isChatStaff = (admin) => isSuperAdmin(admin) || isProjectAdmin(admin) || admin?.role === 'agent';
+
+function canAccessProject(admin, projectId) {
+  return isSuperAdmin(admin) || (admin?.project_id && admin.project_id === projectId);
+}
+
+async function getAdminFromToken(req) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : req.query.token;
+  if (!token) return null;
+  const result = await db.query(
+    `SELECT a.id, a.full_name, a.role, a.project_id, a.is_active
+     FROM admin_sessions s JOIN admins a ON a.id = s.admin_id
+     WHERE s.token = $1 AND s.expires_at > NOW()`,
+    [token]
+  );
+  return result.rows[0] || null;
 }
 
 // Middleware to disable response caching for all API endpoints
@@ -673,26 +726,30 @@ app.post('/api/chats/message', async (req, res) => {
     // Resolve sender_admin_id if sent by an agent with a valid session token
     let senderAdminId = null;
     if (sender === 'agent') {
-      const authHeader = req.headers['authorization'];
-      let token = '';
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.substring(7);
-      } else if (req.query.token) {
-        token = req.query.token;
+      const sendingAdmin = await getAdminFromToken(req);
+      if (!sendingAdmin?.is_active || !isChatStaff(sendingAdmin)) {
+        return res.status(401).json({ error: 'Cần đăng nhập bằng tài khoản nhân viên hợp lệ để trả lời.' });
       }
-      if (token) {
-        try {
-          const sessionAdminRes = await db.query(
-            'SELECT admin_id FROM admin_sessions WHERE token = $1',
-            [token]
-          );
-          if (sessionAdminRes.rows.length > 0) {
-            senderAdminId = sessionAdminRes.rows[0].admin_id;
-          }
-        } catch (e) {
-          console.error('Failed to resolve sender_admin_id:', e.message);
+      if (!canAccessProject(sendingAdmin, sessionRes.rows[0].project_id)) {
+        return res.status(403).json({ error: 'Bạn không có quyền trả lời chat của project này.' });
+      }
+
+      const claim = sessionRes.rows[0].claimed_by_admin_id;
+      if (claim && claim !== sendingAdmin.id && !isSuperAdmin(sendingAdmin)) {
+        return res.status(409).json({ error: 'Chat này đã được nhân viên khác tiếp nhận.', claimedByAdminId: claim });
+      }
+      if (!claim) {
+        const claimed = await db.query(
+          `UPDATE sessions SET claimed_by_admin_id = $1, claimed_at = NOW()
+           WHERE id = $2 AND claimed_by_admin_id IS NULL
+           RETURNING claimed_by_admin_id`,
+          [sendingAdmin.id, sessionId]
+        );
+        if (claimed.rows.length === 0 && !isSuperAdmin(sendingAdmin)) {
+          return res.status(409).json({ error: 'Chat này vừa được nhân viên khác tiếp nhận.' });
         }
       }
+      senderAdminId = sendingAdmin.id;
     }
 
     // Save message to database
@@ -757,6 +814,7 @@ app.post('/api/chats/message', async (req, res) => {
           [sessionId, transferMsg, visitorLang]
         );
         aiReplyMsg = aiMsgRes.rows[0];
+        void notifyAgentTransfer(sessionData, text);
       } else if (sessionData.requested_agent) {
         // Agent was requested — check if human has replied yet
         const agentRepliedCheck = await db.query(
@@ -809,6 +867,7 @@ app.post('/api/chats/message', async (req, res) => {
                 [sessionId, transferMsg, visitorLang]
               );
               aiReplyMsg = kwMsgRes.rows[0];
+              void notifyAgentTransfer(sessionData, text);
               console.log(`[LiveChat] Keyword "${triggered}" triggered agent transfer for session ${sessionId}`);
               return res.json({ success: true, message: msgRes.rows[0], aiReply: aiReplyMsg });
             }
@@ -858,6 +917,7 @@ app.post('/api/chats/message', async (req, res) => {
             finalAiReply = rawAiReply.replace('[TRANSFER]', '').trim();
             await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
             console.log(`[LiveChat] AI cannot answer → auto-flagged session ${sessionId} for agent transfer.`);
+            void notifyAgentTransfer(sessionData, text);
           }
 
           const aiMsgRes = await db.query(
@@ -1454,7 +1514,8 @@ app.post('/api/admin/login', async (req, res) => {
 });
 
 // SSO đăng nhập từ hệ thống ngoài (vd DealPhuQuoc). Token ký HMAC-SHA256 bằng CHAT_SSO_SECRET chung.
-// Payload: base64url(JSON{email,name,project,role,exp}) + '.' + base64url(hmac). Provision subadmin scoped theo project.
+// Payload: base64url(JSON{email,name,project,role,exp}) + '.' + base64url(hmac).
+// SSO may provision only agent or project_admin, never superadmin.
 app.post('/api/admin/sso', async (req, res) => {
   const secret = process.env.CHAT_SSO_SECRET;
   if (!secret) return res.status(500).json({ error: 'SSO chưa được cấu hình (thiếu CHAT_SSO_SECRET).' });
@@ -1473,23 +1534,27 @@ app.post('/api/admin/sso', async (req, res) => {
   if (!payload.email) return res.status(400).json({ error: 'Thiếu email trong token SSO.' });
 
   const project = payload.project || 'dealphuquoc';
+  // Hệ thống nguồn chỉ được ánh xạ sang quyền trong một project: quản trị
+  // Deal/host là Project Admin; CSKH là Agent. Không token SSO nào tạo Superadmin.
+  const ssoRole = ['project_admin', 'ADMIN', 'SUPERADMIN'].includes(payload.role) ? 'project_admin' : 'agent';
   const username = `sso:${String(payload.email).toLowerCase()}`;
   const fullName = payload.name || payload.email;
 
   try {
-    // Provision/cập nhật subadmin scoped đúng project (luôn giới hạn trong project, không cấp superadmin)
+    // Provision/cập nhật scoped account đúng project. The signed role is limited
+    // to project_admin/agent so an external SSO token can never elevate to superadmin.
     let admin = (await db.query('SELECT * FROM admins WHERE username = $1', [username])).rows[0];
     if (!admin) {
       const ph = await hashPassword(randomUUID()); // mật khẩu ngẫu nhiên, không dùng để đăng nhập trực tiếp
       admin = (await db.query(
         `INSERT INTO admins (username, password_hash, full_name, role, project_id, is_active)
-         VALUES ($1, $2, $3, 'subadmin', $4, TRUE) RETURNING *`,
-        [username, ph, fullName, project]
+         VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING *`,
+        [username, ph, fullName, ssoRole, project]
       )).rows[0];
     } else {
       admin = (await db.query(
-        `UPDATE admins SET full_name = $1, project_id = $2, is_active = TRUE WHERE id = $3 RETURNING *`,
-        [fullName, project, admin.id]
+        `UPDATE admins SET full_name = $1, role = $2, project_id = $3, is_active = TRUE WHERE id = $4 RETURNING *`,
+        [fullName, ssoRole, project, admin.id]
       )).rows[0];
     }
 
@@ -1506,6 +1571,52 @@ app.post('/api/admin/sso', async (req, res) => {
     console.error('SSO login error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi đăng nhập SSO.' });
   }
+});
+
+// Điểm bắt đầu đăng nhập từ form dashboard. Sau khi DealPhuQuoc xác thực
+// người dùng, hệ thống nguồn sẽ phát token SSO 5 phút và chuyển về return_to.
+app.get('/api/admin/sso-login-url', (req, res) => {
+  const dealAdminUrl = String(process.env.DEALPHUQUOC_ADMIN_URL || 'https://admin.dealphuquoc.com').replace(/\/$/, '');
+  const dealHostUrl = String(process.env.DEALPHUQUOC_HOST_URL || 'https://host.dealphuquoc.com').replace(/\/$/, '');
+  const dashboardUrl = String(process.env.DASHBOARD_PUBLIC_URL || `${req.protocol}://${req.get('host')}/admin`).replace(/\/$/, '');
+  const portal = String(req.query.portal || 'superadmin');
+  try {
+    const isHostPortal = portal === 'host' || portal === 'sale';
+    const loginUrl = new URL(isHostPortal ? '/' : '/admin/chat', isHostPortal ? dealHostUrl : dealAdminUrl);
+    loginUrl.searchParams.set('return_to', dashboardUrl);
+    if (portal === 'sale') loginUrl.searchParams.set('login_as', 'sale');
+    return res.json({ url: loginUrl.toString() });
+  } catch {
+    return res.status(500).json({ error: 'Cấu hình URL đăng nhập DealPhuQuoc không hợp lệ.' });
+  }
+});
+
+// ── Web Push cho dashboard/PWA ─────────────────────────────────────────────
+app.get('/api/admin/push/public-key', checkAdminAuth, (_req, res) => {
+  res.json({ enabled: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), publicKey: VAPID_PUBLIC_KEY || null });
+});
+
+app.post('/api/admin/push/subscribe', checkAdminAuth, async (req, res) => {
+  const subscription = req.body?.subscription;
+  const endpoint = subscription?.endpoint;
+  const keys = subscription?.keys;
+  if (!endpoint || !keys?.p256dh || !keys?.auth) return res.status(400).json({ error: 'Push subscription không hợp lệ.' });
+  try {
+    await db.query(
+      `INSERT INTO push_subscriptions (admin_id, endpoint, p256dh, auth, user_agent, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (endpoint) DO UPDATE SET admin_id = EXCLUDED.admin_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth, user_agent = EXCLUDED.user_agent, updated_at = NOW()`,
+      [req.admin.id, endpoint, keys.p256dh, keys.auth, String(req.headers['user-agent'] || '').slice(0, 500)]
+    );
+    res.json({ success: true });
+  } catch { res.status(500).json({ error: 'Không thể lưu thiết bị nhận notification.' }); }
+});
+
+app.post('/api/admin/push/unsubscribe', checkAdminAuth, async (req, res) => {
+  const endpoint = req.body?.endpoint;
+  if (!endpoint) return res.status(400).json({ error: 'Thiếu endpoint.' });
+  await db.query('DELETE FROM push_subscriptions WHERE admin_id = $1 AND endpoint = $2', [req.admin.id, endpoint]);
+  res.json({ success: true });
 });
 
 // Admin Logout
@@ -1587,19 +1698,44 @@ app.get('/api/admin/me', checkAdminAuth, async (req, res) => {
   });
 });
 
+// Change password for the currently authenticated admin account.
+app.put('/api/admin/me/password', checkAdminAuth, async (req, res) => {
+  const { current_password, new_password } = req.body || {};
+  if (req.admin.username.startsWith('sso:')) {
+    return res.status(403).json({ error: 'Tài khoản SSO đổi mật khẩu tại hệ thống đăng nhập nguồn.' });
+  }
+  if (!current_password || !new_password || new_password.length < 8) {
+    return res.status(400).json({ error: 'Nhập mật khẩu hiện tại và mật khẩu mới ít nhất 8 ký tự.' });
+  }
+  try {
+    const result = await db.query('SELECT password_hash FROM admins WHERE id = $1', [req.admin.id]);
+    if (result.rows.length === 0 || !(await verifyPassword(current_password, result.rows[0].password_hash))) {
+      return res.status(400).json({ error: 'Mật khẩu hiện tại không đúng.' });
+    }
+    await db.query('UPDATE admins SET password_hash = $1 WHERE id = $2', [await hashPassword(new_password), req.admin.id]);
+    res.json({ success: true, message: 'Đã đổi mật khẩu.' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ error: 'Không thể đổi mật khẩu.' });
+  }
+});
+
 // --- SUPER-ADMIN SUB-ADMIN MANAGEMENT ENDPOINTS (CRUD) ---
 
 // List all sub-admins
 app.get('/api/admin/users', checkAdminAuth, async (req, res) => {
-  // Check role
-  if (req.admin.role !== 'superadmin') {
-    return res.status(403).json({ error: 'Quyền hạn bị từ chối. Chỉ Admin tổng mới có quyền quản lý nhân viên.' });
+  if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Bạn không có quyền quản lý tài khoản.' });
   }
 
   try {
-    const result = await db.query(
-      'SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_at FROM admins ORDER BY role DESC, username ASC'
-    );
+    const result = isSuperAdmin(req.admin)
+      ? await db.query('SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_at FROM admins ORDER BY role DESC, username ASC')
+      : await db.query(
+        `SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_at
+         FROM admins WHERE project_id = $1 AND (role = 'agent' OR id = $2) ORDER BY role DESC, username ASC`,
+        [req.admin.project_id, req.admin.id]
+      );
     res.json(result.rows);
   } catch (error) {
     console.error('List admins error:', error);
@@ -1609,8 +1745,8 @@ app.get('/api/admin/users', checkAdminAuth, async (req, res) => {
 
 // Create a new sub-admin
 app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
-  if (req.admin.role !== 'superadmin') {
-    return res.status(403).json({ error: 'Quyền hạn bị từ chối. Chỉ Admin tổng mới có quyền quản lý nhân viên.' });
+  if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Bạn không có quyền tạo tài khoản.' });
   }
 
   const { username, password, full_name, role, avatar_url, project_id } = req.body;
@@ -1619,6 +1755,14 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
   }
 
   try {
+    if (!ADMIN_ROLES.has(role)) return res.status(400).json({ error: 'Vai trò không hợp lệ.' });
+    if (isProjectAdmin(req.admin) && role !== 'agent') {
+      return res.status(403).json({ error: 'Project Admin chỉ được tạo tài khoản Agent.' });
+    }
+    if (!isSuperAdmin(req.admin) && !req.admin.project_id) {
+      return res.status(400).json({ error: 'Project Admin phải được gán một project.' });
+    }
+
     // Check if username already exists
     const checkRes = await db.query('SELECT id FROM admins WHERE username = $1', [username]);
     if (checkRes.rows.length > 0) {
@@ -1627,8 +1771,10 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
 
     const passwordHash = await hashPassword(password);
     const avatar = avatar_url || '';
-    // project_id rỗng/không nhập -> null (xem mọi project). Superadmin bỏ qua scope.
-    const scope = role === 'superadmin' ? null : (project_id && project_id.trim() ? project_id.trim() : null);
+    const scope = isSuperAdmin(req.admin)
+      ? (role === 'superadmin' ? null : (project_id && project_id.trim() ? project_id.trim() : null))
+      : req.admin.project_id;
+    if (role !== 'superadmin' && !scope) return res.status(400).json({ error: 'Project Admin và Agent phải thuộc một project.' });
 
     const insertRes = await db.query(
       `INSERT INTO admins (username, password_hash, full_name, role, avatar_url, project_id, is_active)
@@ -1649,8 +1795,8 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
 
 // Update an admin / sub-admin
 app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
-  if (req.admin.role !== 'superadmin') {
-    return res.status(403).json({ error: 'Quyền hạn bị từ chối. Chỉ Admin tổng mới có quyền quản lý nhân viên.' });
+  if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Bạn không có quyền cập nhật tài khoản.' });
   }
 
   const { id } = req.params;
@@ -1664,6 +1810,9 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
     }
 
     const currentAdmin = checkRes.rows[0];
+    if (isProjectAdmin(req.admin) && (currentAdmin.role !== 'agent' || currentAdmin.project_id !== req.admin.project_id)) {
+      return res.status(403).json({ error: 'Project Admin chỉ được quản lý Agent thuộc project của mình.' });
+    }
 
     // If username changes, check if new username exists
     if (username && username !== currentAdmin.username) {
@@ -1680,11 +1829,14 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
 
     const updatedUsername = username || currentAdmin.username;
     const updatedFullName = full_name || currentAdmin.full_name;
-    const updatedRole = role || currentAdmin.role;
+    const updatedRole = isProjectAdmin(req.admin) ? 'agent' : (role || currentAdmin.role);
+    if (!ADMIN_ROLES.has(updatedRole)) return res.status(400).json({ error: 'Vai trò không hợp lệ.' });
     const updatedAvatar = avatar_url !== undefined ? avatar_url : currentAdmin.avatar_url;
     const updatedIsActive = is_active !== undefined ? is_active : currentAdmin.is_active;
     // Scope project: superadmin luôn null (xem mọi project); subadmin lấy giá trị mới nếu có, giữ nguyên nếu không gửi.
-    const updatedProject = updatedRole === 'superadmin'
+    const updatedProject = isProjectAdmin(req.admin)
+      ? req.admin.project_id
+      : updatedRole === 'superadmin'
       ? null
       : (project_id !== undefined ? (project_id && project_id.trim() ? project_id.trim() : null) : currentAdmin.project_id);
 
@@ -1713,8 +1865,8 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
 
 // Delete a sub-admin
 app.delete('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
-  if (req.admin.role !== 'superadmin') {
-    return res.status(403).json({ error: 'Quyền hạn bị từ chối. Chỉ Admin tổng mới có quyền quản lý nhân viên.' });
+  if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Bạn không có quyền xóa tài khoản.' });
   }
 
   const { id } = req.params;
@@ -1727,6 +1879,9 @@ app.delete('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
     const checkRes = await db.query('SELECT * FROM admins WHERE id = $1', [id]);
     if (checkRes.rows.length === 0) {
       return res.status(404).json({ error: 'Không tìm thấy tài khoản nhân viên để xóa.' });
+    }
+    if (isProjectAdmin(req.admin) && (checkRes.rows[0].role !== 'agent' || checkRes.rows[0].project_id !== req.admin.project_id)) {
+      return res.status(403).json({ error: 'Project Admin chỉ được xóa Agent thuộc project của mình.' });
     }
 
     // Delete all sessions for this admin first (or unassign them)
@@ -1756,12 +1911,21 @@ app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, async (req, res) =
     if (sessionCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Không tìm thấy cuộc trò chuyện.' });
     }
+    if (!canAccessProject(req.admin, sessionCheck.rows[0].project_id)) {
+      return res.status(403).json({ error: 'Bạn không có quyền chuyển chat của project này.' });
+    }
+    if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin)) {
+      return res.status(403).json({ error: 'Chỉ Project Admin hoặc Superadmin được chuyển chat.' });
+    }
 
     let adminName = 'Chưa chỉ định';
     if (assignedAdminId) {
-      const adminCheck = await db.query('SELECT full_name FROM admins WHERE id = $1', [assignedAdminId]);
+      const adminCheck = await db.query('SELECT full_name, project_id, role FROM admins WHERE id = $1', [assignedAdminId]);
       if (adminCheck.rows.length === 0) {
         return res.status(404).json({ error: 'Không tìm thấy nhân viên được chỉ định.' });
+      }
+      if (!isSuperAdmin(req.admin) && (adminCheck.rows[0].role !== 'agent' || adminCheck.rows[0].project_id !== req.admin.project_id)) {
+        return res.status(403).json({ error: 'Project Admin chỉ được chuyển chat cho Agent cùng project.' });
       }
       adminName = adminCheck.rows[0].full_name;
     }
@@ -1787,6 +1951,30 @@ app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, async (req, res) =
   } catch (error) {
     console.error('Reassign chat error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi chuyển giao cuộc hội thoại.' });
+  }
+});
+
+// Claim an unassigned chat. Once claimed, only the owner or a superadmin can reply.
+app.post('/api/admin/chats/:sessionId/claim', checkAdminAuth, async (req, res) => {
+  const { sessionId } = req.params;
+  if (!isChatStaff(req.admin)) return res.status(403).json({ error: 'Bạn không có quyền tiếp nhận chat.' });
+  try {
+    const sessionResult = await db.query('SELECT project_id, claimed_by_admin_id FROM sessions WHERE id = $1', [sessionId]);
+    if (sessionResult.rows.length === 0) return res.status(404).json({ error: 'Không tìm thấy cuộc trò chuyện.' });
+    const session = sessionResult.rows[0];
+    if (!canAccessProject(req.admin, session.project_id)) return res.status(403).json({ error: 'Bạn không có quyền tiếp nhận chat của project này.' });
+    if (session.claimed_by_admin_id && session.claimed_by_admin_id !== req.admin.id && !isSuperAdmin(req.admin)) {
+      return res.status(409).json({ error: 'Chat này đã được nhân viên khác tiếp nhận.' });
+    }
+    await db.query(
+      `UPDATE sessions SET claimed_by_admin_id = $1, claimed_at = NOW()
+       WHERE id = $2`,
+      [req.admin.id, sessionId]
+    );
+    res.json({ success: true, claimedByAdminId: req.admin.id });
+  } catch (error) {
+    console.error('Claim chat error:', error);
+    res.status(500).json({ error: 'Không thể tiếp nhận chat.' });
   }
 });
 
@@ -1840,12 +2028,14 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
 
     let queryText = `
       SELECT s.*, a.full_name as assigned_admin_name, a.avatar_url as assigned_admin_avatar,
+        ca.full_name as claimed_by_admin_name,
         (SELECT COUNT(*) FROM messages WHERE session_id = s.id) as message_count,
         (SELECT MAX(created_at) FROM messages WHERE session_id = s.id) as last_message_at,
         (SELECT original_text FROM messages WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1) as last_message_preview,
         COALESCE(rr.seen_message_count, -1) as seen_message_count
       FROM sessions s
       LEFT JOIN admins a ON s.assigned_admin_id = a.id
+      LEFT JOIN admins ca ON s.claimed_by_admin_id = ca.id
       LEFT JOIN session_read_receipts rr ON rr.session_id = s.id AND rr.admin_id = $1
     `;
 
@@ -2620,6 +2810,7 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
         zh: '正在为您连接客服人员，请稍候 ⏳',
       }[finalLang] || 'Connecting you with a support agent ⏳';
       await sendAndSave(transferMsg);
+      void notifyAgentTransfer(session, text);
       return;
     }
 
@@ -2666,6 +2857,7 @@ CRITICAL RULE: If the customer's question cannot be answered using the knowledge
       await db.query(`UPDATE sessions SET show_in_dashboard = true WHERE id = $1`, [sessionId]);
       console.log(`[MC] AI cannot answer → auto-transferred session ${sessionId} to dashboard.`);
       await sendAndSave(aiReply);
+      void notifyAgentTransfer(session, text);
       return;
     }
 

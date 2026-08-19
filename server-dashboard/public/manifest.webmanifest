@@ -1,0 +1,11 @@
+{
+  "name": "Pastie AI Console",
+  "short_name": "Pastie Console",
+  "start_url": "/admin",
+  "display": "standalone",
+  "background_color": "#fff7fb",
+  "theme_color": "#c90c6c",
+  "icons": [
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

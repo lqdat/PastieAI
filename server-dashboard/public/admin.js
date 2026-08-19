@@ -367,6 +367,44 @@ function authFetch(url, options = {}) {
     return fetch(url, { ...options, headers });
 }
 
+const changePasswordModal = document.getElementById('change-password-modal');
+const changePasswordForm = document.getElementById('change-password-form');
+const changePasswordError = document.getElementById('change-password-error');
+
+function closeChangePasswordModal() {
+    changePasswordModal?.classList.add('hide');
+    changePasswordForm?.reset();
+    if (changePasswordError) changePasswordError.style.display = 'none';
+}
+
+document.getElementById('change-password-btn')?.addEventListener('click', () => {
+    document.getElementById('settings-dropdown-menu')?.classList.add('hide');
+    changePasswordModal?.classList.remove('hide');
+    document.getElementById('current-password-input')?.focus();
+});
+document.getElementById('change-password-cancel')?.addEventListener('click', closeChangePasswordModal);
+changePasswordForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const currentPassword = document.getElementById('current-password-input')?.value || '';
+    const newPassword = document.getElementById('new-password-input')?.value || '';
+    const confirmPassword = document.getElementById('confirm-password-input')?.value || '';
+    if (newPassword !== confirmPassword) {
+        if (changePasswordError) { changePasswordError.textContent = 'Mật khẩu xác nhận không khớp.'; changePasswordError.style.display = 'block'; }
+        return;
+    }
+    const response = await authFetch(`${API_BASE}/api/admin/me/password`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+        if (changePasswordError) { changePasswordError.textContent = data.error || 'Không thể đổi mật khẩu.'; changePasswordError.style.display = 'block'; }
+        return;
+    }
+    closeChangePasswordModal();
+    alert('Đã đổi mật khẩu thành công.');
+});
+
 // Đổi token SSO (?sso=) lấy phiên đăng nhập. Trả true nếu thành công. Chỉ xoá ?sso khi thành công.
 async function doSsoLogin() {
     const params = new URLSearchParams(window.location.search);
@@ -421,12 +459,10 @@ function showLogin() {
     mainDashboard.classList.add('hide');
     if (pollInterval) clearInterval(pollInterval);
     if (messagePollInterval) clearInterval(messagePollInterval);
-    // Nếu có ?sso= thì hiện nút "Đăng nhập bằng DealPhuQuoc (SSO)"
-    const hasSso = new URLSearchParams(window.location.search).get('sso');
     const b = document.getElementById('sso-login-btn');
     const dv = document.getElementById('sso-divider');
-    if (b) b.style.display = hasSso ? 'block' : 'none';
-    if (dv) dv.style.display = hasSso ? 'block' : 'none';
+    if (b) b.style.display = 'block';
+    if (dv) dv.style.display = 'block';
 }
 
 function hideLogin() {
@@ -474,12 +510,70 @@ async function handleLogin() {
 // ----------------------------------------------------
 
 const notifiedMsgCount = {}; // track last notified count per session
+let pushRegistration = null;
+
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
+}
+
+function setPushButtonState(state) {
+    const label = document.getElementById('enable-push-label');
+    const description = document.getElementById('enable-push-description');
+    if (!label || !description) return;
+    if (state === 'enabled') { label.textContent = 'Thông báo đã bật'; description.textContent = 'Thiết bị này sẽ nhận chat cần Agent'; }
+    else if (state === 'blocked') { label.textContent = 'Thông báo đang bị chặn'; description.textContent = 'Mở quyền Thông báo trong cài đặt trình duyệt'; }
+    else if (state === 'unavailable') { label.textContent = 'Push chưa được cấu hình'; description.textContent = 'Liên hệ quản trị hệ thống để bật VAPID'; }
+    else { label.textContent = 'Bật thông báo'; description.textContent = 'Nhận chat mới ngay cả khi đã đóng app'; }
+}
+
+async function setupPushNotifications() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        setPushButtonState('unavailable');
+        pushPermissionModal?.classList.remove('hide');
+        return false;
+    }
+    try {
+        pushRegistration = await navigator.serviceWorker.register('/push-sw.js');
+        const response = await authFetch(`${API_BASE}/api/admin/push/public-key`);
+        const config = await response.json();
+        if (!response.ok || !config.enabled) {
+            setPushButtonState('unavailable');
+            pushPermissionModal?.classList.remove('hide');
+            return false;
+        }
+        const subscription = await pushRegistration.pushManager.getSubscription();
+        setPushButtonState(Notification.permission === 'denied' ? 'blocked' : subscription ? 'enabled' : 'off');
+        if (Notification.permission === 'granted' && subscription) return true;
+        pushPermissionModal?.classList.remove('hide');
+        return false;
+    } catch (error) {
+        console.warn('Không thể khởi tạo Web Push:', error);
+        pushPermissionModal?.classList.remove('hide');
+        return false;
+    }
+}
+
+async function enablePushNotifications() {
+    if (!pushRegistration) await setupPushNotifications();
+    if (!pushRegistration) throw new Error('Trình duyệt chưa hỗ trợ thông báo đẩy.');
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') { setPushButtonState('blocked'); throw new Error('Bạn cần cho phép thông báo để tiếp tục.'); }
+    const configResponse = await authFetch(`${API_BASE}/api/admin/push/public-key`);
+    const config = await configResponse.json();
+    if (!configResponse.ok || !config.enabled || !config.publicKey) { setPushButtonState('unavailable'); throw new Error('Push chưa được cấu hình trên máy chủ.'); }
+    const subscription = await pushRegistration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(config.publicKey) });
+    const saveResponse = await authFetch(`${API_BASE}/api/admin/push/subscribe`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription }) });
+    if (!saveResponse.ok) throw new Error('Không thể lưu thiết bị nhận thông báo.');
+    setPushButtonState('enabled');
+    return true;
+}
 
 function requestNotificationPermission() {
     if (!('Notification' in window)) return;
-    if (Notification.permission === 'default') {
-        Notification.requestPermission();
-    }
+    // Quyền phải được yêu cầu từ thao tác bấm nút, đặc biệt với iPhone/iPad.
 }
 
 function showNewMessageNotification(session, unread) {
@@ -529,6 +623,7 @@ async function initDashboard() {
     await loadAdminProfile();   // biết role + project_id trước khi dựng filter
     await loadProjects();        // tải registry dự án
     requestNotificationPermission();
+    setupPushNotifications();
     fetchSessions();
     if (pollInterval) clearInterval(pollInterval);
     pollInterval = setInterval(fetchSessions, 7000);
@@ -544,9 +639,14 @@ async function loadAdminProfile() {
         const nameEl = document.getElementById('admin-profile-name');
         const badgeEl = document.getElementById('admin-profile-badge');
         const manageBtn = document.getElementById('manage-admins-btn');
+        const changePasswordBtn = document.getElementById('change-password-btn');
         if (nameEl) nameEl.textContent = admin.full_name || admin.username;
         if (badgeEl) badgeEl.style.display = 'flex';
-        if (manageBtn && admin.role === 'superadmin') manageBtn.classList.remove('hide');
+        if (manageBtn && ['superadmin', 'project_admin'].includes(admin.role)) manageBtn.classList.remove('hide');
+        if (changePasswordBtn && String(admin.username || '').startsWith('sso:')) changePasswordBtn.classList.add('hide');
+        if (projectFilter && admin.role !== 'superadmin' && admin.project_id) {
+            projectFilter.title = `Dự án được phân quyền: ${admin.project_id}`;
+        }
     } catch (e) {
         console.error('Failed to load admin profile:', e);
     }
@@ -594,6 +694,11 @@ async function fetchSessions() {
 
         updateProjectFilterDropdown(data);
         renderSessionsList(data);
+        const notificationSessionId = new URLSearchParams(window.location.search).get('session');
+        if (notificationSessionId && data.some(s => s.id === notificationSessionId) && notificationSessionId !== currentSessionId) {
+            window.history.replaceState({}, '', window.location.pathname);
+            selectSession(notificationSessionId);
+        }
     } catch (e) {
         console.error('Error fetching sessions:', e);
     }
@@ -619,7 +724,12 @@ function updateProjectFilterDropdown(sessions) {
     });
 
     // Tài khoản scoped: khoá filter về đúng project của mình
-    if (isScoped) { projectFilter.value = CURRENT_ADMIN.project_id; projectFilter.disabled = true; currentProjectFilter = CURRENT_ADMIN.project_id; }
+    if (isScoped) {
+        projectFilter.value = CURRENT_ADMIN.project_id;
+        projectFilter.disabled = true;
+        currentProjectFilter = CURRENT_ADMIN.project_id;
+        projectFilter.setAttribute('aria-label', `Dự án được phân quyền: ${map.get(CURRENT_ADMIN.project_id) || CURRENT_ADMIN.project_id}`);
+    }
     else { projectFilter.value = existingValue; }
 }
 
@@ -1254,12 +1364,25 @@ async function sendMessage(e) {
             // Reload message history to overwrite temp bubble
             await loadMessages(currentSessionId);
         } else {
+            adminMessages = adminMessages.filter(m => m.id !== newMsgObj.id);
+            renderAdminMessages(false);
             alert(dict.sendError + data.error);
         }
     } catch (e) {
         console.error('Send error:', e);
     }
 }
+
+async function claimCurrentChat() {
+    if (!currentSessionId) return;
+    const response = await authFetch(`${API_BASE}/api/admin/chats/${currentSessionId}/claim`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok) return alert(data.error || 'Không thể tiếp nhận chat.');
+    await fetchSessions();
+    await selectSession(currentSessionId);
+}
+
+document.getElementById('claim-chat-btn')?.addEventListener('click', claimCurrentChat);
 
 async function closeActiveSession() {
     if (!currentSessionId) return;
@@ -1294,6 +1417,8 @@ async function closeActiveSession() {
 function resetActiveChatUI() {
     currentSessionId = null;
     if (messagePollInterval) clearInterval(messagePollInterval);
+    messagePollInterval = null;
+    dashboardBody?.classList.remove('chat-open', 'details-open');
     
     chatHeaderActions.classList.add('hide');
     chatInputContainer.classList.add('hide');
@@ -1336,9 +1461,9 @@ async function deleteActiveSession() {
         const data = await response.json();
 
         if (data.success) {
-            alert(dict.deleteSuccess);
             resetActiveChatUI();
             await fetchSessions();
+            alert(dict.deleteSuccess);
         } else {
             alert(dict.deleteError + (data.error ? ': ' + data.error : ''));
         }
@@ -1376,6 +1501,26 @@ function escapeHtml(text) {
 // Event Bindings
 loginBtn.addEventListener('click', handleLogin);
 passwordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(); });
+const pushPermissionModal = document.getElementById('push-permission-modal');
+function closePushPermissionModal() { pushPermissionModal?.classList.add('hide'); }
+document.getElementById('enable-push-btn')?.addEventListener('click', () => {
+    document.getElementById('settings-dropdown-menu')?.classList.add('hide');
+    if (!('Notification' in window)) return alert('Trình duyệt này chưa hỗ trợ thông báo.');
+    if (Notification.permission === 'granted') return enablePushNotifications().then(closePushPermissionModal).catch(console.error);
+    pushPermissionModal?.classList.remove('hide');
+});
+document.getElementById('push-modal-confirm')?.addEventListener('click', () => {
+    const button = document.getElementById('push-modal-confirm');
+    if (button) { button.disabled = true; button.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang bật thông báo...'; }
+    enablePushNotifications().then(() => {
+        closePushPermissionModal();
+    }).catch((error) => {
+        console.error('Không thể bật Web Push:', error);
+        alert(error.message || 'Không thể bật thông báo trên thiết bị này.');
+    }).finally(() => {
+        if (button) { button.disabled = false; button.innerHTML = '<i class="ri-notification-3-fill"></i> Bật thông báo ngay'; }
+    });
+});
 
 // Quản lý dự án: nút thêm + Enter
 const projectAddBtn = document.getElementById('project-add-btn');
@@ -1383,19 +1528,38 @@ if (projectAddBtn) projectAddBtn.addEventListener('click', addProject);
 const projectNewName = document.getElementById('project-new-name');
 if (projectNewName) projectNewName.addEventListener('keypress', (e) => { if (e.key === 'Enter') addProject(); });
 
-// Nút đăng nhập SSO (chỉ hiện khi URL có ?sso=)
+// Đăng nhập từ form bằng tài khoản DealPhuQuoc. Cổng Deal sẽ xác thực rồi
+// trả về URL này với token SSO ngắn hạn.
 const ssoLoginBtn = document.getElementById('sso-login-btn');
+const ssoLoginMenu = document.querySelector('.sso-login-menu');
+const ssoLoginOptions = document.getElementById('sso-login-options');
 if (ssoLoginBtn) {
-    ssoLoginBtn.addEventListener('click', async () => {
-        ssoLoginBtn.disabled = true;
-        const ok = await doSsoLogin();
-        if (ok) { hideLogin(); initDashboard(); }
-        else {
-            ssoLoginBtn.disabled = false;
-            if (loginErrorMsg) { loginErrorMsg.textContent = 'Đăng nhập SSO thất bại (token sai hoặc hết hạn).'; loginErrorMsg.style.display = 'block'; }
-        }
+    ssoLoginBtn.addEventListener('click', () => {
+        ssoLoginOptions?.classList.toggle('hide');
+        ssoLoginMenu?.classList.toggle('is-open', !ssoLoginOptions?.classList.contains('hide'));
     });
 }
+document.querySelectorAll('[data-sso-portal]').forEach((option) => {
+    option.addEventListener('click', async () => {
+        const portal = option.dataset.ssoPortal;
+        ssoLoginBtn.disabled = true;
+        try {
+            const response = await fetch(`${API_BASE}/api/admin/sso-login-url?portal=${encodeURIComponent(portal)}`);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.url) throw new Error(data.error || 'Không thể mở đăng nhập DealPhuQuoc.');
+            window.location.assign(data.url);
+        } catch (error) {
+            ssoLoginBtn.disabled = false;
+            if (loginErrorMsg) { loginErrorMsg.textContent = error.message || 'Không thể mở đăng nhập DealPhuQuoc.'; loginErrorMsg.style.display = 'block'; }
+        }
+    });
+});
+document.addEventListener('click', (event) => {
+    if (ssoLoginMenu && !ssoLoginMenu.contains(event.target)) {
+        ssoLoginOptions?.classList.add('hide');
+        ssoLoginMenu.classList.remove('is-open');
+    }
+});
 
 projectFilter.addEventListener('change', (e) => {
     currentProjectFilter = e.target.value;
@@ -1807,7 +1971,10 @@ const adminMgmtCloseBtn = document.getElementById('admin-mgmt-close-btn');
 const adminUserForm = document.getElementById('admin-user-form');
 const adminListContainer = document.getElementById('admin-list-container');
 
-if (manageAdminsBtn) manageAdminsBtn.addEventListener('click', () => { closeSettingsDropdown(); openAdminMgmt(); });
+if (manageAdminsBtn) manageAdminsBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    window.openAdminManagement();
+});
 if (adminMgmtCloseTopBtn) adminMgmtCloseTopBtn.addEventListener('click', closeAdminMgmt);
 if (adminMgmtCloseBtn) adminMgmtCloseBtn.addEventListener('click', closeAdminMgmt);
 if (adminUserForm) adminUserForm.addEventListener('submit', handleAdminUserSubmit);
@@ -1819,17 +1986,47 @@ const adminFormPassword = document.getElementById('admin-form-password');
 const adminFormRole = document.getElementById('admin-form-role');
 const adminFormProject = document.getElementById('admin-form-project');
 const adminFormActive = document.getElementById('admin-form-active');
+const adminFormAvatar = document.getElementById('admin-form-avatar');
+const adminAvatarPicker = document.getElementById('admin-avatar-picker');
 const adminFormStatusGroup = document.getElementById('admin-form-status-group');
 const adminFormTitle = document.getElementById('admin-form-title');
 const adminFormSubmitBtn = document.getElementById('admin-form-submit-btn');
 const adminFormCancelBtn = document.getElementById('admin-form-cancel-btn');
 if (adminFormCancelBtn) adminFormCancelBtn.addEventListener('click', resetAdminForm);
 
+const ADMIN_AVATARS = [
+    { id: 'gradient-1', label: 'Tím', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' },
+    { id: 'gradient-2', label: 'Hồng', background: 'linear-gradient(135deg,#ec4899,#f43f5e)' },
+    { id: 'gradient-3', label: 'Xanh lá', background: 'linear-gradient(135deg,#10b981,#14b8a6)' },
+    { id: 'gradient-4', label: 'Cam', background: 'linear-gradient(135deg,#f59e0b,#f97316)' },
+    { id: 'gradient-5', label: 'Xanh dương', background: 'linear-gradient(135deg,#0ea5e9,#2563eb)' }
+];
+
+function renderAdminAvatarPicker(selectedId = 'gradient-1') {
+    if (!adminAvatarPicker) return;
+    adminAvatarPicker.innerHTML = '';
+    ADMIN_AVATARS.forEach(avatar => {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = `avatar-picker-option${avatar.id === selectedId ? ' selected' : ''}`;
+        option.style.background = avatar.background;
+        option.title = `Avatar ${avatar.label}`;
+        option.setAttribute('aria-label', `Chọn avatar ${avatar.label}`);
+        option.addEventListener('click', () => renderAdminAvatarPicker(avatar.id));
+        adminAvatarPicker.appendChild(option);
+    });
+    if (adminFormAvatar) adminFormAvatar.value = selectedId;
+}
+
 function openAdminMgmt() {
     if (adminMgmtModal) adminMgmtModal.classList.remove('hide');
     loadAdminUsers();
     resetAdminForm();
 }
+window.openAdminManagement = () => {
+    closeSettingsDropdown();
+    openAdminMgmt();
+};
 
 function closeAdminMgmt() {
     if (adminMgmtModal) adminMgmtModal.classList.add('hide');
@@ -1867,6 +2064,8 @@ function resetAdminForm() {
     if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-user-add-line"></i> Lưu nhân viên';
     if (adminFormCancelBtn) adminFormCancelBtn.style.display = 'none';
     if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'none';
+    if (adminFormPassword) adminFormPassword.required = true;
+    renderAdminAvatarPicker();
     const pwLabel = document.getElementById('admin-form-password-label');
     if (pwLabel) pwLabel.textContent = 'Mật khẩu';
 }
@@ -1881,9 +2080,11 @@ async function editAdminUser(id) {
         if (adminFormFullname) adminFormFullname.value = u.full_name;
         if (adminFormUsername) adminFormUsername.value = u.username;
         if (adminFormPassword) adminFormPassword.value = '';
+        if (adminFormPassword) adminFormPassword.required = false;
         if (adminFormRole) adminFormRole.value = u.role;
         if (adminFormProject) adminFormProject.value = u.project_id || '';
         if (adminFormActive) adminFormActive.checked = u.is_active;
+        renderAdminAvatarPicker(u.avatar_url || 'gradient-1');
         if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'flex';
         if (adminFormTitle) adminFormTitle.textContent = 'Chỉnh sửa nhân viên';
         if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-save-line"></i> Cập nhật';
@@ -1911,6 +2112,7 @@ async function handleAdminUserSubmit(e) {
         password: adminFormPassword?.value.trim(),
         full_name: adminFormFullname?.value.trim(),
         role: adminFormRole?.value,
+        avatar_url: adminFormAvatar?.value || '',
         project_id: adminFormProject?.value.trim() || null,
         is_active: adminFormActive?.checked ?? true
     };

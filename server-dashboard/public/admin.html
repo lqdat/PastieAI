@@ -12,7 +12,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r3">
+    <link rel="stylesheet" href="admin.css?v=r9">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#c90c6c">
 </head>
 <body>
     <!-- Gradient background decor -->
@@ -32,9 +34,16 @@
                 <input type="password" id="admin-password-input" placeholder="Mật khẩu..." required style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
                 <div class="error-msg" id="login-error-msg" style="display: none; color: #ef4444; font-size: 12px; margin-top: 4px; text-align: left;">Tài khoản hoặc mật khẩu không hợp lệ, vui lòng thử lại.</div>
             </div>
-            <button id="login-btn" class="primary-btn"><span data-i18n="loginBtn">Kết Nối Console</span> <i class="ri-arrow-right-line"></i></button>
-            <div id="sso-divider" style="display:none; margin:14px 0 6px; text-align:center; color:var(--text-secondary); font-size:12px;">— hoặc —</div>
-            <button id="sso-login-btn" class="primary-btn" style="display:none; background: linear-gradient(90deg,#6366f1,#8b5cf6);"><i class="ri-shield-check-line"></i> Đăng nhập bằng DealPhuQuoc (SSO)</button>
+            <button id="login-btn" class="primary-btn login-action-btn"><span data-i18n="loginBtn">Kết Nối Console</span> <i class="ri-arrow-right-line"></i></button>
+            <div id="sso-divider" class="sso-divider">— hoặc —</div>
+            <div class="sso-login-menu">
+                <button id="sso-login-btn" type="button" class="primary-btn login-action-btn sso-login-toggle"><i class="ri-shield-check-line"></i> Đăng nhập với DealPhuQuoc <i class="ri-arrow-down-s-line sso-chevron"></i></button>
+                <div id="sso-login-options" class="sso-login-options hide" role="menu" aria-label="Chọn cổng đăng nhập DealPhuQuoc">
+                    <button type="button" class="sso-option" data-sso-portal="superadmin" role="menuitem"><i class="ri-shield-star-line"></i><span><b>Superadmin</b><small>Cổng quản trị hệ thống</small></span></button>
+                    <button type="button" class="sso-option" data-sso-portal="host" role="menuitem"><i class="ri-hotel-line"></i><span><b>Host</b><small>Cổng đối tác/chủ chỗ nghỉ</small></span></button>
+                    <button type="button" class="sso-option" data-sso-portal="sale" role="menuitem"><i class="ri-user-star-line"></i><span><b>Sale Admin</b><small>Cổng quản lý kinh doanh</small></span></button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -78,9 +87,21 @@
                                 <span class="sdm-icon" style="background:rgba(16,185,129,0.15);color:#34d399;"><i class="ri-whatsapp-line"></i></span>
                                 <div class="sdm-text"><span>Meta Channels</span><small>FB, Instagram, WhatsApp</small></div>
                             </button>
-                            <button id="manage-admins-btn" class="sdm-item hide">
+                            <button id="manage-admins-btn" class="sdm-item hide" type="button" onclick="window.openAdminManagement?.()">
                                 <span class="sdm-icon" style="background:rgba(245,158,11,0.15);color:#fbbf24;"><i class="ri-user-settings-line"></i></span>
                                 <div class="sdm-text"><span>Quản lý nhân viên</span><small>Phân quyền & tài khoản</small></div>
+                            </button>
+                        </div>
+                        <div class="sdm-divider"></div>
+                        <div class="sdm-group">
+                            <div class="sdm-label">Tài khoản</div>
+                            <button id="change-password-btn" class="sdm-item">
+                                <span class="sdm-icon" style="background:rgba(239,43,157,.12);color:#ef2b9d;"><i class="ri-lock-password-line"></i></span>
+                                <div class="sdm-text"><span>Đổi mật khẩu</span><small>Bảo mật tài khoản của bạn</small></div>
+                            </button>
+                            <button id="enable-push-btn" class="sdm-item">
+                                <span class="sdm-icon" style="background:rgba(16,185,129,.12);color:#10b981;"><i class="ri-notification-3-line"></i></span>
+                                <div class="sdm-text"><span id="enable-push-label">Bật thông báo</span><small id="enable-push-description">Nhận chat mới ngay cả khi đã đóng app</small></div>
                             </button>
                         </div>
                         <div class="sdm-divider"></div>
@@ -119,6 +140,35 @@
             </div>
         </header>
 
+        <div id="change-password-modal" class="modal-overlay hide">
+            <div class="login-box glass-panel" style="max-width:390px;">
+                <div class="brand-header" style="margin-bottom:18px;"><h2>Đổi mật khẩu</h2><p>Nhập mật khẩu hiện tại và mật khẩu mới.</p></div>
+                <form id="change-password-form" class="form-group" style="display:flex;flex-direction:column;gap:12px;">
+                    <input id="current-password-input" type="password" placeholder="Mật khẩu hiện tại" required>
+                    <input id="new-password-input" type="password" placeholder="Mật khẩu mới (ít nhất 8 ký tự)" minlength="8" required>
+                    <input id="confirm-password-input" type="password" placeholder="Xác nhận mật khẩu mới" minlength="8" required>
+                    <div id="change-password-error" class="error-msg"></div>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;"><button id="change-password-cancel" type="button" class="secondary-btn">Hủy</button><button type="submit" class="primary-btn">Lưu mật khẩu</button></div>
+                </form>
+            </div>
+        </div>
+
+        <div id="push-permission-modal" class="modal-overlay hide">
+            <div class="push-permission-card">
+                <div class="push-modal-visual"><i class="ri-notification-3-fill"></i><span class="push-modal-spark spark-one">✦</span><span class="push-modal-spark spark-two">✦</span></div>
+                <div class="push-modal-project"><i class="ri-shield-check-line"></i> PASTIE AI CONSOLE</div>
+                <h2>Đừng bỏ lỡ khách hàng</h2>
+                <p>Bật thông báo để nhận tin ngay khi AI chuyển cuộc trò chuyện cần Agent hỗ trợ.</p>
+                <div class="push-modal-benefits">
+                    <div><i class="ri-flashlight-fill"></i><span>Nhận ngay cả khi đã đóng dashboard</span></div>
+                    <div><i class="ri-smartphone-line"></i><span>Hoạt động trên shortcut điện thoại</span></div>
+                    <div><i class="ri-chat-check-line"></i><span>Chạm để mở đúng hội thoại</span></div>
+                </div>
+                <button id="push-modal-confirm" type="button" class="push-modal-confirm"><i class="ri-notification-3-fill"></i> Bật thông báo ngay</button>
+                <p class="push-modal-required"><i class="ri-lock-2-line"></i> Cần bật thông báo để tiếp tục vào dashboard</p>
+            </div>
+        </div>
+
         <!-- Lower Grid -->
         <div class="dashboard-body" id="dashboard-body">
             <!-- Sidebar: Sessions List -->
@@ -152,6 +202,9 @@
                     </div>
                     <div id="chat-header-actions" class="hide" style="display: flex; gap: 8px; align-items: center;">
                         <button id="details-toggle-btn" class="icon-btn tablet-only" title="Thông tin chi tiết"><i class="ri-information-line"></i></button>
+                        <button id="claim-chat-btn" class="header-action-btn" title="Tiếp nhận chat" style="background:rgba(16,185,129,.16);color:#34d399;border:1px solid rgba(16,185,129,.35);">
+                            <i class="ri-hand-heart-line"></i><span>Tiếp nhận</span>
+                        </button>
                         <div id="assignee-selector-container" class="assignee-selector-wrap">
                             <i class="ri-user-follow-line" style="color: var(--accent-color); font-size: 14px;"></i>
                             <span class="assignee-label" data-i18n="assignLabel">Phân công:</span>
@@ -387,9 +440,10 @@
                 </div>
             </form>
         </div>
+    </div>
 <!-- Admin Management Modal -->
     <div id="admin-management-modal" class="modal-overlay hide">
-        <div class="login-box glass-panel" style="max-width: 800px; width: 95%;">
+        <div class="login-box glass-panel admin-management-box" style="max-width: 800px; width: 95%;">
             <div class="brand-header" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px; text-align: left;">
                     <div class="brand-logo" style="background: rgba(245, 158, 11, 0.15); color: var(--warning-color); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0; font-size: 24px;"><i class="ri-user-settings-line"></i></div>
@@ -402,7 +456,7 @@
             </div>
 
             <!-- Quản lý dự án (multi-project) -->
-            <div style="border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:14px; margin-bottom:18px; text-align:left;">
+            <div class="admin-project-management" style="border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:14px; margin-bottom:18px; text-align:left;">
                 <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
                     <h3 style="font-size:14px; color:var(--text-primary); font-weight:600; margin:0;"><i class="ri-folder-3-line" style="color:var(--accent-color);"></i> Dự án</h3>
                     <div style="display:flex; gap:6px;">
@@ -414,9 +468,9 @@
             </div>
 
             <!-- Grid: Left side list of users, Right side add/edit form -->
-            <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; text-align: left; min-height: 400px;">
+            <div class="admin-management-grid" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; text-align: left; min-height: 400px;">
                 <!-- Left panel: List -->
-                <div style="border-right: 1px solid rgba(255,255,255,0.08); padding-right: 20px; display: flex; flex-direction: column;">
+                <div class="admin-users-panel" style="border-right: 1px solid rgba(255,255,255,0.08); padding-right: 20px; display: flex; flex-direction: column;">
                     <h3 style="font-size: 14px; color: var(--text-primary); margin-bottom: 12px; font-weight: 600;">Danh sách nhân viên</h3>
                     <div id="admin-list-container" style="flex: 1; overflow-y: auto; max-height: 380px; display: flex; flex-direction: column; gap: 8px;">
                         <!-- Dynamically populated -->
@@ -424,7 +478,7 @@
                 </div>
 
                 <!-- Right panel: Form -->
-                <div style="display: flex; flex-direction: column;">
+                <div class="admin-user-form-panel" style="display: flex; flex-direction: column;">
                     <h3 id="admin-form-title" style="font-size: 14px; color: var(--text-primary); margin-bottom: 12px; font-weight: 600;">Thêm nhân viên mới</h3>
                     <form id="admin-user-form" style="display: flex; flex-direction: column; gap: 12px;">
                         <input type="hidden" id="admin-form-id">
@@ -447,7 +501,8 @@
                         <div class="form-group">
                             <label style="font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; display: block;">Vai trò (Role)</label>
                             <select id="admin-form-role" style="width:100%; box-sizing:border-box; padding:10px; border-radius:8px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); color:var(--text-primary); font-family:inherit; outline:none;">
-                                <option value="subadmin">Nhân viên hỗ trợ (Sub-Admin)</option>
+                                <option value="agent">Agent</option>
+                                <option value="project_admin">Project Admin</option>
                                 <option value="superadmin">Quản trị viên tối cao (Super-Admin)</option>
                             </select>
                         </div>
@@ -486,6 +541,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r3"></script>
+    <script src="admin.js?v=r13"></script>
 </body>
 </html>
