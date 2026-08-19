@@ -50,7 +50,7 @@
     const TRANSLATIONS = {
         vi: {
             headerTitle: 'Hỗ Trợ Trực Tuyến',
-            headerStatus: 'Đang hoạt động • Hỗ trợ song ngữ',
+            headerStatus: 'Đang hoạt động',
             initTitle: 'Bắt đầu trò chuyện',
             initDesc: 'Vui lòng điền tên và email của bạn để bắt đầu chat với bộ phận hỗ trợ của chúng tôi.',
             initNameLabel: 'Họ tên của bạn',
@@ -91,7 +91,7 @@
         },
         en: {
             headerTitle: 'Live Support',
-            headerStatus: 'Online • Bilingual support',
+            headerStatus: 'Online',
             initTitle: 'Start a Conversation',
             initDesc: 'Please enter your name and email to start chatting with our support team.',
             initNameLabel: 'Your Name',
@@ -132,7 +132,7 @@
         },
         ru: {
             headerTitle: 'Живая Поддержка',
-            headerStatus: 'Онлайн • Двуязычная поддержка',
+            headerStatus: 'Онлайн',
             initTitle: 'Начать разговор',
             initDesc: 'Пожалуйста, введите ваше имя и email, чтобы начать чат с нашей службой поддержки.',
             initNameLabel: 'Ваше имя',
@@ -173,7 +173,7 @@
         },
         zh: {
             headerTitle: '在线支持',
-            headerStatus: '在线 • 双语支持',
+            headerStatus: '在线',
             initTitle: '开始对话',
             initDesc: '请输入您的姓名和邮箱，开始与我们的客服对话。',
             initNameLabel: '您的姓名',
