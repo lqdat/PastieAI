@@ -499,15 +499,24 @@
         sessionStorage.removeItem('pastie_chat_mode');
         stopPolling();
 
+        // Ưu tiên KHÔI PHỤC danh tính khách đã đăng nhập (đừng tạo phiên ẩn danh -> tránh "Khách ẩn danh").
+        const idEmail = (window.PastieChatUser && window.PastieChatUser.email) || sessionStorage.getItem('pastie_chat_visitor_email') || '';
+        const idName = (window.PastieChatUser && window.PastieChatUser.name) || sessionStorage.getItem('pastie_chat_visitor_name') || 'Khách';
+        const idPhone = (window.PastieChatUser && window.PastieChatUser.phone) || sessionStorage.getItem('pastie_chat_visitor_phone') || '';
         try {
-            const r = await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/anonymous`, {
+            const endpoint = idEmail ? '/api/chats/session/identified' : '/api/chats/session/anonymous';
+            const body = idEmail
+                ? { projectId: CONFIG.PROJECT_ID, name: idName, email: idEmail, phone: idPhone || undefined, visitorLang: state.detectedLang || 'vi' }
+                : { projectId: CONFIG.PROJECT_ID, visitorLang: state.detectedLang || 'vi' };
+            const r = await fetch(`${CONFIG.BACKEND_URL}${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, visitorLang: state.detectedLang || 'vi' })
+                body: JSON.stringify(body)
             });
             const d = await r.json();
             if (d.success) {
                 state.sessionId = d.sessionId;
+                if (idEmail) { state.visitorName = idName; state.visitorEmail = idEmail; }
                 sessionStorage.setItem('pastie_chat_session_id', d.sessionId);
                 sessionStorage.setItem('pastie_chat_mode', 'ai');
                 startPolling();
@@ -520,17 +529,20 @@
     }
 
     // Tạo phiên chat ĐÃ XÁC THỰC từ danh tính có sẵn (user đã đăng nhập) — bỏ form + OTP.
-    async function identifyAndStart(name, email) {
+    async function identifyAndStart(name, email, phone) {
         if (!email || state.sessionId) return;
         state.visitorName = name || 'Khách';
         state.visitorEmail = email;
+        // Phone CHỈ có khi project đăng nhập bằng SĐT (vd dealphuquoc); project khác bỏ qua.
+        const phoneVal = phone || (window.PastieChatUser && window.PastieChatUser.phone) || '';
+        if (phoneVal) { state.visitorPhone = phoneVal; sessionStorage.setItem('pastie_chat_visitor_phone', phoneVal); }
         sessionStorage.setItem('pastie_chat_visitor_name', state.visitorName);
         sessionStorage.setItem('pastie_chat_visitor_email', state.visitorEmail);
         try {
             const r = await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/identified`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, name: state.visitorName, email, visitorLang: state.detectedLang || 'vi' })
+                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, name: state.visitorName, email, phone: phoneVal || undefined, visitorLang: state.detectedLang || 'vi' })
             });
             const d = await r.json();
             if (d.success && d.sessionId) {
@@ -852,7 +864,9 @@
         let fetchOffset = state.offset;
 
         if (!isLoadMore) {
-            fetchLimit = Math.max(state.messages.length, state.limit);
+            // Poll/refresh: CHỈ lấy vài tin mới nhất (không gom toàn bộ lịch sử -> không tải/dịch lại
+            // tin cũ mỗi lần). Tin cũ đã tải trước đó vẫn được giữ nhờ bước merge bên dưới.
+            fetchLimit = state.limit;
             fetchOffset = 0;
         }
 
@@ -911,6 +925,17 @@
     function renderMessageThread(isLoadMore = false) {
         const threadContainer = document.getElementById('pastie-chat-thread');
         if (!threadContainer) return;
+
+        // Gắn 1 lần: kéo lên gần đỉnh -> tự tải thêm tin cũ (không cần bấm nút).
+        if (!threadContainer.dataset.scrollBound) {
+            threadContainer.dataset.scrollBound = '1';
+            threadContainer.addEventListener('scroll', () => {
+                if (threadContainer.scrollTop <= 48 && state.hasMore && !state.isLoadingMore) {
+                    state.isLoadingMore = true;
+                    Promise.resolve(loadMessageHistory(true)).finally(() => { state.isLoadingMore = false; });
+                }
+            }, { passive: true });
+        }
 
         const previousScrollHeight = threadContainer.scrollHeight;
         const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
@@ -1129,7 +1154,7 @@
 
         // API nhận diện từ web ngoài (khi user đã đăng nhập): điền sẵn danh tính, bỏ form + OTP.
         window.PastieChat = window.PastieChat || {};
-        window.PastieChat.identify = (u) => { if (u && u.email) identifyAndStart(u.name, u.email); };
+        window.PastieChat.identify = (u) => { if (u && u.email) identifyAndStart(u.name, u.email, u.phone); };
         window.addEventListener('pastie:identify', (e) => window.PastieChat.identify(e.detail || {}));
 
         // Initial state
@@ -1138,7 +1163,7 @@
             switchView('chat'); // existing session → chat
         } else if (preset && preset.email) {
             switchView('chat');              // hiện khung chat ngay
-            identifyAndStart(preset.name, preset.email); // tạo phiên đã xác thực, bỏ OTP
+            identifyAndStart(preset.name, preset.email, preset.phone); // tạo phiên đã xác thực, bỏ OTP
         } else {
             switchView('init'); // no session → show form first
         }

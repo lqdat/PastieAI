@@ -1049,7 +1049,7 @@ app.post('/api/chats/session/anonymous', async (req, res) => {
 
 // 4b-identified. Tạo session ĐÃ XÁC THỰC từ danh tính có sẵn (user đã đăng nhập ở web ngoài) — bỏ OTP.
 app.post('/api/chats/session/identified', async (req, res) => {
-  const { projectId = 'pastie-landingpage', name, email, visitorLang = 'vi' } = req.body || {};
+  const { projectId = 'pastie-landingpage', name, email, phone, visitorLang = 'vi' } = req.body || {};
   if (!email) return res.status(400).json({ error: 'Thiếu email.' });
   const sessionId = randomUUID();
   const ua = req.headers['user-agent'] || '';
@@ -1059,6 +1059,16 @@ app.post('/api/chats/session/identified', async (req, res) => {
   try {
     const existingSession = await findActiveSessionForClient(projectId, email, clientIp, browser, device);
     if (existingSession) {
+      // Phiên cũ có thể đang ẩn danh -> gắn danh tính khách đăng nhập (không ghi đè bằng chuỗi rỗng)
+      await db.query(
+        `UPDATE sessions
+           SET visitor_name = COALESCE(NULLIF($1, ''), visitor_name),
+               visitor_email = COALESCE(NULLIF($2, ''), visitor_email),
+               visitor_phone = COALESCE(NULLIF($3, ''), visitor_phone),
+               is_verified = TRUE
+         WHERE id = $4`,
+        [name || '', email || '', phone || '', existingSession.id]
+      ).catch((e) => console.error('Update reused session identity failed:', e.message));
       return res.json({ success: true, sessionId: existingSession.id, reused: true });
     }
   } catch (error) {
@@ -1085,9 +1095,9 @@ app.post('/api/chats/session/identified', async (req, res) => {
 
   try {
     await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id)
-       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8, $9)`,
-      [sessionId, projectId, name || 'Khách', email, visitorLang, browser, device, clientIp, assignedAdminId]
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, visitor_phone, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, 'active', $7, $8, $9, $10)`,
+      [sessionId, projectId, name || 'Khách', email, phone || null, visitorLang, browser, device, clientIp, assignedAdminId]
     );
     res.json({ success: true, sessionId });
   } catch (error) {
