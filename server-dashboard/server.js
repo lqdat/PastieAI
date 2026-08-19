@@ -316,7 +316,13 @@ app.use('/api', (req, res, next) => {
  */
 // 1. Generate and Send OTP to email
 app.post('/api/otp/send', async (req, res) => {
-  const { email } = req.body;
+  const { email, projectId } = req.body;
+  if (projectId === 'dealphuquoc') {
+    return res.status(403).json({
+      code: 'LOGIN_REQUIRED',
+      error: 'Vui lòng đăng nhập tài khoản DealPhuQuoc để sử dụng chat.'
+    });
+  }
   if (!email || !email.includes('@')) {
     return res.status(400).json({ error: 'Email không hợp lệ.' });
   }
@@ -471,6 +477,12 @@ app.post('/api/otp/verify', async (req, res) => {
   
   if (!email || !code || !projectId) {
     return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ email, mã OTP và projectId.' });
+  }
+  if (projectId === 'dealphuquoc') {
+    return res.status(403).json({
+      code: 'LOGIN_REQUIRED',
+      error: 'Vui lòng đăng nhập tài khoản DealPhuQuoc để sử dụng chat.'
+    });
   }
 
   try {
@@ -1028,6 +1040,12 @@ app.post('/api/chats/session/close', async (req, res) => {
 // 4b. Create Anonymous Session (no OTP, for AI-first chat widget)
 app.post('/api/chats/session/anonymous', async (req, res) => {
   const { projectId = 'pastie-landingpage', visitorLang = 'vi' } = req.body;
+  if (projectId === 'dealphuquoc') {
+    return res.status(403).json({
+      code: 'LOGIN_REQUIRED',
+      error: 'Vui lòng đăng nhập tài khoản DealPhuQuoc để sử dụng chat.'
+    });
+  }
   const ua = req.headers['user-agent'] || '';
   const { browser, device } = parseUserAgent(ua);
   const clientIp = getClientIp(req);
@@ -1329,16 +1347,32 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
       return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
     }
 
-    const email = sessionRes.rows[0].visitor_email;
+    const session = sessionRes.rows[0];
+    const email = (session.visitor_email || '').trim();
+    const phone = (session.visitor_phone || '').trim();
     let result;
-    if (email && email.trim() !== '') {
+    if (email || phone) {
+      const identityConditions = [];
+      const identityParams = [session.project_id];
+
+      if (email) {
+        identityParams.push(email);
+        identityConditions.push(`LOWER(s.visitor_email) = LOWER($${identityParams.length})`);
+      }
+      if (phone) {
+        identityParams.push(phone);
+        identityConditions.push(`s.visitor_phone = $${identityParams.length}`);
+      }
+      identityParams.push(limit, offset);
+
       result = await db.query(
         `SELECT m.* FROM messages m 
          JOIN sessions s ON m.session_id = s.id 
-         WHERE s.visitor_email = $1 
+         WHERE s.project_id = $1
+           AND (${identityConditions.join(' OR ')})
          ORDER BY m.created_at DESC
-         LIMIT $2 OFFSET $3`,
-        [email, limit, offset]
+         LIMIT $${identityParams.length - 1} OFFSET $${identityParams.length}`,
+        identityParams
       );
     } else {
       result = await db.query(

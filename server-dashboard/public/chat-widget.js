@@ -696,7 +696,7 @@
             const res = await fetch(`${CONFIG.BACKEND_URL}/api/otp/send`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, language: state.detectedLang })
+                body: JSON.stringify({ email, language: state.detectedLang, projectId: CONFIG.PROJECT_ID })
             });
             const data = await res.json();
             if (res.ok) {
@@ -1159,11 +1159,21 @@
 
         // Initial state
         const preset = window.PastieChatUser;
-        if (state.sessionId) {
-            switchView('chat'); // existing session → chat
-        } else if (preset && preset.email) {
-            switchView('chat');              // hiện khung chat ngay
-            identifyAndStart(preset.name, preset.email, preset.phone); // tạo phiên đã xác thực, bỏ OTP
+        const presetEmail = (preset && preset.email ? preset.email : '').trim().toLowerCase();
+        const storedEmail = (sessionStorage.getItem('pastie_chat_visitor_email') || '').trim().toLowerCase();
+        if (presetEmail && (!state.sessionId || storedEmail !== presetEmail)) {
+            // A browser can retain a session from an anonymous visitor or a
+            // previous account. Always bind DealPhuQuoc chat to the account
+            // currently logged into the website before loading its history.
+            stopPolling();
+            state.sessionId = null;
+            state.messages = [];
+            sessionStorage.removeItem('pastie_chat_session_id');
+            sessionStorage.removeItem('pastie_chat_mode');
+            switchView('chat');
+            identifyAndStart(preset.name, preset.email, preset.phone);
+        } else if (state.sessionId) {
+            switchView('chat'); // existing session for the same visitor
         } else {
             switchView('init'); // no session → show form first
         }
