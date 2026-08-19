@@ -1,8 +1,11 @@
 {
   "name": "Pastie AI Console",
   "short_name": "Pastie Console",
+  "id": "/admin",
   "start_url": "/admin",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#fff7fb",
   "theme_color": "#c90c6c",
   "icons": [
