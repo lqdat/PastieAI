@@ -21,6 +21,12 @@
     padding: 0;
 }
 
+html, body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
 body {
     font-family: 'Be Vietnam Pro', system-ui, -apple-system, sans-serif;
     background: linear-gradient(145deg, #ffffff 0%, #fff7fb 52%, #fff0f8 100%);
@@ -269,7 +275,9 @@ button {
 
 /* --- Layout Structure --- */
 .dashboard-container {
-    width: 100vw;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     height: 100vh;
     padding: 20px;
     display: flex;
@@ -1376,7 +1384,7 @@ button {
   .bg-glow-2 { background: radial-gradient(circle, #f42b9d 0%, transparent 70%); }
   .glass-panel { box-shadow: 0 10px 32px rgba(110, 43, 83, 0.09); }
   body { min-height: 100svh; min-height: 100dvh; }
-  .dashboard-container { padding: 0; gap: 0; height: 100svh; height: 100dvh; background: var(--bg-color); }
+  .dashboard-container { width: 100%; padding: 0; gap: 0; height: 100svh; height: 100dvh; background: var(--bg-color); }
   .dashboard-header { min-height: calc(58px + env(safe-area-inset-top)); height: calc(58px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 14px 0; border-radius: 0; flex-wrap: nowrap; gap: 10px; border-left: 0; border-right: 0; background: rgba(255,255,255,.96); }
   .header-left { gap: 10px; width: auto; min-width: 0; flex: 1; justify-content: flex-start; }
   .logo { gap: 8px; min-width: 0; }
