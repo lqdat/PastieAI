@@ -427,6 +427,28 @@ function parseUserAgent(ua) {
   return { browser, device };
 }
 
+function getClientIp(req) {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const ip = Array.isArray(forwardedFor) ? forwardedFor[0] : String(forwardedFor || req.socket.remoteAddress || '');
+  return ip.split(',')[0].trim().replace(/^::ffff:/, '');
+}
+
+async function findActiveSessionForClient(projectId, email, clientIp, browser, device) {
+  const result = await db.query(
+    `SELECT id FROM sessions
+     WHERE project_id = $1
+       AND LOWER(visitor_email) = LOWER($2)
+       AND status = 'active'
+       AND client_ip = $3
+       AND browser = $4
+       AND device = $5
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [projectId, email, clientIp, browser, device]
+  );
+  return result.rows[0] || null;
+}
+
 // 2. Verify OTP and Create/Activate Chat Session
 app.post('/api/otp/verify', async (req, res) => {
   const { email, code, name, projectId, language } = req.body;
@@ -464,6 +486,12 @@ app.post('/api/otp/verify', async (req, res) => {
     // Parse User-Agent
     const ua = req.headers['user-agent'] || '';
     const { browser, device } = parseUserAgent(ua);
+    const clientIp = getClientIp(req);
+
+    const existingSession = await findActiveSessionForClient(projectId, email, clientIp, browser, device);
+    if (existingSession) {
+      return res.json({ success: true, sessionId: existingSession.id, name: finalName, reused: true });
+    }
 
     // Auto-assignment algorithm (Least Active Load)
     let assignedAdminId = null;
@@ -495,9 +523,9 @@ app.post('/api/otp/verify', async (req, res) => {
     }
 
     await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, assigned_admin_id)
-       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8)`,
-      [sessionId, projectId, finalName, email, finalLang, browser, device, assignedAdminId]
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id)
+       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8, $9)`,
+      [sessionId, projectId, finalName, email, finalLang, browser, device, clientIp, assignedAdminId]
     );
 
     // Insert AI greeting message (sender='ai' — renders as a normal chat bubble, not a human agent, and is_human_agent_active check ignores it)
@@ -987,6 +1015,7 @@ app.post('/api/chats/session/anonymous', async (req, res) => {
   const sessionId = randomUUID();
   const ua = req.headers['user-agent'] || '';
   const { browser, device } = parseUserAgent(ua);
+  const clientIp = getClientIp(req);
 
   let assignedAdminId = null;
   try {
@@ -1007,9 +1036,9 @@ app.post('/api/chats/session/anonymous', async (req, res) => {
 
   try {
     await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, detected_language, is_verified, status, browser, device, assigned_admin_id)
-       VALUES ($1, $2, 'Khách ẩn danh', $3, FALSE, 'active', $4, $5, $6)`,
-      [sessionId, projectId, visitorLang, browser, device, assignedAdminId]
+      `INSERT INTO sessions (id, project_id, visitor_name, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id)
+       VALUES ($1, $2, 'Khách ẩn danh', $3, FALSE, 'active', $4, $5, $6, $7)`,
+      [sessionId, projectId, visitorLang, browser, device, clientIp, assignedAdminId]
     );
     res.json({ success: true, sessionId });
   } catch (error) {
@@ -1025,6 +1054,17 @@ app.post('/api/chats/session/identified', async (req, res) => {
   const sessionId = randomUUID();
   const ua = req.headers['user-agent'] || '';
   const { browser, device } = parseUserAgent(ua);
+  const clientIp = getClientIp(req);
+
+  try {
+    const existingSession = await findActiveSessionForClient(projectId, email, clientIp, browser, device);
+    if (existingSession) {
+      return res.json({ success: true, sessionId: existingSession.id, reused: true });
+    }
+  } catch (error) {
+    console.error('Identified session lookup error:', error);
+    return res.status(500).json({ error: 'Lỗi kiểm tra phiên chat.' });
+  }
 
   let assignedAdminId = null;
   try {
@@ -1045,9 +1085,9 @@ app.post('/api/chats/session/identified', async (req, res) => {
 
   try {
     await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, assigned_admin_id)
-       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8)`,
-      [sessionId, projectId, name || 'Khách', email, visitorLang, browser, device, assignedAdminId]
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id)
+       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8, $9)`,
+      [sessionId, projectId, name || 'Khách', email, visitorLang, browser, device, clientIp, assignedAdminId]
     );
     res.json({ success: true, sessionId });
   } catch (error) {
