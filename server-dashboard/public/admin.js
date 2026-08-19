@@ -468,6 +468,8 @@ function showLogin() {
 function hideLogin() {
     loginModal.classList.add('hide');
     mainDashboard.classList.remove('hide');
+    // Shortcut/PWA: mở console nghĩa là người dùng đã quay lại xử lý inbox.
+    if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(() => {});
 }
 
 async function handleLogin() {
@@ -519,6 +521,37 @@ function urlBase64ToUint8Array(base64String) {
     return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
 }
 
+function subscriptionUsesVapidKey(subscription, publicKey) {
+    const currentKey = subscription?.options?.applicationServerKey;
+    if (!currentKey || !publicKey) return false;
+    const expectedKey = urlBase64ToUint8Array(publicKey);
+    const actualKey = new Uint8Array(currentKey);
+    return actualKey.length === expectedKey.length && actualKey.every((value, index) => value === expectedKey[index]);
+}
+
+async function syncPushSubscription(config) {
+    let subscription = await pushRegistration.pushManager.getSubscription();
+    // Mỗi subscription được gắn với một VAPID public key. Khi thay key trên
+    // Railway, huỷ subscription cũ và tạo lại để tránh push im lặng thất bại.
+    if (subscription && !subscriptionUsesVapidKey(subscription, config.publicKey)) {
+        await subscription.unsubscribe();
+        subscription = null;
+    }
+    if (!subscription) {
+        subscription = await pushRegistration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(config.publicKey),
+        });
+    }
+    const saveResponse = await authFetch(`${API_BASE}/api/admin/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription }),
+    });
+    if (!saveResponse.ok) throw new Error('Không thể lưu thiết bị nhận thông báo.');
+    return subscription;
+}
+
 function setPushButtonState(state) {
     const label = document.getElementById('enable-push-label');
     const description = document.getElementById('enable-push-description');
@@ -544,7 +577,10 @@ async function setupPushNotifications() {
             pushPermissionModal?.classList.remove('hide');
             return false;
         }
-        const subscription = await pushRegistration.pushManager.getSubscription();
+        let subscription = await pushRegistration.pushManager.getSubscription();
+        if (Notification.permission === 'granted') {
+            subscription = await syncPushSubscription(config);
+        }
         setPushButtonState(Notification.permission === 'denied' ? 'blocked' : subscription ? 'enabled' : 'off');
         if (Notification.permission === 'granted' && subscription) return true;
         pushPermissionModal?.classList.remove('hide');
@@ -564,9 +600,7 @@ async function enablePushNotifications() {
     const configResponse = await authFetch(`${API_BASE}/api/admin/push/public-key`);
     const config = await configResponse.json();
     if (!configResponse.ok || !config.enabled || !config.publicKey) { setPushButtonState('unavailable'); throw new Error('Push chưa được cấu hình trên máy chủ.'); }
-    const subscription = await pushRegistration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(config.publicKey) });
-    const saveResponse = await authFetch(`${API_BASE}/api/admin/push/subscribe`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription }) });
-    if (!saveResponse.ok) throw new Error('Không thể lưu thiết bị nhận thông báo.');
+    await syncPushSubscription(config);
     setPushButtonState('enabled');
     return true;
 }

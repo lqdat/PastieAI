@@ -39,17 +39,27 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   console.warn('[Push] Web Push chưa bật: thiếu VAPID_PUBLIC_KEY hoặc VAPID_PRIVATE_KEY.');
 }
 
-async function notifyAgentTransfer(session, preview = '') {
+async function notifyChatRecipients(session, { title, preview = '', tag }) {
   if (!vapidConfigured || !session?.id || !session?.project_id) return;
   try {
     const subscriptions = await db.query(
       `SELECT ps.id, ps.endpoint, ps.p256dh, ps.auth
        FROM push_subscriptions ps JOIN admins a ON a.id = ps.admin_id
        WHERE a.is_active = TRUE AND a.role IN ('superadmin', 'project_admin', 'agent')
-         AND (a.role = 'superadmin' OR a.project_id = $1)`,
-      [session.project_id]
+         AND (
+           a.role = 'superadmin'
+           OR ($2::integer IS NOT NULL AND a.id = $2)
+           OR ($2::integer IS NULL AND a.project_id = $1)
+         )`,
+      [session.project_id, session.claimed_by_admin_id || null]
     );
-    const payload = JSON.stringify({ title: 'Khách cần nhân viên hỗ trợ', body: `${session.visitor_name || 'Khách hàng'}: ${(preview || 'Hệ thống đã chuyển cuộc trò chuyện cho Agent.').slice(0, 120)}`, sessionId: session.id, projectId: session.project_id, tag: `agent-transfer-${session.id}` });
+    const payload = JSON.stringify({
+      title,
+      body: `${session.visitor_name || 'Khách hàng'}: ${(preview || 'Có tin nhắn mới cần phản hồi.').slice(0, 120)}`,
+      sessionId: session.id,
+      projectId: session.project_id,
+      tag: `${tag}-${session.id}`,
+    });
     await Promise.all(subscriptions.rows.map(async (sub) => {
       try {
         await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload, { TTL: 120 });
@@ -59,6 +69,22 @@ async function notifyAgentTransfer(session, preview = '') {
       }
     }));
   } catch (error) { console.error('[Push] Không thể thông báo Agent:', error.message); }
+}
+
+function notifyAgentTransfer(session, preview = '') {
+  return notifyChatRecipients(session, {
+    title: 'Khách cần nhân viên hỗ trợ',
+    preview: preview || 'Hệ thống đã chuyển cuộc trò chuyện cho Agent.',
+    tag: 'agent-transfer',
+  });
+}
+
+function notifyAgentMessage(session, preview = '') {
+  return notifyChatRecipients(session, {
+    title: 'Tin nhắn mới từ khách',
+    preview,
+    tag: 'customer-message',
+  });
 }
 
 function isAiRateLimited(sessionId) {
@@ -730,6 +756,10 @@ app.post('/api/chats/message', async (req, res) => {
       return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
     }
 
+    // Push ưu tiên thời gian thực: gửi ngay khi khách vừa nhắn, không chờ
+    // Gemini dịch/soạn phản hồi. Chỉ subscription của tài khoản quản trị mới nhận.
+    if (sender === 'visitor') void notifyAgentMessage(sessionRes.rows[0], text);
+
     // Call Gemini to translate and detect language
     const { translatedText, detectedLang } = await gemini.translateText(text, targetLang);
 
@@ -824,7 +854,6 @@ app.post('/api/chats/message', async (req, res) => {
           [sessionId, transferMsg, visitorLang]
         );
         aiReplyMsg = aiMsgRes.rows[0];
-        void notifyAgentTransfer(sessionData, text);
       } else if (sessionData.requested_agent) {
         // Agent was requested — check if human has replied yet
         const agentRepliedCheck = await db.query(
@@ -877,7 +906,6 @@ app.post('/api/chats/message', async (req, res) => {
                 [sessionId, transferMsg, visitorLang]
               );
               aiReplyMsg = kwMsgRes.rows[0];
-              void notifyAgentTransfer(sessionData, text);
               console.log(`[LiveChat] Keyword "${triggered}" triggered agent transfer for session ${sessionId}`);
               return res.json({ success: true, message: msgRes.rows[0], aiReply: aiReplyMsg });
             }
@@ -927,7 +955,6 @@ app.post('/api/chats/message', async (req, res) => {
             finalAiReply = rawAiReply.replace('[TRANSFER]', '').trim();
             await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
             console.log(`[LiveChat] AI cannot answer → auto-flagged session ${sessionId} for agent transfer.`);
-            void notifyAgentTransfer(sessionData, text);
           }
 
           const aiMsgRes = await db.query(
@@ -1247,6 +1274,7 @@ app.post('/api/chats/session/request-agent-direct', async (req, res) => {
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3)`,
       [sessionId, waitMsgs[lang] || waitMsgs['vi'], lang]
     );
+    void notifyAgentTransfer(session, 'Khách yêu cầu gặp nhân viên hỗ trợ.');
     res.json({ success: true, sessionId });
   } catch (error) {
     console.error('Request agent (direct) error:', error);
@@ -1269,8 +1297,8 @@ app.post('/api/chats/session/request-agent', async (req, res) => {
 
     await db.query('DELETE FROM otps WHERE email = $1', [email]);
     const finalName = name || 'Khách hàng';
-    await db.query(
-      `UPDATE sessions SET visitor_email = $1, visitor_name = $2, is_verified = TRUE, requested_agent = TRUE WHERE id = $3`,
+    const updatedSession = await db.query(
+      `UPDATE sessions SET visitor_email = $1, visitor_name = $2, is_verified = TRUE, requested_agent = TRUE WHERE id = $3 RETURNING *`,
       [email, finalName, sessionId]
     );
     const lang = (await db.query('SELECT detected_language FROM sessions WHERE id = $1', [sessionId])).rows[0]?.detected_language || 'vi';
@@ -1279,6 +1307,7 @@ app.post('/api/chats/session/request-agent', async (req, res) => {
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3)`,
       [sessionId, waitMsgs[lang] || waitMsgs['vi'], lang]
     );
+    void notifyAgentTransfer(updatedSession.rows[0], 'Khách yêu cầu gặp nhân viên hỗ trợ.');
     res.json({ success: true, sessionId, name: finalName });
   } catch (error) {
     console.error('Request agent error:', error);
@@ -2806,6 +2835,9 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
     await saveVisitor();
     await db.query(`UPDATE sessions SET detected_language = $1 WHERE id = $2`, [finalLang, sessionId]);
 
+    // Kênh Meta đã hiển thị trên dashboard: báo ngay khi khách nhắn tin mới.
+    if (session?.show_in_dashboard === true) void notifyAgentMessage(session, text);
+
     // ── DETECT: khách muốn gặp nhân viên ────────────────────────────────
     const AGENT_KEYWORDS = /\b(cskh|gặp cskh|gap cskh|chăm sóc|cham soc|nhân viên|nhan vien|agent|support|tư vấn|tu van|gặp người|gap nguoi|người thật|nguoi that|con người|con nguoi|speak to|talk to|human|help me|trực tiếp|truc tiep|kết nối|ket noi|оператор|поддержка|помогите|помощь|сотрудник|консультант|связаться|человек|живой|клиентская|客服|人工|转人工|帮助|联系|工作人员|真人|支持)\b/i;
     const wantsAgent = AGENT_KEYWORDS.test(text);
@@ -2934,7 +2966,7 @@ async function syncPancakeConversation(pageId, conv, token) {
       INSERT INTO sessions (id, project_id, visitor_name, detected_language, status, platform, platform_sender_id, is_verified, show_in_dashboard)
       VALUES ($1, $2, $3, null, 'active', $4, $5, true, true)
     `, [sessionId, projectId, customerName, platform, conversationId]);
-    session = { id: sessionId, show_in_dashboard: true, detected_language: null };
+    session = { id: sessionId, project_id: projectId, show_in_dashboard: true, detected_language: null };
     console.log(`[Pancake] New session created: ${sessionId} for conversation ${conversationId}`);
   } else {
     sessionId = session.id;
@@ -2987,6 +3019,8 @@ async function syncPancakeConversation(pageId, conv, token) {
       INSERT INTO messages (session_id, sender, original_text, translated_text, language)
       VALUES ($1, $2, $3, $3, 'vi')
     `, [sessionId, sender, msg.message]);
+
+    if (sender === 'visitor') void notifyAgentMessage(session, msg.message);
 
     // Log new messages
     _pancakeLog.unshift({ time: new Date().toISOString(), session: sessionId, sender, text: msg.message });
