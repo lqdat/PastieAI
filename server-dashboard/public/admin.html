@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r9">
+    <link rel="stylesheet" href="admin.css?v=r11">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
 </head>
@@ -73,11 +73,15 @@
                         <i class="ri-arrow-down-s-line chevron-icon"></i>
                     </button>
                     <div class="settings-dropdown-menu hide" id="settings-dropdown-menu">
+                        <div class="sdm-menu-head">
+                            <span>TRUNG TÂM QUẢN TRỊ</span>
+                            <strong>Thiết lập workspace</strong>
+                        </div>
                         <div class="sdm-group">
-                            <div class="sdm-label">AI & Kênh</div>
+                            <div class="sdm-label">Kênh & Công cụ</div>
                             <button id="knowledge-settings-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(99,102,241,0.15);color:#818cf8;"><i class="ri-brain-line"></i></span>
-                                <div class="sdm-text"><span>AI Knowledge Base</span><small>Train & quản lý tri thức</small></div>
+                                <div class="sdm-text"><span>Knowledge Base</span><small>Huấn luyện & quản lý tri thức</small></div>
                             </button>
                             <button id="keyword-settings-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(239,68,68,0.12);color:#f87171;"><i class="ri-user-voice-line"></i></span>
@@ -113,7 +117,7 @@
                             </button>
                             <button id="export-jsonl-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(139,92,246,0.12);color:#a78bfa;"><i class="ri-braces-line"></i></span>
-                                <div class="sdm-text"><span data-i18n="exportJsonl">Xuất JSONL</span><small>AI Training data</small></div>
+                                <div class="sdm-text"><span data-i18n="exportJsonl">Xuất JSONL</span><small>Dữ liệu huấn luyện</small></div>
                             </button>
                         </div>
                     </div>
@@ -158,7 +162,7 @@
                 <div class="push-modal-visual"><i class="ri-notification-3-fill"></i><span class="push-modal-spark spark-one">✦</span><span class="push-modal-spark spark-two">✦</span></div>
                 <div class="push-modal-project"><i class="ri-shield-check-line"></i> PASTIE AI CONSOLE</div>
                 <h2>Đừng bỏ lỡ khách hàng</h2>
-                <p>Bật thông báo để nhận tin ngay khi AI chuyển cuộc trò chuyện cần Agent hỗ trợ.</p>
+                <p>Bật thông báo để nhận tin ngay khi hệ thống chuyển cuộc trò chuyện cần Agent hỗ trợ.</p>
                 <div class="push-modal-benefits">
                     <div><i class="ri-flashlight-fill"></i><span>Nhận ngay cả khi đã đóng dashboard</span></div>
                     <div><i class="ri-smartphone-line"></i><span>Hoạt động trên shortcut điện thoại</span></div>
@@ -234,7 +238,7 @@
                 <div class="chat-input-area hide" id="chat-input-container">
                     <div class="translation-status-bar">
                         <i class="ri-sparkling-fill"></i>
-                        <span data-i18n="aiTranslationPrompt">AI sẽ tự động dịch tin nhắn của bạn sang ngôn ngữ của khách</span>
+                        <span data-i18n="aiTranslationPrompt">Tin nhắn của bạn sẽ được tự động dịch sang ngôn ngữ của khách</span>
                     </div>
                     <form id="chat-form" class="chat-form">
                         <input type="text" id="chat-input" placeholder="Gõ câu trả lời bằng tiếng Việt tại đây..." data-i18n-placeholder="chatInputPlaceholder" autocomplete="off">
@@ -250,11 +254,25 @@
                     <button id="details-close-btn" class="icon-btn tablet-only" title="Đóng"><i class="ri-close-line"></i></button>
                 </div>
                 <div class="details-body">
+                    <div class="detail-card detail-user-card">
+                        <label>Người dùng</label>
+                        <div class="detail-user-row">
+                            <div class="detail-user-avatar" id="detail-user-avatar">K</div>
+                            <div class="detail-user-meta">
+                                <strong id="detail-user-name">Khách hàng</strong>
+                                <span id="detail-user-email">Chưa có email</span>
+                                <span id="detail-user-phone" class="hide"></span>
+                            </div>
+                        </div>
+                    </div>
                     <div class="detail-card">
                         <label data-i18n="projectLabel">Dự án / Trang web</label>
                         <div class="project-badge-container" style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); font-size: 13px; font-weight: 600; color: var(--accent-color);">
                             <i class="ri-global-line"></i>
-                            <span id="detail-project-id">-</span>
+                            <div style="display:grid;gap:2px;min-width:0;">
+                                <span id="detail-project-id">-</span>
+                                <a id="detail-project-url" class="detail-project-url" href="#" target="_blank" rel="noopener noreferrer">—</a>
+                            </div>
                         </div>
                     </div>
                     <div class="detail-card">
@@ -281,14 +299,14 @@
                         </select>
                     </div>
                     <div class="detail-card">
-                        <label data-i18n="intentTagsLabel">AI Phân tích ý định (Intent Tags)</label>
+                        <label data-i18n="intentTagsLabel">Ý định cuộc trò chuyện</label>
                         <div class="tags-container" id="detail-tags">
                             <!-- Tags will go here -->
                         </div>
                     </div>
                     <div class="detail-card">
-                        <label data-i18n="aiSummaryLabel">AI Tóm tắt nội dung cuộc chat</label>
-                        <p class="summary-text" id="detail-summary" data-i18n="closeChatToAnalyze">Nhấn nút "Đóng cuộc chat" để AI phân tích và tóm tắt cuộc trò chuyện này.</p>
+                        <label data-i18n="aiSummaryLabel">Tóm tắt nội dung cuộc chat</label>
+                        <p class="summary-text" id="detail-summary" data-i18n="closeChatToAnalyze">Nhấn nút "Đóng cuộc chat" để phân tích và tóm tắt cuộc trò chuyện này.</p>
                     </div>
                 </div>
             </aside>
@@ -298,7 +316,7 @@
         </div>
     </div>
 
-    <!-- AI Knowledge Base Modal -->
+    <!-- Knowledge Base Modal -->
     <!-- Transfer Keywords Modal -->
     <div id="keyword-modal" class="modal-overlay hide">
         <div class="login-box glass-panel" style="max-width: 560px; width: 90%; max-height: 88vh; overflow-y: auto;">
@@ -307,7 +325,7 @@
                     <div style="width:40px;height:40px;background:rgba(239,68,68,0.12);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#f87171;font-size:20px;flex-shrink:0;"><i class="ri-user-voice-line"></i></div>
                     <div>
                         <h2 style="font-size:17px;margin:0 0 2px;font-weight:700;">Từ khóa chuyển Agent</h2>
-                        <p style="font-size:12px;color:var(--text-secondary);margin:0;">Khi khách nhắn những từ này → AI tự động chuyển sang nhân viên</p>
+                        <p style="font-size:12px;color:var(--text-secondary);margin:0;">Khi khách nhắn những từ này → hệ thống tự động chuyển sang nhân viên</p>
                     </div>
                 </div>
                 <button id="keyword-modal-close-btn" style="background:transparent;border:none;color:var(--text-secondary);cursor:pointer;font-size:20px;padding:4px;"><i class="ri-close-line"></i></button>
@@ -357,8 +375,8 @@
         <div class="login-box glass-panel" style="max-width: 650px; width: 90%; max-height: 85vh; overflow-y: auto;">
             <div class="brand-header" style="margin-bottom: 20px;">
                 <div class="brand-logo" style="background: rgba(99, 102, 241, 0.15); color: var(--accent-color); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto; font-size: 28px;"><i class="ri-brain-line"></i></div>
-                <h2 style="font-size: 22px; margin-bottom: 6px;">AI Knowledge Base Settings</h2>
-                <p style="font-size: 13px; color: var(--text-secondary);">Đồng bộ & huấn luyện tự động Gemini AI Chatbot dựa trên dữ liệu Landing Page</p>
+                <h2 style="font-size: 22px; margin-bottom: 6px;">Knowledge Base Settings</h2>
+                <p style="font-size: 13px; color: var(--text-secondary);">Đồng bộ & huấn luyện tự động Gemini Chatbot dựa trên dữ liệu Landing Page</p>
             </div>
             
             <!-- Automated crawling block -->
@@ -541,6 +559,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r13"></script>
+    <script src="admin.js?v=r17"></script>
 </body>
 </html>

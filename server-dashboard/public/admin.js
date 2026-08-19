@@ -9,7 +9,7 @@ const TRANSLATIONS = {
         headerTitle: "Pastie AI Console",
         allProjects: "Tất cả dự án",
         exportCsv: "Xuất CSV (Sales Script)",
-        exportJsonl: "Xuất JSONL (AI Train)",
+        exportJsonl: "Xuất JSONL (Huấn luyện)",
         logoutTitle: "Đăng xuất",
         chatListTitle: "Hội thoại chat",
         refreshTitle: "Tải lại",
@@ -18,14 +18,14 @@ const TRANSLATIONS = {
         selectChatPrompt: "Vui lòng chọn cuộc hội thoại từ danh sách bên trái",
         closeChat: "Đóng cuộc chat",
         welcomePrompt: "Chọn một cuộc trò chuyện để bắt đầu tương tác & dịch thuật tự động.",
-        aiTranslationPrompt: "AI sẽ tự động dịch tin nhắn của bạn sang ngôn ngữ của khách",
+        aiTranslationPrompt: "Tin nhắn của bạn sẽ được tự động dịch sang ngôn ngữ của khách",
         chatInputPlaceholder: "Gõ câu trả lời tại đây...",
         detailsTitle: "Thông tin chi tiết",
         detectedLangLabel: "Ngôn ngữ phát hiện",
         notDetected: "Chưa phát hiện",
-        intentTagsLabel: "AI Phân tích ý định (Intent Tags)",
-        aiSummaryLabel: "AI Tóm tắt nội dung cuộc chat",
-        closeChatToAnalyze: "Nhấn nút \"Đóng cuộc chat\" để AI phân tích và tóm tắt cuộc trò chuyện này.",
+        intentTagsLabel: "Ý định cuộc trò chuyện",
+        aiSummaryLabel: "Tóm tắt nội dung cuộc chat",
+        closeChatToAnalyze: "Nhấn nút \"Đóng cuộc chat\" để phân tích và tóm tắt cuộc trò chuyện này.",
         projectLabel: "Dự án / Trang web",
         clientInfoLabel: "Trình duyệt & Thiết bị",
         
@@ -35,9 +35,9 @@ const TRANSLATIONS = {
         noEmail: "Không có email",
         emptyConversations: "Không tìm thấy cuộc hội thoại nào.",
         emptyChatHistory: "Mạch hội thoại bắt đầu. Chưa có tin nhắn nào.",
-        translatingWithAI: "Đang dịch thuật bằng AI...",
+        translatingWithAI: "Đang dịch thuật...",
         sentJustNow: "Gửi lúc này",
-        closeConfirm: "Bạn có chắc chắn muốn đóng cuộc trò chuyện này? AI sẽ tự động phân tích và tóm tắt.",
+        closeConfirm: "Bạn có chắc chắn muốn đóng cuộc trò chuyện này? Hệ thống sẽ tự động phân tích và tóm tắt.",
         closingStatus: "Đang phân tích...",
         unclassified: "Chưa phân loại",
         connecting: "Đang kết nối...",
@@ -47,7 +47,7 @@ const TRANSLATIONS = {
         loadOlder: "Xem tin nhắn cũ hơn",
         loadingMore: "Đang tải...",
         labelOriginal: "BẢN GỐC:",
-        labelAiTranslation: "AI DỊCH:",
+        labelAiTranslation: "BẢN DỊCH:",
         deleteChat: "Xóa cuộc chat",
         deleteConfirm: "Bạn có chắc chắn muốn XÓA VĨNH VIỄN cuộc trò chuyện này cùng toàn bộ tin nhắn lịch sử? Thao tác này không thể hoàn tác.",
         deleteSuccess: "Đã xóa cuộc trò chuyện thành công.",
@@ -62,7 +62,7 @@ const TRANSLATIONS = {
         headerTitle: "Pastie AI Console",
         allProjects: "All Projects",
         exportCsv: "Export CSV (Sales Script)",
-        exportJsonl: "Export JSONL (AI Train)",
+        exportJsonl: "Export JSONL (Training)",
         logoutTitle: "Logout",
         chatListTitle: "Chat Conversations",
         refreshTitle: "Refresh",
@@ -71,13 +71,13 @@ const TRANSLATIONS = {
         selectChatPrompt: "Please select a conversation from the list on the left",
         closeChat: "Close chat",
         welcomePrompt: "Select a conversation to start interaction & auto translation.",
-        aiTranslationPrompt: "AI will automatically translate your message to the visitor's language",
+        aiTranslationPrompt: "Your message will be automatically translated to the visitor's language",
         chatInputPlaceholder: "Type your reply here...",
         detailsTitle: "Details",
         detectedLangLabel: "Detected language",
         notDetected: "Not detected",
-        intentTagsLabel: "AI Intent Analysis (Intent Tags)",
-        aiSummaryLabel: "AI Chat Summary",
+        intentTagsLabel: "Conversation intent",
+        aiSummaryLabel: "Chat summary",
         closeChatToAnalyze: "Click \"Close chat\" to analyze and summarize this conversation.",
         projectLabel: "Project / Website",
         clientInfoLabel: "Browser & Device",
@@ -88,9 +88,9 @@ const TRANSLATIONS = {
         noEmail: "No email",
         emptyConversations: "No conversations found.",
         emptyChatHistory: "Conversation started. No messages yet.",
-        translatingWithAI: "Translating with AI...",
+        translatingWithAI: "Translating...",
         sentJustNow: "Sent just now",
-        closeConfirm: "Are you sure you want to close this conversation? AI will automatically analyze and summarize.",
+        closeConfirm: "Are you sure you want to close this conversation? The system will automatically analyze and summarize.",
         closingStatus: "Analyzing...",
         unclassified: "Unclassified",
         connecting: "Connecting...",
@@ -100,7 +100,7 @@ const TRANSLATIONS = {
         loadOlder: "Load older messages",
         loadingMore: "Loading...",
         labelOriginal: "ORIGINAL:",
-        labelAiTranslation: "AI TRANSLATION:",
+        labelAiTranslation: "TRANSLATION:",
         deleteChat: "Delete chat",
         deleteConfirm: "Are you sure you want to PERMANENTLY DELETE this conversation along with all messages? This action cannot be undone.",
         deleteSuccess: "Conversation deleted successfully.",
@@ -115,7 +115,7 @@ const TRANSLATIONS = {
         headerTitle: "Консоль Pastie AI",
         allProjects: "Все проекты",
         exportCsv: "Экспорт CSV (Скрипты продаж)",
-        exportJsonl: "Экспорт JSONL (Обучение ИИ)",
+        exportJsonl: "Экспорт JSONL (Обучение)",
         logoutTitle: "Выйти",
         chatListTitle: "Диалоги",
         refreshTitle: "Обновить",
@@ -124,14 +124,14 @@ const TRANSLATIONS = {
         selectChatPrompt: "Пожалуйста, выберите диалог из списка слева",
         closeChat: "Закрыть чат",
         welcomePrompt: "Выберите диалог для начала общения и автоперевода.",
-        aiTranslationPrompt: "ИИ автоматически переведет ваше сообщение на язык посетителя",
+        aiTranslationPrompt: "Ваше сообщение будет автоматически переведено на язык посетителя",
         chatInputPlaceholder: "Введите ваш ответ здесь...",
         detailsTitle: "Детали",
         detectedLangLabel: "Обнаруженный язык",
         notDetected: "Не определен",
-        intentTagsLabel: "Анализ намерений ИИ (Intent Tags)",
-        aiSummaryLabel: "Сводка диалога от ИИ",
-        closeChatToAnalyze: "Нажмите \"Закрыть чат\", чтобы ИИ проанализировал и сделал резюме диалога.",
+        intentTagsLabel: "Намерение диалога",
+        aiSummaryLabel: "Сводка диалога",
+        closeChatToAnalyze: "Нажмите \"Закрыть чат\", чтобы проанализировать и сделать резюме диалога.",
         projectLabel: "Проект / Сайт",
         clientInfoLabel: "Браузер и устройство",
 
@@ -141,9 +141,9 @@ const TRANSLATIONS = {
         noEmail: "Нет email",
         emptyConversations: "Диалоги не найдены.",
         emptyChatHistory: "Диалог начат. Сообщений пока нет.",
-        translatingWithAI: "Перевод с помощью ИИ...",
+        translatingWithAI: "Перевод...",
         sentJustNow: "Отправлено только что",
-        closeConfirm: "Вы уверены, что хотите закрыть этот диалог? ИИ автоматически проанализирует и составит сводку.",
+        closeConfirm: "Вы уверены, что хотите закрыть этот диалог? Система автоматически проанализирует и составит сводку.",
         closingStatus: "Анализ...",
         unclassified: "Не классифицировано",
         connecting: "Подключение...",
@@ -153,7 +153,7 @@ const TRANSLATIONS = {
         loadOlder: "Загрузить старые сообщения",
         loadingMore: "Загрузка...",
         labelOriginal: "ОРИГИНАЛ:",
-        labelAiTranslation: "ИИ-ПЕРЕВОД:",
+        labelAiTranslation: "ПЕРЕВОД:",
         deleteChat: "Удалить чат",
         deleteConfirm: "Вы уверены, что хотите НАВСЕГДА УДАЛИТЬ этот диалог и всю историю сообщений? Это действие нельзя отменить.",
         deleteSuccess: "Диалог успешно удален.",
@@ -168,7 +168,7 @@ const TRANSLATIONS = {
         headerTitle: "Pastie AI 控制台",
         allProjects: "所有项目",
         exportCsv: "导出 CSV (销售话术)",
-        exportJsonl: "导出 JSONL (AI 训练)",
+        exportJsonl: "导出 JSONL (训练数据)",
         logoutTitle: "注销登录",
         chatListTitle: "对话列表",
         refreshTitle: "刷新",
@@ -177,14 +177,14 @@ const TRANSLATIONS = {
         selectChatPrompt: "请从左侧列表选择一个会话",
         closeChat: "结束会话",
         welcomePrompt: "选择一个会话以开始互动与自动翻译。",
-        aiTranslationPrompt: "AI 将自动把您的消息翻译成访问者的语言",
+        aiTranslationPrompt: "您的消息将自动翻译成访问者的语言",
         chatInputPlaceholder: "在此输入您的回复...",
         detailsTitle: "详细信息",
         detectedLangLabel: "检测到的语言",
         notDetected: "未检测到",
-        intentTagsLabel: "AI 意图分析 (意图标签)",
-        aiSummaryLabel: "AI 对话摘要",
-        closeChatToAnalyze: "点击 \"结束会话\" 让 AI 分析并总结此次对话。",
+        intentTagsLabel: "对话意图",
+        aiSummaryLabel: "对话摘要",
+        closeChatToAnalyze: "点击 \"结束会话\" 以分析并总结此次对话。",
         projectLabel: "项目 / 网站",
         clientInfoLabel: "浏览器与设备",
 
@@ -194,9 +194,9 @@ const TRANSLATIONS = {
         noEmail: "无邮箱",
         emptyConversations: "未找到任何会话。",
         emptyChatHistory: "会话开始。暂无消息。",
-        translatingWithAI: "正在通过 AI 翻译...",
+        translatingWithAI: "正在翻译...",
         sentJustNow: "刚刚发送",
-        closeConfirm: "您确定要结束此会话吗？AI 将自动进行分析和总结。",
+        closeConfirm: "您确定要结束此会话吗？系统将自动进行分析和总结。",
         closingStatus: "正在分析...",
         unclassified: "未分类",
         connecting: "正在连接...",
@@ -206,7 +206,7 @@ const TRANSLATIONS = {
         loadOlder: "加载历史消息",
         loadingMore: "正在加载...",
         labelOriginal: "原文:",
-        labelAiTranslation: "AI 翻译:",
+        labelAiTranslation: "翻译:",
         deleteChat: "删除会话",
         deleteConfirm: "您确定要永久删除此会话以及所有历史消息吗？此操作无法撤销。",
         deleteSuccess: "会话已成功删除。",
@@ -735,6 +735,18 @@ function updateProjectFilterDropdown(sessions) {
 
 // ===== Registry dự án (multi-project) =====
 let PROJECTS = [];
+const PROJECT_WEBSITES = {
+    dealphuquoc: 'https://dealphuquoc.com',
+    'pastie-landingpage': 'https://pastie-landingpage.vercel.app'
+};
+
+function getProjectDetails(projectId) {
+    const project = PROJECTS.find(p => p.id === projectId);
+    return {
+        name: project?.name || projectId || 'Chưa xác định',
+        url: project?.website_url || PROJECT_WEBSITES[projectId] || ''
+    };
+}
 async function loadProjects() {
     try {
         const r = await authFetch(`${API_BASE}/api/admin/projects`);
@@ -1077,8 +1089,26 @@ async function selectSession(sessionId) {
 
     // Set project ID in details sidebar
     const detailProjectId = document.getElementById('detail-project-id');
-    if (detailProjectId) {
-        detailProjectId.textContent = session.project_id || '-';
+    const detailProjectUrl = document.getElementById('detail-project-url');
+    const projectDetails = getProjectDetails(session.project_id);
+    if (detailProjectId) detailProjectId.textContent = projectDetails.name;
+    if (detailProjectUrl) {
+        detailProjectUrl.textContent = projectDetails.url ? projectDetails.url.replace(/^https?:\/\//, '') : 'Chưa có link website';
+        detailProjectUrl.href = projectDetails.url || '#';
+        detailProjectUrl.style.pointerEvents = projectDetails.url ? 'auto' : 'none';
+    }
+
+    const visitorName = session.visitor_name || 'Khách hàng';
+    const detailUserName = document.getElementById('detail-user-name');
+    const detailUserEmail = document.getElementById('detail-user-email');
+    const detailUserPhone = document.getElementById('detail-user-phone');
+    const detailUserAvatar = document.getElementById('detail-user-avatar');
+    if (detailUserName) detailUserName.textContent = visitorName;
+    if (detailUserAvatar) detailUserAvatar.textContent = visitorName.trim().charAt(0).toUpperCase() || 'K';
+    if (detailUserEmail) detailUserEmail.textContent = session.visitor_email || 'Chưa có email';
+    if (detailUserPhone) {
+        detailUserPhone.textContent = session.visitor_phone || '';
+        detailUserPhone.classList.toggle('hide', !session.visitor_phone);
     }
 
     // Set browser and device details in details sidebar
@@ -1129,7 +1159,7 @@ async function selectSession(sessionId) {
     chatMessagesContainer.innerHTML = `
         <div class="chat-loading-state" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 15px; color: var(--text-secondary);">
             <div class="spinner-glow" style="width: 40px; height: 40px; border: 3px solid rgba(255, 255, 255, 0.05); border-top-color: var(--accent-color); border-radius: 50%; animation: spin 1s linear infinite; box-shadow: 0 0 15px rgba(99, 102, 241, 0.2);"></div>
-            <span style="font-size: 13.5px; font-weight: 500; letter-spacing: 0.3px; color: var(--text-muted);">${dict.translatingWithAI || 'Đang dịch thuật bằng AI...'}</span>
+            <span style="font-size: 13.5px; font-weight: 500; letter-spacing: 0.3px; color: var(--text-muted);">${dict.translatingWithAI || 'Đang dịch thuật...'}</span>
         </div>
     `;
 

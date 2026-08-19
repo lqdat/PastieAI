@@ -23,14 +23,24 @@ const AI_TEXT_MAX_LEN = 500;   // max chars sent to Gemini
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
+const rawVapidSubject = (process.env.VAPID_SUBJECT || 'mailto:support@pastie.vn').trim();
+const VAPID_SUBJECT = rawVapidSubject.includes('@') && !rawVapidSubject.startsWith('mailto:')
+  ? `mailto:${rawVapidSubject}`
+  : rawVapidSubject;
+let vapidConfigured = false;
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:support@pastie.vn', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  try {
+    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+    vapidConfigured = true;
+  } catch (error) {
+    console.error(`[Push] VAPID_SUBJECT không hợp lệ. Dùng mailto:email@domain.com hoặc URL HTTPS. ${error.message}`);
+  }
 } else {
   console.warn('[Push] Web Push chưa bật: thiếu VAPID_PUBLIC_KEY hoặc VAPID_PRIVATE_KEY.');
 }
 
 async function notifyAgentTransfer(session, preview = '') {
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !session?.id || !session?.project_id) return;
+  if (!vapidConfigured || !session?.id || !session?.project_id) return;
   try {
     const subscriptions = await db.query(
       `SELECT ps.id, ps.endpoint, ps.p256dh, ps.auth
@@ -39,7 +49,7 @@ async function notifyAgentTransfer(session, preview = '') {
          AND (a.role = 'superadmin' OR a.project_id = $1)`,
       [session.project_id]
     );
-    const payload = JSON.stringify({ title: 'Khách cần nhân viên hỗ trợ', body: `${session.visitor_name || 'Khách hàng'}: ${(preview || 'AI đã chuyển cuộc trò chuyện cho Agent.').slice(0, 120)}`, sessionId: session.id, projectId: session.project_id, tag: `agent-transfer-${session.id}` });
+    const payload = JSON.stringify({ title: 'Khách cần nhân viên hỗ trợ', body: `${session.visitor_name || 'Khách hàng'}: ${(preview || 'Hệ thống đã chuyển cuộc trò chuyện cho Agent.').slice(0, 120)}`, sessionId: session.id, projectId: session.project_id, tag: `agent-transfer-${session.id}` });
     await Promise.all(subscriptions.rows.map(async (sub) => {
       try {
         await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload, { TTL: 120 });
@@ -1593,7 +1603,7 @@ app.get('/api/admin/sso-login-url', (req, res) => {
 
 // ── Web Push cho dashboard/PWA ─────────────────────────────────────────────
 app.get('/api/admin/push/public-key', checkAdminAuth, (_req, res) => {
-  res.json({ enabled: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY), publicKey: VAPID_PUBLIC_KEY || null });
+  res.json({ enabled: vapidConfigured, publicKey: vapidConfigured ? VAPID_PUBLIC_KEY : null });
 });
 
 app.post('/api/admin/push/subscribe', checkAdminAuth, async (req, res) => {
