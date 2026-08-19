@@ -3,12 +3,35 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const apiKey = process.env.GEMINI_API_KEY;
+// The preferred model can be overridden from .env.  When it is unavailable,
+// try the newest compatible alternatives before using the non-Gemini fallback.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+const GEMINI_MODEL_FALLBACKS = (process.env.GEMINI_FALLBACK_MODELS || 'gemini-3.6-flash,gemini-3.5-flash,gemini-2.5-flash')
+  .split(',')
+  .map(model => model.trim())
+  .filter(Boolean);
+const GEMINI_MODELS = [...new Set([GEMINI_MODEL, ...GEMINI_MODEL_FALLBACKS])];
 let ai = null;
 
 if (apiKey) {
   ai = new GoogleGenerativeAI(apiKey);
 } else {
   console.error('WARNING: GEMINI_API_KEY is not defined. Gemini AI will be disabled.');
+}
+
+async function runGemini(request, modelOptions = {}) {
+  if (!ai) throw new Error('GEMINI_API_KEY not set');
+
+  let lastError;
+  for (const modelName of GEMINI_MODELS) {
+    try {
+      return await request(ai.getGenerativeModel({ model: modelName, ...modelOptions }), modelName);
+    } catch (error) {
+      lastError = error;
+      console.warn(`[Gemini] ${modelName} failed; trying next model:`, error.message);
+    }
+  }
+  throw lastError || new Error('No Gemini models are configured');
 }
 
 // ── Groq fallback ─────────────────────────────────────────────────────────────
@@ -48,7 +71,6 @@ async function translateText(text, targetLang) {
   // 1. Try Gemini
   if (ai) {
     try {
-      const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const targetLangName = { vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese' }[targetLang.toLowerCase()] || targetLang;
       const prompt = `You are a real-time chat translator. Translate the following text into ${targetLangName}.
 Input text: "${text}"
@@ -63,7 +85,7 @@ Requirements:
 }
 Do not wrap the JSON response in markdown code blocks. Return only raw JSON.`;
 
-      const result = await model.generateContent(prompt);
+      const result = await runGemini(model => model.generateContent(prompt));
       const responseText = result.response.text().trim();
       const cleanedJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanedJson);
@@ -124,8 +146,7 @@ Không bao quanh JSON bằng các khối mã markdown.`;
 
   if (ai) {
     try {
-      const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
-      const result = await model.generateContent(prompt);
+      const result = await runGemini(model => model.generateContent(prompt));
       return tryParse(result.response.text().trim());
     } catch (error) {
       console.warn('[Gemini] analyzeSession failed, trying Groq:', error.message);
@@ -176,10 +197,12 @@ async function generateChatbotResponse(systemInstruction, history, userMessage, 
   // 1. Try Gemini
   if (ai) {
     try {
-      const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash', systemInstruction });
       const contents = merged.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
       contents.push({ role: 'user', parts: [{ text: userMessage }] });
-      const chatResult = await model.generateContent({ contents });
+      const chatResult = await runGemini(
+        model => model.generateContent({ contents }),
+        { systemInstruction }
+      );
       return chatResult.response.text().trim();
     } catch (error) {
       console.warn('[Gemini] generateChatbotResponse failed, trying Groq:', error.message);
@@ -206,9 +229,8 @@ async function detectLanguage(text) {
   if (!text?.trim()) return 'en';
   try {
     if (ai) {
-      const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const prompt = `Detect the language of the following text. Return ONLY a 2-letter ISO 639-1 language code (e.g. "vi", "en", "ru", "zh"). No explanation, just the code.\n\nText: "${text.substring(0, 200)}"`;
-      const result = await model.generateContent(prompt);
+      const result = await runGemini(model => model.generateContent(prompt));
       const lang = result.response.text().trim().toLowerCase().replace(/[^a-z]/g, '');
       return SUPPORTED_LANGS.includes(lang) ? lang : 'en';
     }
