@@ -3400,12 +3400,42 @@ app.get('/api/admin/channels', checkAdminAuth, async (req, res) => {
         whatsapp_business_phone: row?.whatsapp_business_phone || process.env.WHATSAPP_BUSINESS_PHONE || '',
         whatsapp_access_token: row?.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN || '',
         meta_verify_token: row?.meta_verify_token || process.env.META_VERIFY_TOKEN || 'pastie_verify_token_2026',
-        webhook_url: webhookUrl
+        webhook_url: webhookUrl,
+        direct_link: (row?.whatsapp_business_phone || process.env.WHATSAPP_BUSINESS_PHONE) ? `https://wa.me/${(row?.whatsapp_business_phone || process.env.WHATSAPP_BUSINESS_PHONE).replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Xin chào! Tôi cần tư vấn thông tin dịch vụ.')}` : ''
       }
     });
   } catch (error) {
     console.error('Fetch channel configurations error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi tải cấu hình kênh.' });
+  }
+});
+
+// Public endpoint for Website Visitors & Chat Widget to get social channels (WhatsApp, etc.)
+app.get('/api/chats/channels', async (req, res) => {
+  const projectId = req.query.projectId || 'pastie-landingpage';
+  try {
+    const configRes = await db.query('SELECT * FROM channel_configs WHERE project_id = $1', [projectId]);
+    const row = configRes.rows[0];
+    const rawPhone = row?.whatsapp_business_phone || process.env.WHATSAPP_BUSINESS_PHONE || '';
+    const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
+
+    let whatsappData = null;
+    if (cleanPhone) {
+      whatsappData = {
+        phone: rawPhone,
+        cleanPhone: cleanPhone,
+        directLink: `https://wa.me/${cleanPhone}?text=${encodeURIComponent('Xin chào! Tôi cần tư vấn thông tin dịch vụ.')}`
+      };
+    }
+
+    res.json({
+      success: true,
+      projectId,
+      whatsapp: whatsappData
+    });
+  } catch (error) {
+    console.error('Fetch public channels error:', error);
+    res.status(500).json({ error: 'Lỗi khi tải thông tin kênh kết nối.' });
   }
 });
 

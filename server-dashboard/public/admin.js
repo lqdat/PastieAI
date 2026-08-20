@@ -2337,6 +2337,118 @@ if (keywordModalCloseBtn) {
     keywordModalCloseBtn.addEventListener('click', () => keywordModal && keywordModal.classList.add('hide'));
 }
 
+// --- WHATSAPP CHANNEL SETTINGS MODAL ---
+const channelModal = document.getElementById('channel-modal');
+const channelSettingsBtn = document.getElementById('channel-settings-btn');
+const channelCloseBtn = document.getElementById('channel-close-btn');
+const channelForm = document.getElementById('channel-config-form');
+const channelPhoneInput = document.getElementById('channel-whatsapp-phone');
+const channelPhoneIdInput = document.getElementById('channel-whatsapp-phone-id');
+const channelWabaIdInput = document.getElementById('channel-whatsapp-waba-id');
+const channelTokenInput = document.getElementById('channel-whatsapp-token');
+const channelWebhookUrlEl = document.getElementById('channel-webhook-url');
+const channelVerifyTokenEl = document.getElementById('channel-verify-token');
+const channelStatusMsg = document.getElementById('channel-status-msg');
+const channelDirectLinkInput = document.getElementById('channel-direct-link-input');
+const channelDirectLinkOpen = document.getElementById('channel-direct-link-open');
+const channelDirectLinkCopyBtn = document.getElementById('channel-direct-link-copy-btn');
+
+async function openChannelModal() {
+    closeSettingsDropdown();
+    if (channelModal) channelModal.classList.remove('hide');
+    const pid = currentProjectFilter || (CURRENT_ADMIN && CURRENT_ADMIN.project_id) || 'pastie-landingpage';
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/channels?projectId=${encodeURIComponent(pid)}`);
+        const data = await res.json();
+        if (data.success && data.config) {
+            if (channelPhoneIdInput) channelPhoneIdInput.value = data.config.whatsapp_phone_number_id || '';
+            if (channelWabaIdInput) channelWabaIdInput.value = data.config.whatsapp_waba_id || '';
+            if (channelPhoneInput) channelPhoneInput.value = data.config.whatsapp_business_phone || '';
+            if (channelTokenInput) channelTokenInput.value = data.config.whatsapp_access_token || '';
+            if (channelWebhookUrlEl) channelWebhookUrlEl.textContent = data.config.webhook_url || '';
+            if (channelVerifyTokenEl) channelVerifyTokenEl.textContent = data.config.meta_verify_token || 'pastie_verify_token_2026';
+            
+            const directLink = data.config.direct_link || (data.config.whatsapp_business_phone ? `https://wa.me/${data.config.whatsapp_business_phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Xin chào! Tôi cần tư vấn thông tin dịch vụ.')}` : '');
+            if (channelDirectLinkInput) channelDirectLinkInput.value = directLink;
+            if (channelDirectLinkOpen) channelDirectLinkOpen.href = directLink || '#';
+        }
+    } catch (e) {
+        console.error('Error loading channel config:', e);
+    }
+}
+
+if (channelSettingsBtn) {
+    channelSettingsBtn.addEventListener('click', openChannelModal);
+}
+if (channelCloseBtn) {
+    channelCloseBtn.addEventListener('click', () => channelModal && channelModal.classList.add('hide'));
+}
+if (channelDirectLinkCopyBtn) {
+    channelDirectLinkCopyBtn.addEventListener('click', () => {
+        const val = channelDirectLinkInput?.value;
+        if (!val) return;
+        navigator.clipboard.writeText(val);
+        alert('Đã sao chép Direct Link WhatsApp!');
+    });
+}
+if (channelForm) {
+    channelForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pid = currentProjectFilter || (CURRENT_ADMIN && CURRENT_ADMIN.project_id) || 'pastie-landingpage';
+        const saveBtn = document.getElementById('channel-save-btn');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang lưu...';
+        }
+        try {
+            const res = await authFetch(`${API_BASE}/api/admin/channels`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId: pid,
+                    whatsappPhoneNumberId: channelPhoneIdInput?.value,
+                    whatsappWabaId: channelWabaIdInput?.value,
+                    whatsappBusinessPhone: channelPhoneInput?.value,
+                    whatsappAccessToken: channelTokenInput?.value,
+                    metaVerifyToken: channelVerifyTokenEl?.textContent
+                })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                if (channelStatusMsg) {
+                    channelStatusMsg.style.display = 'block';
+                    channelStatusMsg.style.background = 'rgba(16, 185, 129, 0.15)';
+                    channelStatusMsg.style.color = '#34d399';
+                    channelStatusMsg.innerHTML = '<i class="ri-checkbox-circle-fill"></i> Đã lưu cấu hình WhatsApp thành công!';
+                }
+                const cleanPhone = (channelPhoneInput?.value || '').replace(/[^0-9]/g, '');
+                const directLink = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent('Xin chào! Tôi cần tư vấn thông tin dịch vụ.')}` : '';
+                if (channelDirectLinkInput) channelDirectLinkInput.value = directLink;
+                if (channelDirectLinkOpen) channelDirectLinkOpen.href = directLink || '#';
+            } else {
+                if (channelStatusMsg) {
+                    channelStatusMsg.style.display = 'block';
+                    channelStatusMsg.style.background = 'rgba(239, 68, 68, 0.15)';
+                    channelStatusMsg.style.color = '#f87171';
+                    channelStatusMsg.innerHTML = `<i class="ri-error-warning-fill"></i> ${data.error || 'Lỗi lưu cấu hình'}`;
+                }
+            }
+        } catch (err) {
+            if (channelStatusMsg) {
+                channelStatusMsg.style.display = 'block';
+                channelStatusMsg.style.background = 'rgba(239, 68, 68, 0.15)';
+                channelStatusMsg.style.color = '#f87171';
+                channelStatusMsg.innerHTML = '<i class="ri-error-warning-fill"></i> Lỗi kết nối mạng.';
+            }
+        } finally {
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="ri-save-line"></i> Lưu cấu hình WhatsApp';
+            }
+        }
+    });
+}
+
 // --- CHAT HISTORY SYNTHESIS ---
 const synthesisRunBtn = document.getElementById('synthesis-run-btn');
 const synthesisStatus = document.getElementById('synthesis-status');
