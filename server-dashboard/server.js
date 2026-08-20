@@ -13,6 +13,7 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 
 // ── Anti-spam: rate limit AI calls per session ────────────────────────────────
@@ -272,7 +273,10 @@ app.get('/admin', (_req, res) => {
 });
 
 
-// Upgraded Multi-Admin Session-based Auth Middleware
+const ADMIN_SESSION_HOURS = 8;
+const ADMIN_SESSION_MS = ADMIN_SESSION_HOURS * 3600000;
+
+// Upgraded Multi-Admin Session-based Auth Middleware (hiệu lực 8 giờ + trượt 8 giờ)
 async function checkAdminAuth(req, res, next) {
   let token = '';
   const authHeader = req.headers['authorization'];
@@ -306,6 +310,13 @@ async function checkAdminAuth(req, res, next) {
     if (new Date() > new Date(adminSession.expires_at)) {
       await db.query('DELETE FROM admin_sessions WHERE token = $1', [token]);
       return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    }
+
+    // Gia hạn kiểu trượt: gia hạn thêm 8 giờ nếu còn hoạt động (cập nhật tối đa 1 lần/giờ)
+    const currentExpires = new Date(adminSession.expires_at).getTime();
+    if (currentExpires - Date.now() < (ADMIN_SESSION_HOURS - 1) * 3600000) {
+      const newExpiresAt = new Date(Date.now() + ADMIN_SESSION_MS);
+      db.query('UPDATE admin_sessions SET expires_at = $1 WHERE token = $2', [newExpiresAt, token]).catch(() => {});
     }
 
     // Check active status
@@ -345,12 +356,19 @@ async function getAdminFromToken(req) {
   const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : req.query.token;
   if (!token) return null;
   const result = await db.query(
-    `SELECT a.id, a.full_name, a.role, a.project_id, a.is_active
+    `SELECT a.id, a.full_name, a.role, a.project_id, a.is_active, s.expires_at
      FROM admin_sessions s JOIN admins a ON a.id = s.admin_id
      WHERE s.token = $1 AND s.expires_at > NOW()`,
     [token]
   );
-  return result.rows[0] || null;
+  if (!result.rows[0]) return null;
+  const admin = result.rows[0];
+  const currentExpires = new Date(admin.expires_at).getTime();
+  if (currentExpires - Date.now() < (ADMIN_SESSION_HOURS - 1) * 3600000) {
+    const newExpiresAt = new Date(Date.now() + ADMIN_SESSION_MS);
+    db.query('UPDATE admin_sessions SET expires_at = $1 WHERE token = $2', [newExpiresAt, token]).catch(() => {});
+  }
+  return admin;
 }
 
 // Middleware to disable response caching for all API endpoints
@@ -1524,9 +1542,9 @@ app.post('/api/admin/login', async (req, res) => {
       return res.status(401).json({ error: 'Tên đăng nhập hoặc mật khẩu không chính xác.' });
     }
 
-    // Create session token
+    // Create session token (8 hours)
     const token = randomUUID();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const expiresAt = new Date(Date.now() + ADMIN_SESSION_MS);
 
     await db.query(
       'INSERT INTO admin_sessions (token, admin_id, expires_at) VALUES ($1, $2, $3)',
@@ -1559,17 +1577,36 @@ app.post('/api/admin/sso', async (req, res) => {
   const secret = process.env.CHAT_SSO_SECRET;
   if (!secret) return res.status(500).json({ error: 'SSO chưa được cấu hình (thiếu CHAT_SSO_SECRET).' });
   const { token } = req.body || {};
-  const [body, sig] = String(token || '').split('.');
-  if (!body || !sig) return res.status(400).json({ error: 'Token SSO không hợp lệ.' });
+  if (!token) return res.status(400).json({ error: 'Thiếu token SSO.' });
+
+  const rawToken = String(token).trim();
+  const [rawBody, rawSig] = rawToken.split('.');
+  if (!rawBody || !rawSig) return res.status(400).json({ error: 'Token SSO không đúng định dạng (thiếu phần thân hoặc chữ ký).' });
+
+  // Chuẩn hoá an toàn base64 / base64url
+  const body = rawBody.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  const sig = rawSig.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 
   const expected = crypto.createHmac('sha256', secret).update(body).digest('base64url');
   // so sánh an toàn theo thời gian
   const ok = sig.length === expected.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
-  if (!ok) return res.status(401).json({ error: 'Chữ ký SSO không hợp lệ.' });
+  if (!ok) {
+    console.warn('[SSO] Chữ ký HMAC không khớp.');
+    return res.status(401).json({ error: 'Chữ ký SSO không hợp lệ.' });
+  }
 
   let payload;
-  try { payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); } catch { return res.status(400).json({ error: 'Payload SSO lỗi.' }); }
-  if (!payload.exp || Date.now() > Number(payload.exp)) return res.status(401).json({ error: 'Token SSO đã hết hạn.' });
+  try {
+    payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+  } catch (parseErr) {
+    console.warn('[SSO] Lỗi parse payload JSON:', parseErr.message);
+    return res.status(400).json({ error: 'Payload SSO không đúng định dạng JSON.' });
+  }
+
+  if (!payload.exp || Date.now() > Number(payload.exp)) {
+    console.warn('[SSO] Token đã hết hạn:', payload.exp, 'Hiện tại:', Date.now());
+    return res.status(401).json({ error: 'Token SSO đã hết hạn.' });
+  }
   if (!payload.email) return res.status(400).json({ error: 'Thiếu email trong token SSO.' });
 
   const project = payload.project || 'dealphuquoc';
@@ -1598,9 +1635,10 @@ app.post('/api/admin/sso', async (req, res) => {
     }
 
     const sessionToken = randomUUID();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + ADMIN_SESSION_MS); // 8 hours
     await db.query('INSERT INTO admin_sessions (token, admin_id, expires_at) VALUES ($1, $2, $3)', [sessionToken, admin.id, expiresAt]);
 
+    console.log(`[SSO] Đăng nhập thành công: ${username} (${ssoRole}) cho project ${project}`);
     res.json({
       success: true,
       token: sessionToken,
@@ -1617,12 +1655,14 @@ app.post('/api/admin/sso', async (req, res) => {
 app.get('/api/admin/sso-login-url', (req, res) => {
   const dealAdminUrl = String(process.env.DEALPHUQUOC_ADMIN_URL || 'https://admin.dealphuquoc.com').replace(/\/$/, '');
   const dealHostUrl = String(process.env.DEALPHUQUOC_HOST_URL || 'https://host.dealphuquoc.com').replace(/\/$/, '');
-  const dashboardUrl = String(process.env.DASHBOARD_PUBLIC_URL || `${req.protocol}://${req.get('host')}/admin`).replace(/\/$/, '');
+  const dashboardUrl = String(req.query.return_to || process.env.DASHBOARD_PUBLIC_URL || `${req.protocol}://${req.get('host')}/admin`).replace(/\/$/, '');
   const portal = String(req.query.portal || 'superadmin');
   try {
     const isHostPortal = portal === 'host' || portal === 'sale';
     const loginUrl = new URL(isHostPortal ? '/' : '/admin/chat', isHostPortal ? dealHostUrl : dealAdminUrl);
     loginUrl.searchParams.set('return_to', dashboardUrl);
+    loginUrl.searchParams.set('returnUrl', dashboardUrl);
+    loginUrl.searchParams.set('redirect_to', dashboardUrl);
     if (portal === 'sale') loginUrl.searchParams.set('login_as', 'sale');
     return res.json({ url: loginUrl.toString() });
   } catch {
@@ -3146,16 +3186,22 @@ ${roughText.substring(0, 10000)}
 
 // 4. GET Knowledge Base status & text
 app.get('/api/admin/knowledge', checkAdminAuth, async (req, res) => {
-  const { projectId = 'pastie-landingpage' } = req.query;
+  if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Bạn không có quyền truy cập cơ sở tri thức.' });
+  }
+  let { projectId = 'pastie-landingpage' } = req.query;
+  if (isProjectAdmin(req.admin)) {
+    projectId = req.admin.project_id || projectId;
+  }
   try {
     const result = await db.query(
       'SELECT source_url, cleaned_content, updated_at FROM knowledge_base WHERE project_id = $1 ORDER BY updated_at DESC LIMIT 1',
       [projectId]
     );
     if (result.rows.length === 0) {
-      return res.json({ message: 'Chưa có cơ sở dữ liệu tri thức nào được cấu hình.' });
+      return res.json({ message: 'Chưa có cơ sở dữ liệu tri thức nào được cấu hình.', project_id: projectId });
     }
-    res.json(result.rows[0]);
+    res.json({ ...result.rows[0], project_id: projectId });
   } catch (error) {
     console.error('Fetch knowledge error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi tải cơ sở tri thức.' });
@@ -3187,13 +3233,19 @@ async function fetchWithJina(url) {
 
 // 5. POST Knowledge Base sync from URL
 app.post('/api/admin/knowledge/sync', checkAdminAuth, async (req, res) => {
-  const { url, projectId = 'pastie-landingpage' } = req.body;
+  if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Bạn không có quyền cập nhật cơ sở tri thức.' });
+  }
+  let { url, projectId = 'pastie-landingpage' } = req.body;
+  if (isProjectAdmin(req.admin)) {
+    projectId = req.admin.project_id || projectId;
+  }
   if (!url) {
     return res.status(400).json({ error: 'Vui lòng cung cấp tham số URL.' });
   }
 
   try {
-    console.log(`[KB] Syncing from: ${url}`);
+    console.log(`[KB] Syncing from: ${url} for project: ${projectId}`);
     let rawText = '';
     let fetchMethod = 'jina';
 
@@ -3242,7 +3294,8 @@ app.post('/api/admin/knowledge/sync', checkAdminAuth, async (req, res) => {
       success: true,
       message: `Đồng bộ thành công qua ${fetchMethod === 'jina' ? 'Jina AI Reader' : 'direct fetch'}!`,
       characterCount: cleanedContent.length,
-      rawLength: rawText.length
+      rawLength: rawText.length,
+      projectId
     });
   } catch (error) {
     console.error('[KB] Sync error:', error);
@@ -3252,7 +3305,13 @@ app.post('/api/admin/knowledge/sync', checkAdminAuth, async (req, res) => {
 
 // 6. POST Knowledge Base manual update
 app.post('/api/admin/knowledge/manual', checkAdminAuth, async (req, res) => {
-  const { cleanedContent, projectId = 'pastie-landingpage' } = req.body;
+  if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Bạn không có quyền cập nhật cơ sở tri thức.' });
+  }
+  let { cleanedContent, projectId = 'pastie-landingpage' } = req.body;
+  if (isProjectAdmin(req.admin)) {
+    projectId = req.admin.project_id || projectId;
+  }
   if (!cleanedContent || cleanedContent.trim().length === 0) {
     return res.status(400).json({ error: 'Vui lòng điền nội dung tri thức.' });
   }
@@ -3272,7 +3331,7 @@ app.post('/api/admin/knowledge/manual', checkAdminAuth, async (req, res) => {
       );
     }
 
-    res.json({ success: true, message: 'Đã lưu tri thức tư vấn thủ công thành công!' });
+    res.json({ success: true, message: 'Đã lưu tri thức tư vấn thủ công thành công!', projectId });
   } catch (error) {
     console.error('Manual knowledge save error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi lưu tri thức thủ công.' });
@@ -3558,13 +3617,22 @@ cron.schedule('0 2 */3 * *', () => {
 
 // Manual trigger endpoint for admin
 app.post('/api/admin/kb/synthesize', checkAdminAuth, async (req, res) => {
-  const { projectId } = req.body;
+  if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Bạn không có quyền tổng hợp tri thức.' });
+  }
+  let { projectId } = req.body;
+  if (isProjectAdmin(req.admin)) {
+    projectId = req.admin.project_id;
+  }
   if (projectId) {
     synthesizeChatKnowledge(projectId).catch(console.error);
-    return res.json({ success: true, message: `Synthesis started for ${projectId}` });
+    return res.json({ success: true, message: `Bắt đầu tổng hợp tri thức cho dự án ${projectId}` });
   }
-  runSynthesisForAllProjects().catch(console.error);
-  res.json({ success: true, message: 'Synthesis started for all projects' });
+  if (isSuperAdmin(req.admin)) {
+    runSynthesisForAllProjects().catch(console.error);
+    return res.json({ success: true, message: 'Bắt đầu tổng hợp tri thức cho tất cả dự án' });
+  }
+  return res.status(400).json({ error: 'Thiếu projectId' });
 });
 
 // ── Read receipts table (created synchronously before server starts) ──────────

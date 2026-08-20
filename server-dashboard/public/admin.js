@@ -234,6 +234,7 @@ let adminOffset = 0;
 let adminLimit = 15;
 let adminHasMore = true;
 let adminIsLoadingMore = false;
+let adminIsSending = false;
 
 // DOM Elements
 const loginModal = document.getElementById('login-modal');
@@ -408,7 +409,14 @@ changePasswordForm?.addEventListener('submit', async (event) => {
 // Đổi token SSO (?sso=) lấy phiên đăng nhập. Trả true nếu thành công. Chỉ xoá ?sso khi thành công.
 async function doSsoLogin() {
     const params = new URLSearchParams(window.location.search);
-    const sso = params.get('sso');
+    let sso = params.get('sso') || params.get('token') || params.get('sso_token') || params.get('ssoToken');
+    
+    // Fallback nếu token nằm ở URL hash
+    if (!sso && window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^[#?]/, ''));
+        sso = hashParams.get('sso') || hashParams.get('token') || hashParams.get('sso_token') || hashParams.get('ssoToken');
+    }
+
     if (!sso) return false;
     try {
         const r = await fetch(`${API_BASE}/api/admin/sso`, {
@@ -420,12 +428,26 @@ async function doSsoLogin() {
         if (r.ok && d.token) {
             localStorage.setItem('pastie_admin_token', d.token);
             params.delete('sso');
+            params.delete('token');
+            params.delete('sso_token');
+            params.delete('ssoToken');
             window.history.replaceState({}, '', window.location.pathname + (params.toString() ? '?' + params.toString() : ''));
             return true;
         }
         console.warn('SSO thất bại:', r.status, d.error);
+        if (loginErrorMsg) {
+            loginErrorMsg.textContent = d.error || 'Đăng nhập SSO DealPhuQuoc thất bại.';
+            loginErrorMsg.style.display = 'block';
+        }
         return false;
-    } catch (e) { console.error('SSO error:', e); return false; }
+    } catch (e) {
+        console.error('SSO error:', e);
+        if (loginErrorMsg) {
+            loginErrorMsg.textContent = 'Lỗi kết nối khi xác thực SSO: ' + e.message;
+            loginErrorMsg.style.display = 'block';
+        }
+        return false;
+    }
 }
 
 async function verifyAuthAndInit() {
@@ -676,7 +698,10 @@ async function loadAdminProfile() {
         const changePasswordBtn = document.getElementById('change-password-btn');
         if (nameEl) nameEl.textContent = admin.full_name || admin.username;
         if (badgeEl) badgeEl.style.display = 'flex';
-        if (manageBtn && ['superadmin', 'project_admin'].includes(admin.role)) manageBtn.classList.remove('hide');
+        const isSuperOrProjectAdmin = ['superadmin', 'project_admin'].includes(admin.role);
+        if (manageBtn) manageBtn.classList.toggle('hide', !isSuperOrProjectAdmin);
+        const knowledgeBtn = document.getElementById('knowledge-settings-btn');
+        if (knowledgeBtn) knowledgeBtn.classList.toggle('hide', !isSuperOrProjectAdmin);
         if (changePasswordBtn && String(admin.username || '').startsWith('sso:')) changePasswordBtn.classList.add('hide');
         if (projectFilter && admin.role !== 'superadmin' && admin.project_id) {
             projectFilter.title = `Dự án được phân quyền: ${admin.project_id}`;
@@ -1236,37 +1261,44 @@ async function loadMessages(sessionId, isLoadMore = false) {
             // Prepend older messages
             adminMessages = [...fetchedMessages, ...adminMessages];
             adminOffset += fetchedMessages.length;
+            renderAdminMessages(true);
         } else {
-            // Filter out temp client-side messages
+            // Keep unresolved in-flight temp messages
+            const tempMsgs = adminMessages.filter(m => m.id && m.id.toString().startsWith('temp_'));
+            const unresolvedTempMsgs = tempMsgs.filter(tempMsg => {
+                return !fetchedMessages.some(fm => fm.sender === tempMsg.sender && fm.original_text === tempMsg.original_text);
+            });
+
             const currentMsgs = adminMessages.filter(m => m.id && !m.id.toString().startsWith('temp_'));
+            const map = new Map();
+            fetchedMessages.forEach(m => map.set(m.id, m));
+            currentMsgs.forEach(m => {
+                if (!map.has(m.id)) map.set(m.id, m);
+            });
+            const merged = Array.from(map.values());
+            merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            unresolvedTempMsgs.forEach(tm => merged.push(tm));
 
-            if (currentMsgs.length === 0) {
-                adminMessages = fetchedMessages;
-                if (fetchedMessages.length < adminLimit) {
-                    adminHasMore = false;
-                }
-            } else {
-                // Update current messages and append new ones
-                const merged = [...currentMsgs];
-                fetchedMessages.forEach(newMsg => {
-                    const idx = merged.findIndex(m => m.id === newMsg.id);
-                    if (idx !== -1) {
-                        merged[idx] = newMsg;
-                    } else {
-                        merged.push(newMsg);
-                    }
-                });
+            if (fetchedMessages.length < adminLimit && currentMsgs.length === 0) {
+                adminHasMore = false;
+            }
 
-                // Sort ascending by created_at
-                merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-                adminMessages = merged;
+            // Only re-render if there are actual message changes (prevents 3s periodic jitter)
+            const isDiff = adminMessages.length !== merged.length ||
+                           adminMessages.some((m, idx) => {
+                               const o = merged[idx];
+                               return !o || o.id !== m.id || o.translated_text !== m.translated_text || o.original_text !== m.original_text;
+                           });
+
+            adminMessages = merged;
+
+            // Keep local seen count in sync while admin is viewing
+            if (currentSessionId) seenMessageCount[currentSessionId] = adminMessages.length;
+
+            if (isDiff) {
+                renderAdminMessages(false);
             }
         }
-
-        // Keep local seen count in sync while admin is viewing
-        if (currentSessionId) seenMessageCount[currentSessionId] = adminMessages.length;
-
-        renderAdminMessages(isLoadMore);
     } catch (e) {
         console.error('Error loading messages:', e);
     }
@@ -1392,10 +1424,12 @@ function renderTags(tagsString) {
 // ----------------------------------------------------
 
 async function sendMessage(e) {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    if (adminIsSending) return;
     const text = chatInput.value.trim();
     if (!text || !currentSessionId) return;
 
+    adminIsSending = true;
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
 
     chatInput.value = '';
@@ -1425,15 +1459,23 @@ async function sendMessage(e) {
 
         const data = await response.json();
         if (data.success) {
-            // Reload message history to overwrite temp bubble
-            await loadMessages(currentSessionId);
+            // Replace temp message smoothly with the confirmed message returned from server
+            const idx = adminMessages.findIndex(m => m.id === newMsgObj.id);
+            if (idx !== -1 && data.message) {
+                adminMessages[idx] = data.message;
+            }
+            renderAdminMessages(false);
         } else {
             adminMessages = adminMessages.filter(m => m.id !== newMsgObj.id);
             renderAdminMessages(false);
-            alert(dict.sendError + data.error);
+            alert(dict.sendError + (data.error || ''));
         }
     } catch (e) {
         console.error('Send error:', e);
+        adminMessages = adminMessages.filter(m => m.id !== newMsgObj.id);
+        renderAdminMessages(false);
+    } finally {
+        adminIsSending = false;
     }
 }
 
@@ -1607,8 +1649,9 @@ document.querySelectorAll('[data-sso-portal]').forEach((option) => {
     option.addEventListener('click', async () => {
         const portal = option.dataset.ssoPortal;
         ssoLoginBtn.disabled = true;
+        const returnUrl = window.location.origin + '/admin';
         try {
-            const response = await fetch(`${API_BASE}/api/admin/sso-login-url?portal=${encodeURIComponent(portal)}`);
+            const response = await fetch(`${API_BASE}/api/admin/sso-login-url?portal=${encodeURIComponent(portal)}&return_to=${encodeURIComponent(returnUrl)}`);
             const data = await response.json().catch(() => ({}));
             if (!response.ok || !data.url) throw new Error(data.error || 'Không thể mở đăng nhập DealPhuQuoc.');
             window.location.assign(data.url);
@@ -1714,6 +1757,8 @@ function closeSettingsDropdown() {
 
 // --- AI KNOWLEDGE BASE ---
 const knowledgeSettingsBtn = document.getElementById('knowledge-settings-btn');
+const kbProjectSelect = document.getElementById('kb-project-select');
+const kbProjectHint = document.getElementById('kb-project-hint');
 const kbSyncBtn = document.getElementById('kb-sync-btn');
 const kbSaveManualBtn = document.getElementById('kb-save-manual-btn');
 const kbCloseBtn = document.getElementById('kb-close-btn');
@@ -1721,11 +1766,23 @@ const kbUrlInput = document.getElementById('kb-url-input');
 const kbTextArea = document.getElementById('kb-text-area');
 const kbSyncStatus = document.getElementById('kb-sync-status');
 
+function getActiveKbProjectId() {
+    if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin' && CURRENT_ADMIN.project_id) {
+        return CURRENT_ADMIN.project_id;
+    }
+    return (kbProjectSelect && kbProjectSelect.value) ? kbProjectSelect.value : (currentProjectFilter || 'pastie-landingpage');
+}
+
 if (knowledgeSettingsBtn) {
     knowledgeSettingsBtn.addEventListener('click', () => { closeSettingsDropdown(); openKnowledgeModal(); });
 }
 if (kbCloseBtn) {
     kbCloseBtn.addEventListener('click', closeKnowledgeModal);
+}
+if (kbProjectSelect) {
+    kbProjectSelect.addEventListener('change', () => {
+        loadKnowledgeForProject(kbProjectSelect.value);
+    });
 }
 if (kbSyncBtn) {
     kbSyncBtn.addEventListener('click', syncKnowledgeFromUrl);
@@ -1735,24 +1792,83 @@ if (kbSaveManualBtn) {
 }
 
 async function openKnowledgeModal() {
+    if (!knowledgeModal) return;
     knowledgeModal.classList.remove('hide');
-    // KB theo project đang chọn (mặc định pastie-landingpage nếu chọn "Tất cả")
-    const projectId = currentProjectFilter || 'pastie-landingpage';
+
+    const isProjectAdmin = CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin';
+
+    // Populate project dropdown inside modal
+    if (kbProjectSelect) {
+        kbProjectSelect.innerHTML = '';
+        if (isProjectAdmin) {
+            const pid = CURRENT_ADMIN.project_id;
+            const pObj = (PROJECTS || []).find(p => p.id === pid);
+            const pName = pObj?.name || pid;
+            const opt = document.createElement('option');
+            opt.value = pid;
+            opt.textContent = `${pName} (${pid})`;
+            kbProjectSelect.appendChild(opt);
+            kbProjectSelect.value = pid;
+            kbProjectSelect.disabled = true;
+            if (kbProjectHint) {
+                kbProjectHint.innerHTML = `<i class="ri-shield-check-line" style="color:var(--success-color);"></i> Tài khoản quản trị dự án: <strong>${pName}</strong>`;
+            }
+        } else {
+            // Superadmin: view and manage all projects
+            const map = new Map();
+            (PROJECTS || []).forEach(p => map.set(p.id, p.name || p.id));
+            if (!map.has('pastie-landingpage')) map.set('pastie-landingpage', 'Pastie Landingpage');
+
+            (sessionsList || []).forEach(s => {
+                if (s.project_id && !map.has(s.project_id)) map.set(s.project_id, s.project_id);
+            });
+
+            map.forEach((name, id) => {
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = `${name} (${id})`;
+                kbProjectSelect.appendChild(opt);
+            });
+
+            if (currentProjectFilter && map.has(currentProjectFilter)) {
+                kbProjectSelect.value = currentProjectFilter;
+            } else {
+                const firstId = map.keys().next().value;
+                kbProjectSelect.value = firstId || 'pastie-landingpage';
+            }
+            kbProjectSelect.disabled = false;
+            if (kbProjectHint) {
+                kbProjectHint.innerHTML = `<i class="ri-user-star-line" style="color:var(--accent-color);"></i> Quyền Superadmin: Bạn có thể chọn và quản lý tri thức cho từng dự án.`;
+            }
+        }
+    }
+
+    const activeProjectId = getActiveKbProjectId();
+    await loadKnowledgeForProject(activeProjectId);
+}
+
+async function loadKnowledgeForProject(projectId) {
+    if (!projectId) return;
+    kbSyncStatus.innerHTML = `<i class="ri-loader-4-line ri-spin" style="color: var(--accent-color);"></i> <span>Đang tải dữ liệu tri thức [${projectId}]...</span>`;
+    kbTextArea.value = '';
+
     try {
-        const kbResp = await authFetch(`${API_BASE}/api/admin/knowledge?projectId=${projectId}`);
+        const kbResp = await authFetch(`${API_BASE}/api/admin/knowledge?projectId=${encodeURIComponent(projectId)}`);
         const data = await kbResp.json();
         if (data.source_url) {
             kbUrlInput.value = data.source_url === 'manual' ? 'https://pastie-landingpage.vercel.app' : data.source_url;
             kbTextArea.value = data.cleaned_content || '';
             const locale = currentLang === 'vi' ? 'vi-VN' : 'en-US';
             const dateStr = new Date(data.updated_at).toLocaleString(locale);
-            kbSyncStatus.innerHTML = `<i class="ri-checkbox-circle-line" style="color: var(--success-color);"></i> <span>Đồng bộ từ <strong>${data.source_url}</strong> lúc ${dateStr}</span>`;
+            kbSyncStatus.innerHTML = `<i class="ri-checkbox-circle-line" style="color: var(--success-color);"></i> <span>[${projectId}] Đồng bộ từ <strong>${data.source_url}</strong> lúc ${dateStr}</span>`;
         } else {
-            kbSyncStatus.innerHTML = `<i class="ri-information-line" style="color: var(--accent-color);"></i> <span>Chưa có cơ sở dữ liệu tri thức nào được cấu hình.</span>`;
+            kbUrlInput.value = 'https://pastie-landingpage.vercel.app';
+            kbSyncStatus.innerHTML = `<i class="ri-information-line" style="color: var(--accent-color);"></i> <span>[${projectId}] Chưa có cơ sở dữ liệu tri thức nào được cấu hình.</span>`;
             kbTextArea.value = '';
         }
     } catch (e) {
         console.error('Error fetching knowledge settings:', e);
+        kbSyncStatus.innerHTML = `<i class="ri-error-warning-line" style="color: var(--danger-color);"></i> <span>Lỗi tải dữ liệu: ${e.message}</span>`;
     }
 }
 
@@ -1767,21 +1883,23 @@ async function syncKnowledgeFromUrl() {
         return;
     }
 
+    const activeProjectId = getActiveKbProjectId();
+
     kbSyncBtn.disabled = true;
     kbSyncBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang đồng bộ...`;
-    kbSyncStatus.innerHTML = `<i class="ri-loader-4-line ri-spin" style="color: var(--accent-color);"></i> <span>Đang kết nối & cào dữ liệu từ ${url}...</span>`;
+    kbSyncStatus.innerHTML = `<i class="ri-loader-4-line ri-spin" style="color: var(--accent-color);"></i> <span>[${activeProjectId}] Đang kết nối & cào dữ liệu từ ${url}...</span>`;
 
     try {
         const response = await authFetch(`${API_BASE}/api/admin/knowledge/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, projectId: currentProjectFilter || 'pastie-landingpage' })
+            body: JSON.stringify({ url, projectId: activeProjectId })
         });
         
         const data = await response.json();
         if (response.ok) {
             alert(data.message || 'Đồng bộ tri thức từ Landing Page thành công!');
-            await openKnowledgeModal(); // Refresh modal info
+            await loadKnowledgeForProject(activeProjectId);
         } else {
             alert('Lỗi: ' + (data.error || 'Không thể đồng bộ.'));
             kbSyncStatus.innerHTML = `<i class="ri-error-warning-line" style="color: var(--danger-color);"></i> <span>Đồng bộ thất bại: ${data.error || 'Lỗi HTTP'}</span>`;
@@ -1802,6 +1920,8 @@ async function saveKnowledgeManual() {
         return;
     }
 
+    const activeProjectId = getActiveKbProjectId();
+
     kbSaveManualBtn.disabled = true;
     kbSaveManualBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang lưu...`;
 
@@ -1809,13 +1929,13 @@ async function saveKnowledgeManual() {
         const response = await authFetch(`${API_BASE}/api/admin/knowledge/manual`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cleanedContent: text, projectId: currentProjectFilter || 'pastie-landingpage' })
+            body: JSON.stringify({ cleanedContent: text, projectId: activeProjectId })
         });
         
         const data = await response.json();
         if (response.ok) {
             alert(data.message || 'Lưu tri thức thủ công thành công!');
-            await openKnowledgeModal(); // Refresh modal info
+            await loadKnowledgeForProject(activeProjectId);
         } else {
             alert('Lỗi: ' + (data.error || 'Không thể lưu.'));
         }
@@ -1924,19 +2044,20 @@ const synthesisStatus = document.getElementById('synthesis-status');
 
 if (synthesisRunBtn) {
     synthesisRunBtn.addEventListener('click', async () => {
+        const activeProjectId = getActiveKbProjectId();
         synthesisRunBtn.disabled = true;
         synthesisRunBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang tổng hợp...`;
-        if (synthesisStatus) synthesisStatus.textContent = 'Đang phân tích lịch sử chat...';
+        if (synthesisStatus) synthesisStatus.textContent = `Đang phân tích lịch sử chat của [${activeProjectId}]...`;
         try {
             const res = await authFetch(`${API_BASE}/api/admin/kb/synthesize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId: currentProjectFilter || undefined })
+                body: JSON.stringify({ projectId: activeProjectId })
             });
             const data = await res.json();
             if (synthesisStatus) synthesisStatus.textContent = data.success
-                ? `✅ ${data.message}`
-                : `❌ ${data.error}`;
+                ? `✅ Đang tổng hợp tri thức cho ${activeProjectId}...`
+                : `❌ ${data.error || 'Thất bại'}`;
         } catch (e) {
             if (synthesisStatus) synthesisStatus.textContent = '❌ Lỗi kết nối máy chủ';
         } finally {

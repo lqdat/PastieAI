@@ -39,6 +39,7 @@
         })(),
         isTyping: false,
         typingTimeout: null,
+        isSending: false,
         messages: [],
         offset: 0,
         limit: 15,
@@ -797,13 +798,14 @@
 
     // Send Message (AI or Human mode)
     async function sendMessage() {
+        if (state.isSending) return;
         const inputEl = document.getElementById('pastie-chat-input');
         const text = inputEl.value.trim();
         if (!text) return;
-        inputEl.value = '';
-
-        // Must have a session (created via OTP) before sending
         if (!state.sessionId) return;
+
+        state.isSending = true;
+        inputEl.value = '';
 
         if ((state.mode === 'ai' || state.mode === 'human') && state.sessionId) {
             // Add temp message to show immediately
@@ -836,11 +838,30 @@
 
                 const data = await res.json();
                 if (data.success) {
-                    loadMessageHistory();
+                    // Replace temp message smoothly with the confirmed message returned from server
+                    const idx = state.messages.findIndex(m => m.id === newMsgObj.id);
+                    if (idx !== -1 && data.message) {
+                        state.messages[idx] = data.message;
+                    }
+                    if (data.aiReply) {
+                        if (!state.messages.some(m => m.id === data.aiReply.id)) {
+                            state.messages.push(data.aiReply);
+                        }
+                    }
+                    renderMessageThread(false);
+                } else {
+                    state.messages = state.messages.filter(m => m.id !== newMsgObj.id);
+                    renderMessageThread(false);
                 }
             } catch(e) {
                 console.error('Failed to send message:', e);
+                state.messages = state.messages.filter(m => m.id !== newMsgObj.id);
+                renderMessageThread(false);
+            } finally {
+                state.isSending = false;
             }
+        } else {
+            state.isSending = false;
         }
     }
 
@@ -869,40 +890,56 @@
                 if (fetchedMessages.length < state.limit) state.hasMore = false;
                 state.messages = [...fetchedMessages, ...state.messages];
                 state.offset += fetchedMessages.length;
+                renderMessageThread(true);
             } else {
+                // Keep unresolved in-flight temp messages
+                const tempMsgs = state.messages.filter(m => m.id && m.id.toString().startsWith('temp_'));
+                const unresolvedTempMsgs = tempMsgs.filter(tempMsg => {
+                    return !fetchedMessages.some(fm => fm.sender === tempMsg.sender && fm.original_text === tempMsg.original_text);
+                });
+
                 const currentMsgs = state.messages.filter(m => m.id && !m.id.toString().startsWith('temp_'));
-                if (currentMsgs.length === 0) {
-                    state.messages = fetchedMessages;
-                    if (fetchedMessages.length < state.limit) state.hasMore = false;
-                    state.lastMessageCount = fetchedMessages.length;
-                    if (!state.isOpen && state.messages.length > 0) showMiniBubble();
-                } else {
-                    const merged = [...currentMsgs];
-                    fetchedMessages.forEach(newMsg => {
-                        const idx = merged.findIndex(m => m.id === newMsg.id);
-                        if (idx !== -1) merged[idx] = newMsg;
-                        else merged.push(newMsg);
-                    });
-                    merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-                    if (merged.length > state.lastMessageCount) {
-                        const latestMsg = merged[merged.length - 1];
-                        if (latestMsg.sender === 'agent' && state.lastMessageCount > 0) playNotificationAlert();
-                        state.lastMessageCount = merged.length;
+                const map = new Map();
+                fetchedMessages.forEach(m => map.set(m.id, m));
+                currentMsgs.forEach(m => {
+                    if (!map.has(m.id)) map.set(m.id, m);
+                });
+                const merged = Array.from(map.values());
+                merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+                unresolvedTempMsgs.forEach(tm => merged.push(tm));
+
+                if (fetchedMessages.length < state.limit && currentMsgs.length === 0) {
+                    state.hasMore = false;
+                }
+
+                if (merged.length > state.lastMessageCount) {
+                    const latestMsg = merged[merged.length - 1];
+                    if (latestMsg && latestMsg.sender === 'agent' && state.lastMessageCount > 0) playNotificationAlert();
+                    state.lastMessageCount = merged.length;
+                }
+
+                // Check diff to prevent periodic 4s flickering/scroll jumping
+                const isDiff = state.messages.length !== merged.length ||
+                               state.messages.some((m, idx) => {
+                                   const o = merged[idx];
+                                   return !o || o.id !== m.id || o.original_text !== m.original_text || o.translated_text !== m.translated_text;
+                               });
+
+                state.messages = merged;
+
+                // Auto-switch to human mode if agent has replied
+                if (state.mode !== 'human') {
+                    const hasAgentMsg = state.messages.some(m => m.sender === 'agent');
+                    if (hasAgentMsg) {
+                        state.mode = 'human';
+                        sessionStorage.setItem('pastie_chat_mode', 'human');
                     }
-                    state.messages = merged;
+                }
+
+                if (isDiff) {
+                    renderMessageThread(false);
                 }
             }
-
-            // Auto-switch to human mode if agent has replied
-            if (state.mode !== 'human') {
-                const hasAgentMsg = state.messages.some(m => m.sender === 'agent');
-                if (hasAgentMsg) {
-                    state.mode = 'human';
-                    sessionStorage.setItem('pastie_chat_mode', 'human');
-                }
-            }
-
-            renderMessageThread(isLoadMore);
         } catch(e) {
             console.error('Failed to load message history:', e);
         }
@@ -913,6 +950,8 @@
         if (!threadContainer) return;
 
         const previousScrollHeight = threadContainer.scrollHeight;
+        const isNearBottom = (threadContainer.scrollHeight - threadContainer.scrollTop - threadContainer.clientHeight) < 80;
+        const isFirstLoad = threadContainer.children.length === 0 || threadContainer.querySelector('.system');
         const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
 
         threadContainer.innerHTML = '';
@@ -979,7 +1018,7 @@
 
         if (isLoadMore) {
             threadContainer.scrollTop = threadContainer.scrollHeight - previousScrollHeight;
-        } else {
+        } else if (isFirstLoad || isNearBottom) {
             threadContainer.scrollTop = threadContainer.scrollHeight;
         }
     }
