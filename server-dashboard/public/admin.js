@@ -477,50 +477,67 @@ window.handleGoogleCredentialResponse = async function(response) {
     }
 };
 
-// Khởi tạo Google Sign-in button
+// Khởi tạo Google Sign-in button (tham khảo DealPhuQuoc)
 async function initGoogleAuth() {
     try {
         const configRes = await fetch(`${API_BASE}/api/admin/auth/config`);
-        const configData = await configRes.json();
-        const googleClientId = configData.googleClientId;
+        const configData = await configRes.json().catch(() => ({}));
+        const googleClientId = (configData.googleClientId || '').trim();
 
         const slot = document.getElementById('google-signin-btn-container');
         const customBtn = document.getElementById('google-auth-trigger-btn');
 
-        if (googleClientId && window.google && window.google.accounts && window.google.accounts.id) {
-            window.google.accounts.id.initialize({
-                client_id: googleClientId,
-                callback: window.handleGoogleCredentialResponse,
-                auto_select: false,
-                cancel_on_tap_outside: true
-            });
-            if (slot) {
-                window.google.accounts.id.renderButton(slot, {
-                    type: 'standard',
-                    theme: 'outline',
-                    size: 'large',
-                    text: 'signin_with',
-                    shape: 'rectangular',
-                    logo_alignment: 'left',
-                    width: 320
+        const renderGoogleBtn = () => {
+            if (googleClientId && window.google?.accounts?.id) {
+                window.google.accounts.id.initialize({
+                    client_id: googleClientId,
+                    callback: window.handleGoogleCredentialResponse,
+                    auto_select: false,
+                    cancel_on_tap_outside: true
                 });
-            }
-            if (customBtn) customBtn.classList.add('hide');
-        } else {
-            // Hiển thị nút tùy chỉnh nếu chưa nhúng Google Client ID
-            if (customBtn) {
-                customBtn.classList.remove('hide');
-                customBtn.onclick = () => {
-                    if (!googleClientId) {
-                        setLoginError('Chưa cấu hình GOOGLE_CLIENT_ID trên server. Vui lòng sử dụng tính năng Đăng nhập bằng OTP Email bên dưới!');
-                    } else if (window.google?.accounts?.id) {
-                        window.google.accounts.id.prompt();
+                if (slot) {
+                    slot.innerHTML = '';
+                    try {
+                        window.google.accounts.id.renderButton(slot, {
+                            type: 'standard',
+                            theme: 'outline',
+                            size: 'large',
+                            text: 'continue_with',
+                            shape: 'pill',
+                            logo_alignment: 'left',
+                            width: 340
+                        });
+                    } catch(e) {}
+                    if (customBtn && slot.childElementCount > 0) {
+                        customBtn.classList.add('hide');
                     }
-                };
+                }
+            }
+        };
+
+        if (window.google?.accounts?.id) {
+            renderGoogleBtn();
+        } else {
+            // Wait for script to load if needed
+            let gsiScript = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
+            if (gsiScript) {
+                gsiScript.addEventListener('load', renderGoogleBtn, { once: true });
             }
         }
     } catch (e) {
         console.warn('Init Google auth error:', e);
+    }
+}
+
+function handleGoogleAuthTrigger() {
+    try {
+        if (window.google?.accounts?.id) {
+            window.google.accounts.id.prompt();
+        } else {
+            setLoginError('Đang tải mô-đun Google Sign-In, vui lòng thử lại sau giây lát hoặc sử dụng OTP Email.');
+        }
+    } catch(e) {
+        setLoginError('Không thể mở đăng nhập Google: ' + e.message);
     }
 }
 
@@ -550,7 +567,8 @@ function startOtpCountdown(seconds = 300) {
 }
 
 // Xử lý gửi mã OTP Email
-async function handleSendAdminOtp() {
+async function handleSendAdminOtp(e) {
+    if (e && e.preventDefault) e.preventDefault();
     const emailInput = document.getElementById('admin-otp-email-input');
     const email = emailInput ? emailInput.value.trim() : '';
     if (!email || !email.includes('@')) {
@@ -580,8 +598,10 @@ async function handleSendAdminOtp() {
             const targetDisplay = document.getElementById('otp-target-email-display');
             if (targetDisplay) targetDisplay.textContent = email;
             
+            const titleEl = document.getElementById('dpq-login-title');
+            if (titleEl) titleEl.textContent = 'Nhập mã xác nhận';
+
             startOtpCountdown(300);
-            setLoginSuccess(data.message || 'Mã OTP đã được gửi đến hộp thư của bạn!');
             const codeInput = document.getElementById('admin-otp-code-input');
             if (codeInput) {
                 codeInput.value = '';
@@ -595,13 +615,14 @@ async function handleSendAdminOtp() {
     } finally {
         if (sendBtn) {
             sendBtn.disabled = false;
-            sendBtn.innerHTML = '<span>Gửi Mã Xác Thực OTP</span> <i class="ri-send-plane-fill"></i>';
+            sendBtn.innerHTML = '<span>Tiếp tục</span>';
         }
     }
 }
 
 // Xử lý xác thực mã OTP
-async function handleVerifyAdminOtp() {
+async function handleVerifyAdminOtp(e) {
+    if (e && e.preventDefault) e.preventDefault();
     const codeInput = document.getElementById('admin-otp-code-input');
     const otpCode = codeInput ? codeInput.value.trim() : '';
     if (!otpCode || otpCode.length < 6) {
@@ -612,7 +633,7 @@ async function handleVerifyAdminOtp() {
     const verifyBtn = document.getElementById('verify-admin-otp-btn');
     if (verifyBtn) {
         verifyBtn.disabled = true;
-        verifyBtn.innerHTML = 'Đang xác thực... <i class="ri-loader-4-line ri-spin"></i>';
+        verifyBtn.innerHTML = 'Đang kiểm tra... <i class="ri-loader-4-line ri-spin"></i>';
     }
     setLoginError('');
 
@@ -625,7 +646,7 @@ async function handleVerifyAdminOtp() {
         const data = await res.json();
         if (res.ok && data.token) {
             localStorage.setItem('pastie_admin_token', data.token);
-            setLoginSuccess('Xác thực OTP thành công! Đang kết nối Console...');
+            setLoginSuccess('Xác thực thành công! Đang vào hệ thống...');
             if (adminOtpCountdownInterval) clearInterval(adminOtpCountdownInterval);
             setTimeout(() => {
                 hideLogin();
@@ -640,67 +661,31 @@ async function handleVerifyAdminOtp() {
     } finally {
         if (verifyBtn) {
             verifyBtn.disabled = false;
-            verifyBtn.innerHTML = '<span>Xác Nhận & Kết Nối</span> <i class="ri-check-double-line"></i>';
+            verifyBtn.innerHTML = '<span>Xác nhận</span>';
         }
     }
 }
 
-// Gắn sự kiện chuyển Tab và tương tác Form đăng nhập
+function handleChangeOtpEmail() {
+    if (adminOtpCountdownInterval) clearInterval(adminOtpCountdownInterval);
+    document.getElementById('otp-step-verify')?.classList.add('hide');
+    document.getElementById('otp-step-email')?.classList.remove('hide');
+    const titleEl = document.getElementById('dpq-login-title');
+    if (titleEl) titleEl.textContent = 'Pastie AI Console';
+    setLoginError('');
+    setLoginSuccess('');
+    document.getElementById('admin-otp-email-input')?.focus();
+}
+
+// Expose handlers globally for inline HTML events
+window.handleSendAdminOtp = handleSendAdminOtp;
+window.handleVerifyAdminOtp = handleVerifyAdminOtp;
+window.handleChangeOtpEmail = handleChangeOtpEmail;
+window.handleGoogleAuthTrigger = handleGoogleAuthTrigger;
+
+// Gắn sự kiện tương tác Form đăng nhập OTP & Google
 function setupAuthEvents() {
-    // Tab switching
-    const tabDirect = document.getElementById('tab-direct-btn');
-    const tabPwd = document.getElementById('tab-pwd-btn');
-    const panelDirect = document.getElementById('auth-panel-direct');
-    const panelPwd = document.getElementById('auth-panel-pwd');
-
-    if (tabDirect && tabPwd) {
-        tabDirect.addEventListener('click', () => {
-            tabDirect.classList.add('active');
-            tabPwd.classList.remove('active');
-            panelDirect?.classList.add('active');
-            panelDirect?.classList.remove('hide');
-            panelPwd?.classList.remove('active');
-            panelPwd?.classList.add('hide');
-            setLoginError('');
-            setLoginSuccess('');
-        });
-        tabPwd.addEventListener('click', () => {
-            tabPwd.classList.add('active');
-            tabDirect.classList.remove('active');
-            panelPwd?.classList.add('active');
-            panelPwd?.classList.remove('hide');
-            panelDirect?.classList.remove('active');
-            panelDirect?.classList.add('hide');
-            setLoginError('');
-            setLoginSuccess('');
-            document.getElementById('admin-username-input')?.focus();
-        });
-    }
-
-    // OTP buttons
-    document.getElementById('send-admin-otp-btn')?.addEventListener('click', handleSendAdminOtp);
-    document.getElementById('resend-admin-otp-btn')?.addEventListener('click', handleSendAdminOtp);
-    document.getElementById('verify-admin-otp-btn')?.addEventListener('click', handleVerifyAdminOtp);
-
-    document.getElementById('change-otp-email-btn')?.addEventListener('click', () => {
-        if (adminOtpCountdownInterval) clearInterval(adminOtpCountdownInterval);
-        document.getElementById('otp-step-verify')?.classList.add('hide');
-        document.getElementById('otp-step-email')?.classList.remove('hide');
-        setLoginError('');
-        setLoginSuccess('');
-        document.getElementById('admin-otp-email-input')?.focus();
-    });
-
-    // Enter key shortcuts
-    document.getElementById('admin-otp-email-input')?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); handleSendAdminOtp(); }
-    });
-    document.getElementById('admin-otp-code-input')?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); handleVerifyAdminOtp(); }
-    });
-    document.getElementById('admin-password-input')?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); handleLogin(); }
-    });
+    document.getElementById('change-otp-email-btn')?.addEventListener('click', handleChangeOtpEmail);
 }
 
 // Đổi token SSO (?sso=) lấy phiên đăng nhập (Hỗ trợ tương thích ngược)
@@ -782,43 +767,6 @@ function hideLogin() {
     loginModal.classList.add('hide');
     mainDashboard.classList.remove('hide');
     if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(() => {});
-}
-
-async function handleLogin() {
-    const username = usernameInput ? usernameInput.value.trim() : 'admin';
-    const password = passwordInput.value.trim();
-    if (!username || !password) {
-        setLoginError('Vui lòng nhập tên đăng nhập và mật khẩu.');
-        return;
-    }
-
-    const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
-
-    loginBtn.disabled = true;
-    loginBtn.innerHTML = dict.connecting || 'Đang kết nối...';
-    setLoginError('');
-
-    try {
-        const response = await fetch(`${API_BASE}/api/admin/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-        });
-        const data = await response.json();
-        if (response.ok && data.token) {
-            localStorage.setItem('pastie_admin_token', data.token);
-            hideLogin();
-            initDashboard();
-        } else {
-            setLoginError(data.error || (dict.loginError || 'Tài khoản hoặc mật khẩu không hợp lệ.'));
-            passwordInput.value = '';
-        }
-    } catch (e) {
-        setLoginError(dict.connError || 'Không thể kết nối tới server.');
-    } finally {
-        loginBtn.disabled = false;
-        loginBtn.innerHTML = `${dict.loginBtn || 'Kết Nối Console'} <i class="ri-arrow-right-line"></i>`;
-    }
 }
 
 // ----------------------------------------------------
@@ -2138,8 +2086,6 @@ function escapeHtml(text) {
 }
 
 // Event Bindings
-loginBtn.addEventListener('click', handleLogin);
-passwordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(); });
 const pushPermissionModal = document.getElementById('push-permission-modal');
 function closePushPermissionModal() { pushPermissionModal?.classList.add('hide'); }
 document.getElementById('enable-push-btn')?.addEventListener('click', () => {
@@ -2201,20 +2147,20 @@ document.addEventListener('click', (event) => {
     }
 });
 
-projectFilter.addEventListener('change', (e) => {
+projectFilter?.addEventListener('change', (e) => {
     currentProjectFilter = e.target.value;
     renderSessionsList(sessionsList);
 });
 
-refreshSessionsBtn.addEventListener('click', fetchSessions);
-closeSessionBtn.addEventListener('click', closeActiveSession);
-deleteSessionBtn.addEventListener('click', deleteActiveSession);
-chatForm.addEventListener('submit', sendMessage);
+refreshSessionsBtn?.addEventListener('click', fetchSessions);
+closeSessionBtn?.addEventListener('click', closeActiveSession);
+deleteSessionBtn?.addEventListener('click', deleteActiveSession);
+chatForm?.addEventListener('submit', sendMessage);
 
-exportCsvBtn.addEventListener('click', () => handleExport('csv'));
-exportJsonlBtn.addEventListener('click', () => handleExport('jsonl'));
+exportCsvBtn?.addEventListener('click', () => handleExport('csv'));
+exportJsonlBtn?.addEventListener('click', () => handleExport('jsonl'));
 
-logoutBtn.addEventListener('click', () => {
+logoutBtn?.addEventListener('click', () => {
     localStorage.removeItem('pastie_admin_token');
     showLogin();
 });
@@ -2765,101 +2711,6 @@ if (synthesisRunBtn) {
             synthesisRunBtn.innerHTML = `<i class="ri-brain-line"></i> Tổng hợp ngay`;
         }
     });
-}
-
-// --- WHATSAPP CHANNEL SETTINGS DIALOG ---
-const channelModal = document.getElementById('channel-modal');
-const channelSettingsBtn = document.getElementById('channel-settings-btn');
-const channelCloseBtn = document.getElementById('channel-close-btn');
-const channelConfigForm = document.getElementById('channel-config-form');
-
-if (channelSettingsBtn) {
-    channelSettingsBtn.addEventListener('click', () => { closeSettingsDropdown(); openChannelModal(); });
-}
-if (channelCloseBtn) {
-    channelCloseBtn.addEventListener('click', closeChannelModal);
-}
-if (channelConfigForm) {
-    channelConfigForm.addEventListener('submit', saveChannelConfig);
-}
-
-async function openChannelModal() {
-    channelModal.classList.remove('hide');
-    const statusEl = document.getElementById('channel-status-msg');
-    if (statusEl) statusEl.style.display = 'none';
-    const activeProject = (CURRENT_ADMIN && CURRENT_ADMIN.project_id) ? CURRENT_ADMIN.project_id : (currentProjectFilter || 'pastie-landingpage');
-    try {
-        const response = await authFetch(`${API_BASE}/api/admin/channels?projectId=${encodeURIComponent(activeProject)}`);
-        const data = await response.json();
-        if (data.config) {
-            const phoneIdEl = document.getElementById('channel-whatsapp-phone-id');
-            const wabaIdEl = document.getElementById('channel-whatsapp-waba-id');
-            const phoneEl = document.getElementById('channel-whatsapp-phone');
-            const tokenEl = document.getElementById('channel-whatsapp-token');
-            const webhookUrlEl = document.getElementById('channel-webhook-url');
-            const verifyTokenEl = document.getElementById('channel-verify-token');
-
-            if (phoneIdEl) phoneIdEl.value = data.config.whatsapp_phone_number_id || '';
-            if (wabaIdEl) wabaIdEl.value = data.config.whatsapp_waba_id || '';
-            if (phoneEl) phoneEl.value = data.config.whatsapp_business_phone || '';
-            if (tokenEl) tokenEl.value = data.config.whatsapp_access_token || '';
-            if (webhookUrlEl && data.config.webhook_url) webhookUrlEl.textContent = data.config.webhook_url;
-            if (verifyTokenEl && data.config.meta_verify_token) verifyTokenEl.textContent = data.config.meta_verify_token;
-        }
-    } catch (e) {
-        console.error('Error fetching channel settings:', e);
-    }
-}
-
-function closeChannelModal() {
-    channelModal.classList.add('hide');
-}
-
-function showChannelStatus(msg, isError = false) {
-    const el = document.getElementById('channel-status-msg');
-    if (!el) return;
-    el.textContent = msg;
-    el.style.display = 'block';
-    el.style.background = isError ? 'rgba(239,68,68,0.15)' : 'rgba(37,211,102,0.15)';
-    el.style.color = isError ? '#f87171' : '#25D366';
-    el.style.border = isError ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(37,211,102,0.3)';
-}
-
-async function saveChannelConfig(e) {
-    e.preventDefault();
-    const saveBtn = document.getElementById('channel-save-btn');
-    saveBtn.disabled = true;
-    saveBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang lưu...`;
-
-    const activeProject = (CURRENT_ADMIN && CURRENT_ADMIN.project_id) ? CURRENT_ADMIN.project_id : (currentProjectFilter || 'pastie-landingpage');
-
-    const payload = {
-        projectId: activeProject,
-        whatsappPhoneNumberId: document.getElementById('channel-whatsapp-phone-id')?.value.trim() || '',
-        whatsappWabaId: document.getElementById('channel-whatsapp-waba-id')?.value.trim() || '',
-        whatsappBusinessPhone: document.getElementById('channel-whatsapp-phone')?.value.trim() || '',
-        whatsappAccessToken: document.getElementById('channel-whatsapp-token')?.value.trim() || '',
-        metaVerifyToken: document.getElementById('channel-verify-token')?.textContent.trim() || 'pastie_verify_token_2026'
-    };
-
-    try {
-        const response = await authFetch(`${API_BASE}/api/admin/channels`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        const data = await response.json();
-        if (response.ok && data.success) {
-            showChannelStatus('✅ Đã lưu cấu hình WhatsApp thành công! Hệ thống sẵn sàng nhận & gửi tin nhắn.');
-        } else {
-            showChannelStatus('❌ ' + (data.error || 'Không thể lưu cấu hình.'), true);
-        }
-    } catch (err) {
-        showChannelStatus('❌ Lỗi kết nối: ' + err.message, true);
-    } finally {
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = `<i class="ri-save-line"></i> Lưu cấu hình WhatsApp`;
-    }
 }
 
 // Initial translations load

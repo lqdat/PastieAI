@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r18">
+    <link rel="stylesheet" href="admin.css?v=r26">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -29,92 +29,63 @@
 
     <!-- Login Modal overlay -->
     <div id="login-modal" class="modal-overlay">
-        <div class="login-box glass-panel">
-            <div class="brand-header">
-                <div class="brand-logo"><img src="/logoApp.png" alt="Pastie" class="brand-logo-img"></div>
-                <h2 data-i18n="loginTitle">Pastie AI Console</h2>
-                <p data-i18n="loginSubtitle">Hệ thống quản trị & CSKH đa kênh AI</p>
-            </div>
-
-            <!-- Login Method Switcher Tabs -->
-            <div class="auth-tabs">
-                <button type="button" class="auth-tab-btn active" id="tab-direct-btn" data-auth-tab="direct">
-                    <i class="ri-google-fill"></i> Google / OTP Email
-                </button>
-                <button type="button" class="auth-tab-btn" id="tab-pwd-btn" data-auth-tab="pwd">
-                    <i class="ri-key-2-line"></i> Mật khẩu
-                </button>
-            </div>
-
-            <!-- Tab 1: Google OAuth & Email OTP Direct Auth -->
-            <div id="auth-panel-direct" class="auth-panel active">
-                <!-- Google Sign-In Container -->
-                <div class="google-auth-wrapper">
-                    <div id="google-signin-btn-container" class="google-btn-slot"></div>
-                    <button type="button" id="google-auth-trigger-btn" class="google-custom-btn hide">
-                        <svg class="google-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.24v3.15C3.26 21.36 7.34 24 12 24z"/><path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.24C.45 8.15 0 9.92 0 12s.45 3.85 1.24 5.42l4.04-3.15z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.24 6.58l4.04 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/></svg>
-                        <span>Đăng nhập nhanh với Google</span>
-                    </button>
-                </div>
-
-                <div class="auth-divider">
-                    <span>hoặc nhận mã OTP qua Email</span>
-                </div>
-
-                <!-- OTP Form -->
-                <div class="otp-auth-section">
-                    <!-- Step 1: Input Email -->
-                    <div id="otp-step-email" class="otp-step">
-                        <div class="input-with-icon">
-                            <i class="ri-mail-line"></i>
-                            <input type="email" id="admin-otp-email-input" placeholder="Nhập email của bạn (vd: staff@dealphuquoc.com)..." autocomplete="email" required>
-                        </div>
-                        <button type="button" id="send-admin-otp-btn" class="primary-btn login-action-btn">
-                            <span>Gửi Mã Xác Thực OTP</span> <i class="ri-send-plane-fill"></i>
-                        </button>
-                    </div>
-
-                    <!-- Step 2: Input 6-Digit OTP (Initially Hidden) -->
-                    <div id="otp-step-verify" class="otp-step hide">
-                        <div class="otp-notice">
-                            Mã OTP 6 số đã được gửi đến <b id="otp-target-email-display"></b>. Vui lòng kiểm tra hộp thư (cả mục Spam/Junk nếu cần).
-                        </div>
-                        <div class="input-with-icon">
-                            <i class="ri-shield-keyhole-line"></i>
-                            <input type="text" id="admin-otp-code-input" placeholder="Nhập 6 số OTP (vd: 123456)..." maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required style="letter-spacing: 6px; font-weight: 700; font-size: 16px; text-align: center;">
-                        </div>
-                        <button type="button" id="verify-admin-otp-btn" class="primary-btn login-action-btn">
-                            <span>Xác Nhận & Kết Nối</span> <i class="ri-check-double-line"></i>
-                        </button>
-                        <div class="otp-actions-row">
-                            <span id="admin-otp-countdown" class="otp-countdown-text">Mã có hiệu lực trong 5:00</span>
-                            <button type="button" id="resend-admin-otp-btn" class="text-link-btn" disabled>Gửi lại mã</button>
-                            <button type="button" id="change-otp-email-btn" class="text-link-btn">Đổi email khác</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Tab 2: Password Login (Local Admins / Superadmins) -->
-            <div id="auth-panel-pwd" class="auth-panel hide">
-                <div class="form-group" style="display: flex; flex-direction: column; gap: 12px;">
-                    <div class="input-with-icon">
-                        <i class="ri-user-line"></i>
-                        <input type="text" id="admin-username-input" placeholder="Tên đăng nhập hoặc Email..." required autocomplete="username">
-                    </div>
-                    <div class="input-with-icon">
-                        <i class="ri-lock-line"></i>
-                        <input type="password" id="admin-password-input" placeholder="Mật khẩu..." required autocomplete="current-password">
-                    </div>
-                </div>
-                <button id="login-btn" class="primary-btn login-action-btn" style="margin-top: 14px;">
-                    <span data-i18n="loginBtn">Kết Nối Console</span> <i class="ri-arrow-right-line"></i>
-                </button>
+        <div class="dpq-login-card">
+            <!-- Brand Logo -->
+            <div class="dpq-brand-header">
+                <img src="/logoApp.png" alt="Pastie AI" class="dpq-brand-logo">
+                <h2 id="dpq-login-title" class="dpq-title" data-i18n="loginTitle">Pastie AI Console</h2>
+                <p id="dpq-login-subtitle" class="dpq-subtitle" data-i18n="loginSubtitle">Hệ thống quản trị & CSKH đa kênh AI</p>
             </div>
 
             <!-- Feedback / Error Message Box -->
-            <div class="error-msg" id="login-error-msg" style="display: none;"></div>
-            <div class="success-msg" id="login-success-msg" style="display: none;"></div>
+            <div class="dpq-error-msg" id="login-error-msg" style="display: none;"></div>
+            <div class="dpq-success-msg" id="login-success-msg" style="display: none;"></div>
+
+            <!-- Direct Auth: Google OAuth & Email OTP -->
+            <div id="auth-panel-direct">
+                <!-- Step 1: Input Email -->
+                <form id="otp-step-email" class="dpq-form-step" onsubmit="handleSendAdminOtp(event); return false;">
+                    <div class="dpq-input-wrap">
+                        <input type="email" id="admin-otp-email-input" class="dpq-input" placeholder="Email nhân viên / quản trị..." autocomplete="email" required>
+                    </div>
+                    <p class="dpq-helper-text">Chúng tôi sẽ gửi mã xác thực 6 số đến email của bạn.</p>
+                    <button type="submit" id="send-admin-otp-btn" class="dpq-primary-btn">
+                        <span>Tiếp tục</span>
+                    </button>
+                </form>
+
+                <!-- Step 2: Input 6-Digit OTP (Initially Hidden) -->
+                <form id="otp-step-verify" class="dpq-form-step hide" onsubmit="handleVerifyAdminOtp(event); return false;">
+                    <p class="dpq-verify-notice">Mã đã gửi đến <b id="otp-target-email-display"></b></p>
+                    <div class="dpq-input-wrap">
+                        <input type="text" id="admin-otp-code-input" class="dpq-input dpq-otp-input" placeholder="––––––" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
+                    </div>
+                    <button type="submit" id="verify-admin-otp-btn" class="dpq-primary-btn">
+                        <span>Xác nhận</span>
+                    </button>
+                    <div class="dpq-actions-row">
+                        <span id="admin-otp-countdown" class="dpq-countdown-text">Mã có hiệu lực trong 5:00</span>
+                        <button type="button" id="resend-admin-otp-btn" class="dpq-link-btn" onclick="handleSendAdminOtp(event)" disabled>Gửi lại mã</button>
+                        <button type="button" id="change-otp-email-btn" class="dpq-link-btn" onclick="handleChangeOtpEmail()">Dùng email khác</button>
+                    </div>
+                </form>
+
+                <!-- Divider -->
+                <div class="dpq-divider">
+                    <div class="dpq-divider-line"></div>
+                    <span class="dpq-divider-text">hoặc</span>
+                    <div class="dpq-divider-line"></div>
+                </div>
+
+                <!-- Google Sign-In Container -->
+                <div class="dpq-google-wrapper">
+                    <div id="google-signin-btn-container" class="dpq-google-slot"></div>
+                    <button type="button" id="google-auth-trigger-btn" class="dpq-google-btn" onclick="handleGoogleAuthTrigger()">
+                        <svg class="dpq-google-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.24v3.15C3.26 21.36 7.34 24 12 24z"/><path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.24C.45 8.15 0 9.92 0 12s.45 3.85 1.24 5.42l4.04-3.15z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.24 6.58l4.04 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/></svg>
+                        <span>Tiếp tục sử dụng dịch vụ bằng Google</span>
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -755,6 +726,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r20"></script>
+    <script src="admin.js?v=r26"></script>
 </body>
 </html>

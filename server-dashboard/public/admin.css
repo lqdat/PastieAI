@@ -1594,49 +1594,265 @@ button {
   .project-selector select { max-width: none; }
   .header-right { gap: 2px; }
 }
-/* Login actions & Unified Direct Auth styling */
-.login-box { width: min(92vw, 420px); padding: 32px 28px; }
-.login-action-btn { width: 100%; margin-inline: auto; justify-content: center; height: 44px; font-weight: 700; border-radius: 11px; }
+/* DealPhuQuoc-Style Login Card & Buttons */
+.dpq-login-card {
+  position: relative;
+  width: min(92vw, 440px);
+  background: #ffffff;
+  border-radius: 28px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+  padding: 36px 32px 32px;
+  color: #1f2937;
+  text-align: center;
+  animation: fadeIn 0.2s ease-out;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
 
-/* Auth Switcher Tabs */
-.auth-tabs { display: flex; gap: 6px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); padding: 4px; border-radius: 12px; margin-bottom: 20px; }
-.auth-tab-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; background: transparent; border: 0; border-radius: 8px; color: var(--text-secondary); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
-.auth-tab-btn:hover { color: var(--text-primary); }
-.auth-tab-btn.active { background: rgba(201, 12, 108, 0.2); color: #ff5ba8; border: 1px solid rgba(244, 56, 161, 0.35); box-shadow: 0 4px 12px rgba(201, 12, 108, 0.15); }
+.dpq-brand-header {
+  margin-bottom: 24px;
+}
 
-.auth-panel { display: none; }
-.auth-panel.active { display: block; animation: fadeIn 0.22s ease-out; }
+.dpq-brand-logo {
+  height: 64px;
+  width: auto;
+  max-width: 180px;
+  object-contain: contain;
+  margin: 0 auto 14px;
+  display: block;
+}
 
-/* Google Sign-in */
-.google-auth-wrapper { margin-bottom: 14px; }
-.google-btn-slot { display: flex; justify-content: center; min-height: 44px; }
-.google-custom-btn { width: 100%; height: 44px; display: flex; align-items: center; justify-content: center; gap: 10px; background: #ffffff; color: #1f1f1f; border: 1px solid #dadce0; border-radius: 11px; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); }
-.google-custom-btn:hover { background: #f8f9fa; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16); }
-.google-icon { width: 18px; height: 18px; }
+.dpq-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.3;
+  margin: 0 0 6px;
+}
+
+.dpq-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Inputs */
+.dpq-form-step {
+  display: block;
+}
+
+.dpq-input-wrap {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.dpq-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1.5px solid #d1d5db;
+  border-radius: 12px;
+  padding: 13px 16px;
+  font-size: 15px;
+  font-family: inherit;
+  color: #111827;
+  background: #ffffff;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.dpq-input:focus {
+  border-color: #111827;
+  box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.1);
+}
+
+.dpq-otp-input {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  padding: 12px;
+}
+
+.dpq-helper-text {
+  font-size: 12.5px;
+  color: #6b7280;
+  text-align: left;
+  margin: 0 0 16px 2px;
+  line-height: 1.4;
+}
+
+.dpq-verify-notice {
+  font-size: 13px;
+  color: #4b5563;
+  text-align: center;
+  margin: 0 0 16px;
+  line-height: 1.4;
+}
+
+.dpq-verify-notice b {
+  color: #111827;
+  word-break: break-all;
+}
+
+/* Primary Action Button - Gradient DealPhuQuoc */
+.dpq-primary-btn {
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+  border: 0;
+  cursor: pointer;
+  background: radial-gradient(circle at 84% 15%, rgba(255, 200, 61, 0.28), transparent 30%), linear-gradient(135deg, #F438A1, #C90C6C);
+  box-shadow: 0 4px 14px rgba(201, 12, 108, 0.28);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.dpq-primary-btn:hover:not(:disabled) {
+  opacity: 0.94;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(201, 12, 108, 0.35);
+}
+
+.dpq-primary-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.dpq-primary-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Actions Row (OTP) */
+.dpq-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 12px;
+}
+
+.dpq-countdown-text {
+  color: #c90c6c;
+  font-weight: 600;
+}
+
+.dpq-link-btn {
+  background: transparent;
+  border: 0;
+  color: #4b5563;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  text-decoration: underline;
+  transition: color 0.15s;
+}
+
+.dpq-link-btn:hover:not(:disabled) {
+  color: #c90c6c;
+}
+
+.dpq-link-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  text-decoration: none;
+}
 
 /* Divider */
-.auth-divider { display: flex; align-items: center; margin: 16px 0; text-align: center; color: var(--text-secondary); font-size: 11.5px; }
-.auth-divider::before, .auth-divider::after { content: ''; flex: 1; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
-.auth-divider span { padding: 0 10px; }
+.dpq-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 18px;
+}
 
-/* Inputs with icon */
-.input-with-icon { position: relative; width: 100%; margin-bottom: 12px; }
-.input-with-icon i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); font-size: 16px; pointer-events: none; }
-.input-with-icon input { width: 100%; box-sizing: border-box; padding: 12px 14px 12px 40px; border-radius: 10px; background: rgba(0, 0, 0, 0.22); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-primary); font-family: inherit; font-size: 13px; transition: border-color 0.2s ease, box-shadow 0.2s ease; }
-.input-with-icon input:focus { outline: none; border-color: #f438a1; box-shadow: 0 0 0 3px rgba(244, 56, 161, 0.2); }
+.dpq-divider-line {
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
 
-/* OTP section */
-.otp-notice { font-size: 12px; color: #fed7aa; background: rgba(249, 115, 22, 0.12); border: 1px solid rgba(249, 115, 22, 0.25); padding: 10px 12px; border-radius: 9px; margin-bottom: 14px; line-height: 1.45; text-align: left; }
-.otp-notice b { color: #ffedd5; word-break: break-all; }
-.otp-actions-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; font-size: 11.5px; }
-.otp-countdown-text { color: #f438a1; font-weight: 600; }
-.text-link-btn { background: transparent; border: 0; color: var(--text-secondary); font-size: 11.5px; cursor: pointer; padding: 4px; text-decoration: underline; transition: color 0.15s; }
-.text-link-btn:hover:not(:disabled) { color: #f438a1; }
-.text-link-btn:disabled { opacity: 0.4; cursor: not-allowed; text-decoration: none; }
+.dpq-divider-text {
+  font-size: 12.5px;
+  color: #6b7280;
+  font-weight: 500;
+}
 
-/* Alerts */
-.success-msg { color: #34d399; background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.25); padding: 10px 14px; border-radius: 9px; font-size: 12px; margin-top: 14px; text-align: left; line-height: 1.4; animation: fadeIn 0.2s ease-out; }
-.error-msg { color: #f87171; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.25); padding: 10px 14px; border-radius: 9px; font-size: 12px; margin-top: 14px; text-align: left; line-height: 1.4; animation: fadeIn 0.2s ease-out; }
+/* Google Button - Pill shape DealPhuQuoc */
+.dpq-google-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.dpq-google-slot {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.dpq-google-btn {
+  width: 100%;
+  padding: 12px 18px;
+  border-radius: 9999px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.dpq-google-btn:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.dpq-google-icon {
+  width: 19px;
+  height: 19px;
+  flex-shrink: 0;
+}
+
+/* Feedback Messages */
+.dpq-error-msg {
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  text-align: left;
+  line-height: 1.4;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.dpq-success-msg {
+  color: #059669;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  text-align: left;
+  line-height: 1.4;
+  animation: fadeIn 0.2s ease-out;
+}
 
 /* Custom notification permission popup. The actual browser permission dialog remains native. */
 .push-permission-card { position:relative; width:min(92vw,390px); overflow:hidden; padding:30px 28px 24px; border-radius:26px; color:#35243d; text-align:center; background:radial-gradient(circle at 88% 2%,rgba(255,208,75,.32),transparent 26%),linear-gradient(145deg,#fff 0%,#fff5fa 100%); box-shadow:0 28px 70px rgba(88,19,65,.3); }
