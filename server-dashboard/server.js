@@ -1582,6 +1582,291 @@ app.post('/api/admin/login', async (req, res) => {
   }
 });
 
+// --- UNIFIED DIRECT AUTHENTICATION (GOOGLE OAUTH & EMAIL OTP) ---
+
+/**
+ * Shared helper to verify DealPhuQuoc user / local admin status,
+ * provision/sync admin record and issue an 8-hour admin session.
+ */
+async function resolveAdminUserAndLogin({ email, name, avatarUrl }) {
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    const err = new Error('Email không hợp lệ.');
+    err.status = 400;
+    throw err;
+  }
+
+  let determinedRole = 'agent';
+  let determinedProjectId = 'dealphuquoc';
+  let determinedFullName = name || cleanEmail.split('@')[0];
+  let determinedAvatar = avatarUrl || null;
+  let isSuperAdminUser = false;
+
+  // 1. Kiểm tra tài khoản trong bảng local `admins`
+  const localAdminRes = await db.query('SELECT * FROM admins WHERE LOWER(username) = LOWER($1)', [cleanEmail]);
+  const localAdmin = localAdminRes.rows[0];
+  if (localAdmin && localAdmin.role === 'superadmin') {
+    isSuperAdminUser = true;
+    determinedRole = 'superadmin';
+    determinedProjectId = null;
+    determinedFullName = localAdmin.full_name || determinedFullName;
+  }
+
+  // 2. Tra cứu đối soát với Database DealPhuQuoc
+  if (process.env.DEALPHUQUOC_DATABASE_URL) {
+    try {
+      const dealPool = dealSync.getDealPool();
+      const dealUserRes = await dealPool.query(
+        'SELECT id, name, email, role, "chatAccess", locked, "avatarUrl" FROM "User" WHERE LOWER(email) = LOWER($1) LIMIT 1',
+        [cleanEmail]
+      );
+      await dealPool.end();
+
+      if (dealUserRes.rows.length > 0) {
+        const dealUser = dealUserRes.rows[0];
+        if (dealUser.locked) {
+          const err = new Error('Tài khoản DealPhuQuoc của bạn đang bị tạm khóa.');
+          err.status = 403;
+          throw err;
+        }
+
+        const isDealSuperAdmin = dealUser.role === 'SUPERADMIN';
+        const hasChatPermission = isDealSuperAdmin || dealUser.chatAccess === true;
+        if (!hasChatPermission && !isSuperAdminUser) {
+          const err = new Error('Tài khoản chưa được cấp quyền sử dụng hệ thống Chat trên DealPhuQuoc (chưa bật chatAccess).');
+          err.status = 403;
+          throw err;
+        }
+
+        determinedFullName = dealUser.name || determinedFullName;
+        if (dealUser.avatarUrl) determinedAvatar = dealUser.avatarUrl;
+
+        if (isDealSuperAdmin) {
+          determinedRole = 'superadmin';
+          determinedProjectId = null;
+        } else if (['ADMIN', 'HOST', 'SALE'].includes(dealUser.role)) {
+          determinedRole = 'project_admin';
+          determinedProjectId = 'dealphuquoc';
+        } else {
+          determinedRole = 'agent';
+          determinedProjectId = 'dealphuquoc';
+        }
+      } else {
+        // Không tìm thấy trên DealPhuQuoc
+        if (!isSuperAdminUser && !localAdmin) {
+          const err = new Error('Tài khoản này chưa được đăng ký trên DealPhuQuoc hoặc hệ thống Pastie AI.');
+          err.status = 403;
+          throw err;
+        }
+        if (localAdmin) {
+          determinedRole = localAdmin.role;
+          determinedProjectId = localAdmin.project_id;
+        }
+      }
+    } catch (err) {
+      if (err.status) throw err;
+      console.warn('[DirectAuth] Không thể kết nối DealPhuQuoc DB, dùng thông tin local:', err.message);
+      if (!localAdmin) {
+        const fallbackErr = new Error('Không thể kết nối cơ sở dữ liệu DealPhuQuoc để xác thực tài khoản.');
+        fallbackErr.status = 500;
+        throw fallbackErr;
+      }
+      determinedRole = localAdmin.role;
+      determinedProjectId = localAdmin.project_id;
+    }
+  } else if (localAdmin) {
+    determinedRole = localAdmin.role;
+    determinedProjectId = localAdmin.project_id;
+  }
+
+  // 3. Upsert vào bảng `admins`
+  let admin = (await db.query('SELECT * FROM admins WHERE LOWER(username) = LOWER($1)', [cleanEmail])).rows[0];
+  if (!admin) {
+    const ph = await hashPassword(randomUUID());
+    admin = (await db.query(
+      `INSERT INTO admins (username, password_hash, full_name, role, project_id, avatar_url, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE) RETURNING *`,
+      [cleanEmail, ph, determinedFullName, determinedRole, determinedProjectId, determinedAvatar]
+    )).rows[0];
+  } else {
+    admin = (await db.query(
+      `UPDATE admins SET full_name = $1, role = $2, project_id = $3, avatar_url = COALESCE($4, avatar_url), is_active = TRUE WHERE id = $5 RETURNING *`,
+      [determinedFullName, determinedRole, determinedProjectId, determinedAvatar, admin.id]
+    )).rows[0];
+  }
+
+  // 4. Tạo token session
+  const sessionToken = randomUUID();
+  const expiresAt = new Date(Date.now() + ADMIN_SESSION_MS); // 8 hours
+  await db.query('INSERT INTO admin_sessions (token, admin_id, expires_at) VALUES ($1, $2, $3)', [sessionToken, admin.id, expiresAt]);
+
+  return {
+    token: sessionToken,
+    admin: {
+      id: admin.id,
+      username: admin.username,
+      email: cleanEmail,
+      full_name: admin.full_name,
+      role: admin.role,
+      project_id: admin.project_id,
+      avatar_url: admin.avatar_url
+    }
+  };
+}
+
+// 1. POST Google OAuth Sign-In
+app.post('/api/admin/auth/google', async (req, res) => {
+  const { credential } = req.body;
+  if (!credential) {
+    return res.status(400).json({ error: 'Thiếu Google credential token.' });
+  }
+
+  try {
+    // Verify token with Google TokenInfo API
+    const googleVerifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+    if (!googleVerifyRes.ok) {
+      return res.status(401).json({ error: 'Token Google không hợp lệ hoặc đã hết hạn.' });
+    }
+
+    const payload = await googleVerifyRes.json();
+    if (!payload.email || (payload.email_verified !== 'true' && payload.email_verified !== true)) {
+      return res.status(401).json({ error: 'Email Google chưa được xác thực.' });
+    }
+
+    const result = await resolveAdminUserAndLogin({
+      email: payload.email,
+      name: payload.name,
+      avatarUrl: payload.picture
+    });
+
+    console.log(`[GoogleAuth] Đăng nhập thành công: ${payload.email} (${result.admin.role})`);
+    res.json({
+      success: true,
+      token: result.token,
+      admin: result.admin
+    });
+  } catch (error) {
+    console.error('Google login error:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Lỗi hệ thống khi đăng nhập bằng Google.' });
+  }
+});
+
+// 2. POST Send Email OTP for Admin
+app.post('/api/admin/auth/otp/send', async (req, res) => {
+  const { email } = req.body;
+  const cleanEmail = String(email || '').trim().toLowerCase();
+
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    return res.status(400).json({ error: 'Vui lòng nhập địa chỉ email hợp lệ.' });
+  }
+
+  try {
+    // Pre-check permissions before sending OTP
+    let userName = cleanEmail.split('@')[0];
+    if (process.env.DEALPHUQUOC_DATABASE_URL) {
+      try {
+        const dealPool = dealSync.getDealPool();
+        const dealUserRes = await dealPool.query(
+          'SELECT id, name, role, "chatAccess", locked FROM "User" WHERE LOWER(email) = LOWER($1) LIMIT 1',
+          [cleanEmail]
+        );
+        await dealPool.end();
+
+        if (dealUserRes.rows.length > 0) {
+          const u = dealUserRes.rows[0];
+          if (u.locked) {
+            return res.status(403).json({ error: 'Tài khoản của bạn trên DealPhuQuoc đang bị tạm khóa.' });
+          }
+          if (u.role !== 'SUPERADMIN' && u.chatAccess !== true) {
+            return res.status(403).json({ error: 'Tài khoản chưa được cấp quyền sử dụng hệ thống Chat trên DealPhuQuoc (chưa bật chatAccess).' });
+          }
+          if (u.name) userName = u.name;
+        } else {
+          // Check local admins
+          const localCheck = await db.query('SELECT * FROM admins WHERE LOWER(username) = LOWER($1)', [cleanEmail]);
+          if (localCheck.rows.length === 0) {
+            return res.status(403).json({ error: 'Tài khoản email này chưa được cấp quyền trên DealPhuQuoc hoặc Pastie AI.' });
+          }
+          if (localCheck.rows[0].full_name) userName = localCheck.rows[0].full_name;
+        }
+      } catch (checkErr) {
+        console.warn('[AdminOTP] Pre-check failed:', checkErr.message);
+      }
+    }
+
+    // Generate 6-digit OTP
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+    // Upsert into admin_otps table
+    await db.query(`
+      INSERT INTO admin_otps (email, code, expires_at)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (email) DO UPDATE SET code = $2, expires_at = $3, created_at = CURRENT_TIMESTAMP
+    `, [cleanEmail, otpCode, expiresAt]);
+
+    // Send email via Resend
+    const sendResult = await resend.sendAdminOTPEmail(cleanEmail, otpCode, userName);
+    if (!sendResult.ok) {
+      return res.status(500).json({ error: 'Không thể gửi email OTP: ' + (sendResult.reason || 'Lỗi dịch vụ email') });
+    }
+
+    res.json({
+      success: true,
+      message: `Đã gửi mã xác thực 6 số đến email ${cleanEmail}. Mã có hiệu lực trong 5 phút.`
+    });
+  } catch (error) {
+    console.error('Send admin OTP error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi gửi mã OTP: ' + error.message });
+  }
+});
+
+// 3. POST Verify Email OTP for Admin
+app.post('/api/admin/auth/otp/verify', async (req, res) => {
+  const { email, otpCode } = req.body;
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  const cleanOtp = String(otpCode || '').trim();
+
+  if (!cleanEmail || !cleanOtp) {
+    return res.status(400).json({ error: 'Vui lòng nhập đầy đủ email và mã OTP.' });
+  }
+
+  try {
+    const otpRes = await db.query(
+      'SELECT * FROM admin_otps WHERE email = $1 AND code = $2 AND expires_at > CURRENT_TIMESTAMP LIMIT 1',
+      [cleanEmail, cleanOtp]
+    );
+
+    if (otpRes.rows.length === 0) {
+      return res.status(400).json({ error: 'Mã xác thực OTP không chính xác hoặc đã hết hạn.' });
+    }
+
+    // Delete used OTP
+    await db.query('DELETE FROM admin_otps WHERE email = $1', [cleanEmail]);
+
+    // Resolve user and log in
+    const result = await resolveAdminUserAndLogin({ email: cleanEmail });
+
+    console.log(`[AdminOTP] Đăng nhập thành công: ${cleanEmail} (${result.admin.role})`);
+    res.json({
+      success: true,
+      token: result.token,
+      admin: result.admin
+    });
+  } catch (error) {
+    console.error('Verify admin OTP error:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Lỗi hệ thống khi xác thực OTP.' });
+  }
+});
+
+// 4. Public auth config for Google Client ID
+app.get('/api/admin/auth/config', (req, res) => {
+  res.json({
+    googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+    resendConfigured: Boolean(process.env.RESEND_API_KEY)
+  });
+});
+
 // SSO đăng nhập từ hệ thống ngoài (vd DealPhuQuoc). Token ký HMAC-SHA256 bằng CHAT_SSO_SECRET chung.
 // Payload: base64url(JSON{email,name,project,role,exp}) + '.' + base64url(hmac).
 // SSO may provision only agent or project_admin, never superadmin.

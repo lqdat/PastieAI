@@ -1594,20 +1594,49 @@ button {
   .project-selector select { max-width: none; }
   .header-right { gap: 2px; }
 }
-/* Login actions: same width, dropdown stays aligned with the SSO button. */
-.login-action-btn { width: min(100%, 320px); margin-inline: auto; justify-content: center; }
-.sso-divider { margin: 14px 0 8px; text-align: center; color: var(--text-secondary); font-size: 12px; }
-.sso-login-menu { width: min(100%, 320px); margin: 0 auto; position: relative; }
-.sso-login-toggle { width: 100%; background: linear-gradient(90deg,#f438a1,#c90c6c); }
-.sso-chevron { margin-left: 2px; transition: transform .16s ease; }
-.sso-login-menu.is-open .sso-chevron { transform: rotate(180deg); }
-.sso-login-options { position: absolute; z-index: 2500; top: calc(100% + 8px); left: 0; right: 0; padding: 6px; border-radius: 12px; background: #fff; border: 1px solid rgba(201,12,108,.18); box-shadow: 0 16px 35px rgba(83,28,63,.22); }
-.sso-option { width: 100%; display: flex; gap: 10px; align-items: center; padding: 10px 12px; background: transparent; border: 0; border-radius: 9px; color: #382542; cursor: pointer; text-align: left; font: inherit; }
-.sso-option:hover { background: #fff0f8; color: #c90c6c; }
-.sso-option > i { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: #c90c6c; background: #ffe5f3; }
-.sso-option span { display: grid; gap: 2px; }
-.sso-option b { font-size: 13px; }
-.sso-option small { color: #88758c; font-size: 11px; }
+/* Login actions & Unified Direct Auth styling */
+.login-box { width: min(92vw, 420px); padding: 32px 28px; }
+.login-action-btn { width: 100%; margin-inline: auto; justify-content: center; height: 44px; font-weight: 700; border-radius: 11px; }
+
+/* Auth Switcher Tabs */
+.auth-tabs { display: flex; gap: 6px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); padding: 4px; border-radius: 12px; margin-bottom: 20px; }
+.auth-tab-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; background: transparent; border: 0; border-radius: 8px; color: var(--text-secondary); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
+.auth-tab-btn:hover { color: var(--text-primary); }
+.auth-tab-btn.active { background: rgba(201, 12, 108, 0.2); color: #ff5ba8; border: 1px solid rgba(244, 56, 161, 0.35); box-shadow: 0 4px 12px rgba(201, 12, 108, 0.15); }
+
+.auth-panel { display: none; }
+.auth-panel.active { display: block; animation: fadeIn 0.22s ease-out; }
+
+/* Google Sign-in */
+.google-auth-wrapper { margin-bottom: 14px; }
+.google-btn-slot { display: flex; justify-content: center; min-height: 44px; }
+.google-custom-btn { width: 100%; height: 44px; display: flex; align-items: center; justify-content: center; gap: 10px; background: #ffffff; color: #1f1f1f; border: 1px solid #dadce0; border-radius: 11px; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); }
+.google-custom-btn:hover { background: #f8f9fa; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16); }
+.google-icon { width: 18px; height: 18px; }
+
+/* Divider */
+.auth-divider { display: flex; align-items: center; margin: 16px 0; text-align: center; color: var(--text-secondary); font-size: 11.5px; }
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.auth-divider span { padding: 0 10px; }
+
+/* Inputs with icon */
+.input-with-icon { position: relative; width: 100%; margin-bottom: 12px; }
+.input-with-icon i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); font-size: 16px; pointer-events: none; }
+.input-with-icon input { width: 100%; box-sizing: border-box; padding: 12px 14px 12px 40px; border-radius: 10px; background: rgba(0, 0, 0, 0.22); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-primary); font-family: inherit; font-size: 13px; transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+.input-with-icon input:focus { outline: none; border-color: #f438a1; box-shadow: 0 0 0 3px rgba(244, 56, 161, 0.2); }
+
+/* OTP section */
+.otp-notice { font-size: 12px; color: #fed7aa; background: rgba(249, 115, 22, 0.12); border: 1px solid rgba(249, 115, 22, 0.25); padding: 10px 12px; border-radius: 9px; margin-bottom: 14px; line-height: 1.45; text-align: left; }
+.otp-notice b { color: #ffedd5; word-break: break-all; }
+.otp-actions-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; font-size: 11.5px; }
+.otp-countdown-text { color: #f438a1; font-weight: 600; }
+.text-link-btn { background: transparent; border: 0; color: var(--text-secondary); font-size: 11.5px; cursor: pointer; padding: 4px; text-decoration: underline; transition: color 0.15s; }
+.text-link-btn:hover:not(:disabled) { color: #f438a1; }
+.text-link-btn:disabled { opacity: 0.4; cursor: not-allowed; text-decoration: none; }
+
+/* Alerts */
+.success-msg { color: #34d399; background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.25); padding: 10px 14px; border-radius: 9px; font-size: 12px; margin-top: 14px; text-align: left; line-height: 1.4; animation: fadeIn 0.2s ease-out; }
+.error-msg { color: #f87171; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.25); padding: 10px 14px; border-radius: 9px; font-size: 12px; margin-top: 14px; text-align: left; line-height: 1.4; animation: fadeIn 0.2s ease-out; }
 
 /* Custom notification permission popup. The actual browser permission dialog remains native. */
 .push-permission-card { position:relative; width:min(92vw,390px); overflow:hidden; padding:30px 28px 24px; border-radius:26px; color:#35243d; text-align:center; background:radial-gradient(circle at 88% 2%,rgba(255,208,75,.32),transparent 26%),linear-gradient(145deg,#fff 0%,#fff5fa 100%); box-shadow:0 28px 70px rgba(88,19,65,.3); }

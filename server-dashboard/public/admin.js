@@ -409,12 +409,305 @@ changePasswordForm?.addEventListener('submit', async (event) => {
     alert('Đã đổi mật khẩu thành công.');
 });
 
-// Đổi token SSO (?sso=) lấy phiên đăng nhập. Trả true nếu thành công. Chỉ xoá ?sso khi thành công.
+// ----------------------------------------------------
+// UNIFIED DIRECT AUTHENTICATION (GOOGLE & EMAIL OTP)
+// ----------------------------------------------------
+
+let adminOtpCountdownInterval = null;
+let currentOtpTargetEmail = '';
+
+function setLoginError(msg) {
+    const errBox = document.getElementById('login-error-msg');
+    const succBox = document.getElementById('login-success-msg');
+    if (succBox) succBox.style.display = 'none';
+    if (errBox) {
+        if (msg) {
+            errBox.textContent = msg;
+            errBox.style.display = 'block';
+        } else {
+            errBox.style.display = 'none';
+        }
+    }
+}
+
+function setLoginSuccess(msg) {
+    const errBox = document.getElementById('login-error-msg');
+    const succBox = document.getElementById('login-success-msg');
+    if (errBox) errBox.style.display = 'none';
+    if (succBox) {
+        if (msg) {
+            succBox.textContent = msg;
+            succBox.style.display = 'block';
+        } else {
+            succBox.style.display = 'none';
+        }
+    }
+}
+
+// Google Sign-In Callback
+window.handleGoogleCredentialResponse = async function(response) {
+    if (!response || !response.credential) {
+        setLoginError('Không nhận được token xác thực từ Google.');
+        return;
+    }
+
+    setLoginError('');
+    setLoginSuccess('Đang xác thực tài khoản Google với hệ thống...');
+
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/auth/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credential: response.credential })
+        });
+        const data = await res.json();
+        if (res.ok && data.token) {
+            localStorage.setItem('pastie_admin_token', data.token);
+            setLoginSuccess('Đăng nhập thành công! Đang vào Console...');
+            setTimeout(() => {
+                hideLogin();
+                initDashboard();
+            }, 400);
+        } else {
+            setLoginError(data.error || 'Đăng nhập bằng Google thất bại.');
+        }
+    } catch (e) {
+        console.error('Google sign-in error:', e);
+        setLoginError('Lỗi kết nối khi xác thực Google: ' + e.message);
+    }
+};
+
+// Khởi tạo Google Sign-in button
+async function initGoogleAuth() {
+    try {
+        const configRes = await fetch(`${API_BASE}/api/admin/auth/config`);
+        const configData = await configRes.json();
+        const googleClientId = configData.googleClientId;
+
+        const slot = document.getElementById('google-signin-btn-container');
+        const customBtn = document.getElementById('google-auth-trigger-btn');
+
+        if (googleClientId && window.google && window.google.accounts && window.google.accounts.id) {
+            window.google.accounts.id.initialize({
+                client_id: googleClientId,
+                callback: window.handleGoogleCredentialResponse,
+                auto_select: false,
+                cancel_on_tap_outside: true
+            });
+            if (slot) {
+                window.google.accounts.id.renderButton(slot, {
+                    type: 'standard',
+                    theme: 'outline',
+                    size: 'large',
+                    text: 'signin_with',
+                    shape: 'rectangular',
+                    logo_alignment: 'left',
+                    width: 320
+                });
+            }
+            if (customBtn) customBtn.classList.add('hide');
+        } else {
+            // Hiển thị nút tùy chỉnh nếu chưa nhúng Google Client ID
+            if (customBtn) {
+                customBtn.classList.remove('hide');
+                customBtn.onclick = () => {
+                    if (!googleClientId) {
+                        setLoginError('Chưa cấu hình GOOGLE_CLIENT_ID trên server. Vui lòng sử dụng tính năng Đăng nhập bằng OTP Email bên dưới!');
+                    } else if (window.google?.accounts?.id) {
+                        window.google.accounts.id.prompt();
+                    }
+                };
+            }
+        }
+    } catch (e) {
+        console.warn('Init Google auth error:', e);
+    }
+}
+
+// Bắt đầu đếm ngược 5 phút OTP
+function startOtpCountdown(seconds = 300) {
+    if (adminOtpCountdownInterval) clearInterval(adminOtpCountdownInterval);
+    let remaining = seconds;
+    const countdownEl = document.getElementById('admin-otp-countdown');
+    const resendBtn = document.getElementById('resend-admin-otp-btn');
+    if (resendBtn) resendBtn.disabled = true;
+
+    function update() {
+        const m = Math.floor(remaining / 60);
+        const s = remaining % 60;
+        if (countdownEl) {
+            countdownEl.textContent = `Mã có hiệu lực trong ${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+        if (remaining <= 0) {
+            clearInterval(adminOtpCountdownInterval);
+            if (countdownEl) countdownEl.textContent = 'Mã OTP đã hết hạn.';
+            if (resendBtn) resendBtn.disabled = false;
+        }
+        remaining--;
+    }
+    update();
+    adminOtpCountdownInterval = setInterval(update, 1000);
+}
+
+// Xử lý gửi mã OTP Email
+async function handleSendAdminOtp() {
+    const emailInput = document.getElementById('admin-otp-email-input');
+    const email = emailInput ? emailInput.value.trim() : '';
+    if (!email || !email.includes('@')) {
+        setLoginError('Vui lòng nhập địa chỉ email hợp lệ.');
+        return;
+    }
+
+    const sendBtn = document.getElementById('send-admin-otp-btn');
+    if (sendBtn) {
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = 'Đang gửi mã... <i class="ri-loader-4-line ri-spin"></i>';
+    }
+    setLoginError('');
+    setLoginSuccess('');
+
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/auth/otp/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            currentOtpTargetEmail = email;
+            document.getElementById('otp-step-email')?.classList.add('hide');
+            document.getElementById('otp-step-verify')?.classList.remove('hide');
+            const targetDisplay = document.getElementById('otp-target-email-display');
+            if (targetDisplay) targetDisplay.textContent = email;
+            
+            startOtpCountdown(300);
+            setLoginSuccess(data.message || 'Mã OTP đã được gửi đến hộp thư của bạn!');
+            const codeInput = document.getElementById('admin-otp-code-input');
+            if (codeInput) {
+                codeInput.value = '';
+                codeInput.focus();
+            }
+        } else {
+            setLoginError(data.error || 'Không thể gửi mã OTP.');
+        }
+    } catch (e) {
+        setLoginError('Lỗi kết nối khi gửi OTP: ' + e.message);
+    } finally {
+        if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = '<span>Gửi Mã Xác Thực OTP</span> <i class="ri-send-plane-fill"></i>';
+        }
+    }
+}
+
+// Xử lý xác thực mã OTP
+async function handleVerifyAdminOtp() {
+    const codeInput = document.getElementById('admin-otp-code-input');
+    const otpCode = codeInput ? codeInput.value.trim() : '';
+    if (!otpCode || otpCode.length < 6) {
+        setLoginError('Vui lòng nhập đủ 6 chữ số mã OTP.');
+        return;
+    }
+
+    const verifyBtn = document.getElementById('verify-admin-otp-btn');
+    if (verifyBtn) {
+        verifyBtn.disabled = true;
+        verifyBtn.innerHTML = 'Đang xác thực... <i class="ri-loader-4-line ri-spin"></i>';
+    }
+    setLoginError('');
+
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/auth/otp/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: currentOtpTargetEmail, otpCode })
+        });
+        const data = await res.json();
+        if (res.ok && data.token) {
+            localStorage.setItem('pastie_admin_token', data.token);
+            setLoginSuccess('Xác thực OTP thành công! Đang kết nối Console...');
+            if (adminOtpCountdownInterval) clearInterval(adminOtpCountdownInterval);
+            setTimeout(() => {
+                hideLogin();
+                initDashboard();
+            }, 400);
+        } else {
+            setLoginError(data.error || 'Mã OTP không hợp lệ hoặc đã hết hạn.');
+            if (codeInput) codeInput.select();
+        }
+    } catch (e) {
+        setLoginError('Lỗi kết nối khi xác thực OTP: ' + e.message);
+    } finally {
+        if (verifyBtn) {
+            verifyBtn.disabled = false;
+            verifyBtn.innerHTML = '<span>Xác Nhận & Kết Nối</span> <i class="ri-check-double-line"></i>';
+        }
+    }
+}
+
+// Gắn sự kiện chuyển Tab và tương tác Form đăng nhập
+function setupAuthEvents() {
+    // Tab switching
+    const tabDirect = document.getElementById('tab-direct-btn');
+    const tabPwd = document.getElementById('tab-pwd-btn');
+    const panelDirect = document.getElementById('auth-panel-direct');
+    const panelPwd = document.getElementById('auth-panel-pwd');
+
+    if (tabDirect && tabPwd) {
+        tabDirect.addEventListener('click', () => {
+            tabDirect.classList.add('active');
+            tabPwd.classList.remove('active');
+            panelDirect?.classList.add('active');
+            panelDirect?.classList.remove('hide');
+            panelPwd?.classList.remove('active');
+            panelPwd?.classList.add('hide');
+            setLoginError('');
+            setLoginSuccess('');
+        });
+        tabPwd.addEventListener('click', () => {
+            tabPwd.classList.add('active');
+            tabDirect.classList.remove('active');
+            panelPwd?.classList.add('active');
+            panelPwd?.classList.remove('hide');
+            panelDirect?.classList.remove('active');
+            panelDirect?.classList.add('hide');
+            setLoginError('');
+            setLoginSuccess('');
+            document.getElementById('admin-username-input')?.focus();
+        });
+    }
+
+    // OTP buttons
+    document.getElementById('send-admin-otp-btn')?.addEventListener('click', handleSendAdminOtp);
+    document.getElementById('resend-admin-otp-btn')?.addEventListener('click', handleSendAdminOtp);
+    document.getElementById('verify-admin-otp-btn')?.addEventListener('click', handleVerifyAdminOtp);
+
+    document.getElementById('change-otp-email-btn')?.addEventListener('click', () => {
+        if (adminOtpCountdownInterval) clearInterval(adminOtpCountdownInterval);
+        document.getElementById('otp-step-verify')?.classList.add('hide');
+        document.getElementById('otp-step-email')?.classList.remove('hide');
+        setLoginError('');
+        setLoginSuccess('');
+        document.getElementById('admin-otp-email-input')?.focus();
+    });
+
+    // Enter key shortcuts
+    document.getElementById('admin-otp-email-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); handleSendAdminOtp(); }
+    });
+    document.getElementById('admin-otp-code-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); handleVerifyAdminOtp(); }
+    });
+    document.getElementById('admin-password-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); handleLogin(); }
+    });
+}
+
+// Đổi token SSO (?sso=) lấy phiên đăng nhập (Hỗ trợ tương thích ngược)
 async function doSsoLogin() {
     const params = new URLSearchParams(window.location.search);
     let sso = params.get('sso') || params.get('token') || params.get('sso_token') || params.get('ssoToken');
     
-    // Fallback nếu token nằm ở URL hash
     if (!sso && window.location.hash) {
         const hashParams = new URLSearchParams(window.location.hash.replace(/^[#?]/, ''));
         sso = hashParams.get('sso') || hashParams.get('token') || hashParams.get('sso_token') || hashParams.get('ssoToken');
@@ -437,23 +730,19 @@ async function doSsoLogin() {
             window.history.replaceState({}, '', window.location.pathname + (params.toString() ? '?' + params.toString() : ''));
             return true;
         }
-        console.warn('SSO thất bại:', r.status, d.error);
-        if (loginErrorMsg) {
-            loginErrorMsg.textContent = d.error || 'Đăng nhập SSO DealPhuQuoc thất bại.';
-            loginErrorMsg.style.display = 'block';
-        }
+        setLoginError(d.error || 'Đăng nhập SSO DealPhuQuoc thất bại.');
         return false;
     } catch (e) {
         console.error('SSO error:', e);
-        if (loginErrorMsg) {
-            loginErrorMsg.textContent = 'Lỗi kết nối khi xác thực SSO: ' + e.message;
-            loginErrorMsg.style.display = 'block';
-        }
+        setLoginError('Lỗi kết nối khi xác thực SSO: ' + e.message);
         return false;
     }
 }
 
 async function verifyAuthAndInit() {
+    setupAuthEvents();
+    initGoogleAuth();
+
     await doSsoLogin(); // tự động thử nếu URL có ?sso
 
     const token = getToken();
@@ -484,29 +773,30 @@ function showLogin() {
     mainDashboard.classList.add('hide');
     if (pollInterval) clearInterval(pollInterval);
     if (messagePollInterval) clearInterval(messagePollInterval);
-    const b = document.getElementById('sso-login-btn');
-    const dv = document.getElementById('sso-divider');
-    if (b) b.style.display = 'block';
-    if (dv) dv.style.display = 'block';
+    setLoginError('');
+    setLoginSuccess('');
+    initGoogleAuth();
 }
 
 function hideLogin() {
     loginModal.classList.add('hide');
     mainDashboard.classList.remove('hide');
-    // Shortcut/PWA: mở console nghĩa là người dùng đã quay lại xử lý inbox.
     if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(() => {});
 }
 
 async function handleLogin() {
     const username = usernameInput ? usernameInput.value.trim() : 'admin';
     const password = passwordInput.value.trim();
-    if (!username || !password) return;
+    if (!username || !password) {
+        setLoginError('Vui lòng nhập tên đăng nhập và mật khẩu.');
+        return;
+    }
 
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
 
     loginBtn.disabled = true;
     loginBtn.innerHTML = dict.connecting || 'Đang kết nối...';
-    loginErrorMsg.style.display = 'none';
+    setLoginError('');
 
     try {
         const response = await fetch(`${API_BASE}/api/admin/login`, {
@@ -520,12 +810,11 @@ async function handleLogin() {
             hideLogin();
             initDashboard();
         } else {
-            loginErrorMsg.style.display = 'block';
-            loginErrorMsg.textContent = data.error || (dict.loginError || 'Tài khoản hoặc mật khẩu không hợp lệ.');
+            setLoginError(data.error || (dict.loginError || 'Tài khoản hoặc mật khẩu không hợp lệ.'));
             passwordInput.value = '';
         }
     } catch (e) {
-        alert(dict.connError || 'Không thể kết nối tới server.');
+        setLoginError(dict.connError || 'Không thể kết nối tới server.');
     } finally {
         loginBtn.disabled = false;
         loginBtn.innerHTML = `${dict.loginBtn || 'Kết Nối Console'} <i class="ri-arrow-right-line"></i>`;

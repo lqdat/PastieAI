@@ -209,6 +209,16 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
       );
     `);
 
+    // Create admin_otps table for staff & admin login
+    await query(`
+      CREATE TABLE IF NOT EXISTS admin_otps (
+        email VARCHAR(255) PRIMARY KEY,
+        code VARCHAR(10) NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     console.log('Database tables verified/created successfully.');
   } catch (err) {
     console.error('Failed to initialize database tables:', err.message);
@@ -216,9 +226,11 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
 }
 
 // Automatically trigger initialization when this module is loaded
-initializeDatabase();
+const initPromise = initializeDatabase();
 
 module.exports = {
   query,
-  pool
+  pool,
+  initializeDatabase,
+  initPromise
 };
