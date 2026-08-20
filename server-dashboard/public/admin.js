@@ -1252,7 +1252,12 @@ async function loadMessages(sessionId, isLoadMore = false) {
         const response = await authFetch(`${API_BASE}/api/admin/chats/${sessionId}/messages?adminLang=${currentLang}&limit=${fetchLimit}&offset=${fetchOffset}&_=${Date.now()}`);
         const fetchedMessages = await response.json();
 
-        if (!Array.isArray(fetchedMessages)) return;
+        if (!Array.isArray(fetchedMessages)) {
+            if (chatMessagesContainer.querySelector('.chat-loading-state')) {
+                renderAdminMessages(false);
+            }
+            return;
+        }
 
         if (isLoadMore) {
             if (fetchedMessages.length < adminLimit) {
@@ -1283,6 +1288,8 @@ async function loadMessages(sessionId, isLoadMore = false) {
                 adminHasMore = false;
             }
 
+            const hasLoadingState = !!chatMessagesContainer.querySelector('.chat-loading-state');
+
             // Only re-render if there are actual message changes (prevents 3s periodic jitter)
             const isDiff = adminMessages.length !== merged.length ||
                            adminMessages.some((m, idx) => {
@@ -1295,12 +1302,15 @@ async function loadMessages(sessionId, isLoadMore = false) {
             // Keep local seen count in sync while admin is viewing
             if (currentSessionId) seenMessageCount[currentSessionId] = adminMessages.length;
 
-            if (isDiff) {
+            if (isDiff || hasLoadingState) {
                 renderAdminMessages(false);
             }
         }
     } catch (e) {
         console.error('Error loading messages:', e);
+        if (chatMessagesContainer.querySelector('.chat-loading-state')) {
+            renderAdminMessages(false);
+        }
     }
 }
 
@@ -2067,7 +2077,7 @@ if (synthesisRunBtn) {
     });
 }
 
-// --- PANCAKE CHANNEL SETTINGS DIALOG ---
+// --- WHATSAPP CHANNEL SETTINGS DIALOG ---
 const channelModal = document.getElementById('channel-modal');
 const channelSettingsBtn = document.getElementById('channel-settings-btn');
 const channelCloseBtn = document.getElementById('channel-close-btn');
@@ -2086,13 +2096,25 @@ if (channelConfigForm) {
 async function openChannelModal() {
     channelModal.classList.remove('hide');
     const statusEl = document.getElementById('channel-status-msg');
-    statusEl.style.display = 'none';
+    if (statusEl) statusEl.style.display = 'none';
+    const activeProject = (CURRENT_ADMIN && CURRENT_ADMIN.project_id) ? CURRENT_ADMIN.project_id : (currentProjectFilter || 'pastie-landingpage');
     try {
-        const response = await authFetch(`${API_BASE}/api/admin/channels?projectId=pastie-landingpage`);
+        const response = await authFetch(`${API_BASE}/api/admin/channels?projectId=${encodeURIComponent(activeProject)}`);
         const data = await response.json();
         if (data.config) {
-            document.getElementById('channel-pancake-page-id').value = data.config.pancake_page_id || '';
-            document.getElementById('channel-pancake-token').value = data.config.pancake_page_access_token || '';
+            const phoneIdEl = document.getElementById('channel-whatsapp-phone-id');
+            const wabaIdEl = document.getElementById('channel-whatsapp-waba-id');
+            const phoneEl = document.getElementById('channel-whatsapp-phone');
+            const tokenEl = document.getElementById('channel-whatsapp-token');
+            const webhookUrlEl = document.getElementById('channel-webhook-url');
+            const verifyTokenEl = document.getElementById('channel-verify-token');
+
+            if (phoneIdEl) phoneIdEl.value = data.config.whatsapp_phone_number_id || '';
+            if (wabaIdEl) wabaIdEl.value = data.config.whatsapp_waba_id || '';
+            if (phoneEl) phoneEl.value = data.config.whatsapp_business_phone || '';
+            if (tokenEl) tokenEl.value = data.config.whatsapp_access_token || '';
+            if (webhookUrlEl && data.config.webhook_url) webhookUrlEl.textContent = data.config.webhook_url;
+            if (verifyTokenEl && data.config.meta_verify_token) verifyTokenEl.textContent = data.config.meta_verify_token;
         }
     } catch (e) {
         console.error('Error fetching channel settings:', e);
@@ -2105,11 +2127,12 @@ function closeChannelModal() {
 
 function showChannelStatus(msg, isError = false) {
     const el = document.getElementById('channel-status-msg');
+    if (!el) return;
     el.textContent = msg;
     el.style.display = 'block';
-    el.style.background = isError ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)';
-    el.style.color = isError ? '#f87171' : '#34d399';
-    el.style.border = isError ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(16,185,129,0.3)';
+    el.style.background = isError ? 'rgba(239,68,68,0.15)' : 'rgba(37,211,102,0.15)';
+    el.style.color = isError ? '#f87171' : '#25D366';
+    el.style.border = isError ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(37,211,102,0.3)';
 }
 
 async function saveChannelConfig(e) {
@@ -2118,10 +2141,15 @@ async function saveChannelConfig(e) {
     saveBtn.disabled = true;
     saveBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang lưu...`;
 
+    const activeProject = (CURRENT_ADMIN && CURRENT_ADMIN.project_id) ? CURRENT_ADMIN.project_id : (currentProjectFilter || 'pastie-landingpage');
+
     const payload = {
-        projectId: 'pastie-landingpage',
-        pancakePageId: document.getElementById('channel-pancake-page-id').value.trim(),
-        pancakePageAccessToken: document.getElementById('channel-pancake-token').value.trim()
+        projectId: activeProject,
+        whatsappPhoneNumberId: document.getElementById('channel-whatsapp-phone-id')?.value.trim() || '',
+        whatsappWabaId: document.getElementById('channel-whatsapp-waba-id')?.value.trim() || '',
+        whatsappBusinessPhone: document.getElementById('channel-whatsapp-phone')?.value.trim() || '',
+        whatsappAccessToken: document.getElementById('channel-whatsapp-token')?.value.trim() || '',
+        metaVerifyToken: document.getElementById('channel-verify-token')?.textContent.trim() || 'pastie_verify_token_2026'
     };
 
     try {
@@ -2132,7 +2160,7 @@ async function saveChannelConfig(e) {
         });
         const data = await response.json();
         if (response.ok && data.success) {
-            showChannelStatus('✅ Đã lưu cấu hình Pancake. Polling sẽ dùng token mới ngay lập tức.');
+            showChannelStatus('✅ Đã lưu cấu hình WhatsApp thành công! Hệ thống sẵn sàng nhận & gửi tin nhắn.');
         } else {
             showChannelStatus('❌ ' + (data.error || 'Không thể lưu cấu hình.'), true);
         }
@@ -2140,7 +2168,7 @@ async function saveChannelConfig(e) {
         showChannelStatus('❌ Lỗi kết nối: ' + err.message, true);
     } finally {
         saveBtn.disabled = false;
-        saveBtn.innerHTML = `<i class="ri-save-line"></i> Lưu cấu hình`;
+        saveBtn.innerHTML = `<i class="ri-save-line"></i> Lưu cấu hình WhatsApp`;
     }
 }
 

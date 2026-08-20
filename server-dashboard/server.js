@@ -1422,9 +1422,11 @@ async function getOrTranslateMessage(msg, targetLang) {
     return msg.translated_text;
   }
 
-  // Call Gemini API to translate
+  // Call Gemini API to translate (with timeout to never block UI)
   try {
-    const { translatedText, detectedLang } = await gemini.translateText(msg.original_text, targetLangCode);
+    const translatePromise = gemini.translateText(msg.original_text, targetLangCode);
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Translate timeout')), 3500));
+    const { translatedText, detectedLang } = await Promise.race([translatePromise, timeoutPromise]);
     if (translatedText) {
       // Save to cache
       await db.query(
@@ -1440,7 +1442,7 @@ async function getOrTranslateMessage(msg, targetLang) {
       return translatedText;
     }
   } catch (err) {
-    console.error(`[Gemini Translate Error] Message ID ${msg.id}:`, err.message);
+    // Non-blocking fallback
   }
 
   return msg.translated_text || msg.original_text;
@@ -1503,10 +1505,10 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
     
     const messages = result.rows.reverse();
 
-    // Dịch các tin nhắn nếu ngôn ngữ khách hàng được chỉ định
-    for (let msg of messages) {
+    // Dịch song song các tin nhắn nếu ngôn ngữ khách hàng được chỉ định
+    await Promise.all(messages.map(async (msg) => {
       msg.translated_text = await getOrTranslateMessage(msg, visitorLang);
-    }
+    }));
 
     res.json(messages);
   } catch (error) {
@@ -2209,10 +2211,10 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res)
     
     const messages = result.rows.reverse();
 
-    // Dịch tin nhắn theo ngôn ngữ được khóa (admin_language) của cuộc trò chuyện
-    for (let msg of messages) {
+    // Dịch song song các tin nhắn theo ngôn ngữ được khóa của cuộc trò chuyện
+    await Promise.all(messages.map(async (msg) => {
       msg.translated_text = await getOrTranslateMessage(msg, targetLang);
-    }
+    }));
 
     res.json(messages);
   } catch (error) {
@@ -3124,11 +3126,9 @@ async function pollPancakeConversations() {
 // Clear seen IDs every hour
 setInterval(() => { _pancakeSeenIds.clear(); }, 60 * 60 * 1000);
 
-// Start polling after 5s (DB needs to be ready)
-setTimeout(() => {
-  setInterval(pollPancakeConversations, 3000);
-  console.log('[Pancake] Polling started — 3s interval');
-}, 5000);
+// Pancake polling disabled in favor of Meta WhatsApp Cloud API
+// To re-enable Pancake, uncomment:
+// setTimeout(() => { setInterval(pollPancakeConversations, 5000); }, 5000);
 
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -3341,18 +3341,26 @@ app.post('/api/admin/knowledge/manual', checkAdminAuth, async (req, res) => {
 
 // --- DYNAMIC MULTI-TENANT CHANNEL CONFIG API ENDPOINTS ---
 
-// 1. GET Channel configurations for a project
+// 1. GET Channel configurations for a project (WhatsApp Cloud API)
 app.get('/api/admin/channels', checkAdminAuth, async (req, res) => {
-  const projectId = req.query.projectId || 'pastie-landingpage';
+  const projectId = req.query.projectId || req.admin.project_id || 'pastie-landingpage';
   try {
     const configRes = await db.query('SELECT * FROM channel_configs WHERE project_id = $1', [projectId]);
     const row = configRes.rows[0];
-    // Return Pancake config — stored in messenger_page_id/messenger_page_access_token columns
+    const origin = process.env.DASHBOARD_PUBLIC_URL
+      ? new URL(process.env.DASHBOARD_PUBLIC_URL).origin
+      : `${req.protocol}://${req.get('host')}`;
+    const webhookUrl = `${origin}/api/multichannel/webhook`;
+
     res.json({
       success: true,
       config: {
-        pancake_page_id: row?.messenger_page_id || process.env.PANCAKE_PAGE_ID || '',
-        pancake_page_access_token: row?.messenger_page_access_token || process.env.PANCAKE_PAGE_ACCESS_TOKEN || '',
+        whatsapp_phone_number_id: row?.whatsapp_phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+        whatsapp_waba_id: row?.whatsapp_waba_id || process.env.WHATSAPP_WABA_ID || '',
+        whatsapp_business_phone: row?.whatsapp_business_phone || process.env.WHATSAPP_BUSINESS_PHONE || '',
+        whatsapp_access_token: row?.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN || '',
+        meta_verify_token: row?.meta_verify_token || process.env.META_VERIFY_TOKEN || 'pastie_verify_token_2026',
+        webhook_url: webhookUrl
       }
     });
   } catch (error) {
@@ -3361,40 +3369,52 @@ app.get('/api/admin/channels', checkAdminAuth, async (req, res) => {
   }
 });
 
-// POST Save Pancake channel config
+// POST Save WhatsApp channel config
 app.post('/api/admin/channels', checkAdminAuth, async (req, res) => {
   const {
-    projectId = 'pastie-landingpage',
-    pancakePageId = '',
-    pancakePageAccessToken = ''
+    projectId = req.admin.project_id || 'pastie-landingpage',
+    whatsappPhoneNumberId = '',
+    whatsappWabaId = '',
+    whatsappBusinessPhone = '',
+    whatsappAccessToken = '',
+    metaVerifyToken = ''
   } = req.body;
 
-  const pageId    = pancakePageId.trim();
-  const pageToken = pancakePageAccessToken.trim();
+  const phoneId = String(whatsappPhoneNumberId || '').trim();
+  const wabaId = String(whatsappWabaId || '').trim();
+  const phone = String(whatsappBusinessPhone || '').trim();
+  const token = String(whatsappAccessToken || '').trim();
+  const verifyToken = String(metaVerifyToken || '').trim() || 'pastie_verify_token_2026';
 
   try {
     const existsRes = await db.query('SELECT project_id FROM channel_configs WHERE project_id = $1 LIMIT 1', [projectId]);
     if (existsRes.rows.length > 0) {
       await db.query(`
         UPDATE channel_configs
-        SET platform = 'pancake',
-            messenger_page_id = $1,
-            messenger_page_access_token = $2,
+        SET platform = 'whatsapp',
+            whatsapp_phone_number_id = $1,
+            whatsapp_waba_id = $2,
+            whatsapp_business_phone = $3,
+            whatsapp_access_token = $4,
+            meta_verify_token = $5,
             updated_at = CURRENT_TIMESTAMP
-        WHERE project_id = $3
-      `, [pageId, pageToken, projectId]);
+        WHERE project_id = $6
+      `, [phoneId, wabaId, phone, token, verifyToken, projectId]);
     } else {
       await db.query(`
-        INSERT INTO channel_configs (project_id, platform, messenger_page_id, messenger_page_access_token)
-        VALUES ($1, 'pancake', $2, $3)
-      `, [projectId, pageId, pageToken]);
+        INSERT INTO channel_configs (project_id, platform, whatsapp_phone_number_id, whatsapp_waba_id, whatsapp_business_phone, whatsapp_access_token, meta_verify_token)
+        VALUES ($1, 'whatsapp', $2, $3, $4, $5, $6)
+      `, [projectId, phoneId, wabaId, phone, token, verifyToken]);
     }
 
-    // Update env immediately so polling loop picks up new token without restart
-    if (pageId)    process.env.PANCAKE_PAGE_ID = pageId;
-    if (pageToken) process.env.PANCAKE_PAGE_ACCESS_TOKEN = pageToken;
+    // Update runtime env immediately
+    if (phoneId) process.env.WHATSAPP_PHONE_NUMBER_ID = phoneId;
+    if (wabaId) process.env.WHATSAPP_WABA_ID = wabaId;
+    if (phone) process.env.WHATSAPP_BUSINESS_PHONE = phone;
+    if (token) process.env.WHATSAPP_ACCESS_TOKEN = token;
+    if (verifyToken) process.env.META_VERIFY_TOKEN = verifyToken;
 
-    res.json({ success: true });
+    res.json({ success: true, message: 'Đã lưu cấu hình WhatsApp thành công.' });
   } catch (error) {
     console.error('Save channel configurations error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống: ' + error.message });
