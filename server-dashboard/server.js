@@ -1622,6 +1622,54 @@ app.post('/api/admin/sso', async (req, res) => {
   if (!payload.email) return res.status(400).json({ error: 'Thiếu email trong token SSO.' });
 
   const project = payload.project || 'dealphuquoc';
+
+  // 1. Kiểm tra cờ chatAccess từ token SSO
+  if (payload.chatAccess === false || payload.can_chat === false) {
+    return res.status(403).json({
+      error: 'Tài khoản của bạn chưa được cấp quyền sử dụng hệ thống Chat trên DealPhuQuoc.'
+    });
+  }
+
+  // 2. Tra cứu trực tiếp bảng User trên Database DealPhuQuoc để xác thực quyền chatAccess & trạng thái khóa
+  if (process.env.DEALPHUQUOC_DATABASE_URL && (project === 'dealphuquoc' || !payload.project)) {
+    try {
+      const dealPool = dealSync.getDealPool();
+      const dealUserRes = await dealPool.query(
+        'SELECT id, email, role, "chatAccess", locked FROM "User" WHERE LOWER(email) = LOWER($1) LIMIT 1',
+        [String(payload.email).trim()]
+      );
+      await dealPool.end();
+
+      if (dealUserRes.rows.length > 0) {
+        const dealUser = dealUserRes.rows[0];
+        if (dealUser.locked) {
+          return res.status(403).json({ error: 'Tài khoản của bạn trên DealPhuQuoc đang bị tạm khóa.' });
+        }
+        
+        const isDealSuperAdmin = dealUser.role === 'SUPERADMIN';
+        const hasChatPermission = isDealSuperAdmin || dealUser.chatAccess === true || payload.chatAccess === true;
+        if (!hasChatPermission) {
+          console.warn(`[SSO] Tài khoản ${payload.email} chưa được cấp quyền chatAccess trên DealPhuQuoc.`);
+          return res.status(403).json({
+            error: 'Tài khoản của bạn chưa được cấp quyền sử dụng hệ thống Chat trên DealPhuQuoc (chưa bật chatAccess). Vui lòng liên hệ Quản trị viên DealPhuQuoc.'
+          });
+        }
+      } else {
+        // Tài khoản không tồn tại trên DealPhuQuoc và không phải token superadmin
+        if (payload.role !== 'SUPERADMIN' && payload.chatAccess !== true) {
+          return res.status(403).json({
+            error: 'Không tìm thấy tài khoản hợp lệ trên DealPhuQuoc hoặc tài khoản chưa được cấp quyền Chat.'
+          });
+        }
+      }
+    } catch (dbErr) {
+      console.warn('[SSO] Không thể kết nối DealPhuQuoc DB để kiểm tra chatAccess:', dbErr.message);
+      if (payload.chatAccess === false) {
+        return res.status(403).json({ error: 'Tài khoản chưa được cấp quyền sử dụng hệ thống Chat trên DealPhuQuoc.' });
+      }
+    }
+  }
+
   // Hệ thống nguồn chỉ được ánh xạ sang quyền trong một project: quản trị
   // Deal/host là Project Admin; CSKH là Agent. Không token SSO nào tạo Superadmin.
   const ssoRole = ['project_admin', 'ADMIN', 'SUPERADMIN'].includes(payload.role) ? 'project_admin' : 'agent';
@@ -2033,10 +2081,53 @@ app.delete('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
   }
 });
 
+// Get list of assignees for assigning chat
+app.get('/api/admin/assignees', checkAdminAuth, async (req, res) => {
+  const { projectId } = req.query;
+  try {
+    if (isSuperAdmin(req.admin)) {
+      let query = 'SELECT id, username, full_name, role, project_id, is_active FROM admins WHERE is_active = TRUE';
+      const params = [];
+      if (projectId) {
+        query += ' AND (project_id = $1 OR role = \'superadmin\')';
+        params.push(projectId);
+      }
+      query += ' ORDER BY full_name ASC';
+      const result = await db.query(query, params);
+      return res.json(result.rows);
+    }
+
+    if (isProjectAdmin(req.admin)) {
+      // Project admin can only assign to:
+      // 1) Themselves (req.admin.id)
+      // 2) Agents created by this project admin (created_by_admin_id = req.admin.id AND role = 'agent')
+      const result = await db.query(
+        `SELECT id, username, full_name, role, project_id, is_active 
+         FROM admins 
+         WHERE is_active = TRUE 
+           AND (id = $1 OR (created_by_admin_id = $1 AND role = 'agent'))
+         ORDER BY id = $1 DESC, full_name ASC`,
+        [req.admin.id]
+      );
+      return res.json(result.rows);
+    }
+
+    // Agent can only see themselves
+    const result = await db.query(
+      'SELECT id, username, full_name, role, project_id, is_active FROM admins WHERE id = $1 AND is_active = TRUE',
+      [req.admin.id]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    console.error('Fetch assignees error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi tải danh sách nhân viên phân công.' });
+  }
+});
+
 // Reassign a session to an admin (Super-Admin or Sub-Admin can reassign)
 app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, async (req, res) => {
   const { sessionId } = req.params;
-  const { assignedAdminId } = req.body; // Can be UUID string or null
+  const { assignedAdminId } = req.body; // Can be ID or null
 
   try {
     // Verify session exists
@@ -2053,12 +2144,17 @@ app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, async (req, res) =
 
     let adminName = 'Chưa chỉ định';
     if (assignedAdminId) {
-      const adminCheck = await db.query('SELECT full_name, project_id, role FROM admins WHERE id = $1', [assignedAdminId]);
+      const adminCheck = await db.query('SELECT id, full_name, project_id, role, created_by_admin_id FROM admins WHERE id = $1 AND is_active = TRUE', [assignedAdminId]);
       if (adminCheck.rows.length === 0) {
-        return res.status(404).json({ error: 'Không tìm thấy nhân viên được chỉ định.' });
+        return res.status(404).json({ error: 'Không tìm thấy nhân viên được chỉ định hoặc tài khoản đang bị vô hiệu hóa.' });
       }
-      if (!isSuperAdmin(req.admin) && (adminCheck.rows[0].role !== 'agent' || adminCheck.rows[0].project_id !== req.admin.project_id)) {
-        return res.status(403).json({ error: 'Project Admin chỉ được chuyển chat cho Agent cùng project.' });
+
+      if (isProjectAdmin(req.admin)) {
+        const isSelf = Number(adminCheck.rows[0].id) === Number(req.admin.id);
+        const isMyAgent = Number(adminCheck.rows[0].created_by_admin_id) === Number(req.admin.id) && adminCheck.rows[0].role === 'agent';
+        if (!isSelf && !isMyAgent) {
+          return res.status(403).json({ error: 'Project Admin chỉ được phân công chat cho chính mình hoặc các Agent do mình tạo ra.' });
+        }
       }
       adminName = adminCheck.rows[0].full_name;
     }
@@ -2066,11 +2162,11 @@ app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, async (req, res) =
     // Update assignment
     await db.query(
       'UPDATE sessions SET assigned_admin_id = $1 WHERE id = $2',
-      [assignedAdminId, sessionId]
+      [assignedAdminId || null, sessionId]
     );
 
     // Save a system log message inside the chat
-    const logText = `[Hệ thống] Cuộc trò chuyện đã được chỉ định cho nhân viên: ${adminName}.`;
+    const logText = `[Hệ thống] Cuộc trò chuyện đã được chỉ định cho: ${adminName}.`;
     await db.query(
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language) 
        VALUES ($1, 'system', $2, $2, 'vi')`,
@@ -2079,7 +2175,7 @@ app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, async (req, res) =
 
     res.json({
       success: true,
-      message: `Đã chuyển cuộc hội thoại cho nhân viên: ${adminName}.`
+      message: `Đã chuyển cuộc hội thoại cho: ${adminName}.`
     });
   } catch (error) {
     console.error('Reassign chat error:', error);

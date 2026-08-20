@@ -214,6 +214,7 @@ async function syncDealDatabaseToKnowledgeBase(db, projectId = 'dealphuquoc') {
 }
 
 module.exports = {
+  getDealPool,
   extractDealDatabaseData,
   buildKnowledgeMarkdown,
   syncDealDatabaseToKnowledgeBase
