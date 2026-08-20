@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r26">
+    <link rel="stylesheet" href="admin.css?v=r27">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -465,7 +465,7 @@
                     <i class="ri-folder-shared-line" style="color: var(--accent-color); margin-right: 4px;"></i>
                     Dự án áp dụng tri thức
                 </label>
-                <select id="kb-project-select" style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px; outline: none; cursor: pointer;">
+                <select id="kb-project-select" style="width: 100%;">
                 </select>
                 <small id="kb-project-hint" style="display: block; margin-top: 6px; font-size: 11.5px; color: var(--text-secondary); text-align: left;"></small>
             </div>
@@ -686,7 +686,7 @@
 
                         <div class="form-group" id="admin-form-role-group">
                             <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Vai trò (Role)</label>
-                            <select id="admin-form-role" style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:var(--text-primary); font-family:inherit; font-size:12.5px; outline:none;">
+                            <select id="admin-form-role" style="width:100%;">
                                 <option value="agent">Agent (Tư vấn viên trực chat)</option>
                                 <option value="project_admin">Project Admin (Quản trị dự án)</option>
                                 <option value="superadmin">Quản trị viên tối cao (Super-Admin)</option>
@@ -695,7 +695,7 @@
 
                         <div class="form-group" id="admin-form-project-group">
                             <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Dự án được phân quyền</label>
-                            <select id="admin-form-project" style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:var(--text-primary); font-family:inherit; font-size:12.5px; outline:none;">
+                            <select id="admin-form-project" style="width:100%;">
                                 <option value="">— Tất cả dự án (toàn quyền) —</option>
                             </select>
                         </div>
@@ -726,6 +726,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r26"></script>
+    <script src="admin.js?v=r27"></script>
 </body>
 </html>
