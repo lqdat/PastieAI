@@ -1991,7 +1991,7 @@ async function closeActiveSession() {
     closeSessionBtn.innerHTML = `<i class="ri-loader-4-line"></i> ${dict.closingStatus}`;
 
     try {
-        const response = await fetch(`${API_BASE}/api/chats/session/close`, {
+        const response = await authFetch(`${API_BASE}/api/chats/session/close`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionId: currentSessionId })

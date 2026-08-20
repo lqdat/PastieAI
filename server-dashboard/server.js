@@ -1129,6 +1129,19 @@ app.post('/api/chats/session/close', async (req, res) => {
     if (sessionRes.rows.length === 0) {
       return res.status(404).json({ error: 'Không tìm thấy phiên chat.' });
     }
+    const session = sessionRes.rows[0];
+
+    // PHÂN QUYỀN: chỉ NHÂN VIÊN ĐANG TIẾP NHẬN (claimed_by_admin_id) hoặc SUPER ADMIN mới được kết thúc.
+    // (Khách KHÔNG có token nhân viên nên không thể đóng.)
+    const admin = await getAdminFromToken(req);
+    if (!admin?.is_active || !isChatStaff(admin)) {
+      return res.status(401).json({ error: 'Cần đăng nhập bằng tài khoản nhân viên để kết thúc phiên.' });
+    }
+    const claim = session.claimed_by_admin_id;
+    const isClaimer = claim && Number(claim) === Number(admin.id);
+    if (!isClaimer && !isSuperAdmin(admin)) {
+      return res.status(403).json({ error: 'Chỉ nhân viên đang tiếp nhận cuộc trò chuyện hoặc Super Admin mới được kết thúc.' });
+    }
 
     // Get all messages in this session
     const msgRes = await db.query(
@@ -1136,32 +1149,54 @@ app.post('/api/chats/session/close', async (req, res) => {
       [sessionId]
     );
 
-    // Call Gemini to analyze conversation
+    // Call Gemini to analyze conversation (vẫn tóm tắt lại đoạn có nhân viên hỗ trợ)
     const { summary, tags } = await gemini.analyzeSession(msgRes.rows);
 
-    // Update session in DB
-    const email = sessionRes.rows[0].visitor_email;
-    const projectId = sessionRes.rows[0].project_id;
-    if (email && email.trim() !== '') {
-      await db.query(
-        `UPDATE sessions 
-         SET status = 'closed', ai_summary = $1, intent_tags = $2, claimed_by_admin_id = NULL, requested_agent = FALSE 
-         WHERE visitor_email = $3 AND project_id = $4 AND status = 'active'`,
-        [summary, tags, email, projectId]
-      );
-    }
-
+    // ĐÓNG = TRẢ VỀ AI (không kết thúc phiên): giữ status active, bỏ claim + requested_agent + operator_no,
+    // để khách tiếp tục trò chuyện với trợ lý AI.
     await db.query(
-      `UPDATE sessions 
-       SET status = 'closed', ai_summary = $1, intent_tags = $2, claimed_by_admin_id = NULL, requested_agent = FALSE 
+      `UPDATE sessions
+       SET status = 'active', ai_summary = $1, intent_tags = $2,
+           claimed_by_admin_id = NULL, requested_agent = FALSE, operator_no = NULL
        WHERE id = $3`,
       [summary, tags, sessionId]
     );
 
-    res.json({ success: true, summary, tags });
+    // Chèn tin hệ thống báo cho khách đã chuyển lại cho AI
+    const lang = session.detected_language || 'vi';
+    const backMsgs = {
+      vi: 'Nhân viên đã kết thúc phiên hỗ trợ. Trợ lý AI sẽ tiếp tục đồng hành cùng bạn. 🤖',
+      en: 'The agent has ended the support session. Our AI assistant will continue to help you. 🤖',
+      ru: 'Оператор завершил сессию поддержки. ИИ-ассистент продолжит помогать вам. 🤖',
+      zh: '客服已结束本次支持，AI 助手将继续为您服务。🤖',
+    };
+    const backMsg = backMsgs[lang] || backMsgs.vi;
+    await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+       VALUES ($1, 'system', $2, $2, $3)`,
+      [sessionId, backMsg, lang]
+    ).catch((e) => console.error('Insert handback message failed:', e.message));
+
+    res.json({ success: true, summary, tags, mode: 'ai' });
   } catch (error) {
     console.error('Session Close Error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi đóng phiên chat.' });
+  }
+});
+
+// Trạng thái phiên cho WIDGET: để đổi nút/chế độ (human khi đang có/chờ nhân viên; ai khi đã trả về AI).
+app.get('/api/chats/:sessionId/state', async (req, res) => {
+  try {
+    const r = await db.query(
+      'SELECT status, claimed_by_admin_id, requested_agent FROM sessions WHERE id = $1',
+      [req.params.sessionId]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: 'not found' });
+    const s = r.rows[0];
+    const mode = (s.claimed_by_admin_id || s.requested_agent) ? 'human' : 'ai';
+    res.json({ status: s.status, mode });
+  } catch (e) {
+    res.status(500).json({ error: 'state error' });
   }
 });
 
