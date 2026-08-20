@@ -548,17 +548,16 @@ function getClientIp(req) {
 }
 
 async function findActiveSessionForClient(projectId, email, clientIp, browser, device, queryRunner = db) {
+  // Tái dùng phiên theo EMAIL đã định danh (không ràng buộc IP/trình duyệt/thiết bị) -> mở tab mới,
+  // đổi mạng hay đổi máy vẫn vào ĐÚNG một đoạn chat của user, không tạo phiên trùng.
   const result = await queryRunner.query(
     `SELECT id FROM sessions
      WHERE project_id = $1
        AND LOWER(visitor_email) = LOWER($2)
        AND status = 'active'
-       AND client_ip = $3
-       AND browser = $4
-       AND device = $5
      ORDER BY created_at DESC
      LIMIT 1`,
-    [projectId, email, clientIp, browser, device]
+    [projectId, email]
   );
   return result.rows[0] || null;
 }
