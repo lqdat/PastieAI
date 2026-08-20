@@ -660,6 +660,7 @@ button {
     gap: 12px;
     flex-shrink: 0;
     min-height: 60px;
+    flex-wrap: wrap; /* cụm nút hành động tự xuống hàng khi hẹp -> không tràn/cắt */
 }
 .visitor-details-header h3 {
     font-size: 18px;
@@ -1580,13 +1581,16 @@ button {
   }
   .dashboard-body.details-open .details-sidebar { transform: translateX(0); }
 
-  .chat-header { min-height: 62px; padding: 10px 12px; flex-wrap: nowrap; gap: 8px; }
+  .chat-header { min-height: 62px; padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
+  .chat-header-actions { width: 100%; justify-content: flex-start; overflow-x: auto; }
   .visitor-details-header { gap: 8px !important; min-width: 0; flex: 1; }
   .visitor-details-header h3 { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .visitor-details-header p { max-width: 140px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #chat-header-avatar > * { width: 38px !important; height: 38px !important; font-size: 16px !important; }
   #chat-header-actions { gap: 5px !important; }
-  #assignee-selector-container, #close-session-btn span, #claim-chat-btn span { display: none; }
+  /* Ẩn CHỮ trên nút (icon-only) cho gọn, nhưng VẪN hiện phần "Phân công" trên mobile */
+  #close-session-btn span, #claim-chat-btn span { display: none; }
+  #assignee-selector-container { display: inline-flex; }
   #close-session-btn, #claim-chat-btn, #delete-session-btn { width: 42px; height: 42px; padding: 0; justify-content: center; }
   #close-session-btn i, #claim-chat-btn i, #delete-session-btn i { font-size: 18px; }
   .chat-messages { padding: 18px 14px; gap: 16px; }

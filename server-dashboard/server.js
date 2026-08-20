@@ -774,9 +774,8 @@ app.post('/api/chats/message', async (req, res) => {
       return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
     }
 
-    // Chỉ push khi phiên ĐÃ chuyển cho người thật (requested_agent) -> tránh spam lúc AI đang xử lý,
-    // và tránh báo trùng với notifyAgentTransfer ở tin kích hoạt (lúc đó requested_agent còn false).
-    if (sender === 'visitor' && sessionRes.rows[0].requested_agent) void notifyAgentMessage(sessionRes.rows[0], text);
+    // Báo agent MỌI tin KHÁCH gửi đến (tin nhắn đến). KHÔNG báo tin AI/nhân viên trả lời.
+    if (sender === 'visitor') void notifyAgentMessage(sessionRes.rows[0], text);
 
     // Call Gemini to translate and detect language
     const { translatedText, detectedLang } = await gemini.translateText(text, targetLang);
@@ -868,7 +867,7 @@ app.post('/api/chats/message', async (req, res) => {
       if (wantsAgent && !sessionData.requested_agent) {
         // Flag session so AI won't respond from now on
         await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
-        void notifyAgentTransfer(sessionData, text); // Báo agent: khách cần người thật (từ khóa)
+        // (Không báo riêng ở đây: tin khách "gặp CSKH" đã được notifyAgentMessage báo ở trên)
         const transferMsgs = {
           vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳',
           en: 'Connecting you with a support agent, please hold on ⏳',
@@ -929,7 +928,6 @@ app.post('/api/chats/message', async (req, res) => {
               };
               const transferMsg = transferMsgs[visitorLang] || transferMsgs['vi'];
               await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
-              void notifyAgentTransfer(sessionData, text); // Báo agent: trúng từ khóa chuyển của project
               const kwMsgRes = await db.query(
                 `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3) RETURNING *`,
                 [sessionId, transferMsg, visitorLang]
@@ -983,7 +981,6 @@ app.post('/api/chats/message', async (req, res) => {
           if (rawAiReply.startsWith('[TRANSFER]')) {
             finalAiReply = rawAiReply.replace('[TRANSFER]', '').trim();
             await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
-            void notifyAgentTransfer(sessionData, finalAiReply || text); // Báo agent: AI không trả lời được
             console.log(`[LiveChat] AI cannot answer → auto-flagged session ${sessionId} for agent transfer.`);
           }
 
@@ -1148,18 +1145,25 @@ app.post('/api/chats/session/close', async (req, res) => {
       [sessionId]
     );
 
-    // Call Gemini to analyze conversation (vẫn tóm tắt lại đoạn có nhân viên hỗ trợ)
-    const { summary, tags } = await gemini.analyzeSession(msgRes.rows);
+    // Call Gemini to analyze conversation (vẫn tóm tắt lại đoạn có nhân viên hỗ trợ).
+    // Nếu Gemini lỗi (hết quota/timeout) vẫn phải ĐÓNG được -> dùng mặc định.
+    let summary = null, tags = null;
+    try {
+      const r = await gemini.analyzeSession(msgRes.rows);
+      summary = r?.summary ?? null; tags = r?.tags ?? null;
+    } catch (e) { console.warn('[Close] analyzeSession failed:', e.message); }
 
     // ĐÓNG = TRẢ VỀ AI (không kết thúc phiên): giữ status active, bỏ claim + requested_agent + operator_no,
     // để khách tiếp tục trò chuyện với trợ lý AI.
     await db.query(
       `UPDATE sessions
        SET status = 'active', ai_summary = $1, intent_tags = $2,
-           claimed_by_admin_id = NULL, requested_agent = FALSE, operator_no = NULL
+           claimed_by_admin_id = NULL, requested_agent = FALSE
        WHERE id = $3`,
       [summary, tags, sessionId]
     );
+    // Reset số tổng đài viên (best-effort; cột operator_no có thể chưa migrate -> bỏ qua lỗi)
+    await db.query('UPDATE sessions SET operator_no = NULL WHERE id = $1', [sessionId]).catch(() => {});
 
     // Chèn tin hệ thống báo cho khách đã chuyển lại cho AI
     const lang = session.detected_language || 'vi';
@@ -2617,6 +2621,9 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
         (SELECT COUNT(*) FROM messages WHERE session_id = s.id) as message_count,
         (SELECT MAX(created_at) FROM messages WHERE session_id = s.id) as last_message_at,
         (SELECT original_text FROM messages WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1) as last_message_preview,
+        (SELECT sender FROM messages WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1) as last_message_sender,
+        (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.sender = 'visitor'
+           AND m.created_at > COALESCE(rr.last_seen_at, to_timestamp(0))) as unread_visitor,
         COALESCE(rr.seen_message_count, -1) as seen_message_count
       FROM sessions s
       LEFT JOIN admins a ON s.assigned_admin_id = a.id

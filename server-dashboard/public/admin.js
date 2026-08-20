@@ -983,7 +983,8 @@ async function fetchSessions() {
             // Notify if new messages arrived since last notification check
             const totalMsgs = parseInt(s.message_count) || 0;
             const lastNotified = notifiedMsgCount[s.id] ?? totalMsgs; // init = current, no spam on first load
-            if (totalMsgs > lastNotified && s.id !== currentSessionId) {
+            // CHỈ thông báo khi tin mới nhất là của KHÁCH (visitor) — bỏ qua tin AI/hệ thống/nhân viên.
+            if (totalMsgs > lastNotified && s.id !== currentSessionId && s.last_message_sender === 'visitor') {
                 const seen = seenMessageCount[s.id];
                 const unread = (seen === -1 || seen === undefined) ? totalMsgs - 1 : Math.max(0, totalMsgs - seen);
                 if (unread > 0) showNewMessageNotification(s, unread);
@@ -1181,9 +1182,9 @@ function renderSessionsList(sessions) {
     // Helper to generate a clean session card
     function createSessionCard(session) {
         const card = document.createElement('div');
-        const totalMsgsForClass = parseInt(session.message_count) || 0;
-        const seenForClass = seenMessageCount[session.id];
-        const hasUnread = session.id !== currentSessionId && (seenForClass === undefined || seenForClass === -1 ? totalMsgsForClass > 1 : totalMsgsForClass > seenForClass);
+        // Chưa đọc = số tin ĐẾN TỪ KHÁCH (visitor) chưa xem, KHÔNG tính tin AI/nhân viên/hệ thống.
+        const unreadVisitor = session.id === currentSessionId ? 0 : (parseInt(session.unread_visitor) || 0);
+        const hasUnread = unreadVisitor > 0;
         card.className = `session-card ${session.id === currentSessionId ? 'active-selected' : ''} ${hasUnread ? 'has-unread' : ''}`;
         card.setAttribute('data-id', session.id);
         
@@ -1194,11 +1195,7 @@ function renderSessionsList(sessions) {
 
         const statusText = session.status === 'active' ? dict.statusActive : dict.statusClosed;
 
-        const totalMsgs = parseInt(session.message_count) || 0;
-        const seen = seenMessageCount[session.id];
-        const unread = session.id === currentSessionId ? 0
-            : (seen === undefined || seen === -1) ? (totalMsgs > 1 ? totalMsgs - 1 : 0)
-            : Math.max(0, totalMsgs - seen);
+        const unread = unreadVisitor;
         const unreadBadge = unread > 0 ? `<span class="session-unread-badge">${unread > 99 ? '99+' : unread}</span>` : '';
 
         const preview = session.last_message_preview
