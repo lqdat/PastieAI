@@ -265,6 +265,9 @@ const detailTags = document.getElementById('detail-tags');
 const detailSummary = document.getElementById('detail-summary');
 const closeSessionBtn = document.getElementById('close-session-btn');
 const deleteSessionBtn = document.getElementById('delete-session-btn');
+const chatAssigneeSelect = document.getElementById('chat-assignee-select');
+const assigneeSelectorContainer = document.getElementById('assignee-selector-container');
+let cachedAssigneesList = [];
 const refreshSessionsBtn = document.getElementById('refresh-sessions-btn');
 const exportCsvBtn = document.getElementById('export-csv-btn');
 const exportJsonlBtn = document.getElementById('export-jsonl-btn');
@@ -703,6 +706,7 @@ async function loadAdminProfile() {
         const knowledgeBtn = document.getElementById('knowledge-settings-btn');
         if (knowledgeBtn) knowledgeBtn.classList.toggle('hide', !isSuperOrProjectAdmin);
         if (changePasswordBtn && String(admin.username || '').startsWith('sso:')) changePasswordBtn.classList.add('hide');
+        if (deleteSessionBtn) deleteSessionBtn.classList.toggle('hide', admin.role !== 'superadmin');
         if (projectFilter && admin.role !== 'superadmin' && admin.project_id) {
             projectFilter.title = `Dự án được phân quyền: ${admin.project_id}`;
         }
@@ -1160,39 +1164,166 @@ async function selectSession(sessionId) {
     const visitorName = session.visitor_name || 'Khách hàng';
     const detailUserName = document.getElementById('detail-user-name');
     const detailUserEmail = document.getElementById('detail-user-email');
-    const detailUserPhone = document.getElementById('detail-user-phone');
     const detailUserAvatar = document.getElementById('detail-user-avatar');
+    const detailUserPlatformChip = document.getElementById('detail-user-platform-chip');
+    const detailUserPhoneWrap = document.getElementById('detail-user-phone-wrap');
+    const detailUserPhoneText = document.getElementById('detail-user-phone-text');
+    const detailUserPhoneLink = document.getElementById('detail-user-phone-link');
+    const detailUserVerifiedBadge = document.getElementById('detail-user-verified-badge');
+
+    // Channel metadata elements
+    const detailChannelName = document.getElementById('detail-channel-name');
+    const detailChannelSenderId = document.getElementById('detail-channel-sender-id');
+    const detailChannelSenderRow = document.getElementById('detail-channel-sender-row');
+    const detailChannelHotline = document.getElementById('detail-channel-hotline');
+    const detailChannelHotlineRow = document.getElementById('detail-channel-hotline-row');
+    const detailChannelTime = document.getElementById('detail-channel-time');
+
     if (detailUserName) detailUserName.textContent = visitorName;
-    if (detailUserAvatar) detailUserAvatar.textContent = visitorName.trim().charAt(0).toUpperCase() || 'K';
-    if (detailUserEmail) detailUserEmail.textContent = session.visitor_email || 'Chưa có email';
-    if (detailUserPhone) {
-        detailUserPhone.textContent = session.visitor_phone || '';
-        detailUserPhone.classList.toggle('hide', !session.visitor_phone);
+    if (detailUserAvatar) {
+        detailUserAvatar.textContent = visitorName.trim().charAt(0).toUpperCase() || 'K';
+        if (session.platform === 'whatsapp') {
+            detailUserAvatar.style.background = 'linear-gradient(145deg, #25D366, #128C7E)';
+            detailUserAvatar.style.boxShadow = '0 5px 12px rgba(37,211,102,0.3)';
+        } else {
+            detailUserAvatar.style.background = 'linear-gradient(145deg, #f438a1, #c90c6c)';
+            detailUserAvatar.style.boxShadow = '0 5px 12px rgba(201,12,108,.22)';
+        }
     }
 
-    // Set browser and device details in details sidebar
+    // Platform chip
+    if (detailUserPlatformChip) {
+        if (session.platform === 'whatsapp') {
+            detailUserPlatformChip.className = 'platform-chip';
+            detailUserPlatformChip.style.background = 'rgba(37,211,102,0.15)';
+            detailUserPlatformChip.style.color = '#25D366';
+            detailUserPlatformChip.style.border = '1px solid rgba(37,211,102,0.3)';
+            detailUserPlatformChip.innerHTML = '<i class="ri-whatsapp-fill"></i> WhatsApp';
+            detailUserPlatformChip.classList.remove('hide');
+        } else if (session.platform === 'messenger') {
+            detailUserPlatformChip.className = 'platform-chip';
+            detailUserPlatformChip.style.background = 'rgba(0,132,255,0.15)';
+            detailUserPlatformChip.style.color = '#0084FF';
+            detailUserPlatformChip.style.border = '1px solid rgba(0,132,255,0.3)';
+            detailUserPlatformChip.innerHTML = '<i class="ri-messenger-fill"></i> Messenger';
+            detailUserPlatformChip.classList.remove('hide');
+        } else if (session.platform === 'instagram') {
+            detailUserPlatformChip.className = 'platform-chip';
+            detailUserPlatformChip.style.background = 'rgba(225,48,108,0.15)';
+            detailUserPlatformChip.style.color = '#E1306C';
+            detailUserPlatformChip.style.border = '1px solid rgba(225,48,108,0.3)';
+            detailUserPlatformChip.innerHTML = '<i class="ri-instagram-fill"></i> Instagram';
+            detailUserPlatformChip.classList.remove('hide');
+        } else {
+            detailUserPlatformChip.className = 'platform-chip';
+            detailUserPlatformChip.style.background = 'rgba(99,102,241,0.15)';
+            detailUserPlatformChip.style.color = '#818cf8';
+            detailUserPlatformChip.style.border = '1px solid rgba(99,102,241,0.3)';
+            detailUserPlatformChip.innerHTML = '<i class="ri-global-line"></i> Web Widget';
+            detailUserPlatformChip.classList.remove('hide');
+        }
+    }
+
+    // Phone / WhatsApp contact number
+    const phoneVal = session.visitor_phone || (session.platform === 'whatsapp' ? session.platform_sender_id : '');
+    if (detailUserPhoneWrap) {
+        if (phoneVal) {
+            detailUserPhoneWrap.classList.remove('hide');
+            const cleanPhone = String(phoneVal).replace(/[^0-9+]/g, '');
+            const displayPhone = cleanPhone.startsWith('84') ? `+84 ${cleanPhone.slice(2, 5)} ${cleanPhone.slice(5, 8)} ${cleanPhone.slice(8)}` : cleanPhone;
+            if (detailUserPhoneText) detailUserPhoneText.textContent = displayPhone;
+            if (detailUserPhoneLink) {
+                detailUserPhoneLink.href = `https://wa.me/${cleanPhone.replace('+', '')}`;
+            }
+        } else {
+            detailUserPhoneWrap.classList.add('hide');
+        }
+    }
+
+    // Email
+    if (detailUserEmail) {
+        detailUserEmail.textContent = session.visitor_email || (session.platform === 'whatsapp' ? 'Tài khoản WhatsApp (Đã xác minh số ĐT)' : 'Chưa có email');
+    }
+
+    // Verified badge
+    if (detailUserVerifiedBadge) {
+        const isVerified = session.is_verified || session.platform === 'whatsapp';
+        detailUserVerifiedBadge.style.display = isVerified ? 'flex' : 'none';
+        detailUserVerifiedBadge.innerHTML = `<i class="ri-checkbox-circle-fill"></i> <span>${session.platform === 'whatsapp' ? 'Đã xác minh số điện thoại WhatsApp' : 'Đã xác minh'}</span>`;
+    }
+
+    // Channel metadata card
+    if (detailChannelName) {
+        if (session.platform === 'whatsapp') {
+            detailChannelName.innerHTML = `<i class="ri-whatsapp-fill" style="color:#25D366;"></i> WhatsApp Cloud API`;
+            detailChannelName.style.color = '#25D366';
+        } else if (session.platform === 'messenger') {
+            detailChannelName.innerHTML = `<i class="ri-messenger-fill" style="color:#0084FF;"></i> Facebook Messenger`;
+            detailChannelName.style.color = '#0084FF';
+        } else if (session.platform === 'instagram') {
+            detailChannelName.innerHTML = `<i class="ri-instagram-fill" style="color:#E1306C;"></i> Instagram Direct`;
+            detailChannelName.style.color = '#E1306C';
+        } else {
+            detailChannelName.innerHTML = `<i class="ri-chat-voice-line" style="color:#818cf8;"></i> Live Chat Widget`;
+            detailChannelName.style.color = 'var(--text-primary)';
+        }
+    }
+
+    if (detailChannelSenderId) {
+        const sid = session.platform_sender_id || session.visitor_phone || session.id;
+        detailChannelSenderId.textContent = sid;
+    }
+
+    if (detailChannelHotlineRow) {
+        detailChannelHotlineRow.style.display = (session.platform === 'whatsapp') ? 'flex' : 'none';
+    }
+
+    if (detailChannelTime) {
+        const dt = new Date(session.created_at || Date.now());
+        detailChannelTime.textContent = dt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+
+    // Browser and Device details
     const detailBrowserName = document.getElementById('detail-browser-name');
     const detailBrowserIcon = document.getElementById('detail-browser-icon');
     const detailDeviceName = document.getElementById('detail-device-name');
     const detailDeviceIcon = document.getElementById('detail-device-icon');
 
-    const browserVal = session.browser || 'Chrome';
-    const deviceVal = session.device || 'Desktop';
-
-    if (detailBrowserName) detailBrowserName.textContent = browserVal;
-    if (detailDeviceName) detailDeviceName.textContent = deviceVal;
-
-    if (detailBrowserIcon) {
-        detailBrowserIcon.className = getBrowserIcon(browserVal);
-    }
-    if (detailDeviceIcon) {
-        detailDeviceIcon.className = getDeviceIcon(deviceVal);
+    if (session.platform === 'whatsapp') {
+        if (detailBrowserName) detailBrowserName.textContent = 'WhatsApp App';
+        if (detailBrowserIcon) detailBrowserIcon.className = 'ri-whatsapp-fill';
+        if (detailDeviceName) detailDeviceName.textContent = 'WhatsApp Mobile / Web';
+        if (detailDeviceIcon) detailDeviceIcon.className = 'ri-smartphone-line';
+    } else {
+        const browserVal = session.browser || 'Chrome';
+        const deviceVal = session.device || 'Desktop';
+        if (detailBrowserName) detailBrowserName.textContent = browserVal;
+        if (detailDeviceName) detailDeviceName.textContent = deviceVal;
+        if (detailBrowserIcon) detailBrowserIcon.className = getBrowserIcon(browserVal);
+        if (detailDeviceIcon) detailDeviceIcon.className = getDeviceIcon(deviceVal);
     }
 
     chatHeaderActions.classList.remove('hide');
     chatInputContainer.classList.remove('hide');
     detailsSidebar.classList.remove('hide');
     dashboardBody?.classList.add('chat-open'); // mobile: chuyển sang khung chat
+
+    // Update delete button visibility: strictly only superadmin can see and delete!
+    if (deleteSessionBtn) {
+        const isSuperAdmin = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
+        deleteSessionBtn.classList.toggle('hide', !isSuperAdmin);
+    }
+
+    // Populate and sync assignee selector
+    if (chatAssigneeSelect) {
+        await loadAssigneesForChat(session.project_id);
+        chatAssigneeSelect.value = session.assigned_admin_id ? String(session.assigned_admin_id) : '';
+        const canReassign = CURRENT_ADMIN && ['superadmin', 'project_admin'].includes(CURRENT_ADMIN.role);
+        chatAssigneeSelect.disabled = !canReassign;
+        if (assigneeSelectorContainer) {
+            assigneeSelectorContainer.title = canReassign ? 'Phân công cuộc trò chuyện cho nhân viên' : 'Nhân viên phụ trách cuộc trò chuyện';
+        }
+    }
 
     // Update details side panel
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
@@ -1499,6 +1630,63 @@ async function claimCurrentChat() {
 }
 
 document.getElementById('claim-chat-btn')?.addEventListener('click', claimCurrentChat);
+
+// --- ASSIGNEE SELECTOR LOGIC ---
+async function loadAssigneesForChat(projectId) {
+    if (!chatAssigneeSelect) return;
+    try {
+        const url = `${API_BASE}/api/admin/assignees?projectId=${encodeURIComponent(projectId || '')}&_=${Date.now()}`;
+        const res = await authFetch(url);
+        if (res.ok) {
+            cachedAssigneesList = await res.json();
+            populateAssigneeSelect(cachedAssigneesList);
+        }
+    } catch (e) {
+        console.error('Error loading assignees:', e);
+    }
+}
+
+function populateAssigneeSelect(staffList) {
+    if (!chatAssigneeSelect) return;
+    const currentVal = chatAssigneeSelect.value;
+    chatAssigneeSelect.innerHTML = '<option value="">-- Chưa chỉ định --</option>';
+    
+    if (Array.isArray(staffList)) {
+        staffList.forEach(admin => {
+            const opt = document.createElement('option');
+            opt.value = admin.id;
+            const roleLabel = admin.role === 'superadmin' ? 'Superadmin' : admin.role === 'project_admin' ? 'Admin' : 'Agent';
+            opt.textContent = `${admin.full_name || admin.username} (${roleLabel})`;
+            chatAssigneeSelect.appendChild(opt);
+        });
+    }
+    if (currentVal) chatAssigneeSelect.value = currentVal;
+}
+
+if (chatAssigneeSelect) {
+    chatAssigneeSelect.addEventListener('change', async (e) => {
+        if (!currentSessionId) return;
+        const newAdminId = e.target.value ? e.target.value : null;
+        try {
+            const response = await authFetch(`${API_BASE}/api/admin/chats/${currentSessionId}/assign`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ assignedAdminId: newAdminId })
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                const sess = sessionsList.find(s => s.id === currentSessionId);
+                if (sess) sess.assigned_admin_id = newAdminId;
+                await fetchSessions();
+                await loadMessages(currentSessionId);
+            } else {
+                alert(data.error || 'Không thể phân công cuộc trò chuyện.');
+            }
+        } catch (err) {
+            alert('Lỗi kết nối khi phân công: ' + err.message);
+        }
+    });
+}
 
 async function closeActiveSession() {
     if (!currentSessionId) return;

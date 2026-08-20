@@ -1801,7 +1801,33 @@ app.put('/api/admin/me/password', checkAdminAuth, async (req, res) => {
   }
 });
 
-// --- SUPER-ADMIN SUB-ADMIN MANAGEMENT ENDPOINTS (CRUD) ---
+// Danh sách nhân viên có thể phân công hội thoại
+app.get('/api/admin/assignees', checkAdminAuth, async (req, res) => {
+  try {
+    const projectId = req.query.projectId || req.admin.project_id;
+    let result;
+    if (isSuperAdmin(req.admin)) {
+      result = await db.query(
+        `SELECT id, username, full_name, role, project_id, avatar_url 
+         FROM admins 
+         WHERE is_active = TRUE 
+         ORDER BY role = 'superadmin' DESC, role = 'project_admin' DESC, full_name ASC`
+      );
+    } else {
+      result = await db.query(
+        `SELECT id, username, full_name, role, project_id, avatar_url 
+         FROM admins 
+         WHERE is_active = TRUE AND (project_id = $1 OR role = 'superadmin')
+         ORDER BY role = 'superadmin' DESC, role = 'project_admin' DESC, full_name ASC`,
+        [projectId]
+      );
+    }
+    res.json(result.rows);
+  } catch (error) {
+    console.error('List assignees error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi tải danh sách nhân viên phân công.' });
+  }
+});
 
 // List all sub-admins
 app.get('/api/admin/users', checkAdminAuth, async (req, res) => {
@@ -2737,9 +2763,9 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
       }
       sessionId = `mc-${platform}-${randomUUID()}`;
       await db.query(`
-        INSERT INTO sessions (id, project_id, visitor_name, visitor_avatar, detected_language, status, platform, platform_sender_id, is_verified, show_in_dashboard)
-        VALUES ($1, $2, $3, $4, null, 'active', $5, $6, true, true)
-      `, [sessionId, projectId, visitorName, visitorAvatar, platform, senderId]);
+        INSERT INTO sessions (id, project_id, visitor_name, visitor_phone, visitor_avatar, detected_language, status, platform, platform_sender_id, is_verified, show_in_dashboard, mc_verify_state)
+        VALUES ($1, $2, $3, $4, $5, null, 'active', $6, $7, true, true, $8)
+      `, [sessionId, projectId, visitorName, platform === 'whatsapp' ? senderId : null, visitorAvatar, platform, senderId, platform === 'whatsapp' ? 'verified' : null]);
     } else {
       if (session.status !== 'active') {
         await db.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [session.id]);
@@ -2785,46 +2811,8 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
       `, [sessionId, text, translatedText, finalLang]);
     };
 
-    // ── OTP VERIFICATION FLOW ────────────────────────────────────────────
-    const MC_MSGS = {
-      ask_email: {
-        vi: 'Xin chào! Vui lòng cung cấp địa chỉ email để xác thực và bắt đầu chat 📧',
-        en: 'Hello! Please provide your email address to verify and start chatting 📧',
-        ru: 'Привет! Укажите ваш email для верификации и начала чата 📧',
-        zh: '您好！请提供您的电子邮件地址进行验证 📧',
-      },
-      otp_sent: {
-        vi: (e) => `Mã OTP đã gửi đến ${e}. Nhập mã 6 chữ số để xác thực ✉️`,
-        en: (e) => `OTP sent to ${e}. Enter the 6-digit code to verify ✉️`,
-        ru: (e) => `OTP отправлен на ${e}. Введите 6-значный код ✉️`,
-        zh: (e) => `验证码已发送至 ${e}，请输入6位数字验证码 ✉️`,
-      },
-      invalid_email: {
-        vi: 'Email không hợp lệ. Vui lòng nhập đúng định dạng (ví dụ: ten@gmail.com)',
-        en: 'Invalid email. Please enter a valid address (e.g. name@gmail.com)',
-        ru: 'Неверный email. Введите корректный адрес (например: name@gmail.com)',
-        zh: '邮箱格式无效，请输入正确的邮箱（如：name@gmail.com）',
-      },
-      invalid_otp: {
-        vi: 'Mã OTP không đúng hoặc đã hết hạn. Vui lòng thử lại.',
-        en: 'Invalid or expired OTP. Please try again.',
-        ru: 'Неверный или истёкший OTP. Попробуйте снова.',
-        zh: '验证码无效或已过期，请重试。',
-      },
-      verified_ok: {
-        vi: '✅ Xác thực thành công! Tôi có thể giúp gì cho bạn?',
-        en: '✅ Verified! How can I help you today?',
-        ru: '✅ Верификация прошла! Чем могу помочь?',
-        zh: '✅ 验证成功！请问有什么可以帮您的？',
-      },
-    };
-    const getMsg = (key, lang, ...args) => {
-      const m = MC_MSGS[key];
-      const fn = m[lang] || m['en'];
-      return typeof fn === 'function' ? fn(...args) : fn;
-    };
-
-    const verifyState = session?.mc_verify_state || null;
+    // WhatsApp is already phone-verified, skip email OTP
+    const verifyState = (platform === 'whatsapp') ? 'verified' : (session?.mc_verify_state || null);
 
     // State: null → chưa hỏi email
     if (verifyState === null) {
