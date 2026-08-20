@@ -2,10 +2,12 @@ const { Pool } = require('pg');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-const DEALPHUQUOC_DB_URL = process.env.DEALPHUQUOC_DATABASE_URL ||
-  'postgresql://postgres.uaaskhcpbswfnpdcbaep:CYcJPlUI7yN3GMlg@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres';
+const DEALPHUQUOC_DB_URL = process.env.DEALPHUQUOC_DATABASE_URL;
 
 function getDealPool() {
+  if (!DEALPHUQUOC_DB_URL) {
+    throw new Error('Biến môi trường DEALPHUQUOC_DATABASE_URL chưa được thiết lập trong .env');
+  }
   return new Pool({
     connectionString: DEALPHUQUOC_DB_URL,
     ssl: { rejectUnauthorized: false },
