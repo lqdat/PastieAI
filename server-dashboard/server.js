@@ -666,10 +666,10 @@ app.post('/api/otp/verify', async (req, res) => {
 
     // Insert AI greeting message (sender='ai' — renders as a normal chat bubble, not a human agent, and is_human_agent_active check ignores it)
     const greetings = {
-      vi: `Xin chào ${finalName}! 👋 Tôi là trợ lý AI của Pastie. Bạn cần hỗ trợ gì?`,
-      en: `Hello ${finalName}! 👋 I'm Pastie's AI assistant. How can I help you today?`,
-      ru: `Здравствуйте, ${finalName}! 👋 Я ИИ-ассистент Pastie. Чем могу помочь вам?`,
-      zh: `您好，${finalName}！👋 我是Pastie的AI助手，很高兴为您服务！有什么可以帮助您？`,
+      vi: `Xin chào ${finalName}! 👋 Mình là Pat, trợ lý của Pastie đây 🌴 Mình giúp gì được cho bạn nào?`,
+      en: `Hi ${finalName}! 👋 I'm Pat from Pastie 🌴 How can I help you today?`,
+      ru: `Привет, ${finalName}! 👋 Я Pat из Pastie 🌴 Чем могу помочь?`,
+      zh: `您好，${finalName}！👋 我是 Pastie 的小助手 Pat 🌴 有什么可以帮您？`,
     };
     const greetingText = greetings[finalLang] || greetings['vi'];
     await db.query(
@@ -955,7 +955,7 @@ app.post('/api/chats/message', async (req, res) => {
           const replyLangName = langNameMap[visitorLang] || 'Tiếng Việt';
 
           const systemInstruction = `
-            Bạn là một trợ lý tư vấn dịch vụ du lịch và phòng nghỉ cao cấp cực kỳ chuyên nghiệp và thân thiện của thương hiệu Pastie.
+            Bạn TÊN LÀ "Pat", trợ lý tư vấn dịch vụ du lịch và phòng nghỉ cao cấp cực kỳ chuyên nghiệp, thân thiện và vui vẻ của thương hiệu Pastie. Luôn tự xưng là Pat, TUYỆT ĐỐI không tự gọi mình là "AI", "trợ lý ảo" hay "chatbot".
 
             Hãy trả lời các câu hỏi của khách hàng một cách ngắn gọn, súc tích (dưới 3 câu) để hiển thị tốt nhất trên thiết bị di động.
             QUY TẮC NGÔN NGỮ BẮT BUỘC: Khách hàng đang viết bằng ${replyLangName}. Bạn PHẢI trả lời TOÀN BỘ bằng ${replyLangName}, tuyệt đối không trộn lẫn ngôn ngữ khác.
@@ -1165,10 +1165,10 @@ app.post('/api/chats/session/close', async (req, res) => {
     // Chèn tin hệ thống báo cho khách đã chuyển lại cho AI
     const lang = session.detected_language || 'vi';
     const backMsgs = {
-      vi: 'Nhân viên đã kết thúc phiên hỗ trợ. Trợ lý AI sẽ tiếp tục đồng hành cùng bạn. 🤖',
-      en: 'The agent has ended the support session. Our AI assistant will continue to help you. 🤖',
-      ru: 'Оператор завершил сессию поддержки. ИИ-ассистент продолжит помогать вам. 🤖',
-      zh: '客服已结束本次支持，AI 助手将继续为您服务。🤖',
+      vi: 'Nhân viên đã tạm biệt bạn. Pat quay lại đồng hành cùng bạn đây! 🌴',
+      en: 'The agent has wrapped up. Pat is back to keep you company! 🌴',
+      ru: 'Оператор завершил. Pat снова с вами! 🌴',
+      zh: '客服已结束，Pat 回来继续陪伴您！🌴',
     };
     const backMsg = backMsgs[lang] || backMsgs.vi;
     await db.query(
@@ -1197,6 +1197,21 @@ app.get('/api/chats/:sessionId/state', async (req, res) => {
     res.json({ status: s.status, mode });
   } catch (e) {
     res.status(500).json({ error: 'state error' });
+  }
+});
+
+// Link WhatsApp trực tiếp cho widget: kèm mã ref project để webhook phân loại nguồn.
+app.get('/api/chats/whatsapp-link', async (req, res) => {
+  try {
+    const projectId = String(req.query.projectId || '').trim();
+    const r = await db.query('SELECT whatsapp_business_phone FROM channel_configs WHERE project_id = $1 LIMIT 1', [projectId]);
+    const phone = (r.rows[0]?.whatsapp_business_phone || process.env.WHATSAPP_BUSINESS_PHONE || '').replace(/[^0-9]/g, '');
+    if (!phone || !projectId) return res.json({ enabled: false });
+    const text = `Xin chào! Mình cần tư vấn dịch vụ. (mã: #ref:${projectId})`;
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+    res.json({ enabled: true, url });
+  } catch (e) {
+    res.json({ enabled: false });
   }
 });
 
@@ -3165,6 +3180,12 @@ function verifyMetaSignature(req, res, next) {
   next();
 }
 
+// Tách mã ref project từ tin nhắn đầu tiên của WhatsApp (link wa.me có gắn "#ref:<project>").
+function parseProjectRef(text) {
+  const m = /#ref:([a-z0-9_-]+)/i.exec(text || '');
+  return m ? m[1].toLowerCase() : null;
+}
+
 // In-memory webhook log (last 20 calls) — view at GET /api/debug/webhook-log
 const _webhookLog = [];
 app.get('/api/debug/webhook-log', (req, res) => res.json(_webhookLog));
@@ -3206,6 +3227,27 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
     }
     console.log(`Mapped targetId ${targetId} → project: ${projectId}, hasToken: ${!!resolvedPageToken}`);
 
+    // WHATSAPP: phân loại nguồn theo project. Giữ project của phiên đang có; phiên mới lấy từ mã
+    // "#ref:<project>" trong tin đầu (từ link wa.me của widget). Không rõ nguồn -> gom vào 'unknown'.
+    if (platform === 'whatsapp') {
+      const existingWa = await db.query(
+        `SELECT project_id FROM sessions WHERE platform = 'whatsapp' AND platform_sender_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [senderId]
+      );
+      if (existingWa.rows[0]) {
+        projectId = existingWa.rows[0].project_id;
+      } else {
+        const ref = parseProjectRef(text);
+        if (ref) {
+          const chk = await db.query('SELECT id FROM projects WHERE id = $1', [ref]);
+          projectId = chk.rows.length ? ref : 'unknown';
+        } else {
+          projectId = 'unknown';
+        }
+      }
+      console.log(`[WhatsApp] senderId ${senderId} → project: ${projectId}`);
+    }
+
     // 2. Get the most recent session for this user (any status) to check verify state
     const sessionRes = await db.query(
       `SELECT * FROM sessions WHERE platform = $1 AND platform_sender_id = $2 AND project_id = $3 ORDER BY created_at DESC LIMIT 1`,
@@ -3229,7 +3271,7 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
       await db.query(`
         INSERT INTO sessions (id, project_id, visitor_name, visitor_phone, visitor_avatar, detected_language, status, platform, platform_sender_id, is_verified, show_in_dashboard, mc_verify_state)
         VALUES ($1, $2, $3, $4, $5, null, 'active', $6, $7, true, true, $8)
-      `, [sessionId, projectId, visitorName, platform === 'whatsapp' ? senderId : null, visitorAvatar, platform, senderId, platform === 'whatsapp' ? 'verified' : null]);
+      `, [sessionId, projectId, visitorName, platform === 'whatsapp' ? senderId : null, visitorAvatar, platform, senderId, null]);
     } else {
       if (session.status !== 'active') {
         await db.query(`UPDATE sessions SET status = 'active', claimed_by_admin_id = NULL, requested_agent = FALSE WHERE id = $1`, [session.id]);
@@ -3278,8 +3320,8 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
       `, [sessionId, text, translatedText, finalLang]);
     };
 
-    // WhatsApp is already phone-verified, skip email OTP
-    const verifyState = (platform === 'whatsapp') ? 'verified' : (session?.mc_verify_state || null);
+    // WhatsApp cũng phải qua xác minh email/OTP như các kênh khác (không tự bỏ qua nữa)
+    const verifyState = session?.mc_verify_state || null;
 
     // State: null → chưa hỏi email
     if (verifyState === null) {

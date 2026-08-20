@@ -59,7 +59,8 @@ async function initializeDatabase() {
     await query(`
       INSERT INTO projects (id, name) VALUES
         ('pastie-landingpage', 'Pastie Landing'),
-        ('dealphuquoc', 'DealPhuQuoc')
+        ('dealphuquoc', 'DealPhuQuoc'),
+        ('unknown', 'Không rõ nguồn (WhatsApp trực tiếp)')
       ON CONFLICT (id) DO NOTHING;
     `);
 
