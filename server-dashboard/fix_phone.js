@@ -1,22 +1,14 @@
-const db = require('../server-dashboard/database');
+const db = require('./database');
 
-async function updateWhatsAppPhones() {
+async function run() {
   try {
     const res = await db.query(`
       UPDATE sessions 
-      SET visitor_phone = platform_sender_id,
-          browser = 'WhatsApp',
-          device = 'WhatsApp Mobile'
-      WHERE platform = 'whatsapp' AND (visitor_phone IS NULL OR browser IS NULL);
+      SET claimed_by_admin_id = NULL, 
+          requested_agent = FALSE 
+      WHERE platform = 'whatsapp'
     `);
-    console.log('Updated rows:', res.rowCount);
-
-    const check = await db.query(`
-      SELECT id, visitor_name, visitor_phone, platform_sender_id, platform, browser, device 
-      FROM sessions 
-      WHERE platform = 'whatsapp';
-    `);
-    console.log('WhatsApp sessions in DB:', JSON.stringify(check.rows, null, 2));
+    console.log('Reset WhatsApp sessions:', res.rowCount);
   } catch (err) {
     console.error('Error:', err);
   } finally {
@@ -24,4 +16,4 @@ async function updateWhatsAppPhones() {
   }
 }
 
-updateWhatsAppPhones();
+run();

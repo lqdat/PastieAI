@@ -1133,7 +1133,7 @@ app.post('/api/chats/session/close', async (req, res) => {
     if (email && email.trim() !== '') {
       await db.query(
         `UPDATE sessions 
-         SET status = 'closed', ai_summary = $1, intent_tags = $2 
+         SET status = 'closed', ai_summary = $1, intent_tags = $2, claimed_by_admin_id = NULL, requested_agent = FALSE 
          WHERE visitor_email = $3 AND project_id = $4 AND status = 'active'`,
         [summary, tags, email, projectId]
       );
@@ -1141,7 +1141,7 @@ app.post('/api/chats/session/close', async (req, res) => {
 
     await db.query(
       `UPDATE sessions 
-       SET status = 'closed', ai_summary = $1, intent_tags = $2 
+       SET status = 'closed', ai_summary = $1, intent_tags = $2, claimed_by_admin_id = NULL, requested_agent = FALSE 
        WHERE id = $3`,
       [summary, tags, sessionId]
     );
@@ -2769,7 +2769,10 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
       `, [sessionId, projectId, visitorName, platform === 'whatsapp' ? senderId : null, visitorAvatar, platform, senderId, platform === 'whatsapp' ? 'verified' : null]);
     } else {
       if (session.status !== 'active') {
-        await db.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [session.id]);
+        await db.query(`UPDATE sessions SET status = 'active', claimed_by_admin_id = NULL, requested_agent = FALSE WHERE id = $1`, [session.id]);
+        session.status = 'active';
+        session.claimed_by_admin_id = null;
+        session.requested_agent = false;
       }
       sessionId = session.id;
 
@@ -2870,12 +2873,12 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
     if (session?.show_in_dashboard === true) void notifyAgentMessage(session, text);
 
     // ── DETECT: khách muốn gặp nhân viên ────────────────────────────────
-    const AGENT_KEYWORDS = /\b(cskh|gặp cskh|gap cskh|chăm sóc|cham soc|nhân viên|nhan vien|agent|support|tư vấn|tu van|gặp người|gap nguoi|người thật|nguoi that|con người|con nguoi|speak to|talk to|human|help me|trực tiếp|truc tiep|kết nối|ket noi|оператор|поддержка|помогите|помощь|сотрудник|консультант|связаться|человек|живой|клиентская|客服|人工|转人工|帮助|联系|工作人员|真人|支持)\b/i;
+    const AGENT_KEYWORDS = /\b(cskh|gặp cskh|gap cskh|chăm sóc|cham soc|nhân viên|nhan vien|agent|support|tư vấn trực tiếp|tu van truc tiep|gặp người|gap nguoi|người thật|nguoi that|con người|con nguoi|speak to human|talk to human|trực tiếp|kết nối nhân viên|оператор|поддержка|помогите|помощь|сотрудник|консультант|связаться|человек|живой|клиентская|客服|人工|转人工|帮助|联系|工作人员|真人|支持)\b/i;
     const wantsAgent = AGENT_KEYWORDS.test(text);
 
-    if (wantsAgent && session?.show_in_dashboard === false) {
-      await db.query(`UPDATE sessions SET show_in_dashboard = true WHERE id = $1`, [sessionId]);
-      console.log(`[MC] Session ${sessionId} transferred to dashboard.`);
+    if (wantsAgent && !session?.claimed_by_admin_id && !session?.requested_agent) {
+      await db.query(`UPDATE sessions SET requested_agent = true, show_in_dashboard = true WHERE id = $1`, [sessionId]);
+      console.log(`[MC] Session ${sessionId} transferred to agent.`);
       const transferMsg = {
         vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳',
         en: 'Connecting you with a support agent, please hold on ⏳',
@@ -2887,9 +2890,9 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
       return;
     }
 
-    // ── Đã chuyển sang agent → bỏ qua AI hoàn toàn ────────────────────
-    if (session?.show_in_dashboard === true) {
-      console.log(`[MC] Session ${sessionId} already transferred to agent — skipping AI.`);
+    // ── Nếu nhân viên đã tiếp nhận (claimed) hoặc khách đang chờ gặp nhân viên → bỏ qua AI ───
+    if (session?.claimed_by_admin_id || session?.requested_agent) {
+      console.log(`[MC] Session ${sessionId} handled by human agent — skipping AI.`);
       return;
     }
 
