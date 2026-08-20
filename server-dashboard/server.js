@@ -775,9 +775,9 @@ app.post('/api/chats/message', async (req, res) => {
       return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
     }
 
-    // Push ưu tiên thời gian thực: gửi ngay khi khách vừa nhắn, không chờ
-    // Gemini dịch/soạn phản hồi. Chỉ subscription của tài khoản quản trị mới nhận.
-    if (sender === 'visitor') void notifyAgentMessage(sessionRes.rows[0], text);
+    // Chỉ push khi phiên ĐÃ chuyển cho người thật (requested_agent) -> tránh spam lúc AI đang xử lý,
+    // và tránh báo trùng với notifyAgentTransfer ở tin kích hoạt (lúc đó requested_agent còn false).
+    if (sender === 'visitor' && sessionRes.rows[0].requested_agent) void notifyAgentMessage(sessionRes.rows[0], text);
 
     // Call Gemini to translate and detect language
     const { translatedText, detectedLang } = await gemini.translateText(text, targetLang);
@@ -869,6 +869,7 @@ app.post('/api/chats/message', async (req, res) => {
       if (wantsAgent && !sessionData.requested_agent) {
         // Flag session so AI won't respond from now on
         await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
+        void notifyAgentTransfer(sessionData, text); // Báo agent: khách cần người thật (từ khóa)
         const transferMsgs = {
           vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳',
           en: 'Connecting you with a support agent, please hold on ⏳',
@@ -929,6 +930,7 @@ app.post('/api/chats/message', async (req, res) => {
               };
               const transferMsg = transferMsgs[visitorLang] || transferMsgs['vi'];
               await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
+              void notifyAgentTransfer(sessionData, text); // Báo agent: trúng từ khóa chuyển của project
               const kwMsgRes = await db.query(
                 `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3) RETURNING *`,
                 [sessionId, transferMsg, visitorLang]
@@ -982,6 +984,7 @@ app.post('/api/chats/message', async (req, res) => {
           if (rawAiReply.startsWith('[TRANSFER]')) {
             finalAiReply = rawAiReply.replace('[TRANSFER]', '').trim();
             await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
+            void notifyAgentTransfer(sessionData, finalAiReply || text); // Báo agent: AI không trả lời được
             console.log(`[LiveChat] AI cannot answer → auto-flagged session ${sessionId} for agent transfer.`);
           }
 
@@ -2473,19 +2476,38 @@ app.post('/api/admin/chats/:sessionId/claim', checkAdminAuth, async (req, res) =
   const { sessionId } = req.params;
   if (!isChatStaff(req.admin)) return res.status(403).json({ error: 'Bạn không có quyền tiếp nhận chat.' });
   try {
-    const sessionResult = await db.query('SELECT project_id, claimed_by_admin_id FROM sessions WHERE id = $1', [sessionId]);
+    const sessionResult = await db.query('SELECT project_id, claimed_by_admin_id, operator_no, detected_language FROM sessions WHERE id = $1', [sessionId]);
     if (sessionResult.rows.length === 0) return res.status(404).json({ error: 'Không tìm thấy cuộc trò chuyện.' });
     const session = sessionResult.rows[0];
     if (!canAccessProject(req.admin, session.project_id)) return res.status(403).json({ error: 'Bạn không có quyền tiếp nhận chat của project này.' });
     if (session.claimed_by_admin_id && session.claimed_by_admin_id !== req.admin.id && !isSuperAdmin(req.admin)) {
       return res.status(409).json({ error: 'Chat này đã được nhân viên khác tiếp nhận.' });
     }
+    const firstClaim = !session.claimed_by_admin_id;
+    // Gán số tổng đài viên ngẫu nhiên (giữ ổn định cho phiên); chỉ đặt lần đầu
+    const operatorNo = session.operator_no || (100 + Math.floor(Math.random() * 900));
     await db.query(
-      `UPDATE sessions SET claimed_by_admin_id = $1, claimed_at = NOW()
+      `UPDATE sessions SET claimed_by_admin_id = $1, claimed_at = NOW(), operator_no = COALESCE(operator_no, $3)
        WHERE id = $2`,
-      [req.admin.id, sessionId]
+      [req.admin.id, sessionId, operatorNo]
     );
-    res.json({ success: true, claimedByAdminId: req.admin.id });
+    // Lần đầu tiếp nhận -> chèn tin hệ thống hiển thị cho khách "Tổng đài viên số XXX đã tiếp nhận"
+    if (firstClaim) {
+      const lang = session.detected_language || 'vi';
+      const msgs = {
+        vi: `Tổng đài viên số ${operatorNo} đã tiếp nhận. Rất vui được hỗ trợ bạn! 👋`,
+        en: `Operator #${operatorNo} has joined. Happy to help you! 👋`,
+        ru: `Оператор №${operatorNo} подключился. Рад помочь вам! 👋`,
+        zh: `${operatorNo}号客服已接入，很高兴为您服务！👋`,
+      };
+      const msg = msgs[lang] || msgs.vi;
+      await db.query(
+        `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+         VALUES ($1, 'system', $2, $2, $3)`,
+        [sessionId, msg, lang]
+      ).catch((e) => console.error('Insert operator-claim message failed:', e.message));
+    }
+    res.json({ success: true, claimedByAdminId: req.admin.id, operatorNo });
   } catch (error) {
     console.error('Claim chat error:', error);
     res.status(500).json({ error: 'Không thể tiếp nhận chat.' });

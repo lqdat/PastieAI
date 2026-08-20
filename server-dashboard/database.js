@@ -107,6 +107,7 @@ async function initializeDatabase() {
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS claimed_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP;`);
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS visitor_phone VARCHAR(30);`);
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS operator_no INT;`);
 
     await query(`
       CREATE TABLE IF NOT EXISTS push_subscriptions (

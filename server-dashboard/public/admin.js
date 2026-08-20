@@ -895,19 +895,30 @@ function showNewMessageNotification(session, unread) {
         n.close();
     };
 
-    // Play alert sound
+    playAlertSound();
+}
+
+// Âm thanh báo tin mới. Ưu tiên file tuỳ chỉnh public/sounds/notify.(mp3|wav);
+// nếu không có/không phát được thì fallback về beep tổng hợp. Có thể đổi qua localStorage 'notify_sound_url'.
+function beepFallback() {
     try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
+        osc.connect(gain); gain.connect(ctx.destination);
         osc.frequency.value = 880;
         gain.gain.setValueAtTime(0.15, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.3);
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.3);
     } catch {}
+}
+function playAlertSound() {
+    const url = (localStorage.getItem('notify_sound_url') || '/sounds/notify.mp3');
+    try {
+        const a = new Audio(url);
+        a.volume = 0.6;
+        a.play().catch(() => beepFallback());
+    } catch { beepFallback(); }
 }
 
 // ----------------------------------------------------
