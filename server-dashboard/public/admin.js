@@ -1958,6 +1958,9 @@ const knowledgeSettingsBtn = document.getElementById('knowledge-settings-btn');
 const kbProjectSelect = document.getElementById('kb-project-select');
 const kbProjectHint = document.getElementById('kb-project-hint');
 const kbSyncBtn = document.getElementById('kb-sync-btn');
+const kbSyncDealDbBtn = document.getElementById('kb-sync-deal-db-btn');
+const kbDealDbStatus = document.getElementById('kb-deal-db-status');
+const kbDealDbSyncCard = document.getElementById('kb-deal-db-sync-card');
 const kbSaveManualBtn = document.getElementById('kb-save-manual-btn');
 const kbCloseBtn = document.getElementById('kb-close-btn');
 const kbUrlInput = document.getElementById('kb-url-input');
@@ -1984,6 +1987,9 @@ if (kbProjectSelect) {
 }
 if (kbSyncBtn) {
     kbSyncBtn.addEventListener('click', syncKnowledgeFromUrl);
+}
+if (kbSyncDealDbBtn) {
+    kbSyncDealDbBtn.addEventListener('click', syncKnowledgeFromDealDb);
 }
 if (kbSaveManualBtn) {
     kbSaveManualBtn.addEventListener('click', saveKnowledgeManual);
@@ -2053,16 +2059,28 @@ async function loadKnowledgeForProject(projectId) {
     try {
         const kbResp = await authFetch(`${API_BASE}/api/admin/knowledge?projectId=${encodeURIComponent(projectId)}`);
         const data = await kbResp.json();
+        const locale = currentLang === 'vi' ? 'vi-VN' : 'en-US';
+
         if (data.source_url) {
-            kbUrlInput.value = data.source_url === 'manual' ? 'https://pastie-landingpage.vercel.app' : data.source_url;
+            kbUrlInput.value = (data.source_url === 'manual' || data.source_url.startsWith('db://')) ? 'https://dealphuquoc.com' : data.source_url;
             kbTextArea.value = data.cleaned_content || '';
-            const locale = currentLang === 'vi' ? 'vi-VN' : 'en-US';
             const dateStr = new Date(data.updated_at).toLocaleString(locale);
-            kbSyncStatus.innerHTML = `<i class="ri-checkbox-circle-line" style="color: var(--success-color);"></i> <span>[${projectId}] Đồng bộ từ <strong>${data.source_url}</strong> lúc ${dateStr}</span>`;
+            
+            if (data.source_url.startsWith('db://')) {
+                kbSyncStatus.innerHTML = `<i class="ri-checkbox-circle-line" style="color: var(--success-color);"></i> <span>[${projectId}] Nguồn: <strong>Cơ sở dữ liệu DealPhuQuoc</strong> (Cập nhật: ${dateStr})</span>`;
+                if (kbDealDbStatus) {
+                    kbDealDbStatus.innerHTML = `<i class="ri-checkbox-circle-fill" style="color: var(--success-color);"></i> <span>Đã đồng bộ từ Database lúc ${dateStr}</span>`;
+                }
+            } else {
+                kbSyncStatus.innerHTML = `<i class="ri-checkbox-circle-line" style="color: var(--success-color);"></i> <span>[${projectId}] Đồng bộ từ <strong>${data.source_url}</strong> lúc ${dateStr}</span>`;
+            }
         } else {
-            kbUrlInput.value = 'https://pastie-landingpage.vercel.app';
+            kbUrlInput.value = 'https://dealphuquoc.com';
             kbSyncStatus.innerHTML = `<i class="ri-information-line" style="color: var(--accent-color);"></i> <span>[${projectId}] Chưa có cơ sở dữ liệu tri thức nào được cấu hình.</span>`;
             kbTextArea.value = '';
+            if (kbDealDbStatus) {
+                kbDealDbStatus.innerHTML = `<i class="ri-information-line" style="color: #a5b4fc;"></i> <span>Chưa đồng bộ dữ liệu DB.</span>`;
+            }
         }
     } catch (e) {
         console.error('Error fetching knowledge settings:', e);
@@ -2072,6 +2090,43 @@ async function loadKnowledgeForProject(projectId) {
 
 function closeKnowledgeModal() {
     knowledgeModal.classList.add('hide');
+}
+
+async function syncKnowledgeFromDealDb() {
+    const activeProjectId = getActiveKbProjectId();
+    if (!kbSyncDealDbBtn) return;
+
+    kbSyncDealDbBtn.disabled = true;
+    kbSyncDealDbBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang trích xuất DB...`;
+    if (kbDealDbStatus) {
+        kbDealDbStatus.innerHTML = `<i class="ri-loader-4-line ri-spin" style="color: #818cf8;"></i> <span>Đang trích xuất Khách sạn, Tour & Voucher từ Database DealPhuQuoc...</span>`;
+    }
+
+    try {
+        const response = await authFetch(`${API_BASE}/api/admin/knowledge/sync-deal-db`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId: activeProjectId })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            alert(data.message || 'Đồng bộ Database DealPhuQuoc thành công!');
+            await loadKnowledgeForProject(activeProjectId);
+        } else {
+            alert('Lỗi: ' + (data.error || 'Không thể đồng bộ database.'));
+            if (kbDealDbStatus) {
+                kbDealDbStatus.innerHTML = `<i class="ri-error-warning-line" style="color: var(--danger-color);"></i> <span>Lỗi: ${data.error}</span>`;
+            }
+        }
+    } catch (err) {
+        alert('Lỗi kết nối: ' + err.message);
+        if (kbDealDbStatus) {
+            kbDealDbStatus.innerHTML = `<i class="ri-error-warning-line" style="color: var(--danger-color);"></i> <span>Lỗi kết nối: ${err.message}</span>`;
+        }
+    } finally {
+        kbSyncDealDbBtn.disabled = false;
+        kbSyncDealDbBtn.innerHTML = `<i class="ri-refresh-line"></i> Đồng bộ từ DB DealPhuQuoc`;
+    }
 }
 
 async function syncKnowledgeFromUrl() {

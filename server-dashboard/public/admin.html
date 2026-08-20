@@ -428,12 +428,34 @@
                 <small id="kb-project-hint" style="display: block; margin-top: 6px; font-size: 11.5px; color: var(--text-secondary); text-align: left;"></small>
             </div>
 
+            <!-- DealPhuQuoc Database Sync Block -->
+            <div id="kb-deal-db-sync-card" style="margin-bottom: 20px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 10px; padding: 14px 16px; text-align: left;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 700; color: #a5b4fc;">
+                        <i class="ri-database-2-line" style="font-size: 18px; color: #818cf8;"></i>
+                        <span>Đồng bộ Cơ sở dữ liệu DealPhuQuoc</span>
+                    </div>
+                    <span style="background: rgba(37,211,102,0.15); color: #25D366; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 20px; display: inline-flex; align-items: center; gap: 4px;"><i class="ri-hotel-line"></i> Hotels, Tours &amp; Vouchers</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-secondary); margin: 0 0 12px 0; line-height: 1.5;">
+                    Trích xuất trực tiếp danh sách Khách sạn, Resort, Loại phòng, Tour và Voucher khuyến mãi từ Database DealPhuQuoc vào bộ nhớ AI.
+                </p>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <div id="kb-deal-db-status" style="font-size: 11.5px; color: var(--text-secondary); flex: 1; min-width: 180px;">
+                        <i class="ri-information-line" style="color: #a5b4fc;"></i> Chưa đồng bộ dữ liệu DB.
+                    </div>
+                    <button type="button" id="kb-sync-deal-db-btn" class="primary-btn" style="width: auto; padding: 8px 18px; background: linear-gradient(135deg, #6366f1, #4f46e5); box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4); font-size: 12.5px;">
+                        <i class="ri-refresh-line"></i> Đồng bộ từ DB DealPhuQuoc
+                    </button>
+                </div>
+            </div>
+
             <!-- Automated crawling block -->
             <div class="form-group" style="margin-bottom: 20px;">
                 <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">Cào dữ liệu tự động từ URL (Landing Page)</label>
                 <div style="display: flex; gap: 8px;">
                     <input type="url" id="kb-url-input" placeholder="Ví dụ: https://pastie.vn" style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;" value="https://pastie-landingpage.vercel.app">
-                    <button id="kb-sync-btn" class="primary-btn" style="width: auto; padding: 0 20px; white-space: nowrap;"><i class="ri-refresh-line"></i> Đồng bộ</button>
+                    <button id="kb-sync-btn" class="primary-btn" style="width: auto; padding: 0 20px; white-space: nowrap;"><i class="ri-refresh-line"></i> Đồng bộ URL</button>
                 </div>
                 <div id="kb-sync-status" style="font-size: 12px; margin-top: 8px; color: var(--text-secondary); text-align: left; display: flex; align-items: center; gap: 6px;">
                     <i class="ri-information-line" style="color: var(--accent-color);"></i>

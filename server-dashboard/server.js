@@ -11,6 +11,7 @@ const resend = require('./resend-helper');
 const cron = require('node-cron');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
+const dealSync = require('./deal-sync');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -3288,6 +3289,29 @@ app.post('/api/admin/knowledge/sync', checkAdminAuth, async (req, res) => {
   } catch (error) {
     console.error('[KB] Sync error:', error);
     res.status(500).json({ error: 'Lỗi khi đồng bộ: ' + error.message });
+  }
+});
+
+// 5.1 POST Sync Knowledge Base directly from DealPhuQuoc Database
+app.post('/api/admin/knowledge/sync-deal-db', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Bạn không có quyền quản lý cơ sở tri thức.' });
+  }
+  let { projectId = 'dealphuquoc' } = req.body;
+  if (isProjectAdmin(req.admin)) {
+    projectId = req.admin.project_id || projectId;
+  }
+  try {
+    const result = await dealSync.syncDealDatabaseToKnowledgeBase(db, projectId);
+    res.json({
+      success: true,
+      message: `Đã đồng bộ thành công ${result.stats.vendors} cơ sở kinh doanh, ${result.stats.products} loại phòng & tour, ${result.stats.vouchers} voucher từ Database!`,
+      stats: result.stats,
+      sample: result.sample
+    });
+  } catch (error) {
+    console.error('Deal DB Sync Error:', error);
+    res.status(500).json({ error: 'Lỗi khi đồng bộ database: ' + error.message });
   }
 });
 
