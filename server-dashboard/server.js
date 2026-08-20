@@ -794,19 +794,28 @@ app.post('/api/chats/message', async (req, res) => {
       }
 
       const claim = sessionRes.rows[0].claimed_by_admin_id;
-      if (claim && claim !== sendingAdmin.id && !isSuperAdmin(sendingAdmin)) {
-        return res.status(409).json({ error: 'Chat này đã được nhân viên khác tiếp nhận.', claimedByAdminId: claim });
+      const assigned = sessionRes.rows[0].assigned_admin_id;
+      const isSuper = isSuperAdmin(sendingAdmin);
+
+      // RÀNG BUỘC: Nếu không phải Superadmin, nhân viên BẮT BUỘC phải nhấn "Tiếp nhận" hoặc được Superadmin phân công trước khi trả lời khách
+      if (!isSuper) {
+        const isClaimedByMe = claim && Number(claim) === Number(sendingAdmin.id);
+        const isAssignedToMe = assigned && Number(assigned) === Number(sendingAdmin.id);
+
+        if (!isClaimedByMe && !isAssignedToMe) {
+          if (claim && Number(claim) !== Number(sendingAdmin.id)) {
+            return res.status(409).json({ error: 'Cuộc trò chuyện này đã được nhân viên khác tiếp nhận.', claimedByAdminId: claim });
+          }
+          return res.status(403).json({ error: 'Bạn cần nhấn "Tiếp nhận" cuộc trò chuyện hoặc được Super Admin phân công trước khi trả lời khách hàng.' });
+        }
       }
-      if (!claim) {
-        const claimed = await db.query(
+
+      if (isSuper && !claim) {
+        await db.query(
           `UPDATE sessions SET claimed_by_admin_id = $1, claimed_at = NOW()
-           WHERE id = $2 AND claimed_by_admin_id IS NULL
-           RETURNING claimed_by_admin_id`,
+           WHERE id = $2 AND claimed_by_admin_id IS NULL`,
           [sendingAdmin.id, sessionId]
         );
-        if (claimed.rows.length === 0 && !isSuperAdmin(sendingAdmin)) {
-          return res.status(409).json({ error: 'Chat này vừa được nhân viên khác tiếp nhận.' });
-        }
       }
       senderAdminId = sendingAdmin.id;
     }
@@ -1838,11 +1847,13 @@ app.get('/api/admin/users', checkAdminAuth, async (req, res) => {
 
   try {
     const result = isSuperAdmin(req.admin)
-      ? await db.query('SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_at FROM admins ORDER BY role DESC, username ASC')
+      ? await db.query('SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_by_admin_id, created_at FROM admins ORDER BY role DESC, username ASC')
       : await db.query(
-        `SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_at
-         FROM admins WHERE project_id = $1 AND (role = 'agent' OR id = $2) ORDER BY role DESC, username ASC`,
-        [req.admin.project_id, req.admin.id]
+        `SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_by_admin_id, created_at
+         FROM admins 
+         WHERE ((created_by_admin_id = $1 AND role = 'agent') OR id = $1) AND project_id = $2 
+         ORDER BY role DESC, username ASC`,
+        [req.admin.id, req.admin.project_id]
       );
     res.json(result.rows);
   } catch (error) {
@@ -1858,17 +1869,19 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
   }
 
   const { username, password, full_name, role, avatar_url, project_id } = req.body;
-  if (!username || !password || !full_name || !role) {
-    return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ: username, password, full_name, role.' });
+  if (!username || !password || !full_name) {
+    return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ: Họ tên, Tên đăng nhập, Mật khẩu.' });
   }
 
   try {
-    if (!ADMIN_ROLES.has(role)) return res.status(400).json({ error: 'Vai trò không hợp lệ.' });
-    if (isProjectAdmin(req.admin) && role !== 'agent') {
-      return res.status(403).json({ error: 'Project Admin chỉ được tạo tài khoản Agent.' });
+    // Project Admin CHỈ ĐƯỢC PHÉP tạo tài khoản Agent thuộc chính admin đó
+    const effectiveRole = isProjectAdmin(req.admin) ? 'agent' : (role || 'agent');
+    if (!ADMIN_ROLES.has(effectiveRole)) return res.status(400).json({ error: 'Vai trò không hợp lệ.' });
+    if (isProjectAdmin(req.admin) && role && role !== 'agent') {
+      return res.status(403).json({ error: 'Project Admin chỉ được phép tạo tài khoản Agent (Tư vấn viên).' });
     }
     if (!isSuperAdmin(req.admin) && !req.admin.project_id) {
-      return res.status(400).json({ error: 'Project Admin phải được gán một project.' });
+      return res.status(400).json({ error: 'Project Admin phải thuộc một project hợp lệ.' });
     }
 
     // Check if username already exists
@@ -1878,16 +1891,18 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
     }
 
     const passwordHash = await hashPassword(password);
-    const avatar = avatar_url || '';
+    const avatar = avatar_url || 'gradient-1';
     const scope = isSuperAdmin(req.admin)
-      ? (role === 'superadmin' ? null : (project_id && project_id.trim() ? project_id.trim() : null))
+      ? (effectiveRole === 'superadmin' ? null : (project_id && project_id.trim() ? project_id.trim() : null))
       : req.admin.project_id;
-    if (role !== 'superadmin' && !scope) return res.status(400).json({ error: 'Project Admin và Agent phải thuộc một project.' });
+    if (effectiveRole !== 'superadmin' && !scope) return res.status(400).json({ error: 'Nhân viên phải thuộc một dự án cụ thể.' });
+
+    const creatorId = isProjectAdmin(req.admin) ? req.admin.id : null;
 
     const insertRes = await db.query(
-      `INSERT INTO admins (username, password_hash, full_name, role, avatar_url, project_id, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, TRUE) RETURNING id, username, role, full_name, avatar_url, project_id, is_active, created_at`,
-      [username, passwordHash, full_name, role, avatar, scope]
+      `INSERT INTO admins (username, password_hash, full_name, role, avatar_url, project_id, created_by_admin_id, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE) RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, created_at`,
+      [username, passwordHash, full_name, effectiveRole, avatar, scope, creatorId]
     );
 
     res.status(201).json({
@@ -1918,8 +1933,15 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
     }
 
     const currentAdmin = checkRes.rows[0];
-    if (isProjectAdmin(req.admin) && (currentAdmin.role !== 'agent' || currentAdmin.project_id !== req.admin.project_id)) {
-      return res.status(403).json({ error: 'Project Admin chỉ được quản lý Agent thuộc project của mình.' });
+    if (isProjectAdmin(req.admin)) {
+      const isSelf = Number(currentAdmin.id) === Number(req.admin.id);
+      const isCreatedByMe = currentAdmin.created_by_admin_id && Number(currentAdmin.created_by_admin_id) === Number(req.admin.id);
+      if (!isSelf && !isCreatedByMe) {
+        return res.status(403).json({ error: 'Bạn chỉ được quản lý tài khoản Agent do chính mình tạo ra.' });
+      }
+      if (!isSelf && currentAdmin.role !== 'agent') {
+        return res.status(403).json({ error: 'Project Admin chỉ được quản lý Agent thuộc dự án của mình.' });
+      }
     }
 
     // If username changes, check if new username exists
@@ -1937,11 +1959,10 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
 
     const updatedUsername = username || currentAdmin.username;
     const updatedFullName = full_name || currentAdmin.full_name;
-    const updatedRole = isProjectAdmin(req.admin) ? 'agent' : (role || currentAdmin.role);
+    const updatedRole = isProjectAdmin(req.admin) ? (Number(currentAdmin.id) === Number(req.admin.id) ? 'project_admin' : 'agent') : (role || currentAdmin.role);
     if (!ADMIN_ROLES.has(updatedRole)) return res.status(400).json({ error: 'Vai trò không hợp lệ.' });
     const updatedAvatar = avatar_url !== undefined ? avatar_url : currentAdmin.avatar_url;
     const updatedIsActive = is_active !== undefined ? is_active : currentAdmin.is_active;
-    // Scope project: superadmin luôn null (xem mọi project); subadmin lấy giá trị mới nếu có, giữ nguyên nếu không gửi.
     const updatedProject = isProjectAdmin(req.admin)
       ? req.admin.project_id
       : updatedRole === 'superadmin'
@@ -1949,14 +1970,14 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
       : (project_id !== undefined ? (project_id && project_id.trim() ? project_id.trim() : null) : currentAdmin.project_id);
 
     // Do not allow deactivating themselves
-    if (id === req.admin.id && !updatedIsActive) {
+    if (Number(id) === Number(req.admin.id) && !updatedIsActive) {
       return res.status(400).json({ error: 'Bạn không thể tự vô hiệu hóa tài khoản của chính mình.' });
     }
 
     const updateRes = await db.query(
       `UPDATE admins
        SET username = $1, password_hash = $2, full_name = $3, role = $4, avatar_url = $5, is_active = $6, project_id = $7
-       WHERE id = $8 RETURNING id, username, role, full_name, avatar_url, project_id, is_active, created_at`,
+       WHERE id = $8 RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, created_at`,
       [updatedUsername, passwordHash, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, updatedProject, id]
     );
 
@@ -1979,7 +2000,7 @@ app.delete('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
 
   const { id } = req.params;
 
-  if (id === req.admin.id) {
+  if (Number(id) === Number(req.admin.id)) {
     return res.status(400).json({ error: 'Bạn không thể tự xóa tài khoản của chính mình.' });
   }
 
@@ -1988,19 +2009,23 @@ app.delete('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
     if (checkRes.rows.length === 0) {
       return res.status(404).json({ error: 'Không tìm thấy tài khoản nhân viên để xóa.' });
     }
-    if (isProjectAdmin(req.admin) && (checkRes.rows[0].role !== 'agent' || checkRes.rows[0].project_id !== req.admin.project_id)) {
-      return res.status(403).json({ error: 'Project Admin chỉ được xóa Agent thuộc project của mình.' });
+    if (isProjectAdmin(req.admin)) {
+      const isCreatedByMe = checkRes.rows[0].created_by_admin_id && Number(checkRes.rows[0].created_by_admin_id) === Number(req.admin.id);
+      if (!isCreatedByMe || checkRes.rows[0].role !== 'agent' || checkRes.rows[0].project_id !== req.admin.project_id) {
+        return res.status(403).json({ error: 'Project Admin chỉ được xóa tài khoản Agent do chính mình tạo ra.' });
+      }
     }
 
     // Delete all sessions for this admin first (or unassign them)
     await db.query('UPDATE sessions SET assigned_admin_id = NULL WHERE assigned_admin_id = $1', [id]);
+    await db.query('UPDATE sessions SET claimed_by_admin_id = NULL WHERE claimed_by_admin_id = $1', [id]);
     await db.query('DELETE FROM admin_sessions WHERE admin_id = $1', [id]);
 
     await db.query('DELETE FROM admins WHERE id = $1', [id]);
 
     res.json({
       success: true,
-      message: 'Xóa tài khoản nhân viên thành công.'
+      message: 'Đã xóa tài khoản nhân viên thành công.'
     });
   } catch (error) {
     console.error('Delete admin error:', error);

@@ -1334,15 +1334,61 @@ async function selectSession(sessionId) {
     }
     
     renderTags(session.intent_tags);
-    detailSummary.textContent = session.ai_summary || dict.closeChatToAnalyze;
+    // Manage input visibility and claim status
+    const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
+    const isClaimedByMe = session.claimed_by_admin_id && Number(session.claimed_by_admin_id) === Number(CURRENT_ADMIN?.id);
+    const isAssignedToMe = session.assigned_admin_id && Number(session.assigned_admin_id) === Number(CURRENT_ADMIN?.id);
+    const isClaimedByOther = session.claimed_by_admin_id && Number(session.claimed_by_admin_id) !== Number(CURRENT_ADMIN?.id);
 
-    // Manage input visibility based on status
+    const claimChatBtn = document.getElementById('claim-chat-btn');
+
     if (session.status === 'closed') {
         chatInputContainer.classList.add('hide');
         closeSessionBtn.classList.add('hide');
+        if (claimChatBtn) claimChatBtn.classList.add('hide');
     } else {
         chatInputContainer.classList.remove('hide');
         closeSessionBtn.classList.remove('hide');
+
+        // Check if user has permission to reply
+        const canReply = isSuper || isClaimedByMe || isAssignedToMe;
+        if (chatInput) {
+            chatInput.disabled = !canReply;
+            if (!canReply) {
+                chatInput.value = '';
+                chatInput.placeholder = isClaimedByOther
+                    ? '🔒 Cuộc trò chuyện đã được nhân viên khác tiếp nhận.'
+                    : '🔒 Vui lòng nhấn "Tiếp nhận" ở trên để bắt đầu trả lời tin nhắn...';
+            } else {
+                chatInput.placeholder = dict.replyPlaceholder || 'Nhập tin nhắn trả lời khách hàng...';
+            }
+        }
+        const sendBtn = chatForm ? chatForm.querySelector('button[type="submit"]') : null;
+        if (sendBtn) sendBtn.disabled = !canReply;
+
+        // Update claim button UI
+        if (claimChatBtn) {
+            claimChatBtn.classList.remove('hide');
+            if (isClaimedByMe) {
+                claimChatBtn.disabled = true;
+                claimChatBtn.style.opacity = '0.9';
+                claimChatBtn.style.background = 'rgba(16, 185, 129, 0.25)';
+                claimChatBtn.style.borderColor = 'rgba(16, 185, 129, 0.6)';
+                claimChatBtn.innerHTML = '<i class="ri-checkbox-circle-fill"></i> <span>Đã tiếp nhận</span>';
+            } else if (isClaimedByOther) {
+                claimChatBtn.disabled = !isSuper;
+                claimChatBtn.style.opacity = '0.6';
+                claimChatBtn.style.background = 'rgba(255, 255, 255, 0.05)';
+                claimChatBtn.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                claimChatBtn.innerHTML = '<i class="ri-user-follow-line"></i> <span>Đã có người nhận</span>';
+            } else {
+                claimChatBtn.disabled = false;
+                claimChatBtn.style.opacity = '1';
+                claimChatBtn.style.background = 'rgba(16, 185, 129, 0.14)';
+                claimChatBtn.style.borderColor = 'rgba(16, 185, 129, 0.35)';
+                claimChatBtn.innerHTML = '<i class="ri-hand-heart-line"></i> <span>Tiếp nhận</span>';
+            }
+        }
     }
 
     // Show premium loading spinner inside messages container
@@ -2476,6 +2522,54 @@ function renderAdminAvatarPicker(selectedId = 'gradient-1') {
 
 function openAdminMgmt() {
     if (adminMgmtModal) adminMgmtModal.classList.remove('hide');
+    
+    const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
+    const isProjectAdmin = CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin';
+
+    const projectMgmtBox = document.querySelector('.admin-project-management');
+    const projectFormGroup = document.getElementById('admin-form-project-group');
+    const roleSelect = document.getElementById('admin-form-role');
+    const subtitleEl = document.getElementById('admin-mgmt-subtitle');
+
+    if (isProjectAdmin) {
+        if (projectMgmtBox) projectMgmtBox.classList.add('hide');
+        if (projectFormGroup) projectFormGroup.classList.add('hide');
+        if (roleSelect) {
+            roleSelect.innerHTML = '<option value="agent">Agent (Tư vấn viên trực chat)</option>';
+            roleSelect.value = 'agent';
+            roleSelect.disabled = true;
+        }
+        if (subtitleEl) {
+            subtitleEl.textContent = `Quản lý danh sách Agent tư vấn của bạn [${CURRENT_ADMIN.project_id || 'Dự án'}].`;
+        }
+    } else {
+        if (projectMgmtBox) projectMgmtBox.classList.remove('hide');
+        if (projectFormGroup) projectFormGroup.classList.remove('hide');
+        if (roleSelect) {
+            roleSelect.innerHTML = `
+                <option value="agent">Agent (Tư vấn viên trực chat)</option>
+                <option value="project_admin">Project Admin (Quản trị dự án)</option>
+                <option value="superadmin">Quản trị viên tối cao (Super-Admin)</option>
+            `;
+            roleSelect.value = 'agent';
+            roleSelect.disabled = false;
+        }
+        if (subtitleEl) {
+            subtitleEl.textContent = 'Quản lý tài khoản, phân quyền và trạng thái hoạt động của nhân viên toàn hệ thống.';
+        }
+
+        // Populate projects in form dropdown
+        if (adminFormProject) {
+            adminFormProject.innerHTML = '<option value="">— Tất cả dự án (toàn quyền) —</option>';
+            (PROJECTS || []).forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = `${p.name || p.id} (${p.id})`;
+                adminFormProject.appendChild(opt);
+            });
+        }
+    }
+
     loadAdminUsers();
     resetAdminForm();
 }
@@ -2490,25 +2584,83 @@ function closeAdminMgmt() {
 
 async function loadAdminUsers() {
     if (!adminListContainer) return;
-    adminListContainer.innerHTML = '<p style="color:var(--text-secondary);font-size:13px;">Đang tải...</p>';
+    adminListContainer.innerHTML = '<p style="color:var(--text-secondary);font-size:12.5px;text-align:center;padding:20px 0;"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách nhân viên...</p>';
     try {
         const res = await authFetch(`${API_BASE}/api/admin/users`);
         const users = await res.json();
-        if (!Array.isArray(users)) { adminListContainer.innerHTML = '<p style="color:red;font-size:12px;">Lỗi tải danh sách.</p>'; return; }
-        adminListContainer.innerHTML = users.map(u => `
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:rgba(255,255,255,0.04);border-radius:8px;border:1px solid rgba(255,255,255,0.07);">
-                <div>
-                    <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${escapeHtml(u.full_name)} <span style="font-size:11px;color:var(--text-secondary);">(${escapeHtml(u.username)})</span></div>
-                    <div style="font-size:11px;color:${u.role==='superadmin'?'var(--warning-color)':'var(--accent-color)'};">${u.role} · ${u.is_active ? '✓ Hoạt động' : '✗ Vô hiệu'}</div>
+        if (!Array.isArray(users)) {
+            adminListContainer.innerHTML = '<p style="color:#f87171;font-size:12px;text-align:center;">Lỗi tải danh sách nhân viên.</p>';
+            return;
+        }
+
+        const countBadge = document.getElementById('admin-user-count-badge');
+        if (countBadge) countBadge.textContent = `${users.length} nhân viên`;
+
+        if (users.length === 0) {
+            adminListContainer.innerHTML = '<p style="color:var(--text-secondary);font-size:12px;text-align:center;padding:24px 0;">Chưa có tài khoản nhân viên nào.</p>';
+            return;
+        }
+
+        const avatarGradients = {
+            'gradient-1': 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+            'gradient-2': 'linear-gradient(135deg,#ec4899,#f43f5e)',
+            'gradient-3': 'linear-gradient(135deg,#10b981,#14b8a6)',
+            'gradient-4': 'linear-gradient(135deg,#f59e0b,#f97316)',
+            'gradient-5': 'linear-gradient(135deg,#0ea5e9,#2563eb)'
+        };
+
+        adminListContainer.innerHTML = users.map(u => {
+            const isSelf = CURRENT_ADMIN && Number(CURRENT_ADMIN.id) === Number(u.id);
+            const isCreatedByMe = CURRENT_ADMIN && u.created_by_admin_id && Number(u.created_by_admin_id) === Number(CURRENT_ADMIN.id);
+            const bgGradient = avatarGradients[u.avatar_url] || avatarGradients['gradient-1'];
+            const initial = (u.full_name || u.username || 'A').trim().charAt(0).toUpperCase();
+
+            let roleLabel = 'Agent';
+            let roleClass = 'agent';
+            if (u.role === 'superadmin') {
+                roleLabel = 'Superadmin';
+                roleClass = 'superadmin';
+            } else if (u.role === 'project_admin') {
+                roleLabel = 'Project Admin';
+                roleClass = 'project_admin';
+            }
+
+            const canDelete = !isSelf && (CURRENT_ADMIN.role === 'superadmin' || isCreatedByMe);
+
+            return `
+                <div class="admin-user-card ${isSelf ? 'is-self' : ''}">
+                    <div class="admin-user-info">
+                        <div class="admin-user-avatar" style="background: ${bgGradient};">
+                            ${initial}
+                            <span class="online-dot ${u.is_active ? 'active' : 'inactive'}"></span>
+                        </div>
+                        <div class="admin-user-details">
+                            <h4>
+                                ${escapeHtml(u.full_name || u.username)}
+                                ${isSelf ? '<span style="font-size:10.5px; color:#ec4899; font-weight:700;">(Bạn)</span>' : ''}
+                            </h4>
+                            <p>
+                                <span>${escapeHtml(u.username)}</span>
+                                ${u.project_id ? ` · <span style="color:#818cf8; font-weight:500;">${escapeHtml(u.project_id)}</span>` : ''}
+                            </p>
+                            <div style="margin-top: 2px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
+                                <span class="admin-user-role-badge ${roleClass}">
+                                    ${roleLabel}
+                                </span>
+                                ${u.is_active ? '<span style="font-size:10.5px; color:#34d399; font-weight:600;">✓ Hoạt động</span>' : '<span style="font-size:10.5px; color:#f87171; font-weight:600;">✗ Đã khóa</span>'}
+                                ${isCreatedByMe && !isSelf ? '<span style="font-size:9.5px; color:#ec4899; background:rgba(236,72,153,0.12); border:1px solid rgba(236,72,153,0.25); padding:1px 5px; border-radius:4px; font-weight:600;">Do bạn tạo</span>' : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="admin-user-actions">
+                        <button onclick="editAdminUser(${u.id})" class="icon-btn" title="Chỉnh sửa" style="width:28px; height:28px; font-size:13px; background:rgba(99,102,241,0.12); color:#818cf8; border:1px solid rgba(99,102,241,0.25); border-radius:6px; cursor:pointer;"><i class="ri-edit-line"></i></button>
+                        ${canDelete ? `<button onclick="deleteAdminUser(${u.id})" class="icon-btn" title="Xóa tài khoản" style="width:28px; height:28px; font-size:13px; background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); border-radius:6px; cursor:pointer;"><i class="ri-delete-bin-line"></i></button>` : ''}
+                    </div>
                 </div>
-                <div style="display:flex;gap:6px;">
-                    <button onclick="editAdminUser(${u.id})" style="padding:4px 10px;border-radius:6px;background:rgba(99,102,241,0.15);color:var(--accent-color);border:1px solid rgba(99,102,241,0.3);cursor:pointer;font-size:12px;">Sửa</button>
-                    <button onclick="deleteAdminUser(${u.id})" style="padding:4px 10px;border-radius:6px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.3);cursor:pointer;font-size:12px;">Xóa</button>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     } catch(e) {
-        adminListContainer.innerHTML = '<p style="color:red;font-size:12px;">Lỗi kết nối.</p>';
+        adminListContainer.innerHTML = '<p style="color:#f87171;font-size:12px;text-align:center;">Lỗi kết nối máy chủ.</p>';
     }
 }
 
@@ -2516,14 +2668,22 @@ function resetAdminForm() {
     if (!adminUserForm) return;
     adminUserForm.reset();
     if (adminFormId) adminFormId.value = '';
-    if (adminFormTitle) adminFormTitle.textContent = 'Thêm nhân viên mới';
+    if (adminFormTitle) adminFormTitle.innerHTML = '<i class="ri-user-add-line" style="color:var(--accent-color);"></i> Thêm nhân viên mới';
     if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-user-add-line"></i> Lưu nhân viên';
     if (adminFormCancelBtn) adminFormCancelBtn.style.display = 'none';
     if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'none';
     if (adminFormPassword) adminFormPassword.required = true;
+    
+    if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin') {
+        if (adminFormRole) { adminFormRole.value = 'agent'; adminFormRole.disabled = true; }
+        if (adminFormProject) { adminFormProject.value = CURRENT_ADMIN.project_id || ''; }
+    } else {
+        if (adminFormRole) { adminFormRole.value = 'agent'; adminFormRole.disabled = false; }
+    }
+
     renderAdminAvatarPicker();
     const pwLabel = document.getElementById('admin-form-password-label');
-    if (pwLabel) pwLabel.textContent = 'Mật khẩu';
+    if (pwLabel) pwLabel.textContent = 'Mật khẩu *';
 }
 
 async function editAdminUser(id) {
@@ -2533,44 +2693,57 @@ async function editAdminUser(id) {
         const u = users.find(x => x.id === id);
         if (!u) return;
         if (adminFormId) adminFormId.value = u.id;
-        if (adminFormFullname) adminFormFullname.value = u.full_name;
-        if (adminFormUsername) adminFormUsername.value = u.username;
-        if (adminFormPassword) adminFormPassword.value = '';
-        if (adminFormPassword) adminFormPassword.required = false;
-        if (adminFormRole) adminFormRole.value = u.role;
+        if (adminFormFullname) adminFormFullname.value = u.full_name || '';
+        if (adminFormUsername) adminFormUsername.value = u.username || '';
+        if (adminFormPassword) {
+            adminFormPassword.value = '';
+            adminFormPassword.required = false;
+        }
+        if (adminFormRole) {
+            adminFormRole.value = u.role;
+            if (CURRENT_ADMIN?.role === 'project_admin') adminFormRole.disabled = true;
+        }
         if (adminFormProject) adminFormProject.value = u.project_id || '';
         if (adminFormActive) adminFormActive.checked = u.is_active;
         renderAdminAvatarPicker(u.avatar_url || 'gradient-1');
         if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'flex';
-        if (adminFormTitle) adminFormTitle.textContent = 'Chỉnh sửa nhân viên';
+        if (adminFormTitle) adminFormTitle.innerHTML = `<i class="ri-edit-line" style="color:#ec4899;"></i> Sửa nhân viên: ${escapeHtml(u.full_name || u.username)}`;
         if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-save-line"></i> Cập nhật';
         if (adminFormCancelBtn) adminFormCancelBtn.style.display = 'inline-flex';
         const pwLabel = document.getElementById('admin-form-password-label');
-        if (pwLabel) pwLabel.textContent = 'Mật khẩu mới (để trống nếu không đổi)';
-    } catch(e) { console.error(e); }
+        if (pwLabel) pwLabel.textContent = 'Mật khẩu mới (để trống nếu giữ nguyên)';
+    } catch(e) { console.error('Error in editAdminUser:', e); }
 }
 
 async function deleteAdminUser(id) {
-    if (!confirm('Xác nhận xóa tài khoản này?')) return;
+    if (!confirm('Bạn có chắc chắn muốn xóa tài khoản nhân viên này?')) return;
     try {
         const res = await authFetch(`${API_BASE}/api/admin/users/${id}`, { method: 'DELETE' });
         const data = await res.json();
-        if (res.ok) { loadAdminUsers(); }
-        else { alert('Lỗi: ' + (data.error || 'Không thể xóa.')); }
-    } catch(e) { alert('Lỗi kết nối.'); }
+        if (res.ok) { 
+            await loadAdminUsers(); 
+        } else { 
+            alert('Lỗi: ' + (data.error || 'Không thể xóa.')); 
+        }
+    } catch(e) { alert('Lỗi kết nối máy chủ.'); }
 }
 
 async function handleAdminUserSubmit(e) {
     e.preventDefault();
     const id = adminFormId ? adminFormId.value : '';
+    
+    const isProjectAdmin = CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin';
+    const effectiveRole = isProjectAdmin ? 'agent' : (adminFormRole?.value || 'agent');
+    const effectiveProject = isProjectAdmin ? CURRENT_ADMIN.project_id : (adminFormProject?.value.trim() || null);
+
     const payload = {
         username: adminFormUsername?.value.trim(),
         password: adminFormPassword?.value.trim(),
         full_name: adminFormFullname?.value.trim(),
-        role: adminFormRole?.value,
-        avatar_url: adminFormAvatar?.value || '',
-        project_id: adminFormProject?.value.trim() || null,
-        is_active: adminFormActive?.checked ?? true
+        role: effectiveRole,
+        avatar_url: adminFormAvatar?.value || 'gradient-1',
+        project_id: effectiveProject,
+        is_active: adminFormActive ? adminFormActive.checked : true
     };
     try {
         const url = id ? `${API_BASE}/api/admin/users/${id}` : `${API_BASE}/api/admin/users`;
@@ -2581,9 +2754,14 @@ async function handleAdminUserSubmit(e) {
             body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (res.ok) { resetAdminForm(); loadAdminUsers(); }
-        else { alert('Lỗi: ' + (data.error || 'Không thể lưu.')); }
-    } catch(e) { alert('Lỗi kết nối.'); }
+        if (res.ok) { 
+            resetAdminForm(); 
+            await loadAdminUsers(); 
+            alert(id ? 'Cập nhật tài khoản thành công!' : 'Tạo tài khoản nhân viên thành công!');
+        } else { 
+            alert('Lỗi: ' + (data.error || 'Không thể lưu.')); 
+        }
+    } catch(e) { alert('Lỗi kết nối máy chủ: ' + e.message); }
 }
 
 verifyAuthAndInit();

@@ -45,6 +45,7 @@ async function initializeDatabase() {
     // Phân quyền theo project: subadmin gắn 1 project chỉ xem chat của project đó.
     // NULL = xem tất cả project (dùng cho superadmin hoặc subadmin toàn quyền).
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS project_id VARCHAR(100);`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS created_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
 
     // Registry dự án (multi-project): mỗi dự án 1 dòng; KB + tài khoản gắn theo project_id này.
     await query(`

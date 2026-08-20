@@ -562,102 +562,110 @@
             </form>
         </div>
     </div>
-<!-- Admin Management Modal -->
+    <!-- Admin Management Modal -->
     <div id="admin-management-modal" class="modal-overlay hide">
-        <div class="login-box glass-panel admin-management-box" style="max-width: 800px; width: 95%;">
-            <div class="brand-header" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+        <div class="login-box glass-panel admin-management-box" style="max-width: 900px; width: 95%; max-height: 92vh; display: flex; flex-direction: column;">
+            <div class="brand-header" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.08);">
                 <div style="display: flex; align-items: center; gap: 12px; text-align: left;">
-                    <div class="brand-logo" style="background: rgba(245, 158, 11, 0.15); color: var(--warning-color); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0; font-size: 24px;"><i class="ri-user-settings-line"></i></div>
+                    <div class="brand-logo" style="background: linear-gradient(135deg, rgba(236,72,153,0.2), rgba(99,102,241,0.2)); color: #ec4899; width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0; font-size: 22px; border: 1px solid rgba(236,72,153,0.3);"><i class="ri-team-line"></i></div>
                     <div>
-                        <h2 style="font-size: 20px; margin-bottom: 4px; text-align: left; color: var(--text-primary);">Quản lý nhân viên</h2>
-                        <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">Quản lý tài khoản, phân quyền và trạng thái hoạt động của các sub-admin.</p>
+                        <h2 style="font-size: 18px; margin: 0 0 2px 0; text-align: left; color: var(--text-primary); font-weight: 700;">Quản lý nhân viên &amp; Phân quyền</h2>
+                        <p id="admin-mgmt-subtitle" style="font-size: 12px; color: var(--text-secondary); margin: 0;">Quản lý danh sách nhân viên tư vấn (Agent) và phân quyền dự án.</p>
                     </div>
                 </div>
-                <button id="admin-mgmt-close-top-btn" class="icon-btn" style="background: rgba(255,255,255,0.05); border: none; cursor: pointer; color: var(--text-primary);"><i class="ri-close-line"></i></button>
+                <button id="admin-mgmt-close-top-btn" class="icon-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; cursor: pointer; color: var(--text-primary); width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;"><i class="ri-close-line"></i></button>
             </div>
 
-            <!-- Quản lý dự án (multi-project) -->
-            <div class="admin-project-management" style="border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:14px; margin-bottom:18px; text-align:left;">
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
-                    <h3 style="font-size:14px; color:var(--text-primary); font-weight:600; margin:0;"><i class="ri-folder-3-line" style="color:var(--accent-color);"></i> Dự án</h3>
-                    <div style="display:flex; gap:6px;">
-                        <input type="text" id="project-new-name" placeholder="Tên dự án mới..." style="padding:8px 10px; border-radius:8px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); color:var(--text-primary); font-family:inherit; font-size:12px; outline:none;">
-                        <button id="project-add-btn" class="primary-btn" style="width:auto; padding:8px 14px; font-size:12px; white-space:nowrap;"><i class="ri-add-line"></i> Thêm</button>
+            <!-- Quản lý dự án (multi-project - chỉ Superadmin) -->
+            <div class="admin-project-management" style="border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.15); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; text-align: left;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px;">
+                    <h3 style="font-size: 13px; color: var(--text-primary); font-weight: 600; margin: 0; display: flex; align-items: center; gap: 6px;"><i class="ri-folder-3-line" style="color: var(--accent-color);"></i> Danh sách dự án hệ thống</h3>
+                    <div style="display: flex; gap: 6px;">
+                        <input type="text" id="project-new-name" placeholder="Tên dự án mới..." style="padding: 6px 10px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); font-family: inherit; font-size: 12px; outline: none;">
+                        <button id="project-add-btn" class="primary-btn" style="width: auto; padding: 6px 12px; font-size: 12px; white-space: nowrap;"><i class="ri-add-line"></i> Thêm</button>
                     </div>
                 </div>
-                <div id="project-list" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+                <div id="project-list" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
             </div>
 
             <!-- Grid: Left side list of users, Right side add/edit form -->
-            <div class="admin-management-grid" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; text-align: left; min-height: 400px;">
+            <div class="admin-management-grid" style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; text-align: left; flex: 1; min-height: 0; overflow: hidden;">
                 <!-- Left panel: List -->
-                <div class="admin-users-panel" style="border-right: 1px solid rgba(255,255,255,0.08); padding-right: 20px; display: flex; flex-direction: column;">
-                    <h3 style="font-size: 14px; color: var(--text-primary); margin-bottom: 12px; font-weight: 600;">Danh sách nhân viên</h3>
-                    <div id="admin-list-container" style="flex: 1; overflow-y: auto; max-height: 380px; display: flex; flex-direction: column; gap: 8px;">
+                <div class="admin-users-panel" style="border-right: 1px solid rgba(255,255,255,0.08); padding-right: 18px; display: flex; flex-direction: column; min-height: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h3 style="font-size: 13.5px; color: var(--text-primary); font-weight: 600; margin: 0; display: flex; align-items: center; gap: 6px;">
+                            <i class="ri-user-line" style="color: #ec4899;"></i> Danh sách nhân viên
+                        </h3>
+                        <span id="admin-user-count-badge" style="background: rgba(255,255,255,0.08); color: var(--text-secondary); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;">0 nhân viên</span>
+                    </div>
+                    <div id="admin-list-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; max-height: 380px;">
                         <!-- Dynamically populated -->
                     </div>
                 </div>
 
                 <!-- Right panel: Form -->
-                <div class="admin-user-form-panel" style="display: flex; flex-direction: column;">
-                    <h3 id="admin-form-title" style="font-size: 14px; color: var(--text-primary); margin-bottom: 12px; font-weight: 600;">Thêm nhân viên mới</h3>
-                    <form id="admin-user-form" style="display: flex; flex-direction: column; gap: 12px;">
+                <div class="admin-user-form-panel" style="display: flex; flex-direction: column; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 14px 16px; overflow-y: auto; max-height: 420px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                        <h3 id="admin-form-title" style="font-size: 13.5px; color: var(--text-primary); font-weight: 600; margin: 0; display: flex; align-items: center; gap: 6px;">
+                            <i class="ri-user-add-line" style="color: var(--accent-color);"></i> Thêm nhân viên mới
+                        </h3>
+                    </div>
+                    <form id="admin-user-form" style="display: flex; flex-direction: column; gap: 10px;">
                         <input type="hidden" id="admin-form-id">
                         
                         <div class="form-group">
-                            <label style="font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; display: block;">Họ và tên</label>
-                            <input type="text" id="admin-form-fullname" placeholder="Nguyễn Văn A..." style="width:100%; box-sizing:border-box; padding:10px; border-radius:8px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); color:var(--text-primary); font-family:inherit; outline:none;" required>
+                            <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Họ và tên *</label>
+                            <input type="text" id="admin-form-fullname" placeholder="Nguyễn Văn A..." style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:var(--text-primary); font-family:inherit; font-size:12.5px; outline:none;" required>
                         </div>
 
                         <div class="form-group">
-                            <label style="font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; display: block;">Tên đăng nhập (Username)</label>
-                            <input type="text" id="admin-form-username" placeholder="nguyenvana..." style="width:100%; box-sizing:border-box; padding:10px; border-radius:8px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); color:var(--text-primary); font-family:inherit; outline:none;" required>
+                            <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Tên đăng nhập (Username) *</label>
+                            <input type="text" id="admin-form-username" placeholder="nguyenvana..." style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:var(--text-primary); font-family:inherit; font-size:12.5px; outline:none;" required>
                         </div>
 
                         <div class="form-group">
-                            <label id="admin-form-password-label" style="font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; display: block;">Mật khẩu</label>
-                            <input type="password" id="admin-form-password" placeholder="Nhập mật khẩu bảo mật..." style="width:100%; box-sizing:border-box; padding:10px; border-radius:8px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); color:var(--text-primary); font-family:inherit; outline:none;" required>
+                            <label id="admin-form-password-label" style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Mật khẩu *</label>
+                            <input type="password" id="admin-form-password" placeholder="Nhập mật khẩu bảo mật..." style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:var(--text-primary); font-family:inherit; font-size:12.5px; outline:none;" required>
                         </div>
 
-                        <div class="form-group">
-                            <label style="font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; display: block;">Vai trò (Role)</label>
-                            <select id="admin-form-role" style="width:100%; box-sizing:border-box; padding:10px; border-radius:8px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); color:var(--text-primary); font-family:inherit; outline:none;">
-                                <option value="agent">Agent</option>
-                                <option value="project_admin">Project Admin</option>
+                        <div class="form-group" id="admin-form-role-group">
+                            <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Vai trò (Role)</label>
+                            <select id="admin-form-role" style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:var(--text-primary); font-family:inherit; font-size:12.5px; outline:none;">
+                                <option value="agent">Agent (Tư vấn viên trực chat)</option>
+                                <option value="project_admin">Project Admin (Quản trị dự án)</option>
                                 <option value="superadmin">Quản trị viên tối cao (Super-Admin)</option>
                             </select>
                         </div>
 
                         <div class="form-group" id="admin-form-project-group">
-                            <label style="font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; display: block;">Dự án được truy cập (phân quyền)</label>
-                            <select id="admin-form-project" style="width:100%; box-sizing:border-box; padding:10px; border-radius:8px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); color:var(--text-primary); font-family:inherit; outline:none;">
+                            <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Dự án được phân quyền</label>
+                            <select id="admin-form-project" style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:var(--text-primary); font-family:inherit; font-size:12.5px; outline:none;">
                                 <option value="">— Tất cả dự án (toàn quyền) —</option>
                             </select>
-                            <small style="color: var(--text-secondary); font-size: 11px;">Sub-Admin chỉ thấy/được gán chat &amp; KB của đúng dự án này. Chọn "Tất cả" = xem mọi dự án (như admin tổng).</small>
                         </div>
 
                         <div class="form-group">
-                            <label style="font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; display: block;">Chọn Avatar Glassmorphism</label>
-                            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;" id="admin-avatar-picker">
+                            <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Chọn màu đại diện Avatar</label>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 2px;" id="admin-avatar-picker">
                                 <!-- Gradient avatars options -->
                             </div>
                             <input type="hidden" id="admin-form-avatar">
                         </div>
 
-                        <div class="form-group" id="admin-form-status-group" style="display:none; align-items:center; gap:8px;">
-                            <input type="checkbox" id="admin-form-active" style="cursor:pointer;">
+                        <div class="form-group" id="admin-form-status-group" style="display:none; align-items:center; gap:8px; margin-top: 4px;">
+                            <input type="checkbox" id="admin-form-active" style="cursor:pointer; width: 16px; height: 16px;">
                             <label for="admin-form-active" style="font-size: 12px; font-weight: 500; color: var(--text-primary); cursor:pointer;">Tài khoản đang hoạt động</label>
                         </div>
 
-                        <div style="display: flex; gap: 10px; margin-top: 10px;">
-                            <button type="submit" id="admin-form-submit-btn" class="primary-btn" style="flex:1;"><i class="ri-user-add-line"></i> Lưu nhân viên</button>
-                            <button type="button" id="admin-form-cancel-btn" class="secondary-btn" style="background:rgba(255,255,255,0.05); color:var(--text-primary); display:none; border: 1px solid rgba(255,255,255,0.1);">Hủy</button>
+                        <div style="display: flex; gap: 8px; margin-top: 12px;">
+                            <button type="submit" id="admin-form-submit-btn" class="primary-btn" style="flex:1; padding: 8px 14px; font-size: 12.5px;"><i class="ri-user-add-line"></i> Lưu nhân viên</button>
+                            <button type="button" id="admin-form-cancel-btn" class="secondary-btn" style="background:rgba(255,255,255,0.05); color:var(--text-primary); display:none; border: 1px solid rgba(255,255,255,0.1); padding: 8px 12px; font-size: 12.5px;">Hủy</button>
                         </div>
                     </form>
                 </div>
             </div>
-            <div style="text-align: right; margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">
-                <button id="admin-mgmt-close-btn" class="secondary-btn" style="background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.1); width: 100px; cursor: pointer;"><i class="ri-close-line"></i> Đóng</button>
+            <div style="text-align: right; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px;">
+                <button id="admin-mgmt-close-btn" class="secondary-btn" style="background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.1); width: 100px; padding: 6px 12px; font-size: 12px; cursor: pointer;"><i class="ri-close-line"></i> Đóng</button>
             </div>
         </div>
     </div>
