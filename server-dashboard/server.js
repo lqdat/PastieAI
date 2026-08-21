@@ -41,8 +41,39 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   console.warn('[Push] Web Push chưa bật: thiếu VAPID_PUBLIC_KEY hoặc VAPID_PRIVATE_KEY.');
 }
 
+// Đẩy thông báo chat vào CHUÔNG DealPhuQuoc (để agent thấy ngay cả khi không mở tab chat).
+async function notifyDealBell(session, { title, preview = '' }) {
+  const base = process.env.DEALPHUQUOC_API_URL;
+  const secret = process.env.CHAT_SSO_SECRET;
+  if (!base || !secret || session?.project_id !== 'dealphuquoc') return;
+  let claimedEmail = null;
+  try {
+    if (session.claimed_by_admin_id) {
+      const a = await db.query('SELECT username FROM admins WHERE id = $1 LIMIT 1', [session.claimed_by_admin_id]);
+      const u = a.rows[0]?.username || '';
+      if (u.startsWith('sso:')) claimedEmail = u.slice(4);
+    }
+  } catch {}
+  try {
+    await fetch(`${base.replace(/\/$/, '')}/api/notifications/chat-hook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-chat-secret': secret },
+      body: JSON.stringify({
+        title,
+        body: `${session.visitor_name || 'Khách hàng'}: ${(preview || 'Có tin nhắn mới cần phản hồi.').slice(0, 120)}`,
+        href: '/admin/chat',
+        claimedEmail,
+        sessionId: session.id,
+      }),
+    });
+  } catch (e) { console.warn('[DealBell] lỗi gửi hook:', e.message); }
+}
+
 async function notifyChatRecipients(session, { title, preview = '', tag }) {
-  if (!vapidConfigured || !session?.id || !session?.project_id) return;
+  if (!session?.id || !session?.project_id) return;
+  // Chuông DealPhuQuoc không phụ thuộc VAPID của Pastie -> luôn thử đẩy.
+  void notifyDealBell(session, { title, preview });
+  if (!vapidConfigured) return;
   try {
     const subscriptions = await db.query(
       `SELECT ps.id, ps.endpoint, ps.p256dh, ps.auth
