@@ -1205,6 +1205,9 @@
         window.PastieChat = window.PastieChat || {};
         window.PastieChat.identify = (u) => { if (u && u.email) identifyAndStart(u.name, u.email); };
         window.addEventListener('pastie:identify', (e) => window.PastieChat.identify(e.detail || {}));
+        // Đồng bộ ngôn ngữ theo website: khi web đổi ngôn ngữ -> widget đổi theo ngay
+        window.PastieChat.setLanguage = (l) => { if (l && TRANSLATIONS[l]) changeWidgetLanguage(l); };
+        window.addEventListener('pastie:setlang', (e) => { const l = e && e.detail; if (l && TRANSLATIONS[l]) changeWidgetLanguage(l); });
 
         // Initial state
         const preset = window.PastieChatUser;

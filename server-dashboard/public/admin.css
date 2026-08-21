@@ -1575,11 +1575,47 @@ button {
   .dashboard-body.chat-open .chat-main { display: flex; border-radius: 0; border: 0; background: var(--bg-color); }
 
   .details-sidebar {
-    position: fixed; top: 0; right: 0; height: 100dvh; width: 92vw;
-    z-index: 300; border-radius: 0; box-shadow: -12px 0 40px rgba(0,0,0,0.5);
+    position: fixed; top: 0; right: 0; height: 100dvh; width: min(100vw, 420px);
+    z-index: 300; border-radius: 22px 0 0 22px; border-left: 1px solid rgba(239,43,157,.16);
+    background: linear-gradient(180deg, #fff 0%, #fff9fd 100%); box-shadow: -12px 0 40px rgba(110,43,83,.18);
     transform: translateX(105%); transition: transform .25s ease;
   }
   .dashboard-body.details-open .details-sidebar { transform: translateX(0); }
+
+  /* Panel thông tin hội thoại: tránh cắt chữ và giữ nhịp đọc tốt trên màn hình nhỏ. */
+  .details-header { padding: 25px 26px 18px; }
+  .details-header h3 { font-size: 21px; font-weight: 750; color: #34223f; }
+  .details-body {
+    min-width: 0; padding: 22px 26px calc(32px + env(safe-area-inset-bottom)); gap: 24px;
+    overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(239,43,157,.36) transparent;
+  }
+  .details-body::-webkit-scrollbar { width: 5px; }
+  .details-body::-webkit-scrollbar-track { background: transparent; }
+  .details-body::-webkit-scrollbar-thumb { background: rgba(239,43,157,.34); border-radius: 999px; }
+  .detail-card { min-width: 0; gap: 10px; }
+  .detail-card label { color: #a18c9f; font-size: 12px; letter-spacing: .04em; }
+  .detail-user-row { align-items: flex-start; padding: 14px; border-radius: 16px; background: #fff8fc; border-color: rgba(239,43,157,.18); }
+  .detail-user-avatar { width: 46px; height: 46px; flex-basis: 46px; font-size: 17px; }
+  .detail-user-meta { flex: 1 1 0; min-width: 0; gap: 4px; }
+  .detail-user-meta strong { font-size: 16px; white-space: normal; overflow-wrap: anywhere; }
+  .detail-user-meta span, #detail-user-email { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; line-height: 1.45; }
+  #detail-user-phone-wrap, #detail-user-verified-badge { min-width: 0; }
+  .detail-phone-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #detail-user-verified-badge { align-items: flex-start !important; line-height: 1.4; }
+
+  .detail-channel-info-box, .project-badge-container, .client-badge {
+    border-radius: 14px !important; background: #fff8fc !important; border-color: rgba(239,43,157,.14) !important;
+  }
+  .detail-channel-info-box { padding: 13px 14px !important; gap: 10px !important; }
+  .detail-channel-info-box > div {
+    display: grid !important; grid-template-columns: minmax(0, .9fr) minmax(0, 1.25fr); align-items: start !important; gap: 8px;
+  }
+  .detail-channel-info-box > div > :last-child { min-width: 0; justify-content: flex-end; text-align: right; overflow-wrap: anywhere; }
+  .detail-channel-info-box code { white-space: normal; word-break: break-all; }
+  .project-badge-container { align-items: flex-start !important; padding: 13px 14px !important; }
+  .detail-project-url { white-space: normal; overflow-wrap: anywhere; }
+  .client-badge { width: 100%; padding: 10px 12px !important; color: #796c82 !important; }
+  .detail-select { min-height: 48px; border-color: rgba(239,43,157,.2); background: #fff8fc; font-size: 15px; }
 
   .chat-header { min-height: 62px; padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
   .chat-header-actions { width: 100%; justify-content: flex-start; overflow-x: auto; }
