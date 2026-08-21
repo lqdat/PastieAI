@@ -707,6 +707,9 @@ button {
     line-height: 1.5;
     font-size: 14px;
     position: relative;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 .visitor .message-bubble {
     background: rgba(255, 255, 255, 0.05);
@@ -745,6 +748,9 @@ button {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 .translated-text-wrapper::before {
     content: attr(data-label);

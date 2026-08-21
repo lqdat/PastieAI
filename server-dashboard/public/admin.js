@@ -235,6 +235,7 @@ let adminLimit = 15;
 let adminHasMore = true;
 let adminIsLoadingMore = false;
 let adminIsSending = false;
+let adminIsSyncingMessages = false;
 
 // DOM Elements
 const loginModal = document.getElementById('login-modal');
@@ -1654,11 +1655,14 @@ async function selectSession(sessionId) {
             if (currentSessionId === sessionId) {
                 await loadMessages(sessionId);
             }
-        }, 3000);
+        }, 2000);
     }
 }
 
 async function loadMessages(sessionId, isLoadMore = false) {
+    // Do not allow a slow request to finish after a newer poll and redraw stale content.
+    if (adminIsSyncingMessages) return;
+    adminIsSyncingMessages = true;
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
 
     let fetchLimit = adminLimit;
@@ -1733,6 +1737,8 @@ async function loadMessages(sessionId, isLoadMore = false) {
         if (chatMessagesContainer.querySelector('.chat-loading-state')) {
             renderAdminMessages(false);
         }
+    } finally {
+        adminIsSyncingMessages = false;
     }
 }
 
