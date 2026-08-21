@@ -815,6 +815,30 @@ async function syncPushSubscription(config) {
     return subscription;
 }
 
+// Khi dashboard được NHÚNG trong iframe (cổng DealPhuQuoc), trình duyệt chặn
+// Notification.requestPermission() và new Notification() ở iframe cross-origin.
+// => Chuyển việc xin quyền + hiển thị thông báo lên TRANG CHA qua postMessage.
+const inIframe = (() => { try { return window.self !== window.top; } catch { return true; } })();
+let parentNotifPermission = null;
+function postToParent(payload) { try { window.parent?.postMessage(payload, '*'); } catch {} }
+if (inIframe) {
+    window.addEventListener('message', (e) => {
+        const d = e.data || {};
+        if (d && d.type === 'dpq-notif-state') {
+            parentNotifPermission = d.permission;
+            setPushButtonState(d.permission === 'granted' ? 'enabled' : d.permission === 'denied' ? 'blocked' : 'off');
+            if (d.permission === 'granted') closePushPermissionModal();
+        }
+    });
+    postToParent({ type: 'pastie-request-state' });
+    // Nhúng trong iframe: ẩn hẳn popup + nút "Bật thông báo" trong dashboard.
+    // Quyền chỉ xin ở TRANG CHA (banner DealPhuQuoc).
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('push-permission-modal')?.classList.add('hide');
+        document.getElementById('enable-push-btn')?.classList.add('hide');
+    });
+}
+
 function setPushButtonState(state) {
     const label = document.getElementById('enable-push-label');
     const description = document.getElementById('enable-push-description');
@@ -826,6 +850,8 @@ function setPushButtonState(state) {
 }
 
 async function setupPushNotifications() {
+    // Nhúng trong iframe: quyền do trang cha quản lý, chỉ hỏi trạng thái.
+    if (inIframe) { postToParent({ type: 'pastie-request-state' }); return false; }
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
         setPushButtonState('unavailable');
         pushPermissionModal?.classList.remove('hide');
@@ -856,6 +882,8 @@ async function setupPushNotifications() {
 }
 
 async function enablePushNotifications() {
+    // Nhúng trong iframe: nhờ trang cha xin quyền (đúng origin của quyền).
+    if (inIframe) { postToParent({ type: 'pastie-enable-notifications' }); return true; }
     if (!pushRegistration) await setupPushNotifications();
     if (!pushRegistration) throw new Error('Trình duyệt chưa hỗ trợ thông báo đẩy.');
     const permission = await Notification.requestPermission();
@@ -874,13 +902,21 @@ function requestNotificationPermission() {
 }
 
 function showNewMessageNotification(session, unread) {
-    if (!('Notification' in window) || Notification.permission !== 'granted') return;
     if (document.visibilityState === 'visible' && session.id === currentSessionId) return;
 
     const name = session.visitor_name || 'Khách hàng';
     const preview = session.last_message_preview
         ? session.last_message_preview.substring(0, 80)
         : `${unread} tin nhắn mới`;
+
+    // Nhúng trong iframe: nhờ trang cha hiển thị thông báo (iframe không được new Notification).
+    if (inIframe) {
+        postToParent({ type: 'pastie-notify', title: `💬 ${name}`, body: preview, tag: `pastie-chat-${session.id}` });
+        playAlertSound();
+        return;
+    }
+
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
     const n = new Notification(`💬 ${name}`, {
         body: preview,
@@ -2104,6 +2140,8 @@ const pushPermissionModal = document.getElementById('push-permission-modal');
 function closePushPermissionModal() { pushPermissionModal?.classList.add('hide'); }
 document.getElementById('enable-push-btn')?.addEventListener('click', () => {
     document.getElementById('settings-dropdown-menu')?.classList.add('hide');
+    // Nhúng trong iframe: KHÔNG mở popup của iframe (bị trình duyệt chặn), chỉ nhờ trang cha xin quyền.
+    if (inIframe) { postToParent({ type: 'pastie-enable-notifications' }); return; }
     if (!('Notification' in window)) return alert('Trình duyệt này chưa hỗ trợ thông báo.');
     if (Notification.permission === 'granted') return enablePushNotifications().then(closePushPermissionModal).catch(console.error);
     pushPermissionModal?.classList.remove('hide');
