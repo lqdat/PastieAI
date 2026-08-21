@@ -833,10 +833,14 @@ if (inIframe) {
     postToParent({ type: 'pastie-request-state' });
     // Nhúng trong iframe: ẩn hẳn popup + nút "Bật thông báo" trong dashboard.
     // Quyền chỉ xin ở TRANG CHA (banner DealPhuQuoc).
-    document.addEventListener('DOMContentLoaded', () => {
+    const hidePushUI = () => {
         document.getElementById('push-permission-modal')?.classList.add('hide');
         document.getElementById('enable-push-btn')?.classList.add('hide');
-    });
+    };
+    hidePushUI();
+    document.addEventListener('DOMContentLoaded', hidePushUI);
+    // Trang cha có thể mất vài giây mới xong; ẩn lại lần nữa cho chắc.
+    setTimeout(hidePushUI, 1500);
 }
 
 function setPushButtonState(state) {
