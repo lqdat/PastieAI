@@ -1373,6 +1373,73 @@ function renderSessionsList(sessions) {
 // CHAT SESSION DETAILS & MESSAGES
 // ----------------------------------------------------
 
+// =====================================================================
+// GIAO DIỆN THEO QUYỀN của cuộc trò chuyện: ô nhập, nút gửi, nút "Tiếp nhận",
+// ô phân công. Tách riêng để "Tiếp nhận" / "Phân công" cập nhật được ngay
+// mà KHÔNG phải gọi selectSession() — vốn xoá trắng khung chat rồi tải lại
+// toàn bộ tin nhắn, làm mất vị trí cuộn và nội dung đang soạn dở.
+// =====================================================================
+function applyChatPermissionUI(session) {
+    const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
+    // Manage input visibility and claim status
+    const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
+    const isClaimedByMe = session.claimed_by_admin_id && Number(session.claimed_by_admin_id) === Number(CURRENT_ADMIN?.id);
+    const isAssignedToMe = session.assigned_admin_id && Number(session.assigned_admin_id) === Number(CURRENT_ADMIN?.id);
+    const isClaimedByOther = session.claimed_by_admin_id && Number(session.claimed_by_admin_id) !== Number(CURRENT_ADMIN?.id);
+
+    const claimChatBtn = document.getElementById('claim-chat-btn');
+
+    if (session.status === 'closed') {
+        chatInputContainer.classList.add('hide');
+        closeSessionBtn.classList.add('hide');
+        if (claimChatBtn) claimChatBtn.classList.add('hide');
+    } else {
+        chatInputContainer.classList.remove('hide');
+        closeSessionBtn.classList.remove('hide');
+
+        // Check if user has permission to reply
+        const canReply = isSuper || isClaimedByMe || isAssignedToMe;
+        if (chatInput) {
+            chatInput.disabled = !canReply;
+            if (!canReply) {
+                chatInput.value = '';
+                chatInput.placeholder = isClaimedByOther
+                    ? '🔒 Cuộc trò chuyện đã được nhân viên khác tiếp nhận.'
+                    : '🔒 Vui lòng nhấn "Tiếp nhận" ở trên để bắt đầu trả lời tin nhắn...';
+            } else {
+                chatInput.placeholder = dict.replyPlaceholder || 'Nhập tin nhắn trả lời khách hàng...';
+            }
+        }
+        const sendBtn = chatForm ? chatForm.querySelector('button[type="submit"]') : null;
+        if (sendBtn) sendBtn.disabled = !canReply;
+
+        // Update claim button UI
+        if (claimChatBtn) {
+            claimChatBtn.classList.remove('hide');
+            if (isClaimedByMe) {
+                claimChatBtn.disabled = true;
+                claimChatBtn.style.opacity = '0.9';
+                claimChatBtn.style.background = 'rgba(16, 185, 129, 0.25)';
+                claimChatBtn.style.borderColor = 'rgba(16, 185, 129, 0.6)';
+                claimChatBtn.innerHTML = '<i class="ri-checkbox-circle-fill"></i> <span>Đã tiếp nhận</span>';
+            } else if (isClaimedByOther) {
+                claimChatBtn.disabled = !isSuper;
+                claimChatBtn.style.opacity = '0.6';
+                claimChatBtn.style.background = 'rgba(255, 255, 255, 0.05)';
+                claimChatBtn.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                claimChatBtn.innerHTML = '<i class="ri-user-follow-line"></i> <span>Đã có người nhận</span>';
+            } else {
+                claimChatBtn.disabled = false;
+                claimChatBtn.style.opacity = '1';
+                claimChatBtn.style.background = 'rgba(16, 185, 129, 0.14)';
+                claimChatBtn.style.borderColor = 'rgba(16, 185, 129, 0.35)';
+                claimChatBtn.innerHTML = '<i class="ri-hand-heart-line"></i> <span>Tiếp nhận</span>';
+            }
+        }
+    }
+
+}
+
 async function selectSession(sessionId) {
     currentSessionId = sessionId;
 
@@ -1604,7 +1671,7 @@ async function selectSession(sessionId) {
     if (chatAssigneeSelect) {
         await loadAssigneesForChat(session.project_id);
         chatAssigneeSelect.value = session.assigned_admin_id ? String(session.assigned_admin_id) : '';
-        const canReassign = CURRENT_ADMIN && ['superadmin', 'project_admin'].includes(CURRENT_ADMIN.role);
+        const canReassign = CURRENT_ADMIN && ['superadmin', 'project_owner', 'project_admin'].includes(CURRENT_ADMIN.role);
         chatAssigneeSelect.disabled = !canReassign;
         if (assigneeSelectorContainer) {
             assigneeSelectorContainer.title = canReassign ? 'Phân công cuộc trò chuyện cho nhân viên' : 'Nhân viên phụ trách cuộc trò chuyện';
@@ -1620,62 +1687,7 @@ async function selectSession(sessionId) {
     }
     
     renderTags(session.intent_tags);
-    // Manage input visibility and claim status
-    const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
-    const isClaimedByMe = session.claimed_by_admin_id && Number(session.claimed_by_admin_id) === Number(CURRENT_ADMIN?.id);
-    const isAssignedToMe = session.assigned_admin_id && Number(session.assigned_admin_id) === Number(CURRENT_ADMIN?.id);
-    const isClaimedByOther = session.claimed_by_admin_id && Number(session.claimed_by_admin_id) !== Number(CURRENT_ADMIN?.id);
-
-    const claimChatBtn = document.getElementById('claim-chat-btn');
-
-    if (session.status === 'closed') {
-        chatInputContainer.classList.add('hide');
-        closeSessionBtn.classList.add('hide');
-        if (claimChatBtn) claimChatBtn.classList.add('hide');
-    } else {
-        chatInputContainer.classList.remove('hide');
-        closeSessionBtn.classList.remove('hide');
-
-        // Check if user has permission to reply
-        const canReply = isSuper || isClaimedByMe || isAssignedToMe;
-        if (chatInput) {
-            chatInput.disabled = !canReply;
-            if (!canReply) {
-                chatInput.value = '';
-                chatInput.placeholder = isClaimedByOther
-                    ? '🔒 Cuộc trò chuyện đã được nhân viên khác tiếp nhận.'
-                    : '🔒 Vui lòng nhấn "Tiếp nhận" ở trên để bắt đầu trả lời tin nhắn...';
-            } else {
-                chatInput.placeholder = dict.replyPlaceholder || 'Nhập tin nhắn trả lời khách hàng...';
-            }
-        }
-        const sendBtn = chatForm ? chatForm.querySelector('button[type="submit"]') : null;
-        if (sendBtn) sendBtn.disabled = !canReply;
-
-        // Update claim button UI
-        if (claimChatBtn) {
-            claimChatBtn.classList.remove('hide');
-            if (isClaimedByMe) {
-                claimChatBtn.disabled = true;
-                claimChatBtn.style.opacity = '0.9';
-                claimChatBtn.style.background = 'rgba(16, 185, 129, 0.25)';
-                claimChatBtn.style.borderColor = 'rgba(16, 185, 129, 0.6)';
-                claimChatBtn.innerHTML = '<i class="ri-checkbox-circle-fill"></i> <span>Đã tiếp nhận</span>';
-            } else if (isClaimedByOther) {
-                claimChatBtn.disabled = !isSuper;
-                claimChatBtn.style.opacity = '0.6';
-                claimChatBtn.style.background = 'rgba(255, 255, 255, 0.05)';
-                claimChatBtn.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-                claimChatBtn.innerHTML = '<i class="ri-user-follow-line"></i> <span>Đã có người nhận</span>';
-            } else {
-                claimChatBtn.disabled = false;
-                claimChatBtn.style.opacity = '1';
-                claimChatBtn.style.background = 'rgba(16, 185, 129, 0.14)';
-                claimChatBtn.style.borderColor = 'rgba(16, 185, 129, 0.35)';
-                claimChatBtn.innerHTML = '<i class="ri-hand-heart-line"></i> <span>Tiếp nhận</span>';
-            }
-        }
-    }
+    applyChatPermissionUI(session);
 
     // Show premium loading spinner inside messages container
     chatMessagesContainer.innerHTML = `
@@ -1962,8 +1974,20 @@ async function claimCurrentChat() {
     const response = await authFetch(`${API_BASE}/api/admin/chats/${currentSessionId}/claim`, { method: 'POST' });
     const data = await response.json();
     if (!response.ok) return alert(data.error || 'Không thể tiếp nhận chat.');
-    await fetchSessions();
-    await selectSession(currentSessionId);
+
+    // Chỉ cập nhật quyền tại chỗ. Trước đây gọi selectSession() nên khung chat
+    // bị xoá trắng, tải lại toàn bộ tin nhắn, mất vị trí cuộn và nội dung đang soạn.
+    const sess = sessionsList.find(s => s.id === currentSessionId);
+    if (sess) {
+        sess.claimed_by_admin_id = data.claimedByAdminId ?? CURRENT_ADMIN?.id ?? sess.claimed_by_admin_id;
+        if (data.operatorNo) sess.operator_no = data.operatorNo;
+        applyChatPermissionUI(sess);
+        chatInput?.focus();
+    }
+    // Tin hệ thống "Tổng đài viên số XXX đã tiếp nhận" sẽ tự hiện ở lần
+    // poll tin nhắn kế tiếp (2 giây), không cần vẽ lại khung chat.
+    // Danh sách bên trái cập nhật ngầm, không đụng vào khung chat
+    fetchSessions().catch(() => {});
 }
 
 document.getElementById('claim-chat-btn')?.addEventListener('click', claimCurrentChat);
@@ -1989,10 +2013,13 @@ function populateAssigneeSelect(staffList) {
     chatAssigneeSelect.innerHTML = '<option value="">-- Chưa chỉ định --</option>';
     
     if (Array.isArray(staffList)) {
-        staffList.forEach(admin => {
+        const allowedRoles = CURRENT_ADMIN?.role === 'project_admin'
+            ? new Set(['agent'])
+            : new Set(['project_admin', 'agent']);
+        staffList.filter(admin => allowedRoles.has(admin.role)).forEach(admin => {
             const opt = document.createElement('option');
             opt.value = admin.id;
-            const roleLabel = admin.role === 'superadmin' ? 'Superadmin' : admin.role === 'project_admin' ? 'Admin' : 'Agent';
+            const roleLabel = admin.role === 'project_admin' ? 'Admin' : 'Agent';
             opt.textContent = `${admin.full_name || admin.username} (${roleLabel})`;
             chatAssigneeSelect.appendChild(opt);
         });
@@ -2012,10 +2039,13 @@ if (chatAssigneeSelect) {
             });
             const data = await response.json();
             if (response.ok && data.success) {
+                // Cập nhật tại chỗ — không loadMessages() để khung chat đứng yên
                 const sess = sessionsList.find(s => s.id === currentSessionId);
-                if (sess) sess.assigned_admin_id = newAdminId;
-                await fetchSessions();
-                await loadMessages(currentSessionId);
+                if (sess) {
+                    sess.assigned_admin_id = newAdminId;
+                    applyChatPermissionUI(sess);
+                }
+                fetchSessions().catch(() => {});
             } else {
                 alert(data.error || 'Không thể phân công cuộc trò chuyện.');
             }

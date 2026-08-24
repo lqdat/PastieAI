@@ -374,10 +374,11 @@ async function checkAdminAuth(req, res, next) {
   }
 }
 
-const ADMIN_ROLES = new Set(['superadmin', 'project_admin', 'agent']);
+const ADMIN_ROLES = new Set(['superadmin', 'project_owner', 'project_admin', 'agent']);
 const isSuperAdmin = (admin) => admin?.role === 'superadmin';
+const isProjectOwner = (admin) => admin?.role === 'project_owner';
 const isProjectAdmin = (admin) => admin?.role === 'project_admin';
-const isChatStaff = (admin) => isSuperAdmin(admin) || isProjectAdmin(admin) || admin?.role === 'agent';
+const isChatStaff = (admin) => isSuperAdmin(admin) || isProjectOwner(admin) || isProjectAdmin(admin) || admin?.role === 'agent';
 
 function canAccessProject(admin, projectId) {
   return isSuperAdmin(admin) || (admin?.project_id && admin.project_id === projectId);
@@ -1586,6 +1587,12 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
          JOIN sessions s ON m.session_id = s.id 
          WHERE s.project_id = $1
            AND (${identityConditions.join(' OR ')})
+           -- Assignment logs are internal operational notes, never visitor-facing.
+           AND NOT (m.sender = 'system' AND (
+             m.original_text ILIKE '[Hệ thống] Cuộc trò chuyện đã được chỉ định cho:%'
+             OR m.original_text ILIKE '[System] The conversation has been assigned to:%'
+             OR m.original_text ILIKE 'The conversation has been assigned to:%'
+           ))
          ORDER BY m.created_at DESC
          LIMIT $${identityParams.length - 1} OFFSET $${identityParams.length}`,
         identityParams
@@ -1594,6 +1601,12 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
       result = await db.query(
         `SELECT * FROM messages 
          WHERE session_id = $1 
+           -- Assignment logs are internal operational notes, never visitor-facing.
+           AND NOT (sender = 'system' AND (
+             original_text ILIKE '[Hệ thống] Cuộc trò chuyện đã được chỉ định cho:%'
+             OR original_text ILIKE '[System] The conversation has been assigned to:%'
+             OR original_text ILIKE 'The conversation has been assigned to:%'
+           ))
          ORDER BY created_at DESC
          LIMIT $2 OFFSET $3`,
         [sessionId, limit, offset]
@@ -2042,9 +2055,13 @@ app.post('/api/admin/sso', async (req, res) => {
     }
   }
 
-  // Hệ thống nguồn chỉ được ánh xạ sang quyền trong một project: quản trị
-  // Deal/host là Project Admin; CSKH là Agent. Không token SSO nào tạo Superadmin.
-  const ssoRole = ['project_admin', 'ADMIN', 'SUPERADMIN'].includes(payload.role) ? 'project_admin' : 'agent';
+  // project_owner là quyền quản lý chat cao nhất nhưng vẫn bị khóa trong project,
+  // không phải Superadmin toàn cục của Pastie.
+  const ssoRole = payload.role === 'project_owner'
+    ? 'project_owner'
+    : ['project_admin', 'ADMIN', 'SUPERADMIN'].includes(payload.role)
+      ? 'project_admin'
+      : 'agent';
   const username = `sso:${String(payload.email).toLowerCase()}`;
   const fullName = payload.name || payload.email;
 
@@ -2236,21 +2253,26 @@ app.get('/api/admin/assignees', checkAdminAuth, async (req, res) => {
   try {
     const projectId = req.query.projectId || req.admin.project_id;
     let result;
-    if (isSuperAdmin(req.admin)) {
+    if (isSuperAdmin(req.admin) || isProjectOwner(req.admin)) {
       result = await db.query(
         `SELECT id, username, full_name, role, project_id, avatar_url 
          FROM admins 
-         WHERE is_active = TRUE 
-         ORDER BY role = 'superadmin' DESC, role = 'project_admin' DESC, full_name ASC`
+         WHERE is_active = TRUE
+           AND role IN ('project_admin', 'agent')
+           AND ($1::text IS NULL OR project_id = $1)
+         ORDER BY role = 'project_admin' DESC, full_name ASC`,
+        [projectId || null]
       );
-    } else {
+    } else if (isProjectAdmin(req.admin)) {
       result = await db.query(
         `SELECT id, username, full_name, role, project_id, avatar_url 
          FROM admins 
-         WHERE is_active = TRUE AND (project_id = $1 OR role = 'superadmin')
-         ORDER BY role = 'superadmin' DESC, role = 'project_admin' DESC, full_name ASC`,
+         WHERE is_active = TRUE AND project_id = $1 AND role = 'agent'
+         ORDER BY full_name ASC`,
         [projectId]
       );
+    } else {
+      result = { rows: [] };
     }
     res.json(result.rows);
   } catch (error) {
@@ -2510,7 +2532,7 @@ app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, async (req, res) =
     if (!canAccessProject(req.admin, sessionCheck.rows[0].project_id)) {
       return res.status(403).json({ error: 'Bạn không có quyền chuyển chat của project này.' });
     }
-    if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin)) {
+    if (!isSuperAdmin(req.admin) && !isProjectOwner(req.admin) && !isProjectAdmin(req.admin)) {
       return res.status(403).json({ error: 'Chỉ Project Admin hoặc Superadmin được chuyển chat.' });
     }
 
@@ -2521,12 +2543,16 @@ app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, async (req, res) =
         return res.status(404).json({ error: 'Không tìm thấy nhân viên được chỉ định hoặc tài khoản đang bị vô hiệu hóa.' });
       }
 
-      if (isProjectAdmin(req.admin)) {
-        const isSelf = Number(adminCheck.rows[0].id) === Number(req.admin.id);
-        const isMyAgent = Number(adminCheck.rows[0].created_by_admin_id) === Number(req.admin.id) && adminCheck.rows[0].role === 'agent';
-        if (!isSelf && !isMyAgent) {
-          return res.status(403).json({ error: 'Project Admin chỉ được phân công chat cho chính mình hoặc các Agent do mình tạo ra.' });
-        }
+      const target = adminCheck.rows[0];
+      const sameProject = target.project_id === sessionCheck.rows[0].project_id;
+      if (!sameProject) {
+        return res.status(403).json({ error: 'Không thể phân công nhân viên thuộc dự án khác.' });
+      }
+      if (isProjectAdmin(req.admin) && target.role !== 'agent') {
+        return res.status(403).json({ error: 'Admin chỉ được phân công chat cho Agent.' });
+      }
+      if ((isSuperAdmin(req.admin) || isProjectOwner(req.admin)) && !['project_admin', 'agent'].includes(target.role)) {
+        return res.status(403).json({ error: 'Superadmin chỉ được phân công chat cho Admin hoặc Agent.' });
       }
       adminName = adminCheck.rows[0].full_name;
     }
