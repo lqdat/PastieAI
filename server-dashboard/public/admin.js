@@ -2230,7 +2230,12 @@ document.getElementById('push-modal-confirm')?.addEventListener('click', () => {
     const button = document.getElementById('push-modal-confirm');
     const supportIssue = getPushSupportIssue();
     if (supportIssue === 'ios-home-screen') {
-        enablePushNotifications().catch((error) => alert(error.message || 'Không thể mở menu Chia sẻ.'));
+        enablePushNotifications().catch((error) => {
+            // Safari reports AbortError when the user simply closes its Share Sheet.
+            // That is a normal cancellation, not a notification setup failure.
+            if (error?.name === 'AbortError' || /cancell?ation of share/i.test(error?.message || '')) return;
+            alert(error.message || 'Không thể mở menu Chia sẻ.');
+        });
         return;
     }
     if (supportIssue) return;
