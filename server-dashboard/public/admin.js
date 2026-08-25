@@ -820,7 +820,6 @@ async function setupPushNotifications() {
     if (inIframe) { postToParent({ type: 'pastie-request-state' }); return false; }
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
         setPushButtonState('unavailable');
-        pushPermissionModal?.classList.remove('hide');
         return false;
     }
     try {
@@ -829,7 +828,6 @@ async function setupPushNotifications() {
         const config = await response.json();
         if (!response.ok || !config.enabled) {
             setPushButtonState('unavailable');
-            pushPermissionModal?.classList.remove('hide');
             return false;
         }
         let subscription = await pushRegistration.pushManager.getSubscription();
@@ -838,11 +836,9 @@ async function setupPushNotifications() {
         }
         setPushButtonState(Notification.permission === 'denied' ? 'blocked' : subscription ? 'enabled' : 'off');
         if (Notification.permission === 'granted' && subscription) return true;
-        pushPermissionModal?.classList.remove('hide');
         return false;
     } catch (error) {
         console.warn('Không thể khởi tạo Web Push:', error);
-        pushPermissionModal?.classList.remove('hide');
         return false;
     }
 }
@@ -850,10 +846,18 @@ async function setupPushNotifications() {
 async function enablePushNotifications() {
     // Nhúng trong iframe: nhờ trang cha xin quyền (đúng origin của quyền).
     if (inIframe) { postToParent({ type: 'pastie-enable-notifications' }); return true; }
+    if (!('Notification' in window)) throw new Error('Trình duyệt này chưa hỗ trợ thông báo.');
+    // Phải xin quyền trước bất kỳ await nào: mobile chỉ cho phép trong hành động chạm trực tiếp.
+    let permission = Notification.permission;
+    if (permission === 'default') permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+        setPushButtonState(permission === 'denied' ? 'blocked' : 'off');
+        throw new Error(permission === 'denied'
+            ? 'Thông báo đang bị chặn. Hãy mở cài đặt trang web trên trình duyệt và chọn Cho phép.'
+            : 'Bạn chưa cho phép thông báo. Có thể bật lại bất kỳ lúc nào trong Cài đặt.');
+    }
     if (!pushRegistration) await setupPushNotifications();
-    if (!pushRegistration) throw new Error('Trình duyệt chưa hỗ trợ thông báo đẩy.');
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') { setPushButtonState('blocked'); throw new Error('Bạn cần cho phép thông báo để tiếp tục.'); }
+    if (!pushRegistration) throw new Error('Không thể khởi tạo thông báo đẩy trên thiết bị này.');
     const configResponse = await authFetch(`${API_BASE}/api/admin/push/public-key`);
     const config = await configResponse.json();
     if (!configResponse.ok || !config.enabled || !config.publicKey) { setPushButtonState('unavailable'); throw new Error('Push chưa được cấu hình trên máy chủ.'); }
@@ -2162,14 +2166,20 @@ function escapeHtml(text) {
 // Event Bindings
 const pushPermissionModal = document.getElementById('push-permission-modal');
 function closePushPermissionModal() { pushPermissionModal?.classList.add('hide'); }
+function setPushModalStatus(message = '') {
+    const status = document.getElementById('push-modal-status');
+    if (status) status.textContent = message;
+}
 document.getElementById('enable-push-btn')?.addEventListener('click', () => {
     document.getElementById('settings-dropdown-menu')?.classList.add('hide');
     // Nhúng trong iframe: KHÔNG mở popup của iframe (bị trình duyệt chặn), chỉ nhờ trang cha xin quyền.
     if (inIframe) { postToParent({ type: 'pastie-enable-notifications' }); return; }
-    if (!('Notification' in window)) return alert('Trình duyệt này chưa hỗ trợ thông báo.');
+    if (!('Notification' in window)) { setPushModalStatus('Trình duyệt này chưa hỗ trợ thông báo.'); pushPermissionModal?.classList.remove('hide'); return; }
     if (Notification.permission === 'granted') return enablePushNotifications().then(closePushPermissionModal).catch(console.error);
+    setPushModalStatus('Thông báo là tùy chọn; bạn có thể bật hoặc bỏ qua và vẫn dùng dashboard bình thường.');
     pushPermissionModal?.classList.remove('hide');
 });
+document.getElementById('push-modal-skip')?.addEventListener('click', closePushPermissionModal);
 document.getElementById('push-modal-confirm')?.addEventListener('click', () => {
     const button = document.getElementById('push-modal-confirm');
     if (button) { button.disabled = true; button.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang bật thông báo...'; }
@@ -2177,7 +2187,7 @@ document.getElementById('push-modal-confirm')?.addEventListener('click', () => {
         closePushPermissionModal();
     }).catch((error) => {
         console.error('Không thể bật Web Push:', error);
-        alert(error.message || 'Không thể bật thông báo trên thiết bị này.');
+        setPushModalStatus(error.message || 'Không thể bật thông báo trên thiết bị này.');
     }).finally(() => {
         if (button) { button.disabled = false; button.innerHTML = '<i class="ri-notification-3-fill"></i> Bật thông báo ngay'; }
     });
