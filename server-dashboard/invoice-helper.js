@@ -7,9 +7,9 @@
 //
 // Font: font mặc định của pdfkit (Helvetica) KHÔNG có dấu tiếng Việt và không
 // có Cyrillic, nên phải nhúng một font Unicode. DejaVuSans phủ Latin (đủ dấu
-// tiếng Việt) + Cyrillic. Tiếng Trung cần font CJK ~20MB nên không đóng gói
-// kèm repo; nếu máy chủ có sẵn font CJK thì dùng, không thì hóa đơn tiếng Trung
-// tự chuyển sang tiếng Anh để không bị mất chữ (xem resolveFonts).
+// tiếng Việt) + Cyrillic. Tiếng Trung và tiếng Hàn cần font CJK ~20MB nên không
+// đóng gói kèm repo; nếu máy chủ có sẵn font CJK/Hangul thì dùng, không thì hóa
+// đơn hai thứ tiếng đó tự chuyển sang tiếng Anh để không mất chữ (xem resolveFonts).
 
 const fs = require('fs');
 const path = require('path');
@@ -19,15 +19,25 @@ const FONT_DIR = path.join(__dirname, 'assets', 'fonts');
 const FONT_REGULAR = path.join(FONT_DIR, 'DejaVuSans.ttf');
 const FONT_BOLD = path.join(FONT_DIR, 'DejaVuSans-Bold.ttf');
 
-// Font CJK chỉ dùng nếu máy chủ có sẵn (không đóng gói vì quá nặng).
+// Tiếng Trung và tiếng Hàn đều cần font CJK — DejaVuSans không có chữ Hán lẫn
+// Hangul. Font CJK chỉ dùng nếu máy chủ có sẵn (không đóng gói vì quá nặng).
 // Lưu ý: pdfkit KHÔNG nhúng được file .ttc (TrueType Collection) — nó không
 // subset được collection — nên chỉ liệt kê .ttf/.otf đơn lẻ ở đây.
-const CJK_FONT_CANDIDATES = [
-  '/usr/share/fonts/opentype/noto/NotoSansSC-Regular.otf',
-  '/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf',
-  '/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf',
-  '/usr/share/fonts/truetype/arphic/uming.ttf',
-];
+const CJK_LANGUAGES = new Set(['zh', 'ko']);
+const CJK_FONT_CANDIDATES = {
+  zh: [
+    '/usr/share/fonts/opentype/noto/NotoSansSC-Regular.otf',
+    '/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf',
+    '/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf',
+    '/usr/share/fonts/truetype/arphic/uming.ttf',
+  ],
+  ko: [
+    '/usr/share/fonts/opentype/noto/NotoSansKR-Regular.otf',
+    '/usr/share/fonts/truetype/noto/NotoSansKR-Regular.otf',
+    '/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf',
+    '/usr/share/fonts/truetype/nanum/NanumGothic.ttf',
+  ],
+};
 
 const fileExists = (filePath) => {
   try { return fs.existsSync(filePath); } catch { return false; }
@@ -38,8 +48,8 @@ if (!HAS_BUNDLED_FONT) {
   console.warn('[Invoice] Không tìm thấy assets/fonts/DejaVuSans.ttf — hóa đơn PDF sẽ mất dấu tiếng Việt.');
 }
 
-function findCjkFont() {
-  return CJK_FONT_CANDIDATES.find(fileExists) || null;
+function findCjkFont(language) {
+  return (CJK_FONT_CANDIDATES[language] || []).find(fileExists) || null;
 }
 
 const INVOICE_I18N = {
@@ -71,6 +81,13 @@ const INVOICE_I18N = {
     totalDiscount: '折扣', grandTotal: '总计', paymentMethod: '付款方式',
     thanks: '感谢惠顾！', note: '本发票由 Pastie Chat 系统自动生成。',
   },
+  ko: {
+    title: '판매 영수증', invoiceNo: '영수증 번호', date: '발행일', customer: '고객',
+    phone: '전화번호', address: '주소', item: '품목', unitPrice: '단가', quantity: '수량',
+    discount: '할인', lineTotal: '금액', subtotal: '상품 합계',
+    totalDiscount: '할인', grandTotal: '총 합계', paymentMethod: '결제 수단',
+    thanks: '이용해 주셔서 감사합니다!', note: '본 영수증은 Pastie Chat 시스템에서 자동 발행되었습니다.',
+  },
 };
 
 const PAYMENT_METHOD_I18N = {
@@ -78,6 +95,7 @@ const PAYMENT_METHOD_I18N = {
   en: { cash: 'Cash', bank_qr: 'Bank transfer (QR)', card: 'Card' },
   ru: { cash: 'Наличные', bank_qr: 'Перевод по QR', card: 'Карта' },
   zh: { cash: '现金', bank_qr: '扫码转账', card: '刷卡' },
+  ko: { cash: '현금', bank_qr: 'QR 계좌이체', card: '카드' },
 };
 
 function normalizeLanguage(language) {
@@ -98,9 +116,9 @@ function paymentMethodLabel(method, language) {
 // phải đổi nội dung sang tiếng Anh khi thiếu font (tránh in ra ô vuông trống).
 function resolveFonts(language) {
   const code = normalizeLanguage(language);
-  if (code === 'zh') {
-    const cjk = findCjkFont();
-    if (cjk) return { regular: cjk, bold: cjk, language: 'zh', fallbackToEnglish: false };
+  if (CJK_LANGUAGES.has(code)) {
+    const cjk = findCjkFont(code);
+    if (cjk) return { regular: cjk, bold: cjk, language: code, fallbackToEnglish: false };
     // Không có font CJK => in bằng tiếng Anh thay vì mất toàn bộ chữ.
     return {
       regular: HAS_BUNDLED_FONT ? FONT_REGULAR : null,
@@ -196,7 +214,7 @@ function buildInvoiceData(invoice, language) {
 function formatIssuedAt(issuedAt, language) {
   const date = new Date(issuedAt);
   if (Number.isNaN(date.getTime())) return '';
-  const locale = { vi: 'vi-VN', en: 'en-GB', ru: 'ru-RU', zh: 'zh-CN' }[normalizeLanguage(language)] || 'vi-VN';
+  const locale = { vi: 'vi-VN', en: 'en-GB', ru: 'ru-RU', zh: 'zh-CN', ko: 'ko-KR' }[normalizeLanguage(language)] || 'vi-VN';
   try {
     return date.toLocaleString(locale, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch {

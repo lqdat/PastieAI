@@ -233,6 +233,47 @@
             backToAI: '返回助手',
             sessionEnded: '对话已结束，我们将继续为您服务 ↓'
         }
+        ,ko: {
+            headerTitle: "Pastie 고객지원",
+            headerStatus: "보통 몇 분 내에 답변드립니다",
+            initTitle: "상담을 시작합니다",
+            initDesc: "성함과 이메일을 남겨주시면 상담원이 도와드립니다.",
+            initNameLabel: "성함",
+            initNamePlaceholder: "성함을 입력하세요",
+            initEmailLabel: "이메일",
+            initEmailPlaceholder: "you@email.com",
+            initBtnSubmit: "인증번호 받기",
+            initErrorFields: "성함과 이메일을 모두 입력해 주세요.",
+            initErrorConn: "서버에 연결할 수 없습니다. 다시 시도해 주세요.",
+            otpTitle: "이메일 인증",
+            otpDesc: "다음 주소로 보낸 6자리 인증번호를 입력하세요:",
+            otpLabel: "인증번호",
+            otpPlaceholder: "6자리 숫자",
+            otpBtnSubmit: "인증하고 채팅 시작",
+            otpBtnResend: "인증번호 재전송",
+            otpBtnResendCooldown: "초 후 재전송",
+            otpErrorEmpty: "인증번호를 입력해 주세요.",
+            otpErrorInvalid: "인증번호가 올바르지 않거나 만료되었습니다.",
+            otpErrorConn: "서버에 연결할 수 없습니다. 다시 시도해 주세요.",
+            chatInputPlaceholder: "메시지를 입력하세요…",
+            chatThinking: "입력 중…",
+            loadingSend: "전송 중…",
+            loadingVerify: "확인 중…",
+            defaultError: "문제가 발생했습니다. 다시 시도해 주세요.",
+            typingText: "입력 중…",
+            chatStartWelcome: "무엇을 도와드릴까요? 편하게 메시지를 남겨주세요.",
+            loadOlder: "이전 메시지 보기",
+            loadingMore: "불러오는 중…",
+            miniSenderAgent: "상담원",
+            miniSenderVisitor: "나",
+            miniSenderSystem: "시스템",
+            miniSenderAI: "Pat",
+            btnMeetCSKH: "상담원 연결",
+            btnCloseCSKH: "상담 종료",
+            confirmEndChat: "상담원과의 대화를 종료하시겠습니까?",
+            backToAI: "상담이 종료되었습니다. Pat이 계속 도와드릴게요! 🌴",
+            sessionEnded: "상담 세션이 종료되었습니다."
+        }
     };
 
     // DOM Elements

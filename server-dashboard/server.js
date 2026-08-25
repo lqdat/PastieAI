@@ -1138,6 +1138,7 @@ app.post('/api/chats/message', async (req, res) => {
           en: 'Connecting you with a support agent, please hold on ⏳',
           ru: 'Соединяем вас с оператором поддержки, подождите ⏳',
           zh: '正在为您连接客服人员，请稍候 ⏳',
+          ko: '상담원과 연결 중입니다. 잠시만 기다려 주세요 ⏳',
         };
         const transferMsg = transferMsgs[visitorLang] || transferMsgs['vi'];
         const aiMsgRes = await db.query(
@@ -1159,6 +1160,7 @@ app.post('/api/chats/message', async (req, res) => {
             en: 'An agent will be with you shortly, please hold on ⏳',
             ru: 'Оператор уже принимает вашу заявку, подождите ⏳',
             zh: '客服人员正在接待中，请稍候 ⏳',
+            ko: '상담원이 확인 중입니다. 잠시만 기다려 주세요 ⏳',
           };
           const waitMsg = waitMsgs[visitorLang] || waitMsgs['vi'];
           const aiMsgRes = await db.query(
@@ -1190,6 +1192,7 @@ app.post('/api/chats/message', async (req, res) => {
                 en: `Thank you! Connecting you with a support agent now ⏳`,
                 ru: `Спасибо! Соединяю вас с оператором ⏳`,
                 zh: `谢谢！正在为您转接客服人员 ⏳`,
+                ko: `감사합니다! 지금 상담원에게 연결해 드리겠습니다 ⏳`,
               };
               const transferMsg = transferMsgs[visitorLang] || transferMsgs['vi'];
               await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
@@ -1213,7 +1216,7 @@ app.post('/api/chats/message', async (req, res) => {
             ? `${websiteKb}\n\n=== TRI THỨC TỪ HỘI THOẠI THỰC TẾ ===\n${chatKb}`
             : websiteKb;
           const knowledgeContext = rawKb.substring(0, 10000);
-          const langNameMap = { vi: 'Tiếng Việt', en: 'English', ru: 'Русский (Russian)', zh: '中文 (Chinese)' };
+          const langNameMap = { vi: 'Tiếng Việt', en: 'English', ru: 'Русский (Russian)', zh: '中文 (Chinese)', ko: '한국어 (Korean)' };
           const replyLangName = langNameMap[visitorLang] || 'Tiếng Việt';
 
           const systemInstruction = `
@@ -1532,6 +1535,7 @@ app.post('/api/chats/session/close', async (req, res) => {
       en: 'The agent has wrapped up. Pat is back to keep you company! 🌴',
       ru: 'Оператор завершил. Pat снова с вами! 🌴',
       zh: '客服已结束，Pat 回来继续陪伴您！🌴',
+      ko: '상담이 종료되었습니다. Pat이 계속 도와드릴게요! 🌴',
     };
     const backMsg = backMsgs[lang] || backMsgs.vi;
     await db.query(
@@ -1718,7 +1722,7 @@ app.post('/api/chats/session/request-agent-direct', async (req, res) => {
 
     await db.query('UPDATE sessions SET requested_agent = TRUE WHERE id = $1', [sessionId]);
     const lang = session.detected_language || 'vi';
-    const waitMsgs = { vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳', en: 'Connecting you with a support agent, please hold on ⏳', ru: 'Соединяем вас с оператором, подождите ⏳', zh: '正在为您连接客服，请稍候 ⏳' };
+    const waitMsgs = { vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳', en: 'Connecting you with a support agent, please hold on ⏳', ru: 'Соединяем вас с оператором, подождите ⏳', zh: '正在为您连接客服，请稍候 ⏳', ko: '상담원과 연결 중입니다. 잠시만 기다려 주세요 ⏳' };
     await db.query(
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3)`,
       [sessionId, waitMsgs[lang] || waitMsgs['vi'], lang]
@@ -1751,7 +1755,7 @@ app.post('/api/chats/session/request-agent', async (req, res) => {
       [email, finalName, sessionId]
     );
     const lang = (await db.query('SELECT detected_language FROM sessions WHERE id = $1', [sessionId])).rows[0]?.detected_language || 'vi';
-    const waitMsgs = { vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳', en: 'Connecting you with a support agent, please hold on ⏳', ru: 'Соединяем вас с оператором, подождите ⏳', zh: '正在为您连接客服，请稍候 ⏳' };
+    const waitMsgs = { vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳', en: 'Connecting you with a support agent, please hold on ⏳', ru: 'Соединяем вас с оператором, подождите ⏳', zh: '正在为您连接客服，请稍候 ⏳', ko: '상담원과 연결 중입니다. 잠시만 기다려 주세요 ⏳' };
     await db.query(
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3)`,
       [sessionId, waitMsgs[lang] || waitMsgs['vi'], lang]
@@ -4333,7 +4337,7 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
     const knowledgeContext = chatKb
       ? `${websiteKb}\n\n=== TRI THỨC TỪ HỘI THOẠI THỰC TẾ ===\n${chatKb}`.substring(0, 10000)
       : websiteKb.substring(0, 8000);
-    const langNameMap = { vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese' };
+    const langNameMap = { vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese', ko: 'Korean' };
     const replyLangName = langNameMap[finalLang] || 'the same language as the customer';
 
     const systemInstruction = `You are a professional and friendly customer support assistant for Pastie brand.
