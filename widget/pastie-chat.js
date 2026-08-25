@@ -19,6 +19,7 @@
     widget.async = true;
     widget.dataset.project = loader.dataset.project || 'pastie-landingpage';
     widget.dataset.backend = backend;
+    if (loader.dataset.qrCode) widget.dataset.qrCode = loader.dataset.qrCode;
     widget.dataset.embedVersion = '1';
     widget.onerror = function () {
         console.error('[Pastie Chat] Không thể tải chat widget từ', widget.src);

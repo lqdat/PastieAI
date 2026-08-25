@@ -52,9 +52,11 @@ async function initializeDatabase() {
       CREATE TABLE IF NOT EXISTS projects (
         id VARCHAR(100) PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
+        project_type VARCHAR(30) NOT NULL DEFAULT 'standard',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type VARCHAR(30) NOT NULL DEFAULT 'standard';`);
     // Seed các dự án mặc định (idempotent)
     await query(`
       INSERT INTO projects (id, name) VALUES
@@ -62,6 +64,12 @@ async function initializeDatabase() {
         ('dealphuquoc', 'DealPhuQuoc'),
         ('unknown', 'Không rõ nguồn (WhatsApp trực tiếp)')
       ON CONFLICT (id) DO NOTHING;
+    `);
+    // QR Concierge: a dedicated project type where each QR belongs to one agent.
+    await query(`
+      INSERT INTO projects (id, name, project_type) VALUES
+        ('qr-concierge', 'QR Concierge', 'qr_concierge')
+      ON CONFLICT (id) DO UPDATE SET project_type = 'qr_concierge';
     `);
 
     // Create admin_sessions table
@@ -109,6 +117,22 @@ async function initializeDatabase() {
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP;`);
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS visitor_phone VARCHAR(30);`);
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS operator_no INT;`);
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS qr_account_id INT;`);
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;`);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS qr_chat_accounts (
+        id SERIAL PRIMARY KEY,
+        project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        owner_admin_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        code VARCHAR(80) UNIQUE NOT NULL,
+        label VARCHAR(255) NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_qr_chat_accounts_project_owner ON qr_chat_accounts(project_id, owner_admin_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_sessions_qr_active ON sessions(qr_account_id, status);`);
 
     await query(`
       CREATE TABLE IF NOT EXISTS push_subscriptions (

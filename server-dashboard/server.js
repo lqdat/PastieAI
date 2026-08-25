@@ -143,6 +143,15 @@ setInterval(() => {
     if (val.windowStart < cutoff) aiRateLimit.delete(key);
   }
 }, 5 * 60 * 1000);
+
+// QR Concierge visitor slots are intentionally short-lived. The database is
+// authoritative, so expiry also works if the browser is closed or refreshed.
+setInterval(() => {
+  db.query(`UPDATE sessions SET status = 'closed'
+            WHERE qr_account_id IS NOT NULL AND status = 'active'
+              AND expires_at IS NOT NULL AND expires_at <= NOW()`)
+    .catch((error) => console.error('[QR Concierge] Không thể đóng session hết hạn:', error.message));
+}, 60 * 1000);
 // ─────────────────────────────────────────────────────────────────────────────
 
 // --- Swagger Configuration ---
@@ -315,9 +324,25 @@ app.get('/admin', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+// Public QR Concierge entry. The QR code contains only an opaque identifier;
+// customer identity is still verified with OTP email or Google before chat.
+app.get('/qr/:code', async (req, res) => {
+  try {
+    const account = await resolveQrChatAccount('qr-concierge', String(req.params.code || ''));
+    if (!account) return res.status(404).send('Mã QR không hợp lệ hoặc đã hết hiệu lực.');
+    const clientId = String(process.env.GOOGLE_CLIENT_ID || '');
+    const json = JSON.stringify({ projectId: account.project_id, qrCode: String(req.params.code), clientId }).replace(/</g, '\\u003c');
+    res.type('html').send(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QR Concierge Chat</title><script src="https://accounts.google.com/gsi/client" async defer></script><style>body{margin:0;font-family:Arial,sans-serif;background:#fff7fa;color:#29202a}.qr-login{max-width:420px;margin:56px auto;padding:28px;text-align:center;border-radius:16px;background:#fff;box-shadow:0 12px 32px #0002}.qr-login h1{font-size:22px}.qr-login p{line-height:1.5;color:#685a62}.qr-login button{border:0;border-radius:9px;padding:11px 16px;background:#4285f4;color:#fff;font-weight:600;cursor:pointer}</style></head><body><main class="qr-login"><h1>Trò chuyện hỗ trợ</h1><p>Đăng nhập bằng Google hoặc mở khung chat để nhận mã OTP qua email.</p><div id="google"></div></main><script>const QR=${json};function startGoogle(r){fetch('/api/qr-chat/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:r.credential,projectId:QR.projectId,qrCode:QR.qrCode})}).then(x=>x.json().then(d=>({ok:x.ok,d}))).then(({ok,d})=>{if(!ok)throw Error(d.error);sessionStorage.setItem('pastie_chat_'+QR.projectId+'_'+QR.qrCode+'_session_id',d.sessionId);sessionStorage.setItem('pastie_chat_'+QR.projectId+'_'+QR.qrCode+'_mode','ai');location.reload();}).catch(e=>alert(e.message));}function g(){if(QR.clientId&&window.google?.accounts?.id){google.accounts.id.initialize({client_id:QR.clientId,callback:startGoogle});google.accounts.id.renderButton(document.getElementById('google'),{theme:'outline',size:'large',text:'continue_with'});}else setTimeout(g,250)}g();</script><script src="/widget/v1.js" data-project="${account.project_id}" data-qr-code="${req.params.code}" async></script></body></html>`);
+  } catch (error) {
+    console.error('[QR Concierge] Cannot open QR chat:', error.message);
+    res.status(500).send('Không thể mở trang chat.');
+  }
+});
+
 
 const ADMIN_SESSION_HOURS = 8;
 const ADMIN_SESSION_MS = ADMIN_SESSION_HOURS * 3600000;
+const QR_CHAT_SESSION_MS = 15 * 60 * 1000;
 
 // Upgraded Multi-Admin Session-based Auth Middleware (hiệu lực 8 giờ + trượt 8 giờ)
 async function checkAdminAuth(req, res, next) {
@@ -393,6 +418,38 @@ const isChatStaff = (admin) => isSuperAdmin(admin) || isProjectOwner(admin) || i
 
 function canAccessProject(admin, projectId) {
   return isSuperAdmin(admin) || (admin?.project_id && admin.project_id === projectId);
+}
+
+async function resolveQrChatAccount(projectId, qrCode, queryRunner = db) {
+  if (!qrCode) return null;
+  const result = await queryRunner.query(
+    `SELECT q.id, q.project_id, q.owner_admin_id, q.label
+       FROM qr_chat_accounts q
+       JOIN projects p ON p.id = q.project_id
+       JOIN admins a ON a.id = q.owner_admin_id
+      WHERE q.project_id = $1 AND q.code = $2
+        AND q.is_active = TRUE AND p.project_type = 'qr_concierge' AND a.is_active = TRUE`,
+    [projectId, qrCode]
+  );
+  return result.rows[0] || null;
+}
+
+async function closeActiveQrSession(qrAccountId, queryRunner = db) {
+  // One QR represents one reception slot. A new scan immediately releases the
+  // previous customer so the assigned agent only has the latest conversation.
+  await queryRunner.query(
+    `UPDATE sessions SET status = 'closed'
+      WHERE qr_account_id = $1 AND status = 'active'`,
+    [qrAccountId]
+  );
+}
+
+async function expireQrSessionIfNeeded(session, queryRunner = db) {
+  if (session?.status === 'active' && session.qr_account_id && session.expires_at && new Date(session.expires_at) <= new Date()) {
+    await queryRunner.query(`UPDATE sessions SET status = 'closed' WHERE id = $1 AND status = 'active'`, [session.id]);
+    session.status = 'closed';
+  }
+  return session;
 }
 
 async function getAdminFromToken(req) {
@@ -623,7 +680,7 @@ async function findActiveAnonymousSessionForClient(projectId, clientIp, browser,
 
 // 2. Verify OTP and Create/Activate Chat Session
 app.post('/api/otp/verify', async (req, res) => {
-  const { email, code, name, projectId, language } = req.body;
+  const { email, code, name, projectId, language, qrCode } = req.body;
   
   if (!email || !code || !projectId) {
     return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ email, mã OTP và projectId.' });
@@ -636,6 +693,8 @@ app.post('/api/otp/verify', async (req, res) => {
   }
 
   try {
+    const qrAccount = await resolveQrChatAccount(projectId, qrCode);
+    if (qrCode && !qrAccount) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
     // Query OTP record
     const otpRes = await db.query('SELECT * FROM otps WHERE email = $1', [email]);
     if (otpRes.rows.length === 0) {
@@ -666,14 +725,15 @@ app.post('/api/otp/verify', async (req, res) => {
     const { browser, device } = parseUserAgent(ua);
     const clientIp = getClientIp(req);
 
-    const existingSession = await findActiveSessionForClient(projectId, email, clientIp, browser, device);
+    const existingSession = qrAccount ? null : await findActiveSessionForClient(projectId, email, clientIp, browser, device);
     if (existingSession) {
       return res.json({ success: true, sessionId: existingSession.id, name: finalName, reused: true });
     }
 
     // Auto-assignment algorithm (Least Active Load)
-    let assignedAdminId = null;
+    let assignedAdminId = qrAccount?.owner_admin_id || null;
     try {
+      if (assignedAdminId) throw new Error('QR account has an assigned agent');
       // Ưu tiên subadmin gắn đúng project (hoặc toàn quyền project_id IS NULL)
       const leastLoadRes = await db.query(`
         SELECT a.id, a.full_name, COUNT(s.id) as active_count
@@ -697,13 +757,14 @@ app.post('/api/otp/verify', async (req, res) => {
         }
       }
     } catch (assignError) {
-      console.error('Error during auto-assignment calculations:', assignError.message);
+      if (!qrAccount) console.error('Error during auto-assignment calculations:', assignError.message);
     }
 
+    if (qrAccount) await closeActiveQrSession(qrAccount.id);
     await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id)
-       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8, $9)`,
-      [sessionId, projectId, finalName, email, finalLang, browser, device, clientIp, assignedAdminId]
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id, qr_account_id, expires_at)
+       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8, $9, $10, $11, $12)`,
+      [sessionId, projectId, finalName, email, finalLang, browser, device, clientIp, assignedAdminId, qrAccount?.id || null, qrAccount ? new Date(Date.now() + QR_CHAT_SESSION_MS) : null]
     );
 
     // Insert AI greeting message (sender='ai' — renders as a normal chat bubble, not a human agent, and is_human_agent_active check ignores it)
@@ -813,6 +874,7 @@ app.post('/api/chats/message', async (req, res) => {
     if (sessionRes.rows.length === 0) {
       return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
     }
+    await expireQrSessionIfNeeded(sessionRes.rows[0]);
     if (sessionRes.rows[0].status === 'closed') {
       return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
     }
@@ -1234,11 +1296,11 @@ app.post('/api/chats/session/close', async (req, res) => {
 app.get('/api/chats/:sessionId/state', async (req, res) => {
   try {
     const r = await db.query(
-      'SELECT status, claimed_by_admin_id, requested_agent FROM sessions WHERE id = $1',
+      'SELECT id, status, claimed_by_admin_id, requested_agent, qr_account_id, expires_at FROM sessions WHERE id = $1',
       [req.params.sessionId]
     );
     if (r.rows.length === 0) return res.status(404).json({ error: 'not found' });
-    const s = r.rows[0];
+    const s = await expireQrSessionIfNeeded(r.rows[0]);
     const mode = (s.claimed_by_admin_id || s.requested_agent) ? 'human' : 'ai';
     res.json({ status: s.status, mode });
   } catch (e) {
@@ -1327,15 +1389,18 @@ app.post('/api/chats/session/anonymous', async (req, res) => {
 
 // 4b-identified. Tạo session ĐÃ XÁC THỰC từ danh tính có sẵn (user đã đăng nhập ở web ngoài) — bỏ OTP.
 app.post('/api/chats/session/identified', async (req, res) => {
-  const { projectId = 'pastie-landingpage', name, email, phone, visitorLang = 'vi' } = req.body || {};
+  const { projectId = 'pastie-landingpage', name, email, phone, qrCode, visitorLang = 'vi' } = req.body || {};
   if (!email) return res.status(400).json({ error: 'Thiếu email.' });
   const sessionId = randomUUID();
   const ua = req.headers['user-agent'] || '';
   const { browser, device } = parseUserAgent(ua);
   const clientIp = getClientIp(req);
+  let qrAccount = null;
 
   try {
-    const existingSession = await findActiveSessionForClient(projectId, email, clientIp, browser, device);
+    qrAccount = await resolveQrChatAccount(projectId, qrCode);
+    if (qrCode && !qrAccount) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
+    const existingSession = qrAccount ? null : await findActiveSessionForClient(projectId, email, clientIp, browser, device);
     if (existingSession) {
       // Phiên cũ có thể đang ẩn danh -> gắn danh tính khách đăng nhập (không ghi đè bằng chuỗi rỗng)
       await db.query(
@@ -1354,8 +1419,9 @@ app.post('/api/chats/session/identified', async (req, res) => {
     return res.status(500).json({ error: 'Lỗi kiểm tra phiên chat.' });
   }
 
-  let assignedAdminId = null;
+  let assignedAdminId = qrAccount?.owner_admin_id || null;
   try {
+    if (assignedAdminId) throw new Error('QR account has an assigned agent');
     const leastLoadRes = await db.query(`
       SELECT a.id, COUNT(s.id) as active_count
       FROM admins a
@@ -1372,10 +1438,11 @@ app.post('/api/chats/session/identified', async (req, res) => {
   } catch {}
 
   try {
+    if (qrAccount) await closeActiveQrSession(qrAccount.id);
     await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, visitor_phone, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id)
-       VALUES ($1, $2, $3, $4, $5, $6, TRUE, 'active', $7, $8, $9, $10)`,
-      [sessionId, projectId, name || 'Khách', email, phone || null, visitorLang, browser, device, clientIp, assignedAdminId]
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, visitor_phone, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id, qr_account_id, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, 'active', $7, $8, $9, $10, $11, $12)`,
+      [sessionId, projectId, name || 'Khách', email, phone || null, visitorLang, browser, device, clientIp, assignedAdminId, qrAccount?.id || null, qrAccount ? new Date(Date.now() + QR_CHAT_SESSION_MS) : null]
     );
     res.json({ success: true, sessionId });
   } catch (error) {
@@ -1571,6 +1638,7 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
     if (sessionRes.rows.length === 0) {
       return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
     }
+    await expireQrSessionIfNeeded(sessionRes.rows[0]);
     if (sessionRes.rows[0].status === 'closed') {
       return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
     }
@@ -2186,15 +2254,76 @@ app.post('/api/admin/logout', checkAdminAuth, async (req, res) => {
 app.get('/api/admin/projects', checkAdminAuth, async (req, res) => {
   try {
     if (req.admin.role !== 'superadmin' && req.admin.project_id) {
-      const one = await db.query('SELECT id, name FROM projects WHERE id = $1', [req.admin.project_id]);
+      const one = await db.query('SELECT id, name, project_type FROM projects WHERE id = $1', [req.admin.project_id]);
       return res.json(one.rows);
     }
-    const all = await db.query('SELECT id, name, created_at FROM projects ORDER BY created_at ASC, id ASC');
+    const all = await db.query('SELECT id, name, project_type, created_at FROM projects ORDER BY created_at ASC, id ASC');
     res.json(all.rows);
   } catch (e) {
     console.error('List projects error:', e);
     res.status(500).json({ error: 'Lỗi tải danh sách dự án.' });
   }
+});
+
+// Google sign-in for QR Concierge visitors. Google proves the customer's email;
+// the resulting chat session is still constrained to the QR owner's 15-minute slot.
+app.post('/api/qr-chat/google', async (req, res) => {
+  const { credential, projectId = 'qr-concierge', qrCode } = req.body || {};
+  if (!credential || !qrCode) return res.status(400).json({ error: 'Thiếu thông tin đăng nhập Google hoặc mã QR.' });
+  try {
+    const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+    if (!googleRes.ok) return res.status(401).json({ error: 'Google credential không hợp lệ hoặc đã hết hạn.' });
+    const profile = await googleRes.json();
+    if (!profile.email || (profile.email_verified !== 'true' && profile.email_verified !== true)) return res.status(401).json({ error: 'Email Google chưa được xác thực.' });
+    const account = await resolveQrChatAccount(projectId, qrCode);
+    if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
+    await closeActiveQrSession(account.id);
+    const sessionId = randomUUID();
+    const { browser, device } = parseUserAgent(req.headers['user-agent'] || '');
+    await db.query(
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id, qr_account_id, expires_at)
+       VALUES ($1, $2, $3, $4, 'vi', TRUE, 'active', $5, $6, $7, $8, $9, $10)`,
+      [sessionId, projectId, profile.name || 'Khách hàng', profile.email, browser, device, getClientIp(req), account.owner_admin_id, account.id, new Date(Date.now() + QR_CHAT_SESSION_MS)]
+    );
+    res.json({ success: true, sessionId, expiresAt: new Date(Date.now() + QR_CHAT_SESSION_MS) });
+  } catch (error) {
+    console.error('[QR Concierge] Google customer sign-in failed:', error.message);
+    res.status(500).json({ error: 'Không thể đăng nhập Google.' });
+  }
+});
+
+// QR Concierge account management. Each generated code has exactly one owner
+// agent; its public URL can be turned into a QR image by any QR generator.
+app.get('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
+  const projectId = String(req.query.projectId || 'qr-concierge');
+  if (!canAccessProject(req.admin, projectId)) return res.status(403).json({ error: 'Bạn không có quyền xem QR của project này.' });
+  const onlyOwner = req.admin.role === 'agent';
+  const result = await db.query(
+    `SELECT q.id, q.code, q.label, q.is_active, q.created_at, a.id AS owner_admin_id, a.full_name AS owner_name
+       FROM qr_chat_accounts q JOIN admins a ON a.id = q.owner_admin_id
+      WHERE q.project_id = $1 ${onlyOwner ? 'AND q.owner_admin_id = $2' : ''}
+      ORDER BY q.created_at DESC`,
+    onlyOwner ? [projectId, req.admin.id] : [projectId]
+  );
+  const base = (process.env.DASHBOARD_PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  res.json(result.rows.map((account) => ({ ...account, chat_url: `${base}/qr/${account.code}` })));
+});
+
+app.post('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
+  const { projectId = 'qr-concierge', ownerAdminId, label } = req.body || {};
+  if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ quản trị viên dự án được tạo QR.' });
+  if (!canAccessProject(req.admin, projectId)) return res.status(403).json({ error: 'Bạn không có quyền tạo QR cho project này.' });
+  const project = await db.query(`SELECT id FROM projects WHERE id = $1 AND project_type = 'qr_concierge'`, [projectId]);
+  if (!project.rows[0]) return res.status(400).json({ error: 'Project này không phải QR Concierge.' });
+  const owner = await db.query(`SELECT id, project_id, is_active FROM admins WHERE id = $1`, [ownerAdminId]);
+  if (!owner.rows[0] || !owner.rows[0].is_active || owner.rows[0].project_id !== projectId) return res.status(400).json({ error: 'Agent sở hữu QR không hợp lệ.' });
+  const code = `qr_${randomUUID().replace(/-/g, '')}`;
+  const created = await db.query(
+    `INSERT INTO qr_chat_accounts (project_id, owner_admin_id, code, label) VALUES ($1, $2, $3, $4) RETURNING *`,
+    [projectId, ownerAdminId, code, String(label || 'QR chat').trim().slice(0, 255)]
+  );
+  const base = (process.env.DASHBOARD_PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  res.status(201).json({ success: true, account: created.rows[0], chat_url: `${base}/qr/${code}` });
 });
 
 // Tạo dự án mới (chỉ superadmin). id = slug không dấu, dùng làm project_id ở widget (data-project).
@@ -2708,6 +2837,12 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
       conditions.push(`s.project_id = $${params.length + 1}`);
       params.push(scopedProject);
     }
+    // QR Concierge agents see only conversations created through QR codes they own.
+    // Other project types retain the existing shared-project inbox behaviour.
+    if (req.admin.role === 'agent') {
+      conditions.push(`(s.project_id <> 'qr-concierge' OR s.assigned_admin_id = $${params.length + 1})`);
+      params.push(req.admin.id);
+    }
     queryText += ' WHERE ' + conditions.join(' AND ');
     queryText += ' ORDER BY s.created_at DESC';
 
@@ -2765,7 +2900,7 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res)
 
   try {
     // Check if session has a locked admin_language
-    const sessionRes = await db.query('SELECT admin_language, project_id FROM sessions WHERE id = $1', [sessionId]);
+    const sessionRes = await db.query('SELECT admin_language, project_id, assigned_admin_id FROM sessions WHERE id = $1', [sessionId]);
     // Phân quyền: tài khoản gắn project không được xem hội thoại của project khác.
     if (
       sessionRes.rows.length > 0 &&
@@ -2773,6 +2908,9 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res)
       sessionRes.rows[0].project_id !== req.admin.project_id
     ) {
       return res.status(403).json({ error: 'Bạn không có quyền xem hội thoại thuộc project khác.' });
+    }
+    if (sessionRes.rows[0]?.project_id === 'qr-concierge' && req.admin.role === 'agent' && Number(sessionRes.rows[0].assigned_admin_id) !== Number(req.admin.id)) {
+      return res.status(403).json({ error: 'Chat QR này thuộc Agent khác.' });
     }
     let targetLang = adminLang;
     if (sessionRes.rows.length > 0 && sessionRes.rows[0].admin_language) {

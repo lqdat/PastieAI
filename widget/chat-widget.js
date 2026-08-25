@@ -20,13 +20,15 @@
             return 'http://localhost:3000';
         })(),
         PROJECT_ID: (_scriptEl && _scriptEl.dataset.project) || 'pastie-landingpage',
+        QR_CODE: (_scriptEl && _scriptEl.dataset.qrCode) || '',
         // Faster updates without overlapping requests on slower mobile networks.
         POLL_INTERVAL: 2000
     };
 
     // Keep visitor data separate for each tenant project. This avoids one
     // website accidentally reopening another website's chat session.
-    const storageKey = (name) => `pastie_chat_${CONFIG.PROJECT_ID}_${name}`;
+    const storageScope = `${CONFIG.PROJECT_ID}_${CONFIG.QR_CODE || 'default'}`;
+    const storageKey = (name) => `pastie_chat_${storageScope}_${name}`;
     const storage = {
         get(name) { try { return sessionStorage.getItem(storageKey(name)); } catch (e) { return null; } },
         set(name, value) { try { sessionStorage.setItem(storageKey(name), value); } catch (e) {} },
@@ -492,7 +494,7 @@
             const r = await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/anonymous`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, visitorLang: state.detectedLang || 'vi' })
+                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, qrCode: CONFIG.QR_CODE || undefined, visitorLang: state.detectedLang || 'vi' })
             });
             const d = await r.json();
             if (d.success) {
@@ -519,7 +521,7 @@
             const r = await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/identified`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, name: state.visitorName, email, visitorLang: state.detectedLang || 'vi' })
+                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, qrCode: CONFIG.QR_CODE || undefined, name: state.visitorName, email, visitorLang: state.detectedLang || 'vi' })
             });
             const d = await r.json();
             if (d.success && d.sessionId) {
@@ -763,6 +765,7 @@
                         code,
                         name: state.visitorName,
                         projectId: CONFIG.PROJECT_ID,
+                        qrCode: CONFIG.QR_CODE || undefined,
                         language: state.detectedLang
                     })
                 });
