@@ -815,11 +815,44 @@ function setPushButtonState(state) {
     else { label.textContent = 'Bật thông báo'; description.textContent = 'Nhận chat mới ngay cả khi đã đóng app'; }
 }
 
+const isAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandaloneWebApp = window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+function getPushSupportIssue() {
+    if (!('Notification' in window)) return 'unsupported';
+    // iOS/iPadOS only enables Web Push after the web app is added to Home Screen.
+    if (isAppleMobile && !isStandaloneWebApp) return 'ios-home-screen';
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported';
+    return null;
+}
+
+function setPushModalMode(issue = null) {
+    const description = document.getElementById('push-modal-description');
+    const button = document.getElementById('push-modal-confirm');
+    if (issue === 'ios-home-screen') {
+        if (description) description.textContent = 'Để nhận thông báo trên iPhone/iPad, hãy thêm Pastie Console vào Màn hình chính. Chúng tôi sẽ mở menu Chia sẻ để bạn chọn Thêm vào Màn hình chính.';
+        if (button) button.innerHTML = '<i class="ri-share-line"></i> Mở menu Chia sẻ';
+        return;
+    }
+    if (issue === 'unsupported') {
+        if (description) description.textContent = 'Phiên bản trình duyệt này chưa hỗ trợ thông báo đẩy. Hãy cập nhật Safari hoặc dùng Chrome/Edge phiên bản mới.';
+        if (button) button.innerHTML = '<i class="ri-notification-off-line"></i> Trình duyệt chưa hỗ trợ';
+        return;
+    }
+    if (description) description.textContent = Notification.permission === 'denied'
+        ? 'Thông báo đã bị chặn. Hãy mở Cài đặt trang web của Safari và chọn Cho phép thông báo.'
+        : 'Bật thông báo để nhận tin ngay khi hệ thống chuyển cuộc trò chuyện cần Agent hỗ trợ.';
+    if (button) button.innerHTML = '<i class="ri-notification-3-fill"></i> Bật thông báo ngay';
+}
+
 async function setupPushNotifications() {
     // Nhúng trong iframe: quyền do trang cha quản lý, chỉ hỏi trạng thái.
     if (inIframe) { postToParent({ type: 'pastie-request-state' }); return false; }
-    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    const supportIssue = getPushSupportIssue();
+    if (supportIssue) {
         setPushButtonState('unavailable');
+        setPushModalMode(supportIssue);
         pushPermissionModal?.classList.remove('hide');
         return false;
     }
@@ -837,6 +870,7 @@ async function setupPushNotifications() {
             subscription = await syncPushSubscription(config);
         }
         setPushButtonState(Notification.permission === 'denied' ? 'blocked' : subscription ? 'enabled' : 'off');
+        setPushModalMode();
         if (Notification.permission === 'granted' && subscription) return true;
         pushPermissionModal?.classList.remove('hide');
         return false;
@@ -850,7 +884,13 @@ async function setupPushNotifications() {
 async function enablePushNotifications() {
     // Nhúng trong iframe: nhờ trang cha xin quyền (đúng origin của quyền).
     if (inIframe) { postToParent({ type: 'pastie-enable-notifications' }); return true; }
-    if (!('Notification' in window)) throw new Error('Trình duyệt này chưa hỗ trợ thông báo.');
+    const supportIssue = getPushSupportIssue();
+    if (supportIssue === 'ios-home-screen') {
+        if (!navigator.share) throw new Error('Hãy nhấn nút Chia sẻ ở thanh công cụ Safari, rồi chọn Thêm vào Màn hình chính.');
+        await navigator.share({ title: 'Pastie AI Console', text: 'Thêm Pastie Console vào Màn hình chính để bật thông báo.', url: window.location.href });
+        return false;
+    }
+    if (supportIssue) throw new Error('Phiên bản trình duyệt này chưa hỗ trợ thông báo đẩy.');
     // Phải xin quyền trước bất kỳ await nào: mobile chỉ cho phép trong hành động chạm trực tiếp.
     let permission = Notification.permission;
     if (permission === 'default') permission = await Notification.requestPermission();
@@ -2174,12 +2214,19 @@ document.getElementById('enable-push-btn')?.addEventListener('click', () => {
     document.getElementById('settings-dropdown-menu')?.classList.add('hide');
     // Nhúng trong iframe: KHÔNG mở popup của iframe (bị trình duyệt chặn), chỉ nhờ trang cha xin quyền.
     if (inIframe) { postToParent({ type: 'pastie-enable-notifications' }); return; }
-    if (!('Notification' in window)) return alert('Trình duyệt này chưa hỗ trợ thông báo.');
+    const supportIssue = getPushSupportIssue();
+    if (supportIssue) { setPushModalMode(supportIssue); pushPermissionModal?.classList.remove('hide'); return; }
     if (Notification.permission === 'granted') return enablePushNotifications().then(closePushPermissionModal).catch(console.error);
     pushPermissionModal?.classList.remove('hide');
 });
 document.getElementById('push-modal-confirm')?.addEventListener('click', () => {
     const button = document.getElementById('push-modal-confirm');
+    const supportIssue = getPushSupportIssue();
+    if (supportIssue === 'ios-home-screen') {
+        enablePushNotifications().catch((error) => alert(error.message || 'Không thể mở menu Chia sẻ.'));
+        return;
+    }
+    if (supportIssue) return;
     if (button) { button.disabled = true; button.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang bật thông báo...'; }
     enablePushNotifications().then(() => {
         closePushPermissionModal();
