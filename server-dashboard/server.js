@@ -1807,6 +1807,24 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
  *       201: { description: Đơn được tạo, có invoice JSON/HTML mẫu }
  *       403: { description: Không có quyền với project của phiên chat }
  *
+ * /samplebill:
+ *   post:
+ *     summary: Tạo và gửi nhanh hóa đơn mẫu 2 chai nước vào chat
+ *     description: Endpoint test. Agent/Admin truyền sessionId, hệ thống tạo bill mẫu và chèn thông báo hóa đơn vào lịch sử chat.
+ *     tags: [Đơn hàng / Bill]
+ *     security: [{ ApiKeyAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [sessionId]
+ *             properties:
+ *               sessionId: { type: string, format: uuid }
+ *     responses:
+ *       201: { description: Đã tạo bill và gửi tin mẫu vào chat }
+ *
  * /api/admin/orders/{orderId}/invoice:
  *   put:
  *     summary: Phần mềm bill cập nhật hóa đơn JSON, HTML, PNG hoặc PDF
@@ -1957,6 +1975,43 @@ app.post('/api/admin/orders', checkAdminAuth, async (req, res) => {
     [orderId, sessionId, session.project_id, req.admin.id, totalAmount, JSON.stringify(normalizedItems), JSON.stringify(invoice)]
   );
   res.status(201).json({ success: true, order: created.rows[0] });
+});
+
+// Fast test endpoint requested for the first billing integration demo.
+// It is intentionally staff-only; the customer portal can only read the order.
+app.post('/samplebill', checkAdminAuth, async (req, res) => {
+  const sessionId = String(req.body?.sessionId || '').trim();
+  if (!sessionId) return res.status(400).json({ error: 'Cần sessionId của cuộc chat.' });
+  const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1 AND status = $2', [sessionId, 'active']);
+  const session = sessionRes.rows[0];
+  if (!session) return res.status(404).json({ error: 'Phiên chat không hoạt động.' });
+  if (!canAccessProject(req.admin, session.project_id)) return res.status(403).json({ error: 'Bạn không có quyền tạo bill cho project này.' });
+
+  const items = [{ name: 'Nước suối', quantity: 2, unitPrice: 10000, lineTotal: 20000 }];
+  const orderId = randomUUID();
+  const invoice = buildSampleInvoice(orderId, session, items, 20000);
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const orderRes = await client.query(
+      `INSERT INTO chat_orders (id, session_id, project_id, created_by_admin_id, total_amount, items, invoice)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [orderId, sessionId, session.project_id, req.admin.id, 20000, JSON.stringify(items), JSON.stringify(invoice)]
+    );
+    const messageRes = await client.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id)
+       VALUES ($1, 'agent', $2, $2, 'vi', $3) RETURNING *`,
+      [sessionId, `Hóa đơn mẫu ${invoice.invoiceNo}: 2 chai nước suối — tổng thanh toán ${formatVnd(20000)}. Vui lòng chọn phương thức thanh toán.`, req.admin.id]
+    );
+    await client.query('COMMIT');
+    res.status(201).json({ success: true, order: orderRes.rows[0], chatMessage: messageRes.rows[0] });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Create sample bill error:', error);
+    res.status(500).json({ error: 'Không thể tạo hóa đơn mẫu.' });
+  } finally {
+    client.release();
+  }
 });
 
 // Integration hand-off: a future POS/billing service can replace the sample
