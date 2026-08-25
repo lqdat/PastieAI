@@ -147,11 +147,13 @@ setInterval(() => {
 
 // QR Concierge visitor slots are intentionally short-lived. The database is
 // authoritative, so expiry also works if the browser is closed or refreshed.
+// Hết phiên QR (hết giờ hoặc bị quét đè) => xóa hẳn cuộc chat luôn (messages bị
+// xóa theo nhờ ON DELETE CASCADE), không chỉ chuyển sang trạng thái 'closed'.
 setInterval(() => {
-  db.query(`UPDATE sessions SET status = 'closed'
+  db.query(`DELETE FROM sessions
             WHERE qr_account_id IS NOT NULL AND status = 'active'
               AND expires_at IS NOT NULL AND expires_at <= NOW()`)
-    .catch((error) => console.error('[QR Concierge] Không thể đóng session hết hạn:', error.message));
+    .catch((error) => console.error('[QR Concierge] Không thể xóa session hết hạn:', error.message));
 }, 60 * 1000);
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -479,16 +481,17 @@ async function resolveQrChatAccount(projectId, qrCode, queryRunner = db) {
 async function closeActiveQrSession(qrAccountId, queryRunner = db) {
   // One QR represents one reception slot. A new scan immediately releases the
   // previous customer so the assigned agent only has the latest conversation.
+  // Xóa hẳn cuộc chat cũ (không chỉ đóng) — messages xóa theo nhờ ON DELETE CASCADE.
   await queryRunner.query(
-    `UPDATE sessions SET status = 'closed'
-      WHERE qr_account_id = $1 AND status = 'active'`,
+    `DELETE FROM sessions WHERE qr_account_id = $1 AND status = 'active'`,
     [qrAccountId]
   );
 }
 
 async function expireQrSessionIfNeeded(session, queryRunner = db) {
   if (session?.status === 'active' && session.qr_account_id && session.expires_at && new Date(session.expires_at) <= new Date()) {
-    await queryRunner.query(`UPDATE sessions SET status = 'closed' WHERE id = $1 AND status = 'active'`, [session.id]);
+    // Hết giờ phiên QR => xóa hẳn cuộc chat (cascade xóa messages), không chỉ đóng.
+    await queryRunner.query(`DELETE FROM sessions WHERE id = $1 AND status = 'active'`, [session.id]);
     session.status = 'closed';
   }
   return session;
