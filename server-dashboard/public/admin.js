@@ -2261,6 +2261,9 @@ document.getElementById('push-modal-confirm')?.addEventListener('click', () => {
         if (button) { button.disabled = false; button.innerHTML = '<i class="ri-notification-3-fill"></i> Bật thông báo ngay'; }
     });
 });
+document.getElementById('push-modal-skip')?.addEventListener('click', () => {
+    closePushPermissionModal();
+});
 
 // Quản lý dự án: nút thêm + Enter
 const projectAddBtn = document.getElementById('project-add-btn');
