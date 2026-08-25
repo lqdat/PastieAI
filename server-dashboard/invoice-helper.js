@@ -375,6 +375,134 @@ function createPdfFromHtml(invoice, language) {
 // - POS đã cung cấp sẵn pdfUrl/pngUrl/imageUrl => dùng nguyên, không sinh lại.
 // - Có items (JSON đủ trường) => vẽ hóa đơn có cấu trúc.
 // - Chỉ có HTML => sinh PDF từ nội dung HTML.
+
+// ── Bản xem trước SVG ───────────────────────────────────────────────────────
+// Vì sao có thêm SVG bên cạnh PDF: PDF nhúng thẳng vào khung chat rất kém tin
+// cậy trên điện thoại (iOS Safari thường hiện trắng), mà khách QR chủ yếu dùng
+// điện thoại. SVG co giãn theo chiều ngang khung chứa nên không bao giờ phải
+// lăn ngang, chạy được trên mọi máy, và chữ dùng font của chính trình duyệt
+// khách — nên tiếng Việt/Hàn/Trung đều hiện đúng, không phụ thuộc font máy chủ.
+// PDF vẫn giữ nguyên để bấm vào xem/tải.
+const escapeXml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[char]
+));
+
+// Ước lượng bề rộng chữ để cắt bớt tên hàng quá dài (SVG không tự xuống dòng).
+// Chữ CJK rộng gần gấp đôi chữ Latin nên phải tính riêng.
+function approximateTextWidth(text, fontSize) {
+  let units = 0;
+  for (const char of String(text)) {
+    units += /[\u1100-\u11FF\u2E80-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/.test(char) ? 1 : 0.52;
+  }
+  return units * fontSize;
+}
+
+function truncateToWidth(text, fontSize, maxWidth) {
+  const value = String(text ?? '');
+  if (approximateTextWidth(value, fontSize) <= maxWidth) return value;
+  let result = '';
+  for (const char of value) {
+    if (approximateTextWidth(result + char + '…', fontSize) > maxWidth) break;
+    result += char;
+  }
+  return result + '…';
+}
+
+function createInvoiceSvg(invoice, language) {
+  const code = normalizeLanguage(language);
+  const copy = dictionary(code);
+  const data = buildInvoiceData(invoice, code);
+  const money = (value) => formatMoney(value, data.currency, code);
+
+  const W = 620;
+  const PAD = 26;
+  const innerWidth = W - PAD * 2;
+  const hasDiscount = data.items.some((item) => item.discount > 0) || data.totalDiscount > 0;
+
+  const colTotalW = 104;
+  const colDiscountW = hasDiscount ? 84 : 0;
+  const colQtyW = 44;
+  const colPriceW = 96;
+  const colNameW = innerWidth - colPriceW - colQtyW - colDiscountW - colTotalW;
+  const xName = PAD;
+  const xPriceEnd = xName + colNameW + colPriceW;
+  const xQtyEnd = xPriceEnd + colQtyW;
+  const xDiscountEnd = xQtyEnd + colDiscountW;
+  const xTotalEnd = xDiscountEnd + colTotalW;
+
+  const parts = [];
+  const text = (content, x, y, options = {}) => {
+    const anchor = options.anchor ? ` text-anchor="${options.anchor}"` : '';
+    const weight = options.weight ? ` font-weight="${options.weight}"` : '';
+    const size = options.size || 13;
+    const fill = options.fill || '#2d2335';
+    parts.push(`<text x="${x}" y="${y}" font-size="${size}" fill="${fill}"${weight}${anchor}>${escapeXml(content)}</text>`);
+  };
+  const line = (y) => parts.push(`<line x1="${PAD}" y1="${y}" x2="${W - PAD}" y2="${y}" stroke="#e6cede" stroke-width="1"/>`);
+
+  let y = 44;
+  text(copy.title, W / 2, y, { size: 20, weight: 700, fill: '#b20c69', anchor: 'middle' });
+  y += 22;
+  if (data.invoiceNo) { text(data.invoiceNo, W / 2, y, { size: 13, fill: '#6b5c69', anchor: 'middle' }); y += 20; }
+  else y += 4;
+
+  const infoLine = (label, value) => {
+    if (!value) return;
+    text(`${label}: ${value}`, PAD, y, { size: 12, fill: '#3d3044' });
+    y += 18;
+  };
+  infoLine(copy.date, formatIssuedAt(data.issuedAt, code));
+  infoLine(copy.customer, data.buyerName);
+  infoLine(copy.phone, data.buyerPhone);
+  infoLine(copy.address, data.buyerAddress);
+
+  y += 6; line(y); y += 20;
+
+  text(copy.item, xName, y, { size: 11.5, weight: 700, fill: '#7a2a5c' });
+  text(copy.unitPrice, xPriceEnd, y, { size: 11.5, weight: 700, fill: '#7a2a5c', anchor: 'end' });
+  text(copy.quantity, xQtyEnd, y, { size: 11.5, weight: 700, fill: '#7a2a5c', anchor: 'end' });
+  if (hasDiscount) text(copy.discount, xDiscountEnd, y, { size: 11.5, weight: 700, fill: '#7a2a5c', anchor: 'end' });
+  text(copy.lineTotal, xTotalEnd, y, { size: 11.5, weight: 700, fill: '#7a2a5c', anchor: 'end' });
+  y += 8; line(y); y += 20;
+
+  data.items.forEach((item) => {
+    text(truncateToWidth(item.name, 12.5, colNameW - 8), xName, y, { size: 12.5 });
+    text(money(item.unitPrice), xPriceEnd, y, { size: 12.5, anchor: 'end' });
+    text(String(item.quantity), xQtyEnd, y, { size: 12.5, anchor: 'end' });
+    if (hasDiscount) text(item.discount ? money(item.discount) : '—', xDiscountEnd, y, { size: 12.5, anchor: 'end' });
+    text(money(item.lineTotal), xTotalEnd, y, { size: 12.5, anchor: 'end' });
+    y += 22;
+  });
+
+  y -= 4; line(y); y += 24;
+
+  const summary = (label, value, options = {}) => {
+    const size = options.bold ? 15 : 12.5;
+    const fill = options.bold ? '#b20c69' : '#4a3f52';
+    text(label, xDiscountEnd, y, { size, weight: options.bold ? 700 : 400, fill, anchor: 'end' });
+    text(value, xTotalEnd, y, { size, weight: options.bold ? 700 : 400, fill, anchor: 'end' });
+    y += options.bold ? 26 : 20;
+  };
+  summary(copy.subtotal, money(data.subtotal));
+  if (data.totalDiscount > 0) summary(copy.totalDiscount, `- ${money(data.totalDiscount)}`);
+  summary(copy.grandTotal, money(data.totalAmount), { bold: true });
+  if (data.paymentMethod) summary(copy.paymentMethod, paymentMethodLabel(data.paymentMethod, code));
+
+  y += 8;
+  text(copy.thanks, W / 2, y, { size: 13, weight: 700, fill: '#b20c69', anchor: 'middle' });
+  y += 18;
+  text(copy.note, W / 2, y, { size: 10, fill: '#9b8d9c', anchor: 'middle' });
+  y += 22;
+
+  const H = Math.round(y);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="'Be Vietnam Pro',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif"><rect x="0" y="0" width="${W}" height="${H}" rx="16" fill="#ffffff"/><rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="16" fill="none" stroke="#f0cde0"/>${parts.join('')}</svg>`;
+}
+
+function createInvoiceSvgDataUrl(invoice, language) {
+  const svg = createInvoiceSvg(invoice, language);
+  return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
+}
+
 async function prepareInvoiceDelivery(invoice, language = 'vi') {
   const source = invoice && typeof invoice === 'object' ? invoice : {};
 
@@ -383,13 +511,20 @@ async function prepareInvoiceDelivery(invoice, language = 'vi') {
     return { ...source, renderType, generated: false };
   }
 
+  // Bản xem trước hiển thị ngay trong khung chat (co giãn theo bề ngang).
+  let svgDataUrl = null;
+  if (hasStructuredFields(source)) {
+    try { svgDataUrl = createInvoiceSvgDataUrl(source, language); }
+    catch (error) { console.error('[Invoice] Không thể sinh bản xem trước SVG:', error.message); }
+  }
+
   const render = (lang) => (hasStructuredFields(source)
     ? createInvoicePdfDataUrl(source, lang)
     : createPdfFromHtml(source, lang));
 
   try {
     const pdfDataUrl = await render(language);
-    return { ...source, pdfDataUrl, renderType: 'pdf', generated: true, renderedLanguage: normalizeLanguage(language) };
+    return { ...source, pdfDataUrl, svgDataUrl, renderType: 'pdf', generated: true, renderedLanguage: normalizeLanguage(language) };
   } catch (error) {
     console.error('[Invoice] Không thể sinh PDF:', error.message);
   }
@@ -399,13 +534,13 @@ async function prepareInvoiceDelivery(invoice, language = 'vi') {
   if (normalizeLanguage(language) !== 'en') {
     try {
       const pdfDataUrl = await render('en');
-      return { ...source, pdfDataUrl, renderType: 'pdf', generated: true, renderedLanguage: 'en', languageFallback: true };
+      return { ...source, pdfDataUrl, svgDataUrl, renderType: 'pdf', generated: true, renderedLanguage: 'en', languageFallback: true };
     } catch (error) {
       console.error('[Invoice] PDF tiếng Anh dự phòng cũng lỗi:', error.message);
     }
   }
 
-  return { ...source, renderType: 'html', generated: false };
+  return { ...source, svgDataUrl, renderType: 'html', generated: false };
 }
 
 module.exports = {
@@ -419,5 +554,7 @@ module.exports = {
   normalizeInvoiceItems,
   buildInvoiceData,
   createInvoicePdfDataUrl,
+  createInvoiceSvg,
+  createInvoiceSvgDataUrl,
   prepareInvoiceDelivery,
 };
