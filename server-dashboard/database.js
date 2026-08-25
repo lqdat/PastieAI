@@ -136,6 +136,28 @@ async function initializeDatabase() {
       );
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_qr_chat_accounts_project_owner ON qr_chat_accounts(project_id, owner_admin_id);`);
+    // One customer-facing QR is allowed per agent. Keep legacy rows for any
+    // historical sessions, but deactivate duplicate QR codes before enforcing
+    // the rule and never show them in the admin UI.
+    await query(`
+      WITH ranked_qr AS (
+        SELECT id, ROW_NUMBER() OVER (
+          PARTITION BY project_id, owner_admin_id
+          ORDER BY created_at DESC, id DESC
+        ) AS row_number
+        FROM qr_chat_accounts
+        WHERE is_active = TRUE
+      )
+      UPDATE qr_chat_accounts AS q
+         SET is_active = FALSE
+        FROM ranked_qr AS ranked
+       WHERE q.id = ranked.id AND ranked.row_number > 1;
+    `);
+    await query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_qr_chat_accounts_one_active_per_agent
+        ON qr_chat_accounts(project_id, owner_admin_id)
+        WHERE is_active = TRUE;
+    `);
     await query(`CREATE INDEX IF NOT EXISTS idx_sessions_qr_active ON sessions(qr_account_id, status);`);
 
     await query(`

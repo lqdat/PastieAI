@@ -2312,8 +2312,8 @@ app.post('/api/qr-chat/google', async (req, res) => {
   }
 });
 
-// QR Concierge account management. Each generated code has exactly one owner
-// agent; its public URL can be turned into a QR image by any QR generator.
+// QR Concierge account management. Each agent has exactly one active customer
+// QR. Legacy QR rows may be retained for session history but are never shown.
 app.get('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
   const projectId = String(req.query.projectId || 'qr-concierge');
   if (!canAccessProject(req.admin, projectId)) return res.status(403).json({ error: 'Bạn không có quyền xem QR của project này.' });
@@ -2321,7 +2321,7 @@ app.get('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
   const result = await db.query(
     `SELECT q.id, q.code, q.label, q.is_active, q.created_at, a.id AS owner_admin_id, a.full_name AS owner_name
        FROM qr_chat_accounts q JOIN admins a ON a.id = q.owner_admin_id
-      WHERE q.project_id = $1 ${onlyOwner ? 'AND q.owner_admin_id = $2' : ''}
+      WHERE q.project_id = $1 AND q.is_active = TRUE ${onlyOwner ? 'AND q.owner_admin_id = $2' : ''}
       ORDER BY q.created_at DESC`,
     onlyOwner ? [projectId, req.admin.id] : [projectId]
   );
@@ -2336,6 +2336,17 @@ app.post('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
   if (!project.rows[0]) return res.status(400).json({ error: 'Project này không phải QR Concierge.' });
   const owner = await db.query(`SELECT id, project_id, is_active FROM admins WHERE id = $1`, [ownerAdminId]);
   if (!owner.rows[0] || !owner.rows[0].is_active || owner.rows[0].project_id !== projectId) return res.status(400).json({ error: 'Agent sở hữu QR không hợp lệ.' });
+
+  const existing = await db.query(
+    `SELECT * FROM qr_chat_accounts
+      WHERE project_id = $1 AND owner_admin_id = $2 AND is_active = TRUE
+      ORDER BY created_at DESC, id DESC LIMIT 1`,
+    [projectId, ownerAdminId]
+  );
+  if (existing.rows[0]) {
+    return res.json({ success: true, reused: true, account: existing.rows[0], chat_url: qrCustomerChatUrl(req, existing.rows[0].code) });
+  }
+
   const code = `qr_${randomUUID().replace(/-/g, '')}`;
   const created = await db.query(
     `INSERT INTO qr_chat_accounts (project_id, owner_admin_id, code, label) VALUES ($1, $2, $3, $4) RETURNING *`,

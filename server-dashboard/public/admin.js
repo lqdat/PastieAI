@@ -2871,8 +2871,9 @@ qrCreateBtn?.addEventListener('click', async () => {
     try {
         const res = await authFetch(`${API_BASE}/api/admin/qr-accounts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, ownerAdminId, label: `QR chat · ${qrOwnerSelect.options[qrOwnerSelect.selectedIndex].text}` }) });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Không thể tạo QR.');
+        if (!res.ok) throw new Error(data.error || 'Không thể lấy QR.');
         await refreshQrAccounts();
+        if (data.reused) alert('Agent này đã có một mã QR đang hoạt động. Đang hiển thị lại mã hiện có.');
     } catch (error) { alert(error.message); }
     finally { qrCreateBtn.disabled = false; }
 });
