@@ -731,6 +731,21 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r34"></script>
+    <div id="qr-preview-modal" class="modal-overlay hide" role="dialog" aria-modal="true" aria-labelledby="qr-preview-title">
+        <section class="qr-preview-dialog">
+            <button id="qr-preview-close-btn" class="icon-btn qr-preview-close" type="button" aria-label="Đóng"><i class="ri-close-line"></i></button>
+            <span class="account-section-kicker">QR CHAT</span>
+            <h2 id="qr-preview-title">Mã QR tiếp nhận chat</h2>
+            <p id="qr-preview-agent" class="qr-preview-agent"></p>
+            <div class="qr-preview-image-wrap"><img id="qr-preview-image" alt="Mã QR tiếp nhận chat"></div>
+            <p id="qr-preview-link" class="qr-preview-link"></p>
+            <div class="qr-preview-actions">
+                <button id="qr-preview-copy-btn" type="button" class="secondary-btn"><i class="ri-file-copy-line"></i> Sao chép link</button>
+                <a id="qr-preview-download-btn" class="primary-btn" target="_blank" rel="noopener"><i class="ri-download-2-line"></i> Tải QR</a>
+            </div>
+        </section>
+    </div>
+
+    <script src="admin.js?v=r35"></script>
 </body>
 </html>

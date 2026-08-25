@@ -2806,6 +2806,14 @@ const qrConciergePanel = document.getElementById('qr-concierge-panel');
 const qrOwnerSelect = document.getElementById('qr-owner-select');
 const qrCreateBtn = document.getElementById('qr-create-btn');
 const qrAccountList = document.getElementById('qr-account-list');
+const qrPreviewModal = document.getElementById('qr-preview-modal');
+const qrPreviewCloseBtn = document.getElementById('qr-preview-close-btn');
+const qrPreviewImage = document.getElementById('qr-preview-image');
+const qrPreviewTitle = document.getElementById('qr-preview-title');
+const qrPreviewAgent = document.getElementById('qr-preview-agent');
+const qrPreviewLink = document.getElementById('qr-preview-link');
+const qrPreviewCopyBtn = document.getElementById('qr-preview-copy-btn');
+const qrPreviewDownloadBtn = document.getElementById('qr-preview-download-btn');
 let adminMgmtUsers = [];
 
 function getAdminMgmtProjectId() {
@@ -2843,11 +2851,12 @@ async function refreshQrAccounts() {
             return;
         }
         qrAccountList.innerHTML = accounts.map(account => {
-            const imageUrl = `https://quickchart.io/qr?size=180&text=${encodeURIComponent(account.chat_url)}`;
+            const imageUrl = `https://quickchart.io/qr?size=360&text=${encodeURIComponent(account.chat_url)}`;
+            const eventValue = (value) => encodeURIComponent(value).replace(/'/g, '%27');
             return `<article class="qr-account-card">
                 <img src="${imageUrl}" alt="QR chat của ${escapeHtml(account.owner_name)}" loading="lazy">
                 <div class="qr-account-info"><strong>${escapeHtml(account.label)}</strong><span><i class="ri-user-3-line"></i> ${escapeHtml(account.owner_name)}</span><small>${escapeHtml(account.chat_url)}</small></div>
-                <div class="qr-account-actions"><button type="button" onclick="window.copyQrChatLink('${account.chat_url}')"><i class="ri-file-copy-line"></i> Sao chép</button><a href="${imageUrl}" target="_blank" rel="noopener"><i class="ri-download-2-line"></i> Mở QR</a></div>
+                <div class="qr-account-actions"><button type="button" onclick="window.copyQrChatLink('${eventValue(account.chat_url)}', true)"><i class="ri-file-copy-line"></i> Sao chép</button><button type="button" onclick="window.openQrPreview('${eventValue(imageUrl)}', '${eventValue(account.label)}', '${eventValue(account.owner_name)}', '${eventValue(account.chat_url)}')"><i class="ri-zoom-in-line"></i> Mở QR</button></div>
             </article>`;
         }).join('');
     } catch (error) {
@@ -2855,10 +2864,39 @@ async function refreshQrAccounts() {
     }
 }
 
-window.copyQrChatLink = async (url) => {
-    try { await navigator.clipboard.writeText(url); alert('Đã sao chép link QR.'); }
-    catch { window.prompt('Sao chép link QR:', url); }
+window.copyQrChatLink = async (url, isEncoded = false) => {
+    const link = isEncoded ? decodeURIComponent(url) : url;
+    try { await navigator.clipboard.writeText(link); alert('Đã sao chép link QR.'); }
+    catch { window.prompt('Sao chép link QR:', link); }
 };
+
+window.openQrPreview = (encodedImageUrl, encodedLabel, encodedOwner, encodedChatUrl) => {
+    const imageUrl = decodeURIComponent(encodedImageUrl);
+    const label = decodeURIComponent(encodedLabel);
+    const owner = decodeURIComponent(encodedOwner);
+    const chatUrl = decodeURIComponent(encodedChatUrl);
+    if (!qrPreviewModal) return;
+    qrPreviewTitle.textContent = label || 'Mã QR tiếp nhận chat';
+    qrPreviewAgent.textContent = owner ? `Agent phụ trách: ${owner}` : '';
+    qrPreviewImage.src = imageUrl;
+    qrPreviewLink.textContent = chatUrl;
+    qrPreviewDownloadBtn.href = imageUrl;
+    qrPreviewCopyBtn.onclick = () => window.copyQrChatLink(chatUrl);
+    qrPreviewModal.classList.remove('hide');
+};
+
+function closeQrPreview() {
+    qrPreviewModal?.classList.add('hide');
+    if (qrPreviewImage) qrPreviewImage.removeAttribute('src');
+}
+
+qrPreviewCloseBtn?.addEventListener('click', closeQrPreview);
+qrPreviewModal?.addEventListener('click', (event) => {
+    if (event.target === qrPreviewModal) closeQrPreview();
+});
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !qrPreviewModal?.classList.contains('hide')) closeQrPreview();
+});
 
 adminMgmtProjectSelect?.addEventListener('change', () => {
     loadAdminUsers();
