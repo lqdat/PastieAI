@@ -1829,6 +1829,10 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }) {
   // 1. Kiểm tra tài khoản trong bảng local `admins`
   const localAdminRes = await db.query('SELECT * FROM admins WHERE LOWER(username) = LOWER($1)', [cleanEmail]);
   const localAdmin = localAdminRes.rows[0];
+  // Accounts provisioned for a non-DealPhuQuoc project are managed locally.
+  // Their email may also exist in DealPhuQuoc, but that must not override the
+  // project membership or require DealPhuQuoc chatAccess.
+  const isLocalProjectAccount = Boolean(localAdmin?.project_id && localAdmin.project_id !== 'dealphuquoc');
   if (localAdmin && localAdmin.role === 'superadmin') {
     isSuperAdminUser = true;
     determinedRole = 'superadmin';
@@ -1837,7 +1841,12 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }) {
   }
 
   // 2. Tra cứu đối soát với Database DealPhuQuoc
-  if (process.env.DEALPHUQUOC_DATABASE_URL) {
+  if (isLocalProjectAccount) {
+    determinedRole = localAdmin.role;
+    determinedProjectId = localAdmin.project_id;
+    determinedFullName = localAdmin.full_name || determinedFullName;
+    determinedAvatar = localAdmin.avatar_url || determinedAvatar;
+  } else if (process.env.DEALPHUQUOC_DATABASE_URL) {
     try {
       const dealPool = dealSync.getDealPool();
       const dealUserRes = await dealPool.query(
@@ -1987,7 +1996,11 @@ app.post('/api/admin/auth/otp/send', async (req, res) => {
   try {
     // Pre-check permissions before sending OTP
     let userName = cleanEmail.split('@')[0];
-    if (process.env.DEALPHUQUOC_DATABASE_URL) {
+    const localCheck = (await db.query('SELECT * FROM admins WHERE LOWER(username) = LOWER($1)', [cleanEmail])).rows[0];
+    const isLocalProjectAccount = Boolean(localCheck?.project_id && localCheck.project_id !== 'dealphuquoc');
+    if (isLocalProjectAccount) {
+      userName = localCheck.full_name || userName;
+    } else if (process.env.DEALPHUQUOC_DATABASE_URL) {
       try {
         const dealPool = dealSync.getDealPool();
         const dealUserRes = await dealPool.query(
@@ -2007,11 +2020,10 @@ app.post('/api/admin/auth/otp/send', async (req, res) => {
           if (u.name) userName = u.name;
         } else {
           // Check local admins
-          const localCheck = await db.query('SELECT * FROM admins WHERE LOWER(username) = LOWER($1)', [cleanEmail]);
-          if (localCheck.rows.length === 0) {
+          if (!localCheck) {
             return res.status(403).json({ error: 'Tài khoản email này chưa được cấp quyền trên DealPhuQuoc hoặc Pastie AI.' });
           }
-          if (localCheck.rows[0].full_name) userName = localCheck.rows[0].full_name;
+          if (localCheck.full_name) userName = localCheck.full_name;
         }
       } catch (checkErr) {
         console.warn('[AdminOTP] Pre-check failed:', checkErr.message);
