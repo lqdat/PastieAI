@@ -820,7 +820,7 @@ app.post('/api/otp/verify', async (req, res) => {
     if (qrAccount) await closeActiveQrSession(qrAccount.id);
     await db.query(
       `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id, qr_account_id, expires_at)
-       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8, $9, $10, $11, $12)`,
+       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8, $9, $10, $11)`,
       [sessionId, projectId, finalName, email, finalLang, browser, device, clientIp, assignedAdminId, qrAccount?.id || null, qrAccount ? new Date(Date.now() + QR_CHAT_SESSION_MS) : null]
     );
 
