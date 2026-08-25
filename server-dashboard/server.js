@@ -13,6 +13,7 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 const PDFDocument = require('pdfkit');
 const dealSync = require('./deal-sync');
+const invoiceHelper = require('./invoice-helper');
 const multer = require('multer');
 const s3 = require('./s3-helper');
 
@@ -2120,51 +2121,26 @@ const PAYMENT_METHODS = new Set(['cash', 'bank_qr', 'card']);
 const escapeInvoiceHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const formatVnd = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} ₫`;
 
-function htmlToPlainText(html) {
-  return String(html || '')
-    .replace(/<\/(p|div|h[1-6]|tr|li|br)\s*>/gi, '\n')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/\s+\n/g, '\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
-}
+// htmlToPlainText / prepareInvoiceDelivery / sinh PDF đã chuyển sang
+// ./invoice-helper.js để hóa đơn được vẽ lại theo đúng ngôn ngữ khách chọn.
+const htmlToPlainText = invoiceHelper.htmlToPlainText;
+const prepareInvoiceDelivery = invoiceHelper.prepareInvoiceDelivery;
 
-// The generated PDF is carried as a data URL for the test flow, avoiding
-// filesystem persistence on Railway. A production bill service can instead
-// provide pdfUrl (or a storage URL) and it is returned unchanged.
-function createPdfDataUrlFromInvoice(invoice) {
-  if (invoice.pdfUrl || invoice.pdfDataUrl) return Promise.resolve(invoice);
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    const document = new PDFDocument({ size: 'A4', margin: 48, info: { Title: invoice.invoiceNo || 'Pastie Bill' } });
-    document.on('data', (chunk) => chunks.push(chunk));
-    document.on('error', reject);
-    document.on('end', () => resolve({ ...invoice, pdfDataUrl: `data:application/pdf;base64,${Buffer.concat(chunks).toString('base64')}` }));
-    document.fontSize(20).fillColor('#b20c69').text(`Invoice ${invoice.invoiceNo || ''}`.trim());
-    document.moveDown(0.6).fontSize(11).fillColor('#222');
-    const lines = htmlToPlainText(invoice.html || '').split('\n').filter(Boolean);
-    (lines.length ? lines : [JSON.stringify(invoice)]).forEach((line) => document.text(line, { width: 498 }));
-    document.moveDown().fontSize(14).fillColor('#b20c69').text(`Total: ${formatVnd(invoice.totalAmount)}`);
-    document.end();
-  });
-}
-
-async function prepareInvoiceDelivery(invoice) {
-  const prepared = await createPdfDataUrlFromInvoice(invoice);
-  if (prepared.pngUrl || prepared.imageUrl || prepared.imageDataUrl) return { ...prepared, renderType: 'image' };
-  if (prepared.pdfUrl || prepared.pdfDataUrl) return { ...prepared, renderType: 'pdf' };
-  return { ...prepared, renderType: 'html' };
+// Ngôn ngữ dùng để vẽ hóa đơn cho khách: ưu tiên ngôn ngữ khách đang chọn ở
+// portal (query ?lang=), sau đó tới ngôn ngữ phát hiện được của phiên chat.
+function invoiceLanguageFor(session, requestedLanguage) {
+  return invoiceHelper.normalizeLanguage(requestedLanguage || session?.detected_language || 'vi');
 }
 
 function buildSampleInvoice(orderId, session, items, totalAmount) {
   const invoiceNo = `BILL-${orderId.slice(0, 8).toUpperCase()}`;
   const rows = items.map((item) => `<tr><td>${escapeInvoiceHtml(item.name)}</td><td>${item.quantity}</td><td>${formatVnd(item.unitPrice)}</td><td>${formatVnd(item.lineTotal)}</td></tr>`).join('');
+  // Dữ liệu lưu vào DB là JSON có cấu trúc (items/tổng tiền) — PDF chỉ được vẽ
+  // lúc khách mở hóa đơn, theo ngôn ngữ khách, nên KHÔNG lưu PDF ở đây.
   return {
-    version: '1.0', invoiceNo, issuedAt: new Date().toISOString(), buyerName: session.visitor_name || 'Khách hàng',
+    version: '1.0', invoiceNo, issuedAt: new Date().toISOString(),
+    buyerName: session.visitor_name || 'Khách hàng',
+    buyerPhone: session.visitor_phone || '',
     items, totalAmount, currency: 'VND',
     html: `<article class="pastie-bill"><h2>Hóa đơn ${invoiceNo}</h2><p>Khách hàng: ${escapeInvoiceHtml(session.visitor_name || 'Khách hàng')}</p><table><thead><tr><th>Sản phẩm</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody></table><h3>Tổng cộng: ${formatVnd(totalAmount)}</h3></article>`,
     pngUrl: null, pdfUrl: null,
@@ -2199,7 +2175,8 @@ app.post('/api/admin/orders', checkAdminAuth, async (req, res) => {
   if (normalizedItems.some((item) => !item)) return res.status(400).json({ error: 'Sản phẩm cần có tên, số lượng và đơn giá hợp lệ.' });
   const totalAmount = normalizedItems.reduce((sum, item) => sum + item.lineTotal, 0);
   const orderId = randomUUID();
-  const invoice = await prepareInvoiceDelivery(buildSampleInvoice(orderId, session, normalizedItems, totalAmount));
+  // Lưu JSON có cấu trúc; PDF được vẽ lúc khách mở hóa đơn theo ngôn ngữ của khách.
+  const invoice = buildSampleInvoice(orderId, session, normalizedItems, totalAmount);
   const created = await db.query(
     `INSERT INTO chat_orders (id, session_id, project_id, created_by_admin_id, total_amount, items, invoice)
      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
@@ -2220,7 +2197,8 @@ app.post('/samplebill', checkAdminAuth, async (req, res) => {
 
   const items = [{ name: 'Nước suối', quantity: 2, unitPrice: 10000, lineTotal: 20000 }];
   const orderId = randomUUID();
-  const invoice = await prepareInvoiceDelivery(buildSampleInvoice(orderId, session, items, 20000));
+  // Lưu JSON có cấu trúc; PDF được vẽ lúc khách mở hóa đơn theo ngôn ngữ của khách.
+  const invoice = buildSampleInvoice(orderId, session, items, 20000);
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
@@ -2264,7 +2242,9 @@ app.put('/api/admin/orders/:orderId/invoice', checkAdminAuth, async (req, res) =
   if (!Number.isFinite(nextTotal) || nextTotal < 0) return res.status(400).json({ error: 'totalAmount không hợp lệ.' });
   const nextItems = items === undefined ? order.items : items;
   if (!Array.isArray(nextItems)) return res.status(400).json({ error: 'items phải là mảng nếu được gửi.' });
-  const preparedInvoice = await prepareInvoiceDelivery(invoice);
+  // Giữ nguyên payload POS gửi sang (kể cả pdfUrl/pngUrl). Nếu POS chỉ gửi
+  // HTML/JSON thì PDF sẽ được sinh lúc khách mở hóa đơn, theo ngôn ngữ khách.
+  const preparedInvoice = invoice;
   const updated = await db.query(
     `UPDATE chat_orders SET invoice = $1, items = $2, total_amount = $3, updated_at = NOW()
       WHERE id = $4 RETURNING *`,
@@ -2273,11 +2253,22 @@ app.put('/api/admin/orders/:orderId/invoice', checkAdminAuth, async (req, res) =
   res.json({ success: true, order: updated.rows[0] });
 });
 
-// Customer portal polls this endpoint and renders `order.invoice` as JSON/HTML or a future PNG/PDF URL.
+// Customer portal polls this endpoint. Hóa đơn được vẽ lại thành PDF theo đúng
+// ngôn ngữ khách đang chọn (?lang=), nên đổi ngôn ngữ là hóa đơn đổi theo.
 app.get('/api/chats/:sessionId/order', async (req, res) => {
   const order = await getChatOrderForVisitor(req.params.sessionId);
   if (!order) return res.status(404).json({ error: 'Chưa có đơn hàng đang hoạt động.' });
-  res.json({ order, paymentMethods: ['cash', 'bank_qr', 'card'] });
+
+  const sessionRes = await db.query('SELECT detected_language FROM sessions WHERE id = $1', [req.params.sessionId]);
+  const language = invoiceLanguageFor(sessionRes.rows[0], req.query.lang);
+  const invoice = await prepareInvoiceDelivery(order.invoice || {}, language);
+
+  res.json({
+    order: { ...order, invoice },
+    paymentMethods: ['cash', 'bank_qr', 'card'],
+    paymentMethodLabels: invoiceHelper.PAYMENT_METHOD_I18N[language] || invoiceHelper.PAYMENT_METHOD_I18N.vi,
+    language,
+  });
 });
 
 app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
@@ -2286,6 +2277,29 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
   const order = await getChatOrderForVisitor(req.params.sessionId);
   if (!order || order.status !== 'awaiting_payment') return res.status(409).json({ error: 'Đơn hàng không ở trạng thái chờ thanh toán.' });
   const updated = await db.query('UPDATE chat_orders SET payment_method = $1, updated_at = NOW() WHERE id = $2 RETURNING *', [method, order.id]);
+
+  // Báo cho Agent biết khách đã chọn phương thức nào: ghi thẳng vào cuộc chat
+  // (tiếng Việt để Agent đọc ngay; khách vẫn thấy bản dịch theo ngôn ngữ họ chọn)
+  // và bắn thông báo đẩy như một tin nhắn đến bình thường.
+  try {
+    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [req.params.sessionId]);
+    const session = sessionRes.rows[0];
+    const label = invoiceHelper.paymentMethodLabel(method, 'vi');
+    const text = `[Thanh toán] Khách đã chọn phương thức: ${label}.`;
+    await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+       VALUES ($1, 'system', $2, $2, 'vi')`,
+      [req.params.sessionId, text]
+    );
+    if (session) {
+      void notifyAgentMessage(session, text);
+      await extendQrSessionOnActivity(session);
+    }
+  } catch (error) {
+    // Ghi chú cho Agent là việc phụ — không được làm hỏng thao tác chọn thanh toán của khách.
+    console.error('[Order] Không thể ghi tin nhắn phương thức thanh toán:', error.message);
+  }
+
   res.json({ success: true, order: updated.rows[0] });
 });
 

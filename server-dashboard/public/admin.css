@@ -469,6 +469,30 @@ button {
     border-color: rgba(124, 58, 237, 0.5);
     background: rgba(124, 58, 237, 0.07);
 }
+/* Nút thông báo: màu đổi theo trạng thái quyền của trình duyệt */
+.header-quick-btn-push i { color: #f59e0b; }
+.header-quick-btn-push:hover {
+    border-color: rgba(245, 158, 11, 0.5);
+    background: rgba(245, 158, 11, 0.08);
+}
+.header-quick-btn-push.is-enabled i { color: #10b981; }
+.header-quick-btn-push.is-enabled {
+    border-color: rgba(16, 185, 129, 0.35);
+    background: rgba(16, 185, 129, 0.07);
+}
+.header-quick-btn-push.is-enabled:hover {
+    border-color: rgba(16, 185, 129, 0.55);
+    background: rgba(16, 185, 129, 0.12);
+}
+.header-quick-btn-push.is-blocked i { color: #ef4444; }
+.header-quick-btn-push.is-blocked {
+    border-color: rgba(239, 68, 68, 0.35);
+    background: rgba(239, 68, 68, 0.06);
+}
+.header-quick-btn-push.is-blocked:hover {
+    border-color: rgba(239, 68, 68, 0.55);
+    background: rgba(239, 68, 68, 0.11);
+}
 
 .project-selector {
     display: flex;

@@ -806,6 +806,7 @@ if (inIframe) {
     const hidePushUI = () => {
         document.getElementById('push-permission-modal')?.classList.add('hide');
         document.getElementById('enable-push-btn')?.classList.add('hide');
+        document.getElementById('agent-push-btn')?.classList.add('hide');
     };
     hidePushUI();
     document.addEventListener('DOMContentLoaded', hidePushUI);
@@ -814,6 +815,24 @@ if (inIframe) {
 }
 
 function setPushButtonState(state) {
+    // Nút riêng trên header (Agent) — trạng thái luôn khớp với mục trong menu Cài đặt.
+    const headerLabel = document.getElementById('agent-push-label');
+    const headerIcon = document.getElementById('agent-push-icon');
+    const headerBtn = document.getElementById('agent-push-btn');
+    if (headerLabel && headerIcon && headerBtn) {
+        const headerStates = {
+            enabled:     { text: 'Thông báo đã bật',   icon: 'ri-notification-3-fill', title: 'Thiết bị này sẽ nhận chat cần Agent', cls: 'is-enabled' },
+            blocked:     { text: 'Thông báo bị chặn',  icon: 'ri-notification-off-line', title: 'Mở quyền Thông báo trong cài đặt trình duyệt', cls: 'is-blocked' },
+            unavailable: { text: 'Push chưa cấu hình', icon: 'ri-notification-off-line', title: 'Liên hệ quản trị hệ thống để bật VAPID', cls: 'is-blocked' },
+        };
+        const cfg = headerStates[state] || { text: 'Bật thông báo', icon: 'ri-notification-3-line', title: 'Nhận chat mới ngay cả khi đã đóng app', cls: '' };
+        headerLabel.textContent = cfg.text;
+        headerIcon.className = cfg.icon;
+        headerBtn.title = cfg.title;
+        headerBtn.classList.remove('is-enabled', 'is-blocked');
+        if (cfg.cls) headerBtn.classList.add(cfg.cls);
+    }
+
     const label = document.getElementById('enable-push-label');
     const description = document.getElementById('enable-push-description');
     if (!label || !description) return;
@@ -1179,6 +1198,12 @@ function updateAgentHeaderUI() {
     // Chỉ hiện nút "Mã QR" khi dự án của Agent thực sự là QR Concierge.
     const hasQr = isAgentRole && isQrConciergeProject(CURRENT_ADMIN.project_id);
     document.getElementById('agent-qr-btn')?.classList.toggle('hide', !hasQr);
+
+    // Agent không còn mục nào trong menu Cài đặt (mọi thứ đã tách ra nút riêng),
+    // nên bỏ hẳn menu và đưa nút thông báo ra ngoài header.
+    // Trong iframe thì quyền thông báo do trang cha xin, hidePushUI() sẽ ẩn nút này.
+    document.getElementById('settings-dropdown-wrapper')?.classList.toggle('hide', isAgentRole);
+    document.getElementById('agent-push-btn')?.classList.toggle('hide', !isAgentRole || inIframe);
 
     if (isAgentRole) document.getElementById('manage-admins-btn')?.classList.add('hide');
 }
@@ -2365,7 +2390,9 @@ function renderAttachmentHtml(msg) {
 // Event Bindings
 const pushPermissionModal = document.getElementById('push-permission-modal');
 function closePushPermissionModal() { pushPermissionModal?.classList.add('hide'); }
-document.getElementById('enable-push-btn')?.addEventListener('click', () => {
+// Dùng chung cho mục "Bật thông báo" trong menu Cài đặt và nút thông báo riêng
+// trên header (Agent không có menu Cài đặt nên cần nút ngoài).
+function handleEnablePushClick() {
     document.getElementById('settings-dropdown-menu')?.classList.add('hide');
     // Nhúng trong iframe: KHÔNG mở popup của iframe (bị trình duyệt chặn), chỉ nhờ trang cha xin quyền.
     if (inIframe) { postToParent({ type: 'pastie-enable-notifications' }); return; }
@@ -2373,7 +2400,9 @@ document.getElementById('enable-push-btn')?.addEventListener('click', () => {
     if (supportIssue) { setPushModalMode(supportIssue); pushPermissionModal?.classList.remove('hide'); return; }
     if (Notification.permission === 'granted') return enablePushNotifications().then(closePushPermissionModal).catch(console.error);
     pushPermissionModal?.classList.remove('hide');
-});
+}
+document.getElementById('enable-push-btn')?.addEventListener('click', handleEnablePushClick);
+document.getElementById('agent-push-btn')?.addEventListener('click', handleEnablePushClick);
 document.getElementById('push-modal-confirm')?.addEventListener('click', () => {
     const button = document.getElementById('push-modal-confirm');
     const supportIssue = getPushSupportIssue();

@@ -23,6 +23,9 @@
     .result { display: none; padding-top: 0; } .result.show { display: block; } .status { padding: 12px; border-radius: 10px; font-size: 14px; } .ok { color: #157347; background: #e6f8ee; } .err { color: #a71936; background: #fff0f2; }
     pre { max-height: 300px; overflow: auto; margin: 16px 0 0; padding: 16px; color: #f7eaf3; font-size: 12px; line-height: 1.5; white-space: pre-wrap; border-radius: 12px; background: #271d2d; }
     a { display: inline-block; margin-top: 20px; color: #c51173; font-weight: 700; text-decoration: none; }
+      .card button.secondary{margin-top:10px;color:#17603f;background:#e9f9f1;border:1px solid #b9e6cf;box-shadow:none}
+    .card button.secondary:hover:not(:disabled){background:#d8f3e5}
+    .card button.secondary:disabled{opacity:.5;cursor:not-allowed}
   </style>
 </head>
 <body>
@@ -34,6 +37,7 @@
         <div class="field"><label for="sessionId">Session ID đã chọn</label><input id="sessionId" name="sessionId" required autocomplete="off" placeholder="Tự điền từ cuộc chat QR đang hoạt động"></div>
         <p class="hint">Đăng nhập dashboard trước. Hệ thống dùng phiên Agent/Admin hiện tại để tạo bill và gửi tin nhắn hóa đơn vào chat.</p>
         <button id="submit" type="submit">Tạo & gửi hóa đơn mẫu</button>
+        <button id="done" type="button" class="secondary" disabled>Done hóa đơn (xác nhận đã thanh toán)</button>
         <a href="/admin">← Quay về dashboard</a>
       </form>
       <section id="result" class="result" aria-live="polite"><div id="status" class="status"></div><pre id="payload"></pre></section>
@@ -55,11 +59,66 @@
         const chats = await response.json();
         const active = Array.isArray(chats) ? chats.filter((chat) => chat.status === 'active') : [];
         chatList.innerHTML = '<option value="">-- Chọn chat QR --</option>' + active.map((chat) => `<option value="${chat.id}">${(chat.visitor_name || chat.visitor_email || 'Khách hàng').replace(/</g, '')} · ${chat.id.slice(0, 8)}…</option>`).join('');
-        if (active.length) { chatList.value = active[0].id; sessionInput.value = active[0].id; }
+        if (active.length) { chatList.value = active[0].id; sessionInput.value = active[0].id; loadCurrentOrder(active[0].id); }
         else chatList.innerHTML = '<option value="">Không có chat QR đang hoạt động — hãy quét QR và đăng nhập lại</option>';
       } catch (_) { chatList.innerHTML = '<option value="">Không tải được danh sách chat QR</option>'; }
     }
-    chatList.addEventListener('change', () => { if (chatList.value) sessionInput.value = chatList.value; });
+    const doneButton = document.getElementById('done');
+    let currentOrderId = '';
+
+    function setCurrentOrder(orderId, statusText) {
+      currentOrderId = orderId || '';
+      doneButton.disabled = !currentOrderId;
+      doneButton.textContent = statusText || 'Done hóa đơn (xác nhận đã thanh toán)';
+    }
+
+    // Chọn chat nào thì tìm luôn hóa đơn đang chờ thanh toán của chat đó, để có
+    // thể bấm Done cho hóa đơn đã tạo từ trước mà không cần tạo lại.
+    async function loadCurrentOrder(sessionId) {
+      setCurrentOrder('');
+      if (!sessionId) return;
+      try {
+        const response = await fetch(`/api/chats/${encodeURIComponent(sessionId)}/order?_=${Date.now()}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        const order = data.order;
+        if (!order) return;
+        if (order.status === 'paid') setCurrentOrder('', 'Hóa đơn đã được xác nhận thanh toán');
+        else setCurrentOrder(order.id);
+      } catch (_) { /* không có hóa đơn thì thôi */ }
+    }
+
+    chatList.addEventListener('change', () => {
+      if (chatList.value) { sessionInput.value = chatList.value; loadCurrentOrder(chatList.value); }
+    });
+
+    doneButton.addEventListener('click', async () => {
+      if (!currentOrderId) return;
+      const token = localStorage.getItem('pastie_admin_token');
+      result.classList.add('show');
+      if (!token) {
+        status.className = 'status err';
+        status.textContent = 'Bạn chưa đăng nhập Dashboard. Vui lòng đăng nhập trước.';
+        return;
+      }
+      doneButton.disabled = true; doneButton.textContent = 'Đang xác nhận…';
+      try {
+        const response = await fetch(`/api/admin/orders/${encodeURIComponent(currentOrderId)}/received-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({})
+        });
+        const data = await response.json();
+        status.className = `status ${response.ok ? 'ok' : 'err'}`;
+        status.textContent = response.ok ? 'Đã xác nhận thanh toán. Khách sẽ thấy hóa đơn chuyển sang trạng thái đã thanh toán.' : (data.error || 'Không thể xác nhận thanh toán.');
+        payload.textContent = JSON.stringify(data, null, 2);
+        if (response.ok) setCurrentOrder('', 'Hóa đơn đã được xác nhận thanh toán');
+        else setCurrentOrder(currentOrderId);
+      } catch (error) {
+        status.className = 'status err'; status.textContent = 'Lỗi kết nối tới server.'; payload.textContent = error.message;
+        setCurrentOrder(currentOrderId);
+      }
+    });
     loadChats();
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -79,6 +138,7 @@
         status.className = `status ${response.ok ? 'ok' : 'err'}`;
         status.textContent = response.ok ? 'Đã tạo bill và gửi vào cuộc chat.' : (data.error || 'Không thể tạo hóa đơn.');
         payload.textContent = JSON.stringify(data, null, 2);
+        if (response.ok && data.order?.id) setCurrentOrder(data.order.id);
       } catch (error) {
         status.className = 'status err'; status.textContent = 'Lỗi kết nối tới server.'; payload.textContent = error.message;
       } finally { button.disabled = false; button.textContent = 'Tạo & gửi hóa đơn mẫu'; }
