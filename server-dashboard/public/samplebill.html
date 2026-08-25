@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tạo hóa đơn mẫu · Pastie</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; color: #31243e; font-family: 'Be Vietnam Pro', sans-serif; background: radial-gradient(circle at top right, #ffe2f2, transparent 36%), #fbf8fc; }
+    main { width: min(680px, calc(100% - 32px)); margin: 64px auto; }
+    .card { overflow: hidden; background: #fff; border: 1px solid #f2cce2; border-radius: 24px; box-shadow: 0 20px 60px #5a174222; }
+    .top { padding: 26px 30px; color: #fff; background: linear-gradient(115deg, #ed278a, #b90b70); }
+    h1 { margin: 0; font-size: 24px; } .top p { margin: 8px 0 0; font-size: 14px; opacity: .9; }
+    form, .result { padding: 28px 30px; } label { display: block; margin-bottom: 9px; font-weight: 700; font-size: 14px; }
+    input, select { width: 100%; padding: 15px; color: #24192d; font: inherit; border: 1px solid #e7cddc; border-radius: 12px; outline: none; background: #fff; }
+    input:focus, select:focus { border-color: #e71b84; box-shadow: 0 0 0 4px #ffdeef; }
+    .field { margin-bottom: 18px; }
+    button { width: 100%; margin-top: 18px; padding: 15px; cursor: pointer; color: #fff; font: 700 16px inherit; border: 0; border-radius: 12px; background: linear-gradient(110deg, #f1268b, #c315a3); box-shadow: 0 10px 22px #dd187140; }
+    button:disabled { opacity: .6; cursor: wait; } .hint { margin: 13px 0 0; color: #806f82; font-size: 13px; line-height: 1.55; }
+    .result { display: none; padding-top: 0; } .result.show { display: block; } .status { padding: 12px; border-radius: 10px; font-size: 14px; } .ok { color: #157347; background: #e6f8ee; } .err { color: #a71936; background: #fff0f2; }
+    pre { max-height: 300px; overflow: auto; margin: 16px 0 0; padding: 16px; color: #f7eaf3; font-size: 12px; line-height: 1.5; white-space: pre-wrap; border-radius: 12px; background: #271d2d; }
+    a { display: inline-block; margin-top: 20px; color: #c51173; font-weight: 700; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card">
+      <header class="top"><h1>Tạo hóa đơn mẫu</h1><p>Test bill 2 chai nước suối · 20.000 ₫</p></header>
+      <form id="sample-form">
+        <div class="field"><label for="chatList">Chọn cuộc chat đang hoạt động</label><select id="chatList"><option value="">Đang tải danh sách chat…</option></select></div>
+        <div class="field"><label for="sessionId">Session ID của cuộc chat đang hoạt động</label><input id="sessionId" name="sessionId" required autocomplete="off" placeholder="Hoặc dán UUID session vào đây"></div>
+        <p class="hint">Đăng nhập dashboard trước. Hệ thống dùng phiên Agent/Admin hiện tại để tạo bill và gửi tin nhắn hóa đơn vào chat.</p>
+        <button id="submit" type="submit">Tạo & gửi hóa đơn mẫu</button>
+        <a href="/admin">← Quay về dashboard</a>
+      </form>
+      <section id="result" class="result" aria-live="polite"><div id="status" class="status"></div><pre id="payload"></pre></section>
+    </section>
+  </main>
+  <script>
+    const form = document.getElementById('sample-form');
+    const button = document.getElementById('submit');
+    const result = document.getElementById('result');
+    const status = document.getElementById('status');
+    const payload = document.getElementById('payload');
+    const chatList = document.getElementById('chatList');
+    const sessionInput = document.getElementById('sessionId');
+    async function loadChats() {
+      const token = localStorage.getItem('pastie_admin_token');
+      if (!token) { chatList.innerHTML = '<option>Đăng nhập Dashboard để tải chat</option>'; return; }
+      try {
+        const response = await fetch('/api/admin/chats', { headers: { Authorization: `Bearer ${token}` } });
+        const chats = await response.json();
+        const active = Array.isArray(chats) ? chats.filter((chat) => chat.status === 'active') : [];
+        chatList.innerHTML = '<option value="">-- Chọn chat --</option>' + active.map((chat) => `<option value="${chat.id}">${(chat.visitor_name || chat.visitor_email || 'Khách hàng').replace(/</g, '')} · ${chat.id.slice(0, 8)}…</option>`).join('');
+        if (!active.length) chatList.innerHTML = '<option value="">Không có chat đang hoạt động</option>';
+      } catch (_) { chatList.innerHTML = '<option value="">Không tải được danh sách chat</option>'; }
+    }
+    chatList.addEventListener('change', () => { if (chatList.value) sessionInput.value = chatList.value; });
+    loadChats();
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const sessionId = document.getElementById('sessionId').value.trim();
+      const token = localStorage.getItem('pastie_admin_token');
+      result.classList.add('show');
+      if (!token) {
+        status.className = 'status err';
+        status.textContent = 'Bạn chưa đăng nhập Dashboard. Vui lòng đăng nhập trước.';
+        payload.textContent = '';
+        return;
+      }
+      button.disabled = true; button.textContent = 'Đang tạo hóa đơn…';
+      try {
+        const response = await fetch('/samplebill', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ sessionId }) });
+        const data = await response.json();
+        status.className = `status ${response.ok ? 'ok' : 'err'}`;
+        status.textContent = response.ok ? 'Đã tạo bill và gửi vào cuộc chat.' : (data.error || 'Không thể tạo hóa đơn.');
+        payload.textContent = JSON.stringify(data, null, 2);
+      } catch (error) {
+        status.className = 'status err'; status.textContent = 'Lỗi kết nối tới server.'; payload.textContent = error.message;
+      } finally { button.disabled = false; button.textContent = 'Tạo & gửi hóa đơn mẫu'; }
+    });
+  </script>
+</body>
+</html>
