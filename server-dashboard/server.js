@@ -472,6 +472,23 @@ async function expireQrSessionIfNeeded(session, queryRunner = db) {
   return session;
 }
 
+async function upsertCustomer({ projectId, email, fullName, authProvider, qrAccountId = null }, queryRunner = db) {
+  if (!projectId || !email) return null;
+  const result = await queryRunner.query(
+    `INSERT INTO customers (project_id, email, full_name, auth_provider, last_qr_account_id)
+     VALUES ($1, LOWER($2), $3, $4, $5)
+     ON CONFLICT (project_id, email) DO UPDATE SET
+       full_name = COALESCE(NULLIF(EXCLUDED.full_name, ''), customers.full_name),
+       auth_provider = EXCLUDED.auth_provider,
+       last_qr_account_id = EXCLUDED.last_qr_account_id,
+       last_login_at = CURRENT_TIMESTAMP,
+       updated_at = CURRENT_TIMESTAMP
+     RETURNING *`,
+    [projectId, email.trim(), fullName || null, authProvider || 'otp', qrAccountId]
+  );
+  return result.rows[0] || null;
+}
+
 async function getAdminFromToken(req) {
   const authHeader = req.headers.authorization || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : req.query.token;
@@ -744,6 +761,14 @@ app.post('/api/otp/verify', async (req, res) => {
     const ua = req.headers['user-agent'] || '';
     const { browser, device } = parseUserAgent(ua);
     const clientIp = getClientIp(req);
+
+    await upsertCustomer({
+      projectId,
+      email,
+      fullName: finalName,
+      authProvider: 'otp',
+      qrAccountId: qrAccount?.id || null
+    });
 
     const existingSession = qrAccount ? null : await findActiveSessionForClient(projectId, email, clientIp, browser, device);
     if (existingSession) {
@@ -2305,6 +2330,13 @@ app.post('/api/qr-chat/google', async (req, res) => {
        VALUES ($1, $2, $3, $4, 'vi', TRUE, 'active', $5, $6, $7, $8, $9, $10)`,
       [sessionId, projectId, profile.name || 'Khách hàng', profile.email, browser, device, getClientIp(req), account.owner_admin_id, account.id, new Date(Date.now() + QR_CHAT_SESSION_MS)]
     );
+    await upsertCustomer({
+      projectId,
+      email: profile.email,
+      fullName: profile.name || 'Khách hàng',
+      authProvider: 'google',
+      qrAccountId: account.id
+    });
     res.json({ success: true, sessionId, expiresAt: new Date(Date.now() + QR_CHAT_SESSION_MS) });
   } catch (error) {
     console.error('[QR Concierge] Google customer sign-in failed:', error.message);
@@ -2314,6 +2346,28 @@ app.post('/api/qr-chat/google', async (req, res) => {
 
 // QR Concierge account management. Each agent has exactly one active customer
 // QR. Legacy QR rows may be retained for session history but are never shown.
+app.get('/api/admin/customers', checkAdminAuth, async (req, res) => {
+  const projectId = String(req.query.projectId || req.admin.project_id || '');
+  if (!projectId || !canAccessProject(req.admin, projectId)) return res.status(403).json({ error: 'Bạn không có quyền xem khách hàng của project này.' });
+  try {
+    const onlyAssignedAgent = req.admin.role === 'agent';
+    const result = await db.query(
+      `SELECT c.id, c.email, c.full_name, c.auth_provider, c.first_login_at, c.last_login_at,
+              q.label AS last_qr_label, a.full_name AS assigned_agent_name
+         FROM customers c
+         LEFT JOIN qr_chat_accounts q ON q.id = c.last_qr_account_id
+         LEFT JOIN admins a ON a.id = q.owner_admin_id
+        WHERE c.project_id = $1 ${onlyAssignedAgent ? 'AND q.owner_admin_id = $2' : ''}
+        ORDER BY c.last_login_at DESC`,
+      onlyAssignedAgent ? [projectId, req.admin.id] : [projectId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('List customers error:', error.message);
+    res.status(500).json({ error: 'Không thể tải danh sách khách hàng.' });
+  }
+});
+
 app.get('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
   const projectId = String(req.query.projectId || 'qr-concierge');
   if (!canAccessProject(req.admin, projectId)) return res.status(403).json({ error: 'Bạn không có quyền xem QR của project này.' });

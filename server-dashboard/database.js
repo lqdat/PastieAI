@@ -161,6 +161,23 @@ async function initializeDatabase() {
     await query(`CREATE INDEX IF NOT EXISTS idx_sessions_qr_active ON sessions(qr_account_id, status);`);
 
     await query(`
+      CREATE TABLE IF NOT EXISTS customers (
+        id SERIAL PRIMARY KEY,
+        project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        email VARCHAR(255) NOT NULL,
+        full_name VARCHAR(255),
+        auth_provider VARCHAR(20) NOT NULL DEFAULT 'otp',
+        last_qr_account_id INT REFERENCES qr_chat_accounts(id) ON DELETE SET NULL,
+        first_login_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_login_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(project_id, email)
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_customers_project_last_login ON customers(project_id, last_login_at DESC);`);
+
+    await query(`
       CREATE TABLE IF NOT EXISTS push_subscriptions (
         id SERIAL PRIMARY KEY,
         admin_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
