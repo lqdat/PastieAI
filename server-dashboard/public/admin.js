@@ -739,6 +739,14 @@ function hideLogin() {
 const notifiedMsgCount = {}; // track last notified count per session
 let pushRegistration = null;
 
+function withPushTimeout(promise, step, timeoutMs = 15000) {
+    let timer = null;
+    const timeout = new Promise((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(`${step} mất quá lâu. Vui lòng tải lại trang và thử lại.`)), timeoutMs);
+    });
+    return Promise.race([promise, timeout]).finally(() => { if (timer) window.clearTimeout(timer); });
+}
+
 function urlBase64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
     const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -755,24 +763,24 @@ function subscriptionUsesVapidKey(subscription, publicKey) {
 }
 
 async function syncPushSubscription(config) {
-    let subscription = await pushRegistration.pushManager.getSubscription();
+    let subscription = await withPushTimeout(pushRegistration.pushManager.getSubscription(), 'Không thể đọc trạng thái Push');
     // Mỗi subscription được gắn với một VAPID public key. Khi thay key trên
     // Railway, huỷ subscription cũ và tạo lại để tránh push im lặng thất bại.
     if (subscription && !subscriptionUsesVapidKey(subscription, config.publicKey)) {
-        await subscription.unsubscribe();
+        await withPushTimeout(subscription.unsubscribe(), 'Không thể làm mới đăng ký Push');
         subscription = null;
     }
     if (!subscription) {
-        subscription = await pushRegistration.pushManager.subscribe({
+        subscription = await withPushTimeout(pushRegistration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(config.publicKey),
-        });
+        }), 'Trình duyệt không hoàn tất đăng ký Push');
     }
-    const saveResponse = await authFetch(`${API_BASE}/api/admin/push/subscribe`, {
+    const saveResponse = await withPushTimeout(authFetch(`${API_BASE}/api/admin/push/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscription }),
-    });
+    }), 'Không thể lưu thiết bị nhận thông báo');
     if (!saveResponse.ok) throw new Error('Không thể lưu thiết bị nhận thông báo.');
     return subscription;
 }
@@ -864,15 +872,15 @@ async function setupPushNotifications() {
         return false;
     }
     try {
-        pushRegistration = await navigator.serviceWorker.register('/push-sw.js');
-        const response = await authFetch(`${API_BASE}/api/admin/push/public-key`);
-        const config = await response.json();
+        pushRegistration = await withPushTimeout(navigator.serviceWorker.register('/push-sw.js'), 'Service Worker không khởi động');
+        const response = await withPushTimeout(authFetch(`${API_BASE}/api/admin/push/public-key`), 'Không thể lấy cấu hình Push');
+        const config = await withPushTimeout(response.json(), 'Không thể đọc cấu hình Push');
         if (!response.ok || !config.enabled) {
             setPushButtonState('unavailable');
             pushPermissionModal?.classList.remove('hide');
             return false;
         }
-        let subscription = await pushRegistration.pushManager.getSubscription();
+        let subscription = await withPushTimeout(pushRegistration.pushManager.getSubscription(), 'Không thể đọc trạng thái Push');
         if (Notification.permission === 'granted') {
             subscription = await syncPushSubscription(config);
         }
@@ -900,7 +908,7 @@ async function enablePushNotifications() {
     if (supportIssue) throw new Error('Phiên bản trình duyệt này chưa hỗ trợ thông báo đẩy.');
     // Phải xin quyền trước bất kỳ await nào: mobile chỉ cho phép trong hành động chạm trực tiếp.
     let permission = Notification.permission;
-    if (permission === 'default') permission = await Notification.requestPermission();
+    if (permission === 'default') permission = await withPushTimeout(Notification.requestPermission(), 'Trình duyệt chưa hiển thị hộp thoại cấp quyền', 12000);
     if (permission !== 'granted') {
         setPushButtonState(permission === 'denied' ? 'blocked' : 'off');
         throw new Error(permission === 'denied'
@@ -909,8 +917,8 @@ async function enablePushNotifications() {
     }
     if (!pushRegistration) await setupPushNotifications();
     if (!pushRegistration) throw new Error('Không thể khởi tạo thông báo đẩy trên thiết bị này.');
-    const configResponse = await authFetch(`${API_BASE}/api/admin/push/public-key`);
-    const config = await configResponse.json();
+    const configResponse = await withPushTimeout(authFetch(`${API_BASE}/api/admin/push/public-key`), 'Không thể lấy cấu hình Push');
+    const config = await withPushTimeout(configResponse.json(), 'Không thể đọc cấu hình Push');
     if (!configResponse.ok || !config.enabled || !config.publicKey) { setPushButtonState('unavailable'); throw new Error('Push chưa được cấu hình trên máy chủ.'); }
     await syncPushSubscription(config);
     setPushButtonState('enabled');
@@ -2247,6 +2255,7 @@ document.getElementById('push-modal-confirm')?.addEventListener('click', () => {
         closePushPermissionModal();
     }).catch((error) => {
         console.error('Không thể bật Web Push:', error);
+        setPushButtonState('off');
         alert(error.message || 'Không thể bật thông báo trên thiết bị này.');
     }).finally(() => {
         if (button) { button.disabled = false; button.innerHTML = '<i class="ri-notification-3-fill"></i> Bật thông báo ngay'; }
