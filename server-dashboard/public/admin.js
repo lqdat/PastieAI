@@ -815,8 +815,11 @@ function setPushButtonState(state) {
     else { label.textContent = 'Bật thông báo'; description.textContent = 'Nhận chat mới ngay cả khi đã đóng app'; }
 }
 
-const isAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isAppleMobile = /iPad|iPhone|iPod/i.test(`${navigator.userAgent} ${navigator.platform || ''}`)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    // Some current iOS Safari builds reduce the user-agent. Apple vendor + touch
+    // capability reliably identifies those devices while excluding macOS Safari.
+    || (navigator.vendor === 'Apple Computer, Inc.' && navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) <= 1180);
 const isStandaloneWebApp = window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
 function getPushSupportIssue() {
