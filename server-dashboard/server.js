@@ -762,9 +762,6 @@ app.post('/api/otp/verify', async (req, res) => {
       return res.status(400).json({ error: 'Mã OTP đã hết hạn (quá 5 phút).' });
     }
 
-    // Delete OTP after verification to prevent reuse
-    await db.query('DELETE FROM otps WHERE email = $1', [email]);
-
     // Always create a new distinct device/browser session
     const sessionId = randomUUID(); // Node native secure UUID
     const finalName = name || 'Khách ẩn danh';
@@ -837,6 +834,10 @@ app.post('/api/otp/verify', async (req, res) => {
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'ai', $2, $2, $3)`,
       [sessionId, greetingText, finalLang]
     );
+
+    // Chỉ hủy mã sau khi toàn bộ phiên được tạo thành công. Nếu DB tạm lỗi,
+    // khách vẫn có thể thử lại cùng mã thay vì bị khóa khỏi form OTP.
+    await db.query('DELETE FROM otps WHERE email = $1', [email]);
 
     res.json({ success: true, sessionId, name: finalName });
   } catch (error) {
@@ -4604,6 +4605,10 @@ app.post('/api/admin/chats/:sessionId/read', checkAdminAuth, async (req, res) =>
 
 // Start Server
 async function startServer() {
+  // Không nhận request OTP/QR trước khi các migration QR Concierge hoàn tất.
+  // Nếu server vừa restart, thiếu cột sessions có thể làm xác thực OTP thất bại
+  // sau khi mã đã đúng.
+  await db.initPromise;
   await ensureReadReceiptsTable();
   app.listen(PORT, '0.0.0.0', () => {
   console.log(`-----------------------------------------------------`);
