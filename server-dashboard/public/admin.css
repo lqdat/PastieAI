@@ -1175,6 +1175,13 @@ button {
 #admin-management-modal .admin-project-management h3 { color: #3b2947 !important; }
 #admin-management-modal .admin-project-management input { background: #fff !important; color: #3b2947 !important; border-color: rgba(84, 62, 100, .18) !important; }
 #admin-management-modal .admin-project-management #project-list { margin-top: 10px; }
+#admin-management-modal .project-create-controls { display:flex; align-items:center; gap:7px; }
+#admin-management-modal .project-create-controls input { width:170px; }
+#admin-management-modal #project-list { display:grid !important; grid-template-columns:repeat(auto-fit,minmax(245px,1fr)); gap:10px !important; }
+.project-settings-card { padding:13px; border:1px solid rgba(84,62,100,.14); border-radius:12px; background:#fff; box-shadow:0 3px 12px rgba(67,45,80,.04); }
+.project-settings-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:11px; }.project-settings-card-head h4{margin:3px 0 0;color:#382845;font-size:14px;}.project-id-label{color:#a18498;font-size:9px;font-weight:800;letter-spacing:.06em;}.project-delete-btn{width:28px;height:28px;border:0;border-radius:7px;background:#fff0f2;color:#e0526c;cursor:pointer;}.project-delete-btn:hover{background:#ffe0e5}
+.project-settings-card label { display:block; margin:8px 0 0; color:#75667b; font-size:10px; font-weight:700; }.project-settings-card input { width:100%; box-sizing:border-box; margin-top:4px; padding:8px 9px; border:1px solid rgba(84,62,100,.17); border-radius:7px; background:#fcfbfd; color:#382845; font:inherit; font-size:11px; outline:none; }.project-settings-card input:focus{border-color:#ec4899;box-shadow:0 0 0 3px rgba(236,72,153,.09)}
+.project-settings-card-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px}.project-settings-card-foot .secondary-btn{padding:7px 9px;font-size:10.5px}.project-open-link{color:#8b5cf6;font-size:10.5px;text-decoration:none;font-weight:700}.project-open-link.is-disabled{opacity:.38;pointer-events:none}
 #admin-management-modal .account-project-context {
     margin: 0 0 12px !important;
     padding: 12px 15px !important;
@@ -1222,6 +1229,8 @@ button {
     #admin-management-modal .qr-create-controls { width: 100%; }
     #admin-management-modal .qr-create-controls .primary-btn { flex: 1; }
     #admin-management-modal .project-brand-editor { flex-direction: column; }
+    #admin-management-modal .project-create-controls { width:100%; flex-wrap:wrap; }
+    #admin-management-modal .project-create-controls input { flex:1; width:auto; min-width:130px; }
     #admin-management-modal .admin-management-grid { grid-template-columns: 1fr !important; }
     #admin-management-modal .admin-users-panel { border-right: 0 !important; border-bottom: 1px solid rgba(55,40,65,.1); padding-right: 0 !important; padding-bottom: 16px; }
 }

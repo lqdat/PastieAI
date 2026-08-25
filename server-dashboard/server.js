@@ -2254,10 +2254,10 @@ app.post('/api/admin/logout', checkAdminAuth, async (req, res) => {
 app.get('/api/admin/projects', checkAdminAuth, async (req, res) => {
   try {
     if (req.admin.role !== 'superadmin' && req.admin.project_id) {
-      const one = await db.query('SELECT id, name, display_name, project_type FROM projects WHERE id = $1', [req.admin.project_id]);
+      const one = await db.query('SELECT id, name, display_name, website_url, project_type FROM projects WHERE id = $1', [req.admin.project_id]);
       return res.json(one.rows);
     }
-    const all = await db.query('SELECT id, name, display_name, project_type, created_at FROM projects ORDER BY created_at ASC, id ASC');
+    const all = await db.query('SELECT id, name, display_name, website_url, project_type, created_at FROM projects ORDER BY created_at ASC, id ASC');
     res.json(all.rows);
   } catch (e) {
     console.error('List projects error:', e);
@@ -2329,7 +2329,7 @@ app.post('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
 // Tạo dự án mới (chỉ superadmin). id = slug không dấu, dùng làm project_id ở widget (data-project).
 app.post('/api/admin/projects', checkAdminAuth, async (req, res) => {
   if (req.admin.role !== 'superadmin') return res.status(403).json({ error: 'Chỉ Admin tổng được tạo dự án.' });
-  let { id, name } = req.body || {};
+  let { id, name, websiteUrl } = req.body || {};
   if (!name) return res.status(400).json({ error: 'Cần tên dự án.' });
   const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd')
     .toLowerCase().trim().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
@@ -2338,7 +2338,7 @@ app.post('/api/admin/projects', checkAdminAuth, async (req, res) => {
   try {
     const exists = await db.query('SELECT id FROM projects WHERE id = $1', [id]);
     if (exists.rows.length) return res.status(400).json({ error: 'Mã dự án đã tồn tại.' });
-    const r = await db.query('INSERT INTO projects (id, name, display_name) VALUES ($1, $2, $2) RETURNING id, name, display_name, created_at', [id, name.trim()]);
+    const r = await db.query('INSERT INTO projects (id, name, display_name, website_url) VALUES ($1, $2, $2, $3) RETURNING id, name, display_name, website_url, created_at', [id, name.trim(), String(websiteUrl || '').trim() || null]);
     res.status(201).json({ success: true, project: r.rows[0] });
   } catch (e) {
     console.error('Create project error:', e);
@@ -2353,6 +2353,26 @@ app.put('/api/admin/projects/:id/display-name', checkAdminAuth, async (req, res)
   const displayName = String(req.body?.displayName || '').trim();
   if (!displayName || displayName.length > 255) return res.status(400).json({ error: 'Tên hiển thị cần từ 1 đến 255 ký tự.' });
   const result = await db.query('UPDATE projects SET display_name = $1 WHERE id = $2 RETURNING id, name, display_name', [displayName, req.params.id]);
+  if (!result.rows[0]) return res.status(404).json({ error: 'Không tìm thấy project.' });
+  res.json({ success: true, project: result.rows[0] });
+});
+
+app.put('/api/admin/projects/:id/settings', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Superadmin được cập nhật project.' });
+  const name = String(req.body?.name || '').trim();
+  const displayName = String(req.body?.displayName || '').trim();
+  const websiteUrl = String(req.body?.websiteUrl || '').trim();
+  if (!name || !displayName) return res.status(400).json({ error: 'Cần nhập tên project và tên hiển thị.' });
+  if (websiteUrl) {
+    try {
+      const url = new URL(websiteUrl);
+      if (!['http:', 'https:'].includes(url.protocol)) throw new Error('protocol');
+    } catch { return res.status(400).json({ error: 'Link website phải bắt đầu bằng http:// hoặc https://.' }); }
+  }
+  const result = await db.query(
+    'UPDATE projects SET name = $1, display_name = $2, website_url = $3 WHERE id = $4 RETURNING id, name, display_name, website_url, project_type',
+    [name, displayName, websiteUrl || null, req.params.id]
+  );
   if (!result.rows[0]) return res.status(404).json({ error: 'Không tìm thấy project.' });
   res.json({ success: true, project: result.rows[0] });
 });

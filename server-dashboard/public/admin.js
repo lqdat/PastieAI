@@ -1075,7 +1075,6 @@ async function loadProjects() {
     updateProjectFilterDropdown([]);
     fillAdminProjectSelect();
     renderProjectList();
-    syncProjectBrandEditor();
     updateConsoleBrand();
 }
 
@@ -1084,36 +1083,6 @@ function updateConsoleBrand() {
     if (!el || !CURRENT_ADMIN?.project_id) return;
     const project = (PROJECTS || []).find(p => p.id === CURRENT_ADMIN.project_id);
     el.textContent = project?.display_name || project?.name || CURRENT_ADMIN.project_id;
-}
-
-function syncProjectBrandEditor() {
-    const select = document.getElementById('project-brand-project-select');
-    const input = document.getElementById('project-display-name');
-    if (!select || !input) return;
-    select.innerHTML = (PROJECTS || []).map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name || p.id)}</option>`).join('');
-    const sync = () => {
-        const project = (PROJECTS || []).find(p => p.id === select.value);
-        input.value = project?.display_name || project?.name || '';
-    };
-    select.onchange = sync;
-    sync();
-}
-
-async function saveProjectDisplayName() {
-    const select = document.getElementById('project-brand-project-select');
-    const input = document.getElementById('project-display-name');
-    const projectId = select?.value;
-    const displayName = input?.value.trim();
-    if (!projectId || !displayName) return alert('Hãy chọn project và nhập tên hiển thị.');
-    try {
-        const r = await authFetch(`${API_BASE}/api/admin/projects/${encodeURIComponent(projectId)}/display-name`, {
-            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName })
-        });
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error || 'Không thể lưu tên hiển thị.');
-        await loadProjects();
-        alert('Đã lưu tên hiển thị trên header.');
-    } catch (error) { alert(error.message); }
 }
 
 function fillAdminProjectSelect() {
@@ -1132,32 +1101,48 @@ function fillAdminProjectSelect() {
 function renderProjectList() {
     const box = document.getElementById('project-list');
     if (!box) return;
-    box.innerHTML = '';
     if (!PROJECTS.length) { box.innerHTML = '<span style="font-size:12px;color:var(--text-secondary);">Chưa có dự án nào.</span>'; return; }
-    PROJECTS.forEach(p => {
-        const chip = document.createElement('span');
-        chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:20px;background:rgba(99,102,241,0.15);color:var(--accent-color);border:1px solid rgba(99,102,241,0.3);font-size:12px;';
-        chip.innerHTML = `${p.name} <small style="opacity:.6">${p.id}</small>`;
-        const del = document.createElement('button');
-        del.textContent = '×'; del.title = 'Xoá khỏi danh sách';
-        del.style.cssText = 'background:none;border:none;color:inherit;cursor:pointer;font-size:15px;line-height:1;';
-        del.onclick = () => deleteProject(p.id);
-        chip.appendChild(del);
-        box.appendChild(chip);
-    });
+    box.innerHTML = PROJECTS.map(p => {
+        const projectName = escapeHtml(p.name || p.id);
+        const displayName = escapeHtml(p.display_name || p.name || p.id);
+        const websiteUrl = escapeHtml(p.website_url || '');
+        const projectId = escapeHtml(p.id);
+        return `<article class="project-settings-card" data-project-id="${projectId}">
+            <div class="project-settings-card-head"><div><span class="project-id-label">PROJECT ID · ${projectId}</span><h4>${projectName}</h4></div><button type="button" class="project-delete-btn" onclick="window.deleteProject('${p.id}')" title="Xóa project"><i class="ri-delete-bin-line"></i></button></div>
+            <label>Tên dự án<input data-field="name" value="${projectName}" maxlength="255"></label>
+            <label>Tên hiển thị trên header<input data-field="display_name" value="${displayName}" maxlength="255"></label>
+            <label>Link website<input data-field="website_url" type="url" value="${websiteUrl}" placeholder="https://website.com"></label>
+            <div class="project-settings-card-foot"><a ${websiteUrl ? `href="${websiteUrl}" target="_blank" rel="noopener"` : ''} class="project-open-link ${websiteUrl ? '' : 'is-disabled'}"><i class="ri-external-link-line"></i> Mở website</a><button type="button" class="secondary-btn" onclick="window.saveProjectSettings('${p.id}')"><i class="ri-save-line"></i> Lưu thay đổi</button></div>
+        </article>`;
+    }).join('');
 }
+
+window.saveProjectSettings = async (projectId) => {
+    const card = document.querySelector(`.project-settings-card[data-project-id="${projectId}"]`);
+    if (!card) return;
+    const name = card.querySelector('[data-field="name"]')?.value.trim();
+    const displayName = card.querySelector('[data-field="display_name"]')?.value.trim();
+    const websiteUrl = card.querySelector('[data-field="website_url"]')?.value.trim();
+    try {
+        const r = await authFetch(`${API_BASE}/api/admin/projects/${encodeURIComponent(projectId)}/settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, displayName, websiteUrl }) });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Không thể lưu project.');
+        await loadProjects();
+    } catch (error) { alert(error.message); }
+};
 
 async function addProject() {
     const inp = document.getElementById('project-new-name');
+    const linkInput = document.getElementById('project-new-link');
     const name = inp ? inp.value.trim() : '';
     if (!name) return;
     try {
         const r = await authFetch(`${API_BASE}/api/admin/projects`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
+            body: JSON.stringify({ name, websiteUrl: linkInput?.value.trim() || '' })
         });
         const d = await r.json().catch(() => ({}));
-        if (r.ok) { if (inp) inp.value = ''; await loadProjects(); }
+        if (r.ok) { if (inp) inp.value = ''; if (linkInput) linkInput.value = ''; await loadProjects(); }
         else alert('Lỗi: ' + (d.error || 'Không tạo được dự án.'));
     } catch (e) { alert('Lỗi kết nối.'); }
 }
@@ -2203,7 +2188,6 @@ const projectAddBtn = document.getElementById('project-add-btn');
 if (projectAddBtn) projectAddBtn.addEventListener('click', addProject);
 const projectNewName = document.getElementById('project-new-name');
 if (projectNewName) projectNewName.addEventListener('keypress', (e) => { if (e.key === 'Enter') addProject(); });
-document.getElementById('project-display-name-save-btn')?.addEventListener('click', saveProjectDisplayName);
 
 // Đăng nhập từ form bằng tài khoản DealPhuQuoc. Cổng Deal sẽ xác thực rồi
 // trả về URL này với token SSO ngắn hạn.

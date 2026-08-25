@@ -619,17 +619,13 @@
             <div class="admin-project-management" style="border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.15); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; text-align: left;">
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px;">
                     <h3 style="font-size: 13px; color: var(--text-primary); font-weight: 600; margin: 0; display: flex; align-items: center; gap: 6px;"><i class="ri-folder-3-line" style="color: var(--accent-color);"></i> Danh sách dự án hệ thống</h3>
-                    <div style="display: flex; gap: 6px;">
-                        <input type="text" id="project-new-name" placeholder="Tên dự án mới..." style="padding: 6px 10px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); font-family: inherit; font-size: 12px; outline: none;">
+                    <div class="project-create-controls">
+                        <input type="text" id="project-new-name" placeholder="Tên project mới...">
+                        <input type="url" id="project-new-link" placeholder="https://website.com">
                         <button id="project-add-btn" class="primary-btn" style="width: auto; padding: 6px 12px; font-size: 12px; white-space: nowrap;"><i class="ri-add-line"></i> Thêm</button>
                     </div>
                 </div>
                 <div id="project-list" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
-                <div class="project-brand-editor">
-                    <select id="project-brand-project-select" aria-label="Project cần đặt tên hiển thị"></select>
-                    <input id="project-display-name" type="text" maxlength="255" placeholder="Tên hiển thị trên header, ví dụ: Hộ kinh doanh Đan Trinh">
-                    <button id="project-display-name-save-btn" type="button" class="secondary-btn">Lưu tên hiển thị</button>
-                </div>
             </div>
 
             <section id="account-project-context" class="account-project-context" aria-label="Project đang quản lý">
@@ -733,6 +729,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r32"></script>
+    <script src="admin.js?v=r33"></script>
 </body>
 </html>
