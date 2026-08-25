@@ -59,7 +59,8 @@ Hệ thống được thiết kế dạng **Multi-tenant**, cho phép tích hợ
     ```env
     PORT=3000
     DATABASE_URL=postgres://postgres:mật_khẩu_của_bạn@db.supabase.co:5432/postgres
-    GEMINI_API_KEY=AIzaSy...
+    GEMINI_API_KEY=AIzaSy... # chatbot / summary AI
+    GOOGLE_TRANSLATE_API_KEY=AIzaSy... # Cloud Translation API (real-time chat translation)
     RESEND_API_KEY=re_...
     SENDER_EMAIL=onboarding@resend.dev
     ADMIN_PASSWORD=mật_khẩu_để_vào_admin_ở_đây

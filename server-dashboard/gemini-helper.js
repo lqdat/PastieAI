@@ -3,6 +3,10 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const apiKey = process.env.GEMINI_API_KEY;
+// Cloud Translation Basic (v2) is used for real-time chat translation.
+// Keep this separate from GEMINI_API_KEY: Gemini remains available for the
+// chatbot, summaries, and other AI features.
+const GOOGLE_TRANSLATE_API_KEY = process.env.GOOGLE_TRANSLATE_API_KEY;
 // The preferred model can be overridden from .env.  When it is unavailable,
 // try the newest compatible alternatives before using the non-Gemini fallback.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
@@ -17,6 +21,10 @@ if (apiKey) {
   ai = new GoogleGenerativeAI(apiKey);
 } else {
   console.error('WARNING: GEMINI_API_KEY is not defined. Gemini AI will be disabled.');
+}
+
+if (!GOOGLE_TRANSLATE_API_KEY) {
+  console.warn('WARNING: GOOGLE_TRANSLATE_API_KEY is not defined. Cloud Translation is disabled.');
 }
 
 async function runGemini(request, modelOptions = {}) {
@@ -67,7 +75,59 @@ async function groqChat(systemPrompt, historyMerged, userMessage) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 
+function decodeHtmlEntities(text = '') {
+  return String(text)
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
 async function translateText(text, targetLang) {
+  const sourceText = String(text || '').trim();
+  if (!sourceText) return { translatedText: sourceText, detectedLang: 'unknown' };
+
+  if (!GOOGLE_TRANSLATE_API_KEY) {
+    console.error('[Cloud Translation] GOOGLE_TRANSLATE_API_KEY not set; returning original text.');
+    return { translatedText: sourceText, detectedLang: 'unknown' };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(
+      `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(GOOGLE_TRANSLATE_API_KEY)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: sourceText, target: String(targetLang || 'en').toLowerCase(), format: 'text' }),
+        signal: controller.signal
+      }
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.data?.translations?.[0]) {
+      throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    }
+
+    const result = data.data.translations[0];
+    return {
+      translatedText: decodeHtmlEntities(result.translatedText || sourceText),
+      detectedLang: String(result.detectedSourceLanguage || 'unknown').toLowerCase()
+    };
+  } catch (error) {
+    console.error('[Cloud Translation] translateText failed:', error.message);
+    return { translatedText: sourceText, detectedLang: 'unknown' };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/*
+ * Legacy Gemini translation implementation retained intentionally for rollback.
+ * It is disabled because JSON-generation latency made real-time chat appear slow.
+ *
+async function translateTextWithGemini(text, targetLang) {
   // 1. Try Gemini
   if (ai) {
     try {
@@ -84,7 +144,6 @@ Requirements:
   "detected_language": "2-letter ISO code of original text"
 }
 Do not wrap the JSON response in markdown code blocks. Return only raw JSON.`;
-
       const result = await runGemini(model => model.generateContent(prompt));
       const responseText = result.response.text().trim();
       const cleanedJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -108,6 +167,7 @@ Do not wrap the JSON response in markdown code blocks. Return only raw JSON.`;
     return { translatedText: text, detectedLang: 'unknown' };
   }
 }
+*/
 
 
 async function analyzeSession(messages) {
