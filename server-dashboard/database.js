@@ -286,6 +286,16 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // Migration: Add sender_admin_id column to messages if it does not exist
     await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
 
+    // Migration: File attachments (images/videos/documents) on chat messages.
+    // attachment_key is the S3 object key (used to delete the file later);
+    // attachment_url is a cached direct/presigned URL for convenience.
+    await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_key TEXT;`);
+    await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_url TEXT;`);
+    await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_name VARCHAR(255);`);
+    await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_mime VARCHAR(150);`);
+    await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_size INT;`);
+    await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_type VARCHAR(20);`); // 'image' | 'video' | 'document'
+
     // Create message_translations table for caching
     await query(`
       CREATE TABLE IF NOT EXISTS message_translations (

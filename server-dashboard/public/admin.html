@@ -271,6 +271,8 @@
                         <span data-i18n="aiTranslationPrompt">Tin nhắn của bạn sẽ được tự động dịch sang ngôn ngữ của khách</span>
                     </div>
                     <form id="chat-form" class="chat-form">
+                        <input type="file" id="chat-attachment-input" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip" hidden>
+                        <button type="button" class="attach-btn" id="chat-attach-btn" title="Đính kèm file"><i class="ri-attachment-2"></i></button>
                         <input type="text" id="chat-input" placeholder="Gõ câu trả lời bằng tiếng Việt tại đây..." data-i18n-placeholder="chatInputPlaceholder" autocomplete="off">
                         <button type="submit" class="send-btn"><i class="ri-send-plane-2-fill"></i></button>
                     </form>

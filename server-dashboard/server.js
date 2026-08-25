@@ -13,6 +13,8 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 const PDFDocument = require('pdfkit');
 const dealSync = require('./deal-sync');
+const multer = require('multer');
+const s3 = require('./s3-helper');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -152,9 +154,64 @@ setInterval(() => {
 setInterval(() => {
   db.query(`DELETE FROM sessions
             WHERE qr_account_id IS NOT NULL AND status = 'active'
-              AND expires_at IS NOT NULL AND expires_at <= NOW()`)
+              AND expires_at IS NOT NULL AND expires_at <= NOW()
+            RETURNING id, project_id`)
+    .then((result) => {
+      // Dọn file đính kèm trên bucket theo từng session vừa bị xóa (chỉ áp dụng dự án QR).
+      for (const row of result.rows) {
+        void s3.deleteSessionAttachments(row.project_id, row.id);
+      }
+    })
     .catch((error) => console.error('[QR Concierge] Không thể xóa session hết hạn:', error.message));
 }, 60 * 1000);
+// ─────────────────────────────────────────────────────────────────────────────
+
+// --- Chat attachments (images / videos / documents) -------------------------
+const ATTACHMENT_LIMITS_BYTES = {
+  image: 10 * 1024 * 1024,   // 10MB
+  video: 30 * 1024 * 1024,   // 30MB
+  document: 20 * 1024 * 1024, // 20MB
+};
+const ATTACHMENT_MIME_MAP = [
+  { type: 'image', test: (mime) => mime.startsWith('image/') },
+  { type: 'video', test: (mime) => mime.startsWith('video/') },
+  {
+    type: 'document',
+    test: (mime) =>
+      mime === 'application/pdf' ||
+      mime === 'application/msword' ||
+      mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      mime === 'application/vnd.ms-excel' ||
+      mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      mime === 'application/vnd.ms-powerpoint' ||
+      mime === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+      mime === 'text/plain' ||
+      mime === 'text/csv' ||
+      mime === 'application/zip' ||
+      mime === 'application/x-zip-compressed',
+  },
+];
+function classifyAttachment(mime) {
+  const found = ATTACHMENT_MIME_MAP.find((entry) => entry.test(mime || ''));
+  return found ? found.type : null;
+}
+// Largest allowed size across all types — multer needs one hard cap up front;
+// the exact per-type limit is enforced after we know the file's MIME type.
+const attachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: Math.max(...Object.values(ATTACHMENT_LIMITS_BYTES)) },
+});
+function uploadAttachmentMiddleware(req, res, next) {
+  attachmentUpload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'File vượt quá giới hạn dung lượng cho phép.' });
+      }
+      return res.status(400).json({ error: err.message || 'Lỗi khi tải file lên.' });
+    }
+    next();
+  });
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 // --- Swagger Configuration ---
@@ -482,16 +539,21 @@ async function closeActiveQrSession(qrAccountId, queryRunner = db) {
   // One QR represents one reception slot. A new scan immediately releases the
   // previous customer so the assigned agent only has the latest conversation.
   // Xóa hẳn cuộc chat cũ (không chỉ đóng) — messages xóa theo nhờ ON DELETE CASCADE.
-  await queryRunner.query(
-    `DELETE FROM sessions WHERE qr_account_id = $1 AND status = 'active'`,
+  const result = await queryRunner.query(
+    `DELETE FROM sessions WHERE qr_account_id = $1 AND status = 'active' RETURNING id, project_id`,
     [qrAccountId]
   );
+  // Dọn file đính kèm trên bucket theo cuộc chat vừa bị xóa (chỉ áp dụng dự án QR).
+  for (const row of result.rows) {
+    void s3.deleteSessionAttachments(row.project_id, row.id);
+  }
 }
 
 async function expireQrSessionIfNeeded(session, queryRunner = db) {
   if (session?.status === 'active' && session.qr_account_id && session.expires_at && new Date(session.expires_at) <= new Date()) {
     // Hết giờ phiên QR => xóa hẳn cuộc chat (cascade xóa messages), không chỉ đóng.
-    await queryRunner.query(`DELETE FROM sessions WHERE id = $1 AND status = 'active'`, [session.id]);
+    const result = await queryRunner.query(`DELETE FROM sessions WHERE id = $1 AND status = 'active' RETURNING id, project_id`, [session.id]);
+    if (result.rows[0]) void s3.deleteSessionAttachments(result.rows[0].project_id, result.rows[0].id);
     session.status = 'closed';
   }
   return session;
@@ -1210,6 +1272,100 @@ app.post('/api/chats/message', async (req, res) => {
   }
 });
 
+// Gửi file đính kèm (hình ảnh / video / tài liệu) trong một cuộc chat.
+// Dùng chung cho cả khách (widget) và nhân viên (dashboard) — sender phân biệt qua field 'sender'.
+// File lưu trên bucket S3-compatible theo cấu trúc thư mục {project_id}/{session_id}/...
+app.post('/api/chats/:sessionId/attachments', uploadAttachmentMiddleware, async (req, res) => {
+  const { sessionId } = req.params;
+  const { sender } = req.body;
+
+  if (!sessionId || (sender !== 'visitor' && sender !== 'agent')) {
+    return res.status(400).json({ error: 'Thiếu thông số đầu vào bắt buộc.' });
+  }
+  if (!req.file) {
+    return res.status(400).json({ error: 'Không có file được gửi lên.' });
+  }
+  if (!s3.isConfigured) {
+    return res.status(503).json({ error: 'Tính năng gửi file đính kèm hiện chưa được cấu hình.' });
+  }
+
+  const attachmentType = classifyAttachment(req.file.mimetype);
+  if (!attachmentType) {
+    return res.status(415).json({ error: 'Định dạng file không được hỗ trợ.' });
+  }
+  const sizeLimit = ATTACHMENT_LIMITS_BYTES[attachmentType];
+  if (req.file.size > sizeLimit) {
+    const limitMb = Math.round(sizeLimit / (1024 * 1024));
+    return res.status(413).json({ error: `File ${attachmentType === 'video' ? 'video' : attachmentType === 'image' ? 'hình ảnh' : 'tài liệu'} vượt quá giới hạn ${limitMb}MB.` });
+  }
+
+  try {
+    const sessionRes = await db.query(
+      `SELECT s.*, COALESCE(p.ai_enabled, p.project_type <> 'qr_concierge') AS ai_enabled
+         FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
+        WHERE s.id = $1`,
+      [sessionId]
+    );
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
+    }
+    await expireQrSessionIfNeeded(sessionRes.rows[0]);
+    if (sessionRes.rows[0].status === 'closed') {
+      return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
+    }
+    const session = sessionRes.rows[0];
+
+    // Same claim/assignment/project-access rules as sending a text reply.
+    let senderAdminId = null;
+    if (sender === 'agent') {
+      const sendingAdmin = await getAdminFromToken(req);
+      if (!sendingAdmin?.is_active || !isChatStaff(sendingAdmin)) {
+        return res.status(401).json({ error: 'Cần đăng nhập bằng tài khoản nhân viên hợp lệ để gửi file.' });
+      }
+      if (!canAccessProject(sendingAdmin, session.project_id)) {
+        return res.status(403).json({ error: 'Bạn không có quyền gửi file trong chat của project này.' });
+      }
+      const claim = session.claimed_by_admin_id;
+      const assigned = session.assigned_admin_id;
+      if (!isSuperAdmin(sendingAdmin)) {
+        const isClaimedByMe = claim && Number(claim) === Number(sendingAdmin.id);
+        const isAssignedToMe = assigned && Number(assigned) === Number(sendingAdmin.id);
+        if (!isClaimedByMe && !isAssignedToMe) {
+          return res.status(403).json({ error: 'Bạn cần nhấn "Tiếp nhận" cuộc trò chuyện trước khi gửi file.' });
+        }
+      }
+      senderAdminId = sendingAdmin.id;
+    }
+
+    const key = s3.buildAttachmentKey(session.project_id, sessionId, req.file.originalname);
+    await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
+    const url = await s3.getPresignedUrl(key, 6 * 3600);
+
+    const captionByType = { image: '📷 [Hình ảnh]', video: '🎥 [Video]', document: '📎 [Tài liệu]' };
+    const placeholderText = captionByType[attachmentType];
+
+    const msgRes = await db.query(
+      `INSERT INTO messages
+         (session_id, sender, original_text, translated_text, sender_admin_id,
+          attachment_key, attachment_url, attachment_name, attachment_mime, attachment_size, attachment_type)
+       VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [sessionId, sender, placeholderText, senderAdminId, key, url, req.file.originalname, req.file.mimetype, req.file.size, attachmentType]
+    );
+
+    const sessionExpiresAt = await extendQrSessionOnActivity(session);
+
+    if (sender === 'visitor') void notifyAgentMessage(session, placeholderText);
+    if (sender === 'agent' && session.platform && session.platform !== 'widget') {
+      try { await sendMultichannelMessage(session.platform, session.platform_sender_id, placeholderText); } catch (e) {}
+    }
+
+    res.json({ success: true, message: msgRes.rows[0], expiresAt: sessionExpiresAt });
+  } catch (error) {
+    console.error('Attachment upload error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi tải file lên.' });
+  }
+});
+
 /**
  * @openapi
  * /api/chats/session/language:
@@ -1662,6 +1818,9 @@ app.post('/api/chats/session/language', async (req, res) => {
  */
 // Helper to retrieve cached translation or translate using Gemini and cache it
 async function getOrTranslateMessage(msg, targetLang) {
+  // Attachment messages carry a fixed placeholder caption ("[Đính kèm] ...") —
+  // translating it every time would just waste Gemini calls for no benefit.
+  if (msg.attachment_key) return msg.translated_text || msg.original_text;
   if (!targetLang) return msg.translated_text || msg.original_text;
   
   const msgLang = (msg.language || '').toLowerCase();
@@ -1795,6 +1954,10 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
     // Dịch song song các tin nhắn nếu ngôn ngữ khách hàng được chỉ định
     await Promise.all(messages.map(async (msg) => {
       msg.translated_text = await getOrTranslateMessage(msg, visitorLang);
+      // Presigned S3 URLs expire — always hand back a fresh one instead of a stale cached value.
+      if (msg.attachment_key) {
+        msg.attachment_url = await s3.getPresignedUrl(msg.attachment_key, 6 * 3600).catch(() => msg.attachment_url);
+      }
     }));
 
     res.json(messages);
@@ -3425,6 +3588,10 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res)
     // Dịch song song các tin nhắn theo ngôn ngữ được khóa của cuộc trò chuyện
     await Promise.all(messages.map(async (msg) => {
       msg.translated_text = await getOrTranslateMessage(msg, targetLang);
+      // Presigned S3 URLs expire — always hand back a fresh one instead of a stale cached value.
+      if (msg.attachment_key) {
+        msg.attachment_url = await s3.getPresignedUrl(msg.attachment_key, 6 * 3600).catch(() => msg.attachment_url);
+      }
     }));
 
     res.json(messages);
@@ -3484,6 +3651,10 @@ app.delete('/api/admin/chats/:sessionId', checkAdminAuth, async (req, res) => {
     // Since the database tables (messages, message_translations) have ON DELETE CASCADE foreign key constraints,
     // deleting the session row will automatically delete all associated messages and translations!
     await db.query('DELETE FROM sessions WHERE id = $1', [sessionId]);
+    // Dọn file đính kèm trên bucket luôn nếu đây là chat QR Concierge (chỉ áp dụng dự án QR).
+    if (sessionRes.rows[0].qr_account_id) {
+      void s3.deleteSessionAttachments(sessionRes.rows[0].project_id, sessionId);
+    }
 
     res.json({ success: true, message: 'Đã xóa cuộc trò chuyện thành công.' });
   } catch (error) {

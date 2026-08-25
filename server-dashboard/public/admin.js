@@ -1910,18 +1910,22 @@ function renderAdminMessages(isLoadMore = false) {
         if (msg.sender === 'visitor') {
             const hasTranslation = msg.translated_text && msg.translated_text !== msg.original_text;
             const primaryText = hasTranslation ? msg.translated_text : msg.original_text;
+            const attachmentHtml = renderAttachmentHtml(msg);
             innerHtml = `
-                <div class="message-bubble">
-                    <div class="original-text">${escapeHtml(primaryText)}</div>
+                <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
+                    ${attachmentHtml}
+                    ${!attachmentHtml || msg.original_text ? `<div class="original-text">${escapeHtml(primaryText)}</div>` : ''}
                     ${hasTranslation ? `<div class="translated-text-wrapper" data-label="${dict.labelOriginal} ">${escapeHtml(msg.original_text)}</div>` : ''}
                 </div>
                 <div class="message-time">${timeStr}</div>
             `;
         } else if (msg.sender === 'agent' || msg.sender === 'ai') {
             const hasTranslation = msg.translated_text && msg.translated_text !== msg.original_text;
+            const attachmentHtml = renderAttachmentHtml(msg);
             innerHtml = `
-                <div class="message-bubble">
-                    <div class="original-text">${escapeHtml(msg.original_text)}</div>
+                <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
+                    ${attachmentHtml}
+                    ${!attachmentHtml || msg.original_text ? `<div class="original-text">${escapeHtml(msg.original_text)}</div>` : ''}
                     ${hasTranslation ? `<div class="translated-text-wrapper" data-label="${dict.labelAiTranslation} ">${escapeHtml(msg.translated_text)}</div>` : ''}
                 </div>
                 <div class="message-time">${timeStr}</div>
@@ -2024,6 +2028,67 @@ async function sendMessage(e) {
         adminIsSending = false;
     }
 }
+
+let adminIsUploadingAttachment = false;
+
+async function sendAttachment(file) {
+    if (!file || !currentSessionId || adminIsUploadingAttachment) return;
+    const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
+
+    adminIsUploadingAttachment = true;
+    const tempId = 'temp_' + Date.now();
+    const tempObjectUrl = URL.createObjectURL(file);
+    const tempType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'document';
+    const newMsgObj = {
+        id: tempId,
+        sender: 'agent',
+        original_text: tempType === 'image' ? '📷 [Hình ảnh]' : tempType === 'video' ? '🎥 [Video]' : '📎 [Tài liệu]',
+        created_at: new Date(),
+        attachment_key: 'pending',
+        attachment_url: tempObjectUrl,
+        attachment_type: tempType,
+        attachment_name: file.name,
+        attachment_size: file.size,
+    };
+    adminMessages.push(newMsgObj);
+    renderAdminMessages(false);
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('sender', 'agent');
+
+        const response = await authFetch(`${API_BASE}/api/chats/${currentSessionId}/attachments`, {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await response.json();
+        const idx = adminMessages.findIndex(m => m.id === tempId);
+        if (data.success && data.message) {
+            if (idx !== -1) adminMessages[idx] = data.message;
+        } else {
+            if (idx !== -1) adminMessages.splice(idx, 1);
+            alert(dict.sendError ? dict.sendError + (data.error || '') : (data.error || 'Không thể gửi file.'));
+        }
+        renderAdminMessages(false);
+    } catch (e) {
+        console.error('Attachment upload error:', e);
+        adminMessages = adminMessages.filter(m => m.id !== tempId);
+        renderAdminMessages(false);
+    } finally {
+        URL.revokeObjectURL(tempObjectUrl);
+        adminIsUploadingAttachment = false;
+    }
+}
+
+document.getElementById('chat-attach-btn')?.addEventListener('click', () => {
+    document.getElementById('chat-attachment-input')?.click();
+});
+document.getElementById('chat-attachment-input')?.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) sendAttachment(file);
+    e.target.value = '';
+});
 
 async function claimCurrentChat() {
     if (!currentSessionId) return;
@@ -2223,6 +2288,40 @@ function escapeHtml(text) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+function formatAttachmentSize(bytes) {
+    if (!bytes && bytes !== 0) return '';
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Renders the media/document card for a message that carries a file attachment.
+// Returns '' when the message has no attachment.
+function renderAttachmentHtml(msg) {
+    if (!msg.attachment_key || !msg.attachment_url) return '';
+    const url = msg.attachment_url;
+    const name = escapeHtml(msg.attachment_name || 'file');
+    const sizeStr = formatAttachmentSize(msg.attachment_size);
+
+    if (msg.attachment_type === 'image') {
+        return `<a class="attachment-card attachment-image" href="${url}" target="_blank" rel="noopener noreferrer">
+            <img src="${url}" alt="${name}" loading="lazy" />
+        </a>`;
+    }
+    if (msg.attachment_type === 'video') {
+        return `<div class="attachment-card attachment-video">
+            <video src="${url}" controls preload="metadata"></video>
+        </div>`;
+    }
+    return `<a class="attachment-card attachment-document" href="${url}" target="_blank" rel="noopener noreferrer" download="${name}">
+        <i class="ri-file-text-line"></i>
+        <div class="attachment-doc-info">
+            <span class="attachment-doc-name">${name}</span>
+            ${sizeStr ? `<span class="attachment-doc-size">${sizeStr}</span>` : ''}
+        </div>
+        <i class="ri-download-2-line attachment-doc-download"></i>
+    </a>`;
 }
 
 // Event Bindings
