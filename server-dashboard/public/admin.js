@@ -856,7 +856,7 @@ function setPushModalMode(issue = null) {
         return;
     }
     if (description) description.textContent = Notification.permission === 'denied'
-        ? 'Thông báo đã bị chặn. Hãy mở Cài đặt trang web của Safari và chọn Cho phép thông báo.'
+        ? 'Thông báo đã bị chặn. Hãy mở phần Cài đặt trang web / quyền riêng tư của trình duyệt (biểu tượng khóa cạnh thanh địa chỉ) và chọn Cho phép thông báo.'
         : 'Bật thông báo để nhận tin ngay khi hệ thống chuyển cuộc trò chuyện cần Agent hỗ trợ.';
     if (button) button.innerHTML = '<i class="ri-notification-3-fill"></i> Bật thông báo ngay';
 }
