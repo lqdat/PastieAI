@@ -1028,6 +1028,8 @@ async function loadAdminProfile() {
         if (projectFilter && admin.role !== 'superadmin' && admin.project_id) {
             projectFilter.title = `Dự án được phân quyền: ${admin.project_id}`;
         }
+
+        updateAgentHeaderUI();
     } catch (e) {
         console.error('Failed to load admin profile:', e);
     }
@@ -1138,14 +1140,47 @@ async function loadProjects() {
     updateProjectFilterDropdown([]);
     fillAdminProjectSelect();
     renderProjectList();
-    updateConsoleBrand();
+    updateAgentHeaderUI();
 }
 
 function updateConsoleBrand() {
     const el = document.getElementById('console-brand-name');
-    if (!el || !CURRENT_ADMIN?.project_id) return;
+    if (!el) return;
+
+    // Agent: giữ nguyên tên thương hiệu "Pastie Chat" (không thay bằng tên dự án).
+    if (CURRENT_ADMIN?.role === 'agent') {
+        el.textContent = 'Pastie Chat';
+        return;
+    }
+
+    if (!CURRENT_ADMIN?.project_id) return;
     const project = (PROJECTS || []).find(p => p.id === CURRENT_ADMIN.project_id);
     el.textContent = project?.display_name || project?.name || CURRENT_ADMIN.project_id;
+}
+
+// Header dành riêng cho Agent: thương hiệu "Pastie Chat" + tên Agent hiển thị to,
+// ẩn dropdown dự án, và tách "Quản lý tài khoản" / "Mã QR" ra 2 nút riêng
+// (không nằm trong menu Cài đặt nữa).
+// Gọi ở cả loadAdminProfile và loadProjects vì nút QR phụ thuộc PROJECTS đã tải.
+function updateAgentHeaderUI() {
+    const isAgentRole = CURRENT_ADMIN?.role === 'agent';
+
+    updateConsoleBrand();
+
+    const identityEl = document.getElementById('agent-identity');
+    const nameEl = document.getElementById('agent-display-name');
+    const agentName = isAgentRole ? (CURRENT_ADMIN.full_name || CURRENT_ADMIN.username || '') : '';
+    if (nameEl) nameEl.textContent = agentName;
+    if (identityEl) identityEl.classList.toggle('hide', !agentName);
+
+    document.getElementById('project-selector-wrap')?.classList.toggle('hide', isAgentRole);
+    document.getElementById('agent-account-btn')?.classList.toggle('hide', !isAgentRole);
+
+    // Chỉ hiện nút "Mã QR" khi dự án của Agent thực sự là QR Concierge.
+    const hasQr = isAgentRole && isQrConciergeProject(CURRENT_ADMIN.project_id);
+    document.getElementById('agent-qr-btn')?.classList.toggle('hide', !hasQr);
+
+    if (isAgentRole) document.getElementById('manage-admins-btn')?.classList.add('hide');
 }
 
 function fillAdminProjectSelect() {
@@ -2243,8 +2278,11 @@ async function deleteActiveSession() {
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     if (!confirm(dict.deleteConfirm)) return;
 
+    // Nút này bị khóa cứng 32x30px (icon-only theo thiết kế) — nhét thêm chữ vào
+    // sẽ tràn ra ngoài đè lên nút bên cạnh, nên luôn chỉ đổi icon, không thêm text.
     deleteSessionBtn.disabled = true;
-    deleteSessionBtn.innerHTML = `<i class="ri-loader-4-line"></i> ...`;
+    deleteSessionBtn.title = dict.deleteChat;
+    deleteSessionBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i>`;
 
     try {
         const response = await authFetch(`${API_BASE}/api/admin/chats/${currentSessionId}`, {
@@ -2264,7 +2302,7 @@ async function deleteActiveSession() {
         alert(dict.deleteError);
     } finally {
         deleteSessionBtn.disabled = false;
-        deleteSessionBtn.innerHTML = `<i class="ri-delete-bin-line"></i> ${dict.deleteChat}`;
+        deleteSessionBtn.innerHTML = `<i class="ri-delete-bin-line"></i>`;
     }
 }
 
@@ -3013,6 +3051,8 @@ async function refreshQrAccounts() {
     if (!qrConciergePanel || !projectId) return;
     const enabled = isQrConciergeProject(projectId);
     qrConciergePanel.classList.toggle('hide', !enabled);
+    // Chế độ "Quản lý tài khoản" luôn ẩn panel QR, kể cả project có bật QR.
+    if (adminMgmtFocus === 'account') qrConciergePanel.classList.add('hide');
     if (!enabled) return;
 
     const canCreate = ['superadmin', 'project_admin'].includes(CURRENT_ADMIN?.role);
@@ -3107,6 +3147,16 @@ if (manageAdminsBtn) manageAdminsBtn.addEventListener('click', (event) => {
     event.stopPropagation();
     window.openAdminManagement();
 });
+
+// Agent: 2 nút riêng trên header thay cho mục trong menu Cài đặt.
+document.getElementById('agent-account-btn')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    window.openAdminManagement('account');
+});
+document.getElementById('agent-qr-btn')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    window.openAdminManagement('qr');
+});
 if (adminMgmtCloseTopBtn) adminMgmtCloseTopBtn.addEventListener('click', closeAdminMgmt);
 if (adminMgmtCloseBtn) adminMgmtCloseBtn.addEventListener('click', closeAdminMgmt);
 if (adminUserForm) adminUserForm.addEventListener('submit', handleAdminUserSubmit);
@@ -3149,9 +3199,95 @@ function renderAdminAvatarPicker(selectedId = 'gradient-1') {
     if (adminFormAvatar) adminFormAvatar.value = selectedId;
 }
 
+// 'account' | 'qr' | null. Agent mở modal từ 2 nút riêng nên chỉ xem đúng
+// phần mình bấm; các role khác vẫn thấy đầy đủ như cũ.
+let adminMgmtFocus = null;
+
+function applyAdminMgmtFocus() {
+    const grid = document.querySelector('.admin-management-grid');
+    const titleEl = document.querySelector('#admin-management-modal .brand-header h2');
+    const subtitleEl = document.getElementById('admin-mgmt-subtitle');
+    const selfPanel = document.getElementById('self-profile-panel');
+
+    // Ô đổi tên hiển thị chỉ xuất hiện ở chế độ "Quản lý tài khoản".
+    const showSelfProfile = adminMgmtFocus === 'account';
+    selfPanel?.classList.toggle('hide', !showSelfProfile);
+    if (showSelfProfile) {
+        const input = document.getElementById('self-display-name-input');
+        if (input) input.value = CURRENT_ADMIN?.full_name || CURRENT_ADMIN?.username || '';
+        setSelfProfileStatus('');
+    }
+
+    if (adminMgmtFocus === 'qr') {
+        grid?.classList.add('hide');
+        // qrConciergePanel do refreshQrAccounts điều khiển theo loại project — không ép hiện ở đây.
+        if (titleEl) titleEl.textContent = 'Mã QR tiếp nhận chat';
+        if (subtitleEl) subtitleEl.textContent = 'Quét mã QR này để khách bắt đầu cuộc trò chuyện với bạn.';
+    } else if (adminMgmtFocus === 'account') {
+        grid?.classList.remove('hide');
+        qrConciergePanel?.classList.add('hide');
+        if (titleEl) titleEl.textContent = 'Quản lý tài khoản';
+        if (subtitleEl) subtitleEl.textContent = 'Thông tin và tên hiển thị của tài khoản bạn.';
+        const listHeading = document.getElementById('admin-list-heading');
+        if (listHeading) listHeading.textContent = 'Tài khoản của bạn';
+    } else {
+        grid?.classList.remove('hide');
+        if (titleEl) titleEl.textContent = 'Quản lý nhân viên & Phân quyền';
+        const listHeading = document.getElementById('admin-list-heading');
+        if (listHeading) listHeading.textContent = 'Danh sách nhân viên';
+    }
+}
+
+function setSelfProfileStatus(message, kind = '') {
+    const el = document.getElementById('self-profile-status');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.remove('is-ok', 'is-error');
+    if (kind) el.classList.add(kind === 'ok' ? 'is-ok' : 'is-error');
+}
+
+async function handleSelfDisplayNameSubmit(event) {
+    event.preventDefault();
+    const input = document.getElementById('self-display-name-input');
+    const saveBtn = document.getElementById('self-display-name-save');
+    const fullName = (input?.value || '').trim();
+
+    if (!fullName) {
+        setSelfProfileStatus('Tên hiển thị không được để trống.', 'error');
+        return;
+    }
+
+    const originalBtnHtml = saveBtn ? saveBtn.innerHTML : '';
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang lưu...'; }
+    setSelfProfileStatus('');
+
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/me/display-name`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ full_name: fullName })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Không thể cập nhật tên hiển thị.');
+
+        // Cập nhật ngay mọi chỗ đang hiển thị tên: header, badge, danh sách.
+        if (CURRENT_ADMIN) CURRENT_ADMIN.full_name = data.admin?.full_name || fullName;
+        const profileNameEl = document.getElementById('admin-profile-name');
+        if (profileNameEl) profileNameEl.textContent = CURRENT_ADMIN.full_name;
+        updateAgentHeaderUI();
+        loadAdminUsers();
+        setSelfProfileStatus('Đã cập nhật tên hiển thị.', 'ok');
+    } catch (error) {
+        setSelfProfileStatus(error.message, 'error');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = originalBtnHtml; }
+    }
+}
+document.getElementById('self-profile-form')?.addEventListener('submit', handleSelfDisplayNameSubmit);
+
 function openAdminMgmt() {
     if (adminMgmtModal) adminMgmtModal.classList.remove('hide');
-    
+
     const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
     const isProjectAdmin = CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin';
     const isAgent = CURRENT_ADMIN && CURRENT_ADMIN.role === 'agent';
@@ -3216,11 +3352,13 @@ function openAdminMgmt() {
         }
     }
 
+    applyAdminMgmtFocus();
     loadAdminUsers();
     resetAdminForm();
 }
-window.openAdminManagement = () => {
+window.openAdminManagement = (focus = null) => {
     closeSettingsDropdown();
+    adminMgmtFocus = focus;
     openAdminMgmt();
 };
 

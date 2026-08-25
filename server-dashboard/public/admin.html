@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r29">
+    <link rel="stylesheet" href="admin.css?v=r31">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -98,7 +98,12 @@
                     <img src="/logoApp.png" alt="Pastie" class="logo-img">
                     <span id="console-brand-name" data-i18n="headerTitle">Pastie AI Console</span>
                 </div>
-                <div class="project-selector">
+                <!-- Tên hiển thị của Agent (chỉ hiện với role agent) -->
+                <div id="agent-identity" class="agent-identity hide">
+                    <span class="agent-identity-label">Agent</span>
+                    <span id="agent-display-name" class="agent-display-name"></span>
+                </div>
+                <div class="project-selector" id="project-selector-wrap">
                     <i class="ri-filter-3-line"></i>
                     <select id="project-filter">
                         <option value="" data-i18n="allProjects">Tất cả dự án</option>
@@ -107,6 +112,14 @@
                 </div>
             </div>
             <div class="header-right">
+                <!-- Nút riêng cho Agent: tách khỏi menu Cài đặt -->
+                <button id="agent-account-btn" class="header-quick-btn hide" type="button" title="Quản lý tài khoản của bạn">
+                    <i class="ri-user-settings-line"></i><span>Quản lý tài khoản</span>
+                </button>
+                <button id="agent-qr-btn" class="header-quick-btn header-quick-btn-qr hide" type="button" title="Mã QR tiếp nhận chat">
+                    <i class="ri-qr-code-line"></i><span>Mã QR</span>
+                </button>
+
                 <!-- Settings Dropdown -->
                 <div class="settings-dropdown-wrapper" id="settings-dropdown-wrapper">
                     <button class="settings-trigger-btn" id="settings-trigger-btn" title="Cài đặt">
@@ -640,6 +653,20 @@
                     <select id="admin-mgmt-project-select" aria-label="Chọn project"></select>
                 </section>
 
+                <!-- Tự đổi tên hiển thị (hiện với Agent) -->
+                <section id="self-profile-panel" class="admin-mgmt-section self-profile-panel hide" aria-label="Tên hiển thị của bạn">
+                    <div class="self-profile-heading">
+                        <span class="account-section-kicker">HỒ SƠ CỦA BẠN</span>
+                        <h3><i class="ri-id-card-line"></i> Tên hiển thị</h3>
+                        <p>Tên này hiện trên thanh tiêu đề và là tên khách nhìn thấy khi bạn trả lời chat.</p>
+                    </div>
+                    <form id="self-profile-form" class="self-profile-form">
+                        <input type="text" id="self-display-name-input" maxlength="255" placeholder="Nhập tên hiển thị..." autocomplete="off" required>
+                        <button type="submit" id="self-display-name-save" class="primary-btn"><i class="ri-save-line"></i> Lưu</button>
+                    </form>
+                    <p id="self-profile-status" class="self-profile-status"></p>
+                </section>
+
                 <section id="qr-concierge-panel" class="admin-mgmt-section qr-concierge-panel hide">
                     <div class="qr-panel-heading">
                         <div>
@@ -661,7 +688,7 @@
                     <div class="admin-users-panel" style="padding-right: 18px; display: flex; flex-direction: column; min-height: 0;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <h3 style="font-size: 13.5px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px;">
-                                <i class="ri-user-line" style="color: var(--accent-color);"></i> Danh sách nhân viên
+                                <i class="ri-user-line" style="color: var(--accent-color);"></i> <span id="admin-list-heading">Danh sách nhân viên</span>
                             </h3>
                             <span id="admin-user-count-badge" style="background: var(--surface-neutral); color: var(--text-secondary); padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 700;">0 nhân viên</span>
                         </div>
@@ -734,6 +761,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r34"></script>
+    <script src="admin.js?v=r37"></script>
 </body>
 </html>

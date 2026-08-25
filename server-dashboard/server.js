@@ -3062,6 +3062,37 @@ app.get('/api/admin/me', checkAdminAuth, async (req, res) => {
   });
 });
 
+// Tự đổi tên hiển thị của chính mình. Cố tình tách riêng khỏi
+// PUT /api/admin/users/:id (route đó điều khiển cả role/project/is_active và
+// chỉ dành cho Superadmin/Project Admin) — ở đây chỉ cho sửa đúng full_name của
+// chính người đang đăng nhập, nên Agent dùng được mà không mở thêm quyền nào khác.
+app.put('/api/admin/me/display-name', checkAdminAuth, async (req, res) => {
+  const fullName = String(req.body?.full_name || '').trim();
+
+  if (!fullName) {
+    return res.status(400).json({ error: 'Tên hiển thị không được để trống.' });
+  }
+  if (fullName.length > 255) {
+    return res.status(400).json({ error: 'Tên hiển thị quá dài (tối đa 255 ký tự).' });
+  }
+
+  try {
+    const result = await db.query(
+      `UPDATE admins SET full_name = $1
+       WHERE id = $2 AND is_active = TRUE
+       RETURNING id, username, full_name, role, project_id, avatar_url, is_active`,
+      [fullName, req.admin.id]
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
+    }
+    res.json({ success: true, message: 'Đã cập nhật tên hiển thị.', admin: result.rows[0] });
+  } catch (error) {
+    console.error('Update display name error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi cập nhật tên hiển thị.' });
+  }
+});
+
 // Danh sách nhân viên có thể phân công hội thoại
 app.get('/api/admin/assignees', checkAdminAuth, async (req, res) => {
   try {
