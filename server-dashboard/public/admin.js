@@ -821,12 +821,16 @@ const isAppleMobile = /iPad|iPhone|iPod/i.test(`${navigator.userAgent} ${navigat
     // capability reliably identifies those devices while excluding macOS Safari.
     || (navigator.vendor === 'Apple Computer, Inc.' && navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) <= 1180);
 const isStandaloneWebApp = window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const canOpenMobileShareSheet = typeof navigator.share === 'function'
+    && (navigator.maxTouchPoints > 0 || window.matchMedia?.('(pointer: coarse)').matches);
 
 function getPushSupportIssue() {
-    if (!('Notification' in window)) return 'unsupported';
+    // Do not rely solely on the iOS user-agent: recent Safari builds can reduce
+    // it. If a touch device has the native share sheet, offer the install flow.
+    if (!('Notification' in window)) return canOpenMobileShareSheet ? 'ios-home-screen' : 'unsupported';
     // iOS/iPadOS only enables Web Push after the web app is added to Home Screen.
     if (isAppleMobile && !isStandaloneWebApp) return 'ios-home-screen';
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported';
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return canOpenMobileShareSheet ? 'ios-home-screen' : 'unsupported';
     return null;
 }
 
