@@ -491,7 +491,9 @@ async function upsertCustomer({ projectId, email, fullName, authProvider, qrAcco
     `INSERT INTO customers (project_id, email, full_name, auth_provider, last_qr_account_id)
      VALUES ($1, LOWER($2), $3, $4, $5)
      ON CONFLICT (project_id, email) DO UPDATE SET
-       full_name = COALESCE(NULLIF(EXCLUDED.full_name, ''), customers.full_name),
+       -- Portal always supplies a display name; avoid an empty-string literal here
+       -- so deployments cannot corrupt the SQL template around nested quotes.
+       full_name = COALESCE(EXCLUDED.full_name, customers.full_name),
        auth_provider = EXCLUDED.auth_provider,
        last_qr_account_id = EXCLUDED.last_qr_account_id,
        last_login_at = CURRENT_TIMESTAMP,
