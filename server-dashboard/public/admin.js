@@ -287,6 +287,9 @@ let adminHasMore = true;
 let adminIsLoadingMore = false;
 let adminIsSending = false;
 let adminIsSyncingMessages = false;
+// Hóa đơn của cuộc chat đang mở — Agent cần nhìn thấy đúng hóa đơn đã gửi cho khách.
+let adminOrder = null;
+let adminOrderSignature = '';
 
 // DOM Elements
 const loginModal = document.getElementById('login-modal');
@@ -1623,6 +1626,9 @@ async function selectSession(sessionId) {
     adminOffset = 0;
     adminHasMore = true;
     adminIsLoadingMore = false;
+    // Hóa đơn thuộc về từng cuộc chat — không để sót hóa đơn của chat trước.
+    adminOrder = null;
+    adminOrderSignature = '';
     
     // Highlight in list
     document.querySelectorAll('.session-card').forEach(c => {
@@ -1878,6 +1884,32 @@ async function selectSession(sessionId) {
     }
 }
 
+// Hóa đơn dùng chung endpoint công khai với khách. Chỉ báo "có thay đổi" khi
+// trạng thái đơn thật sự khác, vì backend vẽ lại PDF mỗi lần gọi nên chuỗi
+// pdfDataUrl luôn khác — so sánh cả chuỗi đó sẽ khiến khung chat render lại liên tục.
+async function loadOrderForAdmin(sessionId) {
+    try {
+        const response = await fetch(`${API_BASE}/api/chats/${sessionId}/order?lang=${currentLang}&_=${Date.now()}`);
+        if (!response.ok) {
+            const had = !!adminOrder;
+            adminOrder = null;
+            adminOrderSignature = '';
+            return had;
+        }
+        const data = await response.json();
+        const order = data.order || null;
+        const signature = order
+            ? [order.id, order.status, order.payment_method, order.total_amount, currentLang].join('|')
+            : '';
+        if (signature === adminOrderSignature) return false;
+        adminOrder = order;
+        adminOrderSignature = signature;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 async function loadMessages(sessionId, isLoadMore = false) {
     // Do not allow a slow request to finish after a newer poll and redraw stale content.
     if (adminIsSyncingMessages) return;
@@ -1947,7 +1979,9 @@ async function loadMessages(sessionId, isLoadMore = false) {
             // Keep local seen count in sync while admin is viewing
             if (currentSessionId) seenMessageCount[currentSessionId] = adminMessages.length;
 
-            if (isDiff || hasLoadingState) {
+            const orderChanged = await loadOrderForAdmin(sessionId);
+
+            if (isDiff || hasLoadingState || orderChanged) {
                 renderAdminMessages(false);
             }
         }
@@ -2054,6 +2088,8 @@ function renderAdminMessages(isLoadMore = false) {
         chatMessagesContainer.appendChild(wrapper);
     });
 
+    renderAdminInvoice();
+
     if (isLoadMore) {
         chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight - previousScrollHeight;
     } else {
@@ -2061,6 +2097,41 @@ function renderAdminMessages(isLoadMore = false) {
             chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
         }
     }
+}
+
+// Hiển thị hóa đơn ở cuối luồng chat của Agent: xem trước co theo bề ngang,
+// bấm vào mở PDF ở tab mới. Agent cần thấy đúng thứ khách đang nhìn.
+function renderAdminInvoice() {
+    if (!adminOrder) return;
+    const invoice = adminOrder.invoice || {};
+    const preview = invoice.svgDataUrl || '';
+    const pdf = invoice.pdfUrl || invoice.pdfDataUrl || '';
+    if (!preview && !pdf) return;
+
+    const statusLabels = {
+        awaiting_payment: 'Chờ thanh toán',
+        paid: 'Đã thanh toán',
+    };
+    const methodLabels = { cash: 'Tiền mặt', bank_qr: 'Chuyển khoản QR', card: 'Thẻ' };
+    const statusText = statusLabels[adminOrder.status] || adminOrder.status || '';
+    const methodText = adminOrder.payment_method ? methodLabels[adminOrder.payment_method] || adminOrder.payment_method : '';
+    const totalText = new Intl.NumberFormat('vi-VN').format(Number(adminOrder.total_amount || 0));
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'admin-invoice-block';
+    wrapper.innerHTML = `
+        <div class="admin-invoice-head">
+            <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> Hóa đơn đã gửi khách</span>
+            <span class="admin-invoice-status ${adminOrder.status === 'paid' ? 'is-paid' : 'is-waiting'}">${escapeHtml(statusText)}</span>
+        </div>
+        ${preview ? `<a class="admin-invoice-preview" href="${pdf || preview}" target="_blank" rel="noopener noreferrer" title="Mở hóa đơn PDF"><img src="${preview}" alt="Hóa đơn"></a>` : ''}
+        <div class="admin-invoice-meta">
+            <span><strong>${escapeHtml(totalText)} ₫</strong></span>
+            ${methodText ? `<span><i class="ri-bank-card-line"></i> ${escapeHtml(methodText)}</span>` : ''}
+            ${pdf ? `<a href="${pdf}" target="_blank" rel="noopener noreferrer"><i class="ri-file-pdf-2-line"></i> Mở PDF</a>` : ''}
+        </div>
+    `;
+    chatMessagesContainer.appendChild(wrapper);
 }
 
 function renderTags(tagsString) {
@@ -2318,6 +2389,8 @@ async function closeActiveSession() {
 }
 
 function resetActiveChatUI() {
+    adminOrder = null;
+    adminOrderSignature = '';
     currentSessionId = null;
     if (messagePollInterval) clearInterval(messagePollInterval);
     messagePollInterval = null;
