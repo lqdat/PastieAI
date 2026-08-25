@@ -359,6 +359,19 @@ app.get('/customer-chat/:code', async (req, res) => {
 // Keep legacy QR codes working while all newly created links use the portal.
 app.get('/qr/:code', (req, res) => res.redirect(302, `/customer-chat/${encodeURIComponent(req.params.code)}`));
 
+// Public metadata used by the standalone customer portal. It intentionally
+// exposes only the support agent's display name for a valid opaque QR code.
+app.get('/api/qr-chat/:code', async (req, res) => {
+  try {
+    const account = await resolveQrChatAccount('qr-concierge', String(req.params.code || ''));
+    if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
+    res.json({ agentName: account.owner_name || account.label || 'Tư vấn viên hỗ trợ', label: account.label });
+  } catch (error) {
+    console.error('[QR Concierge] Cannot read public QR metadata:', error.message);
+    res.status(500).json({ error: 'Không thể tải thông tin hỗ trợ.' });
+  }
+});
+
 
 const ADMIN_SESSION_HOURS = 8;
 const ADMIN_SESSION_MS = ADMIN_SESSION_HOURS * 3600000;
@@ -443,7 +456,7 @@ function canAccessProject(admin, projectId) {
 async function resolveQrChatAccount(projectId, qrCode, queryRunner = db) {
   if (!qrCode) return null;
   const result = await queryRunner.query(
-    `SELECT q.id, q.project_id, q.owner_admin_id, q.label
+    `SELECT q.id, q.project_id, q.owner_admin_id, q.label, a.full_name AS owner_name
        FROM qr_chat_accounts q
        JOIN projects p ON p.id = q.project_id
        JOIN admins a ON a.id = q.owner_admin_id
@@ -768,7 +781,7 @@ app.post('/api/otp/verify', async (req, res) => {
       fullName: finalName,
       authProvider: 'otp',
       qrAccountId: qrAccount?.id || null
-    });
+    }).catch((error) => console.error('Customer profile save failed after OTP login:', error.message));
 
     const existingSession = qrAccount ? null : await findActiveSessionForClient(projectId, email, clientIp, browser, device);
     if (existingSession) {
@@ -2348,7 +2361,7 @@ app.post('/api/qr-chat/google', async (req, res) => {
       fullName: profile.name || 'Khách hàng',
       authProvider: 'google',
       qrAccountId: account.id
-    });
+    }).catch((error) => console.error('Customer profile save failed after Google login:', error.message));
     res.json({ success: true, sessionId, expiresAt: new Date(Date.now() + QR_CHAT_SESSION_MS) });
   } catch (error) {
     console.error('[QR Concierge] Google customer sign-in failed:', error.message);

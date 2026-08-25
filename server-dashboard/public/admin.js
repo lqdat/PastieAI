@@ -2815,6 +2815,7 @@ const qrPreviewLink = document.getElementById('qr-preview-link');
 const qrPreviewCopyBtn = document.getElementById('qr-preview-copy-btn');
 const qrPreviewDownloadBtn = document.getElementById('qr-preview-download-btn');
 let adminMgmtUsers = [];
+let qrAccounts = [];
 
 function getAdminMgmtProjectId() {
     return CURRENT_ADMIN?.role === 'superadmin'
@@ -2836,16 +2837,20 @@ async function refreshQrAccounts() {
     const canCreate = ['superadmin', 'project_admin'].includes(CURRENT_ADMIN?.role);
     document.getElementById('qr-create-controls')?.classList.toggle('hide', !canCreate);
     if (canCreate && qrOwnerSelect) {
+        const selectedOwner = qrOwnerSelect.value;
         const eligible = adminMgmtUsers.filter(u => u.project_id === projectId && u.role === 'agent' && u.is_active);
         qrOwnerSelect.innerHTML = eligible.length
             ? eligible.map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.username)}</option>`).join('')
             : '<option value="">Chưa có Agent hoạt động</option>';
+        if (selectedOwner && [...qrOwnerSelect.options].some(option => option.value === selectedOwner)) qrOwnerSelect.value = selectedOwner;
     }
     if (qrAccountList) qrAccountList.innerHTML = '<div class="qr-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải mã QR…</div>';
     try {
         const res = await authFetch(`${API_BASE}/api/admin/qr-accounts?projectId=${encodeURIComponent(projectId)}`);
-        const accounts = await res.json();
-        if (!res.ok) throw new Error(accounts.error || 'Không tải được mã QR.');
+        qrAccounts = await res.json();
+        if (!res.ok) throw new Error(qrAccounts.error || 'Không tải được mã QR.');
+        const selectedOwner = canCreate ? String(qrOwnerSelect?.value || '') : String(CURRENT_ADMIN?.id || '');
+        const accounts = selectedOwner ? qrAccounts.filter(account => String(account.owner_admin_id) === selectedOwner) : qrAccounts;
         if (!accounts.length) {
             qrAccountList.innerHTML = '<div class="qr-empty"><i class="ri-qr-code-line"></i><span>Chưa có mã QR nào cho project này.</span></div>';
             return;
@@ -2901,6 +2906,7 @@ document.addEventListener('keydown', (event) => {
 adminMgmtProjectSelect?.addEventListener('change', () => {
     loadAdminUsers();
 });
+qrOwnerSelect?.addEventListener('change', refreshQrAccounts);
 qrCreateBtn?.addEventListener('click', async () => {
     const projectId = getAdminMgmtProjectId();
     const ownerAdminId = Number(qrOwnerSelect?.value || 0);
