@@ -1778,6 +1778,132 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
 
 
 
+/**
+ * @openapi
+ * /api/admin/orders:
+ *   post:
+ *     summary: Tạo đơn hàng và bill mẫu từ phiên chat
+ *     tags: [Đơn hàng / Bill]
+ *     security: [{ ApiKeyAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [sessionId, items]
+ *             properties:
+ *               sessionId: { type: string, format: uuid }
+ *               items:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required: [name, quantity, unitPrice]
+ *                   properties:
+ *                     name: { type: string, example: "Nước suối" }
+ *                     quantity: { type: number, example: 2 }
+ *                     unitPrice: { type: number, example: 10000 }
+ *     responses:
+ *       201: { description: Đơn được tạo, có invoice JSON/HTML mẫu }
+ *       403: { description: Không có quyền với project của phiên chat }
+ *
+ * /api/admin/orders/{orderId}/invoice:
+ *   put:
+ *     summary: Phần mềm bill cập nhật hóa đơn JSON, HTML, PNG hoặc PDF
+ *     tags: [Đơn hàng / Bill]
+ *     security: [{ ApiKeyAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [invoice]
+ *             properties:
+ *               totalAmount: { type: number, example: 20000 }
+ *               items: { type: array, items: { type: object } }
+ *               invoice:
+ *                 type: object
+ *                 example:
+ *                   invoiceNo: "POS-20260825-001"
+ *                   html: "<article>Hóa đơn</article>"
+ *                   pngUrl: "https://billing.example.com/bill.png"
+ *                   pdfUrl: "https://billing.example.com/bill.pdf"
+ *     responses:
+ *       200: { description: Đã lưu hóa đơn }
+ *
+ * /api/admin/orders/{orderId}/received-payment:
+ *   post:
+ *     summary: Agent xác nhận đã nhận tiền
+ *     tags: [Đơn hàng / Bill]
+ *     security: [{ ApiKeyAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reference: { type: string, example: "Giao dịch MB 123456" }
+ *     responses:
+ *       200: { description: Đơn đã thanh toán; client hiển thị popup cảm ơn }
+ *
+ * /api/chats/{sessionId}/order:
+ *   get:
+ *     summary: Lấy hóa đơn hiện tại để customer portal render
+ *     tags: [Đơn hàng / Bill]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200: { description: Đơn và phương thức thanh toán hỗ trợ }
+ *       404: { description: Chưa có đơn hoạt động }
+ *
+ * /api/chats/{sessionId}/order/payment-method:
+ *   post:
+ *     summary: Khách chọn phương thức thanh toán
+ *     tags: [Đơn hàng / Bill]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [method]
+ *             properties:
+ *               method: { type: string, enum: [cash, bank_qr, card] }
+ *     responses:
+ *       200: { description: Đã ghi nhận phương thức thanh toán }
+ *
+ * /api/chats/{sessionId}/order/finish:
+ *   post:
+ *     summary: Khách kết thúc sau khi thanh toán, xóa bill và chat session
+ *     tags: [Đơn hàng / Bill]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200: { description: Đã xóa dữ liệu phiên để logout }
+ *       409: { description: Đơn chưa được Agent xác nhận thanh toán }
+ */
 // ── Sample order / billing API ─────────────────────────────────────────────
 // This is intentionally provider-neutral. A POS/billing system can later call
 // these endpoints or supply the invoice JSON/HTML/PNG/PDF URLs in `invoice`.
