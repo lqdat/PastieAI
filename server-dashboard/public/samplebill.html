@@ -30,8 +30,8 @@
     <section class="card">
       <header class="top"><h1>Tạo hóa đơn mẫu</h1><p>Test bill 2 chai nước suối · 20.000 ₫</p></header>
       <form id="sample-form">
-        <div class="field"><label for="chatList">Chọn cuộc chat đang hoạt động</label><select id="chatList"><option value="">Đang tải danh sách chat…</option></select></div>
-        <div class="field"><label for="sessionId">Session ID của cuộc chat đang hoạt động</label><input id="sessionId" name="sessionId" required autocomplete="off" placeholder="Hoặc dán UUID session vào đây"></div>
+        <div class="field"><label for="chatList">Cuộc chat QR đang hoạt động</label><select id="chatList"><option value="">Đang tải chat QR…</option></select></div>
+        <div class="field"><label for="sessionId">Session ID đã chọn</label><input id="sessionId" name="sessionId" required autocomplete="off" placeholder="Tự điền từ cuộc chat QR đang hoạt động"></div>
         <p class="hint">Đăng nhập dashboard trước. Hệ thống dùng phiên Agent/Admin hiện tại để tạo bill và gửi tin nhắn hóa đơn vào chat.</p>
         <button id="submit" type="submit">Tạo & gửi hóa đơn mẫu</button>
         <a href="/admin">← Quay về dashboard</a>
@@ -51,12 +51,13 @@
       const token = localStorage.getItem('pastie_admin_token');
       if (!token) { chatList.innerHTML = '<option>Đăng nhập Dashboard để tải chat</option>'; return; }
       try {
-        const response = await fetch('/api/admin/chats', { headers: { Authorization: `Bearer ${token}` } });
+        const response = await fetch('/api/admin/chats?projectId=qr-concierge', { headers: { Authorization: `Bearer ${token}` } });
         const chats = await response.json();
         const active = Array.isArray(chats) ? chats.filter((chat) => chat.status === 'active') : [];
-        chatList.innerHTML = '<option value="">-- Chọn chat --</option>' + active.map((chat) => `<option value="${chat.id}">${(chat.visitor_name || chat.visitor_email || 'Khách hàng').replace(/</g, '')} · ${chat.id.slice(0, 8)}…</option>`).join('');
-        if (!active.length) chatList.innerHTML = '<option value="">Không có chat đang hoạt động</option>';
-      } catch (_) { chatList.innerHTML = '<option value="">Không tải được danh sách chat</option>'; }
+        chatList.innerHTML = '<option value="">-- Chọn chat QR --</option>' + active.map((chat) => `<option value="${chat.id}">${(chat.visitor_name || chat.visitor_email || 'Khách hàng').replace(/</g, '')} · ${chat.id.slice(0, 8)}…</option>`).join('');
+        if (active.length) { chatList.value = active[0].id; sessionInput.value = active[0].id; }
+        else chatList.innerHTML = '<option value="">Không có chat QR đang hoạt động — hãy quét QR và đăng nhập lại</option>';
+      } catch (_) { chatList.innerHTML = '<option value="">Không tải được danh sách chat QR</option>'; }
     }
     chatList.addEventListener('change', () => { if (chatList.value) sessionInput.value = chatList.value; });
     loadChats();
