@@ -494,6 +494,22 @@ async function expireQrSessionIfNeeded(session, queryRunner = db) {
   return session;
 }
 
+// QR sessions are idle sessions: every real chat activity gives the customer
+// and assigned agent another 15 minutes. A new QR scan still closes the old
+// session immediately, regardless of this sliding expiry.
+async function extendQrSessionOnActivity(session, queryRunner = db) {
+  if (!session?.id || !session.qr_account_id || session.status !== 'active') return null;
+  const expiresAt = new Date(Date.now() + QR_CHAT_SESSION_MS);
+  const result = await queryRunner.query(
+    `UPDATE sessions SET expires_at = $1
+      WHERE id = $2 AND status = 'active' AND qr_account_id IS NOT NULL
+      RETURNING expires_at`,
+    [expiresAt, session.id]
+  );
+  if (result.rows[0]) session.expires_at = result.rows[0].expires_at;
+  return result.rows[0]?.expires_at || null;
+}
+
 async function upsertCustomer({ projectId, email, fullName, authProvider, qrAccountId = null }, queryRunner = db) {
   if (!projectId || !email) return null;
   const result = await queryRunner.query(
@@ -1006,6 +1022,7 @@ app.post('/api/chats/message', async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [sessionId, sender, text, translatedText, detectedLang, senderAdminId]
     );
+    const sessionExpiresAt = await extendQrSessionOnActivity(sessionRes.rows[0]);
 
     // Update session detected language — prioritize the language actually detected from the message text
     // over the widget's static UI language (visitorLang), so the AI replies in the language the visitor is typing in.
@@ -1181,7 +1198,8 @@ app.post('/api/chats/message', async (req, res) => {
     res.json({
       success: true,
       message: msgRes.rows[0],
-      aiReply: aiReplyMsg
+      aiReply: aiReplyMsg,
+      expiresAt: sessionExpiresAt
     });
   } catch (error) {
     console.error('Message translation/logging error:', error);
@@ -2050,8 +2068,9 @@ app.post('/samplebill', checkAdminAuth, async (req, res) => {
        VALUES ($1, 'agent', $2, $2, 'vi', $3) RETURNING *`,
       [sessionId, `Hóa đơn mẫu ${invoice.invoiceNo}: 2 chai nước suối — tổng thanh toán ${formatVnd(20000)}. Vui lòng chọn phương thức thanh toán.`, req.admin.id]
     );
+    const expiresAt = await extendQrSessionOnActivity(session, client);
     await client.query('COMMIT');
-    res.status(201).json({ success: true, order: orderRes.rows[0], chatMessage: messageRes.rows[0] });
+    res.status(201).json({ success: true, order: orderRes.rows[0], chatMessage: messageRes.rows[0], expiresAt });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Create sample bill error:', error);
