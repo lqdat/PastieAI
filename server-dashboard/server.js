@@ -2894,14 +2894,21 @@ app.get('/api/admin/assignees', checkAdminAuth, async (req, res) => {
       );
     } else if (isProjectAdmin(req.admin)) {
       result = await db.query(
-        `SELECT id, username, full_name, role, project_id, avatar_url 
-         FROM admins 
+        `SELECT id, username, full_name, role, project_id, avatar_url
+         FROM admins
          WHERE is_active = TRUE AND project_id = $1 AND role = 'agent'
          ORDER BY full_name ASC`,
         [projectId]
       );
     } else {
-      result = { rows: [] };
+      // Agent: không có quyền phân công lại, nhưng vẫn cần thấy chính mình trong
+      // dropdown "Phân công" (readonly) để tên hiển thị đúng thay vì trống rỗng.
+      result = await db.query(
+        `SELECT id, username, full_name, role, project_id, avatar_url
+         FROM admins
+         WHERE id = $1 AND is_active = TRUE`,
+        [req.admin.id]
+      );
     }
     res.json(result.rows);
   } catch (error) {
@@ -3119,48 +3126,9 @@ app.delete('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
   }
 });
 
-// Get list of assignees for assigning chat
-app.get('/api/admin/assignees', checkAdminAuth, async (req, res) => {
-  const { projectId } = req.query;
-  try {
-    if (isSuperAdmin(req.admin)) {
-      let query = 'SELECT id, username, full_name, role, project_id, is_active FROM admins WHERE is_active = TRUE';
-      const params = [];
-      if (projectId) {
-        query += ' AND (project_id = $1 OR role = \'superadmin\')';
-        params.push(projectId);
-      }
-      query += ' ORDER BY full_name ASC';
-      const result = await db.query(query, params);
-      return res.json(result.rows);
-    }
-
-    if (isProjectAdmin(req.admin)) {
-      // Project admin can only assign to:
-      // 1) Themselves (req.admin.id)
-      // 2) Agents created by this project admin (created_by_admin_id = req.admin.id AND role = 'agent')
-      const result = await db.query(
-        `SELECT id, username, full_name, role, project_id, is_active 
-         FROM admins 
-         WHERE is_active = TRUE 
-           AND (id = $1 OR (created_by_admin_id = $1 AND role = 'agent'))
-         ORDER BY id = $1 DESC, full_name ASC`,
-        [req.admin.id]
-      );
-      return res.json(result.rows);
-    }
-
-    // Agent can only see themselves
-    const result = await db.query(
-      'SELECT id, username, full_name, role, project_id, is_active FROM admins WHERE id = $1 AND is_active = TRUE',
-      [req.admin.id]
-    );
-    return res.json(result.rows);
-  } catch (error) {
-    console.error('Fetch assignees error:', error);
-    res.status(500).json({ error: 'Lỗi hệ thống khi tải danh sách nhân viên phân công.' });
-  }
-});
+// (Đã gộp vào định nghĩa /api/admin/assignees phía trên — route trùng lặp này từng
+// bị Express bỏ qua vì đăng ký sau, khiến nhánh "Agent chỉ thấy chính mình" không
+// bao giờ chạy. Xem sửa lỗi ở định nghĩa đầu tiên của '/api/admin/assignees'.)
 
 // Reassign a session to an admin (Super-Admin or Sub-Admin can reassign)
 app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, async (req, res) => {
