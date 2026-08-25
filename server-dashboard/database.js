@@ -55,12 +55,14 @@ async function initializeDatabase() {
         display_name VARCHAR(255),
         website_url VARCHAR(500),
         project_type VARCHAR(30) NOT NULL DEFAULT 'standard',
+        ai_enabled BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
     await query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type VARCHAR(30) NOT NULL DEFAULT 'standard';`);
     await query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS display_name VARCHAR(255);`);
     await query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS website_url VARCHAR(500);`);
+    await query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN NOT NULL DEFAULT TRUE;`);
     // Seed các dự án mặc định (idempotent)
     await query(`
       INSERT INTO projects (id, name) VALUES
@@ -73,7 +75,7 @@ async function initializeDatabase() {
     await query(`
       INSERT INTO projects (id, name, project_type) VALUES
         ('qr-concierge', 'QR Concierge', 'qr_concierge')
-      ON CONFLICT (id) DO UPDATE SET project_type = 'qr_concierge';
+      ON CONFLICT (id) DO UPDATE SET project_type = 'qr_concierge', ai_enabled = FALSE;
     `);
 
     // Create admin_sessions table

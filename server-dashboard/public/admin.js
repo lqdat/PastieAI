@@ -1162,11 +1162,13 @@ function renderProjectList() {
         const displayName = escapeHtml(p.display_name || p.name || p.id);
         const websiteUrl = escapeHtml(p.website_url || '');
         const projectId = escapeHtml(p.id);
+        const aiChecked = p.ai_enabled !== false ? 'checked' : '';
         return `<article class="project-settings-card" data-project-id="${projectId}">
             <div class="project-settings-card-head"><div><span class="project-id-label">PROJECT ID · ${projectId}</span><h4>${projectName}</h4></div><button type="button" class="project-delete-btn" onclick="window.deleteProject('${p.id}')" title="Xóa project"><i class="ri-delete-bin-line"></i></button></div>
             <label>Tên dự án<input data-field="name" value="${projectName}" maxlength="255"></label>
             <label>Tên hiển thị trên header<input data-field="display_name" value="${displayName}" maxlength="255"></label>
             <label>Link website<input data-field="website_url" type="url" value="${websiteUrl}" placeholder="https://website.com"></label>
+            <label class="project-ai-toggle"><input data-field="ai_enabled" type="checkbox" ${aiChecked}><span><i class="ri-sparkling-2-line"></i> Bật AI chatbot tự động</span><small>Khi tắt, hệ thống vẫn dịch tin nhắn nhưng không tự trả lời; áp dụng cho QR Concierge.</small></label>
             <div class="project-settings-card-foot"><a ${websiteUrl ? `href="${websiteUrl}" target="_blank" rel="noopener"` : ''} class="project-open-link ${websiteUrl ? '' : 'is-disabled'}"><i class="ri-external-link-line"></i> Mở website</a><button type="button" class="secondary-btn" onclick="window.saveProjectSettings('${p.id}')"><i class="ri-save-line"></i> Lưu thay đổi</button></div>
         </article>`;
     }).join('');
@@ -1178,8 +1180,9 @@ window.saveProjectSettings = async (projectId) => {
     const name = card.querySelector('[data-field="name"]')?.value.trim();
     const displayName = card.querySelector('[data-field="display_name"]')?.value.trim();
     const websiteUrl = card.querySelector('[data-field="website_url"]')?.value.trim();
+    const aiEnabled = Boolean(card.querySelector('[data-field="ai_enabled"]')?.checked);
     try {
-        const r = await authFetch(`${API_BASE}/api/admin/projects/${encodeURIComponent(projectId)}/settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, displayName, websiteUrl }) });
+        const r = await authFetch(`${API_BASE}/api/admin/projects/${encodeURIComponent(projectId)}/settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, displayName, websiteUrl, aiEnabled }) });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || 'Không thể lưu project.');
         await loadProjects();

@@ -456,7 +456,7 @@ function canAccessProject(admin, projectId) {
 async function resolveQrChatAccount(projectId, qrCode, queryRunner = db) {
   if (!qrCode) return null;
   const result = await queryRunner.query(
-    `SELECT q.id, q.project_id, q.owner_admin_id, q.label, a.full_name AS owner_name
+    `SELECT q.id, q.project_id, q.owner_admin_id, q.label, p.ai_enabled, a.full_name AS owner_name
        FROM qr_chat_accounts q
        JOIN projects p ON p.id = q.project_id
        JOIN admins a ON a.id = q.owner_admin_id
@@ -824,18 +824,20 @@ app.post('/api/otp/verify', async (req, res) => {
       [sessionId, projectId, finalName, email, finalLang, browser, device, clientIp, assignedAdminId, qrAccount?.id || null, qrAccount ? new Date(Date.now() + QR_CHAT_SESSION_MS) : null]
     );
 
-    // Insert AI greeting message (sender='ai' — renders as a normal chat bubble, not a human agent, and is_human_agent_active check ignores it)
+    // Only chatbot-enabled projects receive an automatic greeting.
     const greetings = {
       vi: `Xin chào ${finalName}! 👋 Mình là Pat, trợ lý của Pastie đây 🌴 Mình giúp gì được cho bạn nào?`,
       en: `Hi ${finalName}! 👋 I'm Pat from Pastie 🌴 How can I help you today?`,
       ru: `Привет, ${finalName}! 👋 Я Pat из Pastie 🌴 Чем могу помочь?`,
       zh: `您好，${finalName}！👋 我是 Pastie 的小助手 Pat 🌴 有什么可以帮您？`,
     };
-    const greetingText = greetings[finalLang] || greetings['vi'];
-    await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'ai', $2, $2, $3)`,
-      [sessionId, greetingText, finalLang]
-    );
+    if (qrAccount?.ai_enabled !== false) {
+      const greetingText = greetings[finalLang] || greetings['vi'];
+      await db.query(
+        `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'ai', $2, $2, $3)`,
+        [sessionId, greetingText, finalLang]
+      );
+    }
 
     // Chỉ hủy mã sau khi toàn bộ phiên được tạo thành công. Nếu DB tạm lỗi,
     // khách vẫn có thể thử lại cùng mã thay vì bị khóa khỏi form OTP.
@@ -931,7 +933,12 @@ app.post('/api/chats/message', async (req, res) => {
 
   try {
     // Verify session is active
-    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    const sessionRes = await db.query(
+      `SELECT s.*, COALESCE(p.ai_enabled, TRUE) AS ai_enabled
+         FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
+        WHERE s.id = $1`,
+      [sessionId]
+    );
     if (sessionRes.rows.length === 0) {
       return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
     }
@@ -1019,7 +1026,7 @@ app.post('/api/chats/message', async (req, res) => {
     let aiReplyMsg = null;
 
     // AI CHATBOT: If visitor sends a message and no human agent has taken over yet, auto-respond using the Knowledge Base!
-    if (sender === 'visitor') {
+    if (sender === 'visitor' && sessionRes.rows[0].ai_enabled !== false) {
       const sessionData = sessionRes.rows[0];
       // Use the language just detected from THIS message first (most accurate), fall back to session's stored language
       const visitorLang = detectedLang || sessionData?.detected_language || 'vi';
@@ -2327,10 +2334,10 @@ app.post('/api/admin/logout', checkAdminAuth, async (req, res) => {
 app.get('/api/admin/projects', checkAdminAuth, async (req, res) => {
   try {
     if (req.admin.role !== 'superadmin' && req.admin.project_id) {
-      const one = await db.query('SELECT id, name, display_name, website_url, project_type FROM projects WHERE id = $1', [req.admin.project_id]);
+      const one = await db.query('SELECT id, name, display_name, website_url, project_type, ai_enabled FROM projects WHERE id = $1', [req.admin.project_id]);
       return res.json(one.rows);
     }
-    const all = await db.query('SELECT id, name, display_name, website_url, project_type, created_at FROM projects ORDER BY created_at ASC, id ASC');
+    const all = await db.query('SELECT id, name, display_name, website_url, project_type, ai_enabled, created_at FROM projects ORDER BY created_at ASC, id ASC');
     res.json(all.rows);
   } catch (e) {
     console.error('List projects error:', e);
@@ -2449,7 +2456,7 @@ app.post('/api/admin/projects', checkAdminAuth, async (req, res) => {
   try {
     const exists = await db.query('SELECT id FROM projects WHERE id = $1', [id]);
     if (exists.rows.length) return res.status(400).json({ error: 'Mã dự án đã tồn tại.' });
-    const r = await db.query('INSERT INTO projects (id, name, display_name, website_url) VALUES ($1, $2, $2, $3) RETURNING id, name, display_name, website_url, created_at', [id, name.trim(), String(websiteUrl || '').trim() || null]);
+    const r = await db.query('INSERT INTO projects (id, name, display_name, website_url) VALUES ($1, $2, $2, $3) RETURNING id, name, display_name, website_url, ai_enabled, created_at', [id, name.trim(), String(websiteUrl || '').trim() || null]);
     res.status(201).json({ success: true, project: r.rows[0] });
   } catch (e) {
     console.error('Create project error:', e);
@@ -2473,6 +2480,7 @@ app.put('/api/admin/projects/:id/settings', checkAdminAuth, async (req, res) => 
   const name = String(req.body?.name || '').trim();
   const displayName = String(req.body?.displayName || '').trim();
   const websiteUrl = String(req.body?.websiteUrl || '').trim();
+  const aiEnabled = req.body?.aiEnabled !== false;
   if (!name || !displayName) return res.status(400).json({ error: 'Cần nhập tên project và tên hiển thị.' });
   if (websiteUrl) {
     try {
@@ -2481,8 +2489,8 @@ app.put('/api/admin/projects/:id/settings', checkAdminAuth, async (req, res) => 
     } catch { return res.status(400).json({ error: 'Link website phải bắt đầu bằng http:// hoặc https://.' }); }
   }
   const result = await db.query(
-    'UPDATE projects SET name = $1, display_name = $2, website_url = $3 WHERE id = $4 RETURNING id, name, display_name, website_url, project_type',
-    [name, displayName, websiteUrl || null, req.params.id]
+    'UPDATE projects SET name = $1, display_name = $2, website_url = $3, ai_enabled = $4 WHERE id = $5 RETURNING id, name, display_name, website_url, project_type, ai_enabled',
+    [name, displayName, websiteUrl || null, aiEnabled, req.params.id]
   );
   if (!result.rows[0]) return res.status(404).json({ error: 'Không tìm thấy project.' });
   res.json({ success: true, project: result.rows[0] });
