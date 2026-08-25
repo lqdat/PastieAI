@@ -324,20 +324,40 @@ app.get('/admin', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
-// Public QR Concierge entry. The QR code contains only an opaque identifier;
-// customer identity is still verified with OTP email or Google before chat.
-app.get('/qr/:code', async (req, res) => {
+function qrCustomerChatUrl(req, code) {
+  const portalUrl = String(process.env.QR_CHAT_PORTAL_URL || '').trim();
+  if (portalUrl) {
+    try {
+      const url = new URL(portalUrl);
+      url.searchParams.set('code', code);
+      return url.toString();
+    } catch (_error) {
+      console.warn('[QR Concierge] QR_CHAT_PORTAL_URL is invalid; using the local customer page.');
+    }
+  }
+  const dashboardUrl = (process.env.DASHBOARD_PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  return `${dashboardUrl}/customer-chat/${encodeURIComponent(code)}`;
+}
+
+// Customer-facing QR Chat Portal. This is intentionally separate from the
+// admin console; deploy it on a dedicated domain through QR_CHAT_PORTAL_URL.
+// The QR code contains only an opaque identifier; customer identity is still
+// verified with OTP email or Google before chat.
+app.get('/customer-chat/:code', async (req, res) => {
   try {
     const account = await resolveQrChatAccount('qr-concierge', String(req.params.code || ''));
     if (!account) return res.status(404).send('Mã QR không hợp lệ hoặc đã hết hiệu lực.');
     const clientId = String(process.env.GOOGLE_CLIENT_ID || '');
     const json = JSON.stringify({ projectId: account.project_id, qrCode: String(req.params.code), clientId }).replace(/</g, '\\u003c');
-    res.type('html').send(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QR Concierge Chat</title><script src="https://accounts.google.com/gsi/client" async defer></script><style>body{margin:0;font-family:Arial,sans-serif;background:#fff7fa;color:#29202a}.qr-login{max-width:420px;margin:56px auto;padding:28px;text-align:center;border-radius:16px;background:#fff;box-shadow:0 12px 32px #0002}.qr-login h1{font-size:22px}.qr-login p{line-height:1.5;color:#685a62}.qr-login button{border:0;border-radius:9px;padding:11px 16px;background:#4285f4;color:#fff;font-weight:600;cursor:pointer}</style></head><body><main class="qr-login"><h1>Trò chuyện hỗ trợ</h1><p>Đăng nhập bằng Google hoặc mở khung chat để nhận mã OTP qua email.</p><div id="google"></div></main><script>const QR=${json};function startGoogle(r){fetch('/api/qr-chat/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:r.credential,projectId:QR.projectId,qrCode:QR.qrCode})}).then(x=>x.json().then(d=>({ok:x.ok,d}))).then(({ok,d})=>{if(!ok)throw Error(d.error);sessionStorage.setItem('pastie_chat_'+QR.projectId+'_'+QR.qrCode+'_session_id',d.sessionId);sessionStorage.setItem('pastie_chat_'+QR.projectId+'_'+QR.qrCode+'_mode','ai');location.reload();}).catch(e=>alert(e.message));}function g(){if(QR.clientId&&window.google?.accounts?.id){google.accounts.id.initialize({client_id:QR.clientId,callback:startGoogle});google.accounts.id.renderButton(document.getElementById('google'),{theme:'outline',size:'large',text:'continue_with'});}else setTimeout(g,250)}g();</script><script src="/widget/v1.js" data-project="${account.project_id}" data-qr-code="${req.params.code}" async></script></body></html>`);
+    res.type('html').send(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chat hỗ trợ</title><script src="https://accounts.google.com/gsi/client" async defer></script><style>body{margin:0;font-family:'Be Vietnam Pro',Arial,sans-serif;background:linear-gradient(135deg,#fff7fb,#f8f7ff);color:#2d2335;min-height:100vh}.portal{max-width:440px;margin:0 auto;padding:72px 20px}.portal-card{padding:30px;border:1px solid #efd8e7;border-radius:24px;background:#fff;box-shadow:0 18px 55px #8c4a7620;text-align:center}.portal-mark{width:50px;height:50px;margin:0 auto 16px;border-radius:16px;display:grid;place-items:center;background:#ffe0ef;color:#ec4899;font-size:25px}.portal-card h1{margin:0;font-size:23px}.portal-card p{margin:10px 0 20px;line-height:1.55;color:#766878;font-size:14px}.portal-note{margin-top:18px;color:#978a99;font-size:11px}</style></head><body><main class="portal"><section class="portal-card"><div class="portal-mark">✦</div><h1>Trò chuyện hỗ trợ</h1><p>Đăng nhập nhanh bằng Google, hoặc mở khung chat để nhận mã xác thực qua email.</p><div id="google"></div><div class="portal-note">Phiên chat sẽ tự kết thúc sau 15 phút.</div></section></main><script>const QR=${json};function startGoogle(r){fetch('/api/qr-chat/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:r.credential,projectId:QR.projectId,qrCode:QR.qrCode})}).then(x=>x.json().then(d=>({ok:x.ok,d}))).then(({ok,d})=>{if(!ok)throw Error(d.error);sessionStorage.setItem('pastie_chat_'+QR.projectId+'_'+QR.qrCode+'_session_id',d.sessionId);sessionStorage.setItem('pastie_chat_'+QR.projectId+'_'+QR.qrCode+'_mode','ai');location.reload();}).catch(e=>alert(e.message));}function g(){if(QR.clientId&&window.google?.accounts?.id){google.accounts.id.initialize({client_id:QR.clientId,callback:startGoogle});google.accounts.id.renderButton(document.getElementById('google'),{theme:'outline',size:'large',text:'continue_with'});}else setTimeout(g,250)}g();</script><script src="/widget/v1.js" data-project="${account.project_id}" data-qr-code="${req.params.code}" async></script></body></html>`);
   } catch (error) {
     console.error('[QR Concierge] Cannot open QR chat:', error.message);
     res.status(500).send('Không thể mở trang chat.');
   }
 });
+
+// Keep legacy QR codes working while all newly created links use the portal.
+app.get('/qr/:code', (req, res) => res.redirect(302, `/customer-chat/${encodeURIComponent(req.params.code)}`));
 
 
 const ADMIN_SESSION_HOURS = 8;
@@ -2305,8 +2325,7 @@ app.get('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
       ORDER BY q.created_at DESC`,
     onlyOwner ? [projectId, req.admin.id] : [projectId]
   );
-  const base = (process.env.DASHBOARD_PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-  res.json(result.rows.map((account) => ({ ...account, chat_url: `${base}/qr/${account.code}` })));
+  res.json(result.rows.map((account) => ({ ...account, chat_url: qrCustomerChatUrl(req, account.code) })));
 });
 
 app.post('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
@@ -2322,8 +2341,7 @@ app.post('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
     `INSERT INTO qr_chat_accounts (project_id, owner_admin_id, code, label) VALUES ($1, $2, $3, $4) RETURNING *`,
     [projectId, ownerAdminId, code, String(label || 'QR chat').trim().slice(0, 255)]
   );
-  const base = (process.env.DASHBOARD_PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-  res.status(201).json({ success: true, account: created.rows[0], chat_url: `${base}/qr/${code}` });
+  res.status(201).json({ success: true, account: created.rows[0], chat_url: qrCustomerChatUrl(req, code) });
 });
 
 // Tạo dự án mới (chỉ superadmin). id = slug không dấu, dùng làm project_id ở widget (data-project).
@@ -2511,13 +2529,11 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
       }
     }
 
-    const publicBase = (process.env.DASHBOARD_PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-
     res.status(201).json({
       success: true,
       message: 'Tạo tài khoản nhân viên thành công.',
       user: insertRes.rows[0],
-      qr: qrAccount ? { ...qrAccount, chat_url: `${publicBase}/qr/${qrAccount.code}` } : null
+      qr: qrAccount ? { ...qrAccount, chat_url: qrCustomerChatUrl(req, qrAccount.code) } : null
     });
   } catch (error) {
     console.error('Create admin error:', error);
