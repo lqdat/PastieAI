@@ -55,14 +55,17 @@ async function initializeDatabase() {
         display_name VARCHAR(255),
         website_url VARCHAR(500),
         project_type VARCHAR(30) NOT NULL DEFAULT 'standard',
-        ai_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        -- NULL means use the safe default for the project type: enabled for
+        -- normal projects, disabled for QR Concierge. A concrete true/false
+        -- value is a setting explicitly chosen by Superadmin.
+        ai_enabled BOOLEAN,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
     await query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type VARCHAR(30) NOT NULL DEFAULT 'standard';`);
     await query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS display_name VARCHAR(255);`);
     await query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS website_url VARCHAR(500);`);
-    await query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN NOT NULL DEFAULT TRUE;`);
+    await query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN;`);
     // Seed các dự án mặc định (idempotent)
     await query(`
       INSERT INTO projects (id, name) VALUES
@@ -73,9 +76,9 @@ async function initializeDatabase() {
     `);
     // QR Concierge: a dedicated project type where each QR belongs to one agent.
     await query(`
-      INSERT INTO projects (id, name, project_type) VALUES
-        ('qr-concierge', 'QR Concierge', 'qr_concierge')
-      ON CONFLICT (id) DO UPDATE SET project_type = 'qr_concierge', ai_enabled = FALSE;
+      INSERT INTO projects (id, name, project_type, ai_enabled) VALUES
+        ('qr-concierge', 'QR Concierge', 'qr_concierge', FALSE)
+      ON CONFLICT (id) DO UPDATE SET project_type = 'qr_concierge';
     `);
 
     // Create admin_sessions table
@@ -178,6 +181,28 @@ async function initializeDatabase() {
       );
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_customers_project_last_login ON customers(project_id, last_login_at DESC);`);
+
+    // Order/Bill workflow. External POS or invoice software can later populate
+    // the invoice payload/URLs through the same API contract.
+    await query(`
+      CREATE TABLE IF NOT EXISTS chat_orders (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        created_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'awaiting_payment',
+        currency VARCHAR(8) NOT NULL DEFAULT 'VND',
+        total_amount NUMERIC(14,0) NOT NULL DEFAULT 0,
+        items JSONB NOT NULL DEFAULT '[]'::jsonb,
+        invoice JSONB NOT NULL DEFAULT '{}'::jsonb,
+        payment_method VARCHAR(30),
+        payment_reference VARCHAR(255),
+        paid_at TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_chat_orders_session_status ON chat_orders(session_id, status, created_at DESC);`);
 
     await query(`
       CREATE TABLE IF NOT EXISTS push_subscriptions (

@@ -456,7 +456,9 @@ function canAccessProject(admin, projectId) {
 async function resolveQrChatAccount(projectId, qrCode, queryRunner = db) {
   if (!qrCode) return null;
   const result = await queryRunner.query(
-    `SELECT q.id, q.project_id, q.owner_admin_id, q.label, p.ai_enabled, a.full_name AS owner_name
+    `SELECT q.id, q.project_id, q.owner_admin_id, q.label,
+            COALESCE(p.ai_enabled, p.project_type <> 'qr_concierge') AS ai_enabled,
+            a.full_name AS owner_name
        FROM qr_chat_accounts q
        JOIN projects p ON p.id = q.project_id
        JOIN admins a ON a.id = q.owner_admin_id
@@ -934,7 +936,7 @@ app.post('/api/chats/message', async (req, res) => {
   try {
     // Verify session is active
     const sessionRes = await db.query(
-      `SELECT s.*, COALESCE(p.ai_enabled, TRUE) AS ai_enabled
+      `SELECT s.*, COALESCE(p.ai_enabled, p.project_type <> 'qr_concierge') AS ai_enabled
          FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
         WHERE s.id = $1`,
       [sessionId]
@@ -1776,6 +1778,136 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
 
 
 
+// ── Sample order / billing API ─────────────────────────────────────────────
+// This is intentionally provider-neutral. A POS/billing system can later call
+// these endpoints or supply the invoice JSON/HTML/PNG/PDF URLs in `invoice`.
+const PAYMENT_METHODS = new Set(['cash', 'bank_qr', 'card']);
+const escapeInvoiceHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const formatVnd = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} ₫`;
+
+function buildSampleInvoice(orderId, session, items, totalAmount) {
+  const invoiceNo = `BILL-${orderId.slice(0, 8).toUpperCase()}`;
+  const rows = items.map((item) => `<tr><td>${escapeInvoiceHtml(item.name)}</td><td>${item.quantity}</td><td>${formatVnd(item.unitPrice)}</td><td>${formatVnd(item.lineTotal)}</td></tr>`).join('');
+  return {
+    version: '1.0', invoiceNo, issuedAt: new Date().toISOString(), buyerName: session.visitor_name || 'Khách hàng',
+    items, totalAmount, currency: 'VND',
+    html: `<article class="pastie-bill"><h2>Hóa đơn ${invoiceNo}</h2><p>Khách hàng: ${escapeInvoiceHtml(session.visitor_name || 'Khách hàng')}</p><table><thead><tr><th>Sản phẩm</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody></table><h3>Tổng cộng: ${formatVnd(totalAmount)}</h3></article>`,
+    pngUrl: null, pdfUrl: null,
+  };
+}
+
+async function getChatOrderForVisitor(sessionId) {
+  const result = await db.query(
+    `SELECT o.* FROM chat_orders o JOIN sessions s ON s.id = o.session_id
+      WHERE o.session_id = $1 AND s.status = 'active'
+      ORDER BY o.created_at DESC LIMIT 1`,
+    [sessionId]
+  );
+  return result.rows[0] || null;
+}
+
+// Agent creates a draft bill. Example body: { sessionId, items:[{name:'Nước',quantity:2,unitPrice:10000}] }
+app.post('/api/admin/orders', checkAdminAuth, async (req, res) => {
+  const { sessionId, items } = req.body || {};
+  if (!sessionId || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Cần sessionId và ít nhất một sản phẩm.' });
+  const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1 AND status = $2', [sessionId, 'active']);
+  const session = sessionRes.rows[0];
+  if (!session) return res.status(404).json({ error: 'Phiên chat không hoạt động.' });
+  if (!canAccessProject(req.admin, session.project_id)) return res.status(403).json({ error: 'Bạn không có quyền tạo đơn cho project này.' });
+  const normalizedItems = items.map((item) => {
+    const name = String(item?.name || '').trim().slice(0, 255);
+    const quantity = Number(item?.quantity);
+    const unitPrice = Number(item?.unitPrice);
+    if (!name || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) return null;
+    return { name, quantity, unitPrice, lineTotal: Math.round(quantity * unitPrice) };
+  });
+  if (normalizedItems.some((item) => !item)) return res.status(400).json({ error: 'Sản phẩm cần có tên, số lượng và đơn giá hợp lệ.' });
+  const totalAmount = normalizedItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  const orderId = randomUUID();
+  const invoice = buildSampleInvoice(orderId, session, normalizedItems, totalAmount);
+  const created = await db.query(
+    `INSERT INTO chat_orders (id, session_id, project_id, created_by_admin_id, total_amount, items, invoice)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [orderId, sessionId, session.project_id, req.admin.id, totalAmount, JSON.stringify(normalizedItems), JSON.stringify(invoice)]
+  );
+  res.status(201).json({ success: true, order: created.rows[0] });
+});
+
+// Integration hand-off: a future POS/billing service can replace the sample
+// payload with its own structured bill and optional image/PDF URLs. It uses the
+// existing staff authentication for now; a dedicated integration key can be
+// added when the external system is connected.
+app.put('/api/admin/orders/:orderId/invoice', checkAdminAuth, async (req, res) => {
+  const { invoice, items, totalAmount } = req.body || {};
+  if (!invoice || typeof invoice !== 'object' || Array.isArray(invoice)) {
+    return res.status(400).json({ error: 'invoice phải là một JSON object.' });
+  }
+  const orderRes = await db.query('SELECT * FROM chat_orders WHERE id = $1', [req.params.orderId]);
+  const order = orderRes.rows[0];
+  if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+  if (!canAccessProject(req.admin, order.project_id)) return res.status(403).json({ error: 'Bạn không có quyền cập nhật hóa đơn này.' });
+  if (order.status !== 'awaiting_payment') return res.status(409).json({ error: 'Chỉ cập nhật được hóa đơn đang chờ thanh toán.' });
+  const nextTotal = totalAmount === undefined ? Number(order.total_amount) : Number(totalAmount);
+  if (!Number.isFinite(nextTotal) || nextTotal < 0) return res.status(400).json({ error: 'totalAmount không hợp lệ.' });
+  const nextItems = items === undefined ? order.items : items;
+  if (!Array.isArray(nextItems)) return res.status(400).json({ error: 'items phải là mảng nếu được gửi.' });
+  const updated = await db.query(
+    `UPDATE chat_orders SET invoice = $1, items = $2, total_amount = $3, updated_at = NOW()
+      WHERE id = $4 RETURNING *`,
+    [JSON.stringify(invoice), JSON.stringify(nextItems), nextTotal, order.id]
+  );
+  res.json({ success: true, order: updated.rows[0] });
+});
+
+// Customer portal polls this endpoint and renders `order.invoice` as JSON/HTML or a future PNG/PDF URL.
+app.get('/api/chats/:sessionId/order', async (req, res) => {
+  const order = await getChatOrderForVisitor(req.params.sessionId);
+  if (!order) return res.status(404).json({ error: 'Chưa có đơn hàng đang hoạt động.' });
+  res.json({ order, paymentMethods: ['cash', 'bank_qr', 'card'] });
+});
+
+app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
+  const method = String(req.body?.method || '');
+  if (!PAYMENT_METHODS.has(method)) return res.status(400).json({ error: 'Phương thức thanh toán không hợp lệ.' });
+  const order = await getChatOrderForVisitor(req.params.sessionId);
+  if (!order || order.status !== 'awaiting_payment') return res.status(409).json({ error: 'Đơn hàng không ở trạng thái chờ thanh toán.' });
+  const updated = await db.query('UPDATE chat_orders SET payment_method = $1, updated_at = NOW() WHERE id = $2 RETURNING *', [method, order.id]);
+  res.json({ success: true, order: updated.rows[0] });
+});
+
+app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, async (req, res) => {
+  const orderRes = await db.query('SELECT o.*, s.project_id FROM chat_orders o JOIN sessions s ON s.id = o.session_id WHERE o.id = $1', [req.params.orderId]);
+  const order = orderRes.rows[0];
+  if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+  if (!canAccessProject(req.admin, order.project_id)) return res.status(403).json({ error: 'Bạn không có quyền xác nhận đơn này.' });
+  if (order.status !== 'awaiting_payment') return res.status(409).json({ error: 'Đơn không ở trạng thái chờ thanh toán.' });
+  const updated = await db.query(
+    `UPDATE chat_orders SET status = 'paid', payment_reference = $1, paid_at = NOW(), updated_at = NOW()
+      WHERE id = $2 RETURNING *`,
+    [String(req.body?.reference || '').trim().slice(0, 255) || null, order.id]
+  );
+  res.json({ success: true, order: updated.rows[0], nextAction: 'customer_thank_you' });
+});
+
+// Customer chooses "Kết thúc": close and remove the current QR conversation and order.
+app.post('/api/chats/:sessionId/order/finish', async (req, res) => {
+  const order = await getChatOrderForVisitor(req.params.sessionId);
+  if (!order || order.status !== 'paid') return res.status(409).json({ error: 'Chỉ có thể kết thúc sau khi đơn đã được xác nhận thanh toán.' });
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM messages WHERE session_id = $1', [req.params.sessionId]);
+    await client.query('DELETE FROM chat_orders WHERE session_id = $1', [req.params.sessionId]);
+    await client.query(`UPDATE sessions SET status = 'closed' WHERE id = $1`, [req.params.sessionId]);
+    await client.query('COMMIT');
+    res.json({ success: true, action: 'logout_and_clear_chat' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Finish order error:', error);
+    res.status(500).json({ error: 'Không thể kết thúc đơn hàng.' });
+  } finally { client.release(); }
+});
+
 // --- ADMIN AUTHENTICATION ENDPOINTS ---
 
 // Admin Login
@@ -2334,10 +2466,10 @@ app.post('/api/admin/logout', checkAdminAuth, async (req, res) => {
 app.get('/api/admin/projects', checkAdminAuth, async (req, res) => {
   try {
     if (req.admin.role !== 'superadmin' && req.admin.project_id) {
-      const one = await db.query('SELECT id, name, display_name, website_url, project_type, ai_enabled FROM projects WHERE id = $1', [req.admin.project_id]);
+      const one = await db.query("SELECT id, name, display_name, website_url, project_type, COALESCE(ai_enabled, project_type <> 'qr_concierge') AS ai_enabled FROM projects WHERE id = $1", [req.admin.project_id]);
       return res.json(one.rows);
     }
-    const all = await db.query('SELECT id, name, display_name, website_url, project_type, ai_enabled, created_at FROM projects ORDER BY created_at ASC, id ASC');
+    const all = await db.query("SELECT id, name, display_name, website_url, project_type, COALESCE(ai_enabled, project_type <> 'qr_concierge') AS ai_enabled, created_at FROM projects ORDER BY created_at ASC, id ASC");
     res.json(all.rows);
   } catch (e) {
     console.error('List projects error:', e);
@@ -2456,7 +2588,7 @@ app.post('/api/admin/projects', checkAdminAuth, async (req, res) => {
   try {
     const exists = await db.query('SELECT id FROM projects WHERE id = $1', [id]);
     if (exists.rows.length) return res.status(400).json({ error: 'Mã dự án đã tồn tại.' });
-    const r = await db.query('INSERT INTO projects (id, name, display_name, website_url) VALUES ($1, $2, $2, $3) RETURNING id, name, display_name, website_url, ai_enabled, created_at', [id, name.trim(), String(websiteUrl || '').trim() || null]);
+    const r = await db.query('INSERT INTO projects (id, name, display_name, website_url, ai_enabled) VALUES ($1, $2, $2, $3, TRUE) RETURNING id, name, display_name, website_url, ai_enabled, created_at', [id, name.trim(), String(websiteUrl || '').trim() || null]);
     res.status(201).json({ success: true, project: r.rows[0] });
   } catch (e) {
     console.error('Create project error:', e);
