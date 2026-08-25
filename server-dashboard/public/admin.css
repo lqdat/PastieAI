@@ -1117,6 +1117,38 @@ button {
 .admin-user-card.is-self {
     border-left: 3px solid #ec4899;
 }
+
+/* Account management: project-first view and QR Concierge workspace */
+.account-project-context {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:16px;
+    margin:0 0 14px;
+    padding:13px 15px;
+    border:1px solid rgba(236,72,153,.2);
+    border-radius:14px;
+    background:linear-gradient(135deg,rgba(236,72,153,.09),rgba(99,102,241,.07));
+}
+.account-section-kicker { display:block; font-size:10px; font-weight:800; letter-spacing:.08em; color:#ec4899; }
+.account-project-context h3,.qr-panel-heading h3 { margin:3px 0 0; font-size:15px; color:var(--text-primary); }
+.project-brand-editor { display:flex; gap:7px; margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,.08); }
+.project-brand-editor select,.project-brand-editor input { min-width:0; flex:1; border:1px solid rgba(236,72,153,.18); border-radius:8px; padding:8px 10px; background:rgba(0,0,0,.18); color:var(--text-primary); font:inherit; font-size:11px; }
+.project-brand-editor button { white-space:nowrap; padding:8px 10px; font-size:11px; }
+.account-project-context h3 i,.qr-panel-heading h3 i { color:#ec4899; margin-right:5px; }
+.account-project-context select,.qr-create-controls select { min-width:230px; border:1px solid rgba(236,72,153,.24); border-radius:10px; padding:9px 11px; background:rgba(255,255,255,.06); color:var(--text-primary); font:inherit; font-size:12px; }
+.qr-concierge-panel { margin:0 0 16px; padding:16px; border:1px solid rgba(139,92,246,.25); border-radius:16px; background:linear-gradient(135deg,rgba(99,102,241,.1),rgba(236,72,153,.07)); }
+.qr-panel-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.qr-panel-heading p { margin:5px 0 0; max-width:550px; color:var(--text-secondary); font-size:11.5px; line-height:1.45; }
+.qr-create-controls { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.qr-create-controls .primary-btn { width:auto; padding:9px 12px; white-space:nowrap; font-size:12px; }
+.qr-account-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:10px; margin-top:14px; }
+.qr-account-card { display:grid; grid-template-columns:68px minmax(0,1fr); gap:10px; align-items:center; padding:10px; border:1px solid rgba(255,255,255,.1); border-radius:12px; background:rgba(17,24,39,.28); }
+.qr-account-card img { width:68px; height:68px; background:#fff; border-radius:8px; }
+.qr-account-info { min-width:0; display:flex; flex-direction:column; gap:3px; }
+.qr-account-info strong { color:var(--text-primary); font-size:12px; }.qr-account-info span,.qr-account-info small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-secondary); font-size:10.5px; }.qr-account-info span i{color:#a78bfa}
+.qr-account-actions { grid-column:1/-1; display:flex; gap:7px; }.qr-account-actions button,.qr-account-actions a { border:1px solid rgba(255,255,255,.14); border-radius:7px; padding:6px 8px; background:rgba(255,255,255,.05); color:var(--text-primary); font:inherit; font-size:10.5px; cursor:pointer; text-decoration:none; }.qr-account-actions a{color:#f9a8d4}
+.qr-empty { grid-column:1/-1; min-height:66px; display:flex; align-items:center; justify-content:center; gap:8px; color:var(--text-secondary); font-size:12px; border:1px dashed rgba(255,255,255,.13); border-radius:10px; }.qr-error{color:#fca5a5}
 .admin-user-info {
     display: flex;
     align-items: center;

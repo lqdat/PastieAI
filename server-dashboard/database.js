@@ -52,11 +52,13 @@ async function initializeDatabase() {
       CREATE TABLE IF NOT EXISTS projects (
         id VARCHAR(100) PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
+        display_name VARCHAR(255),
         project_type VARCHAR(30) NOT NULL DEFAULT 'standard',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
     await query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type VARCHAR(30) NOT NULL DEFAULT 'standard';`);
+    await query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS display_name VARCHAR(255);`);
     // Seed các dự án mặc định (idempotent)
     await query(`
       INSERT INTO projects (id, name) VALUES

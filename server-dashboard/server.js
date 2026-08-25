@@ -2254,10 +2254,10 @@ app.post('/api/admin/logout', checkAdminAuth, async (req, res) => {
 app.get('/api/admin/projects', checkAdminAuth, async (req, res) => {
   try {
     if (req.admin.role !== 'superadmin' && req.admin.project_id) {
-      const one = await db.query('SELECT id, name, project_type FROM projects WHERE id = $1', [req.admin.project_id]);
+      const one = await db.query('SELECT id, name, display_name, project_type FROM projects WHERE id = $1', [req.admin.project_id]);
       return res.json(one.rows);
     }
-    const all = await db.query('SELECT id, name, project_type, created_at FROM projects ORDER BY created_at ASC, id ASC');
+    const all = await db.query('SELECT id, name, display_name, project_type, created_at FROM projects ORDER BY created_at ASC, id ASC');
     res.json(all.rows);
   } catch (e) {
     console.error('List projects error:', e);
@@ -2338,12 +2338,23 @@ app.post('/api/admin/projects', checkAdminAuth, async (req, res) => {
   try {
     const exists = await db.query('SELECT id FROM projects WHERE id = $1', [id]);
     if (exists.rows.length) return res.status(400).json({ error: 'Mã dự án đã tồn tại.' });
-    const r = await db.query('INSERT INTO projects (id, name) VALUES ($1, $2) RETURNING id, name, created_at', [id, name.trim()]);
+    const r = await db.query('INSERT INTO projects (id, name, display_name) VALUES ($1, $2, $2) RETURNING id, name, display_name, created_at', [id, name.trim()]);
     res.status(201).json({ success: true, project: r.rows[0] });
   } catch (e) {
     console.error('Create project error:', e);
     res.status(500).json({ error: 'Lỗi tạo dự án.' });
   }
+});
+
+// Superadmin sets the brand shown in the console header for all users scoped
+// to a project (for example: "Hộ kinh doanh Đan Trinh").
+app.put('/api/admin/projects/:id/display-name', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Superadmin được đổi tên hiển thị.' });
+  const displayName = String(req.body?.displayName || '').trim();
+  if (!displayName || displayName.length > 255) return res.status(400).json({ error: 'Tên hiển thị cần từ 1 đến 255 ký tự.' });
+  const result = await db.query('UPDATE projects SET display_name = $1 WHERE id = $2 RETURNING id, name, display_name', [displayName, req.params.id]);
+  if (!result.rows[0]) return res.status(404).json({ error: 'Không tìm thấy project.' });
+  res.json({ success: true, project: result.rows[0] });
 });
 
 // Xoá dự án (chỉ superadmin). Không xoá chat/KB cũ; chỉ gỡ khỏi registry.
@@ -2364,28 +2375,6 @@ app.get('/api/admin/me', checkAdminAuth, async (req, res) => {
     success: true,
     admin: req.admin
   });
-});
-
-// Change password for the currently authenticated admin account.
-app.put('/api/admin/me/password', checkAdminAuth, async (req, res) => {
-  const { current_password, new_password } = req.body || {};
-  if (req.admin.username.startsWith('sso:')) {
-    return res.status(403).json({ error: 'Tài khoản SSO đổi mật khẩu tại hệ thống đăng nhập nguồn.' });
-  }
-  if (!current_password || !new_password || new_password.length < 8) {
-    return res.status(400).json({ error: 'Nhập mật khẩu hiện tại và mật khẩu mới ít nhất 8 ký tự.' });
-  }
-  try {
-    const result = await db.query('SELECT password_hash FROM admins WHERE id = $1', [req.admin.id]);
-    if (result.rows.length === 0 || !(await verifyPassword(current_password, result.rows[0].password_hash))) {
-      return res.status(400).json({ error: 'Mật khẩu hiện tại không đúng.' });
-    }
-    await db.query('UPDATE admins SET password_hash = $1 WHERE id = $2', [await hashPassword(new_password), req.admin.id]);
-    res.json({ success: true, message: 'Đã đổi mật khẩu.' });
-  } catch (error) {
-    console.error('Change password error:', error);
-    res.status(500).json({ error: 'Không thể đổi mật khẩu.' });
-  }
 });
 
 // Danh sách nhân viên có thể phân công hội thoại
@@ -2423,19 +2412,18 @@ app.get('/api/admin/assignees', checkAdminAuth, async (req, res) => {
 
 // List all sub-admins
 app.get('/api/admin/users', checkAdminAuth, async (req, res) => {
-  if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin)) {
-    return res.status(403).json({ error: 'Bạn không có quyền quản lý tài khoản.' });
-  }
-
   try {
     const result = isSuperAdmin(req.admin)
       ? await db.query('SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_by_admin_id, created_at FROM admins ORDER BY role DESC, username ASC')
-      : await db.query(
+      : isProjectAdmin(req.admin) ? await db.query(
         `SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_by_admin_id, created_at
          FROM admins 
          WHERE ((created_by_admin_id = $1 AND role = 'agent') OR id = $1) AND project_id = $2 
          ORDER BY role DESC, username ASC`,
         [req.admin.id, req.admin.project_id]
+      ) : await db.query(
+        `SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_by_admin_id, created_at
+           FROM admins WHERE id = $1`, [req.admin.id]
       );
     res.json(result.rows);
   } catch (error) {
@@ -2450,9 +2438,10 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
     return res.status(403).json({ error: 'Bạn không có quyền tạo tài khoản.' });
   }
 
-  const { username, password, full_name, role, avatar_url, project_id } = req.body;
-  if (!username || !password || !full_name) {
-    return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ: Họ tên, Tên đăng nhập, Mật khẩu.' });
+  const { email, full_name, role, avatar_url, project_id } = req.body || {};
+  const username = String(email || '').trim().toLowerCase();
+  if (!username || !username.includes('@') || !full_name?.trim()) {
+    return res.status(400).json({ error: 'Vui lòng cung cấp Họ tên và Email hợp lệ.' });
   }
 
   try {
@@ -2466,13 +2455,15 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
       return res.status(400).json({ error: 'Project Admin phải thuộc một project hợp lệ.' });
     }
 
-    // Check if username already exists
+    // Email is the account identifier for Google and Email OTP sign-in.
     const checkRes = await db.query('SELECT id FROM admins WHERE username = $1', [username]);
     if (checkRes.rows.length > 0) {
-      return res.status(400).json({ error: 'Tên đăng nhập đã tồn tại trong hệ thống.' });
+      return res.status(400).json({ error: 'Email này đã tồn tại trong hệ thống.' });
     }
 
-    const passwordHash = await hashPassword(password);
+    // Kept only because the legacy schema requires password_hash. It is random
+    // and never shown or used by staff created through this screen.
+    const passwordHash = await hashPassword(randomUUID());
     const avatar = avatar_url || 'gradient-1';
     const scope = isSuperAdmin(req.admin)
       ? (effectiveRole === 'superadmin' ? null : (project_id && project_id.trim() ? project_id.trim() : null))
@@ -2487,10 +2478,26 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
       [username, passwordHash, full_name, effectiveRole, avatar, scope, creatorId]
     );
 
+    let qrAccount = null;
+    if (scope) {
+      const qrProject = await db.query(`SELECT project_type FROM projects WHERE id = $1`, [scope]);
+      if (qrProject.rows[0]?.project_type === 'qr_concierge') {
+        const code = `qr_${randomUUID().replace(/-/g, '')}`;
+        qrAccount = (await db.query(
+          `INSERT INTO qr_chat_accounts (project_id, owner_admin_id, code, label)
+           VALUES ($1, $2, $3, $4) RETURNING id, code, label`,
+          [scope, insertRes.rows[0].id, code, `QR của ${full_name.trim()}`]
+        )).rows[0];
+      }
+    }
+
+    const publicBase = (process.env.DASHBOARD_PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+
     res.status(201).json({
       success: true,
       message: 'Tạo tài khoản nhân viên thành công.',
-      user: insertRes.rows[0]
+      user: insertRes.rows[0],
+      qr: qrAccount ? { ...qrAccount, chat_url: `${publicBase}/qr/${qrAccount.code}` } : null
     });
   } catch (error) {
     console.error('Create admin error:', error);
@@ -2505,7 +2512,8 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
   }
 
   const { id } = req.params;
-  const { username, password, full_name, role, avatar_url, is_active, project_id } = req.body;
+  const { email, full_name, role, avatar_url, is_active, project_id } = req.body || {};
+  const username = email === undefined ? undefined : String(email || '').trim().toLowerCase();
 
   try {
     // Verify admin exists
@@ -2526,17 +2534,15 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
       }
     }
 
-    // If username changes, check if new username exists
+    if (username !== undefined && (!username || !username.includes('@'))) {
+      return res.status(400).json({ error: 'Email đăng nhập không hợp lệ.' });
+    }
+    // If email changes, check if it is already registered.
     if (username && username !== currentAdmin.username) {
       const uRes = await db.query('SELECT id FROM admins WHERE username = $1', [username]);
       if (uRes.rows.length > 0) {
-        return res.status(400).json({ error: 'Tên đăng nhập mới đã tồn tại.' });
+        return res.status(400).json({ error: 'Email này đã tồn tại trong hệ thống.' });
       }
-    }
-
-    let passwordHash = currentAdmin.password_hash;
-    if (password && password.trim() !== '') {
-      passwordHash = await hashPassword(password);
     }
 
     const updatedUsername = username || currentAdmin.username;
@@ -2558,9 +2564,9 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
 
     const updateRes = await db.query(
       `UPDATE admins
-       SET username = $1, password_hash = $2, full_name = $3, role = $4, avatar_url = $5, is_active = $6, project_id = $7
-       WHERE id = $8 RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, created_at`,
-      [updatedUsername, passwordHash, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, updatedProject, id]
+       SET username = $1, full_name = $2, role = $3, avatar_url = $4, is_active = $5, project_id = $6
+       WHERE id = $7 RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, created_at`,
+      [updatedUsername, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, updatedProject, id]
     );
 
     res.json({

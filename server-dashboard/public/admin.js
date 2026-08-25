@@ -372,44 +372,6 @@ function authFetch(url, options = {}) {
     return fetch(url, { ...options, headers });
 }
 
-const changePasswordModal = document.getElementById('change-password-modal');
-const changePasswordForm = document.getElementById('change-password-form');
-const changePasswordError = document.getElementById('change-password-error');
-
-function closeChangePasswordModal() {
-    changePasswordModal?.classList.add('hide');
-    changePasswordForm?.reset();
-    if (changePasswordError) changePasswordError.style.display = 'none';
-}
-
-document.getElementById('change-password-btn')?.addEventListener('click', () => {
-    document.getElementById('settings-dropdown-menu')?.classList.add('hide');
-    changePasswordModal?.classList.remove('hide');
-    document.getElementById('current-password-input')?.focus();
-});
-document.getElementById('change-password-cancel')?.addEventListener('click', closeChangePasswordModal);
-changePasswordForm?.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const currentPassword = document.getElementById('current-password-input')?.value || '';
-    const newPassword = document.getElementById('new-password-input')?.value || '';
-    const confirmPassword = document.getElementById('confirm-password-input')?.value || '';
-    if (newPassword !== confirmPassword) {
-        if (changePasswordError) { changePasswordError.textContent = 'Mật khẩu xác nhận không khớp.'; changePasswordError.style.display = 'block'; }
-        return;
-    }
-    const response = await authFetch(`${API_BASE}/api/admin/me/password`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-        if (changePasswordError) { changePasswordError.textContent = data.error || 'Không thể đổi mật khẩu.'; changePasswordError.style.display = 'block'; }
-        return;
-    }
-    closeChangePasswordModal();
-    alert('Đã đổi mật khẩu thành công.');
-});
-
 // ----------------------------------------------------
 // UNIFIED DIRECT AUTHENTICATION (GOOGLE & EMAIL OTP)
 // ----------------------------------------------------
@@ -987,14 +949,18 @@ async function loadAdminProfile() {
         const nameEl = document.getElementById('admin-profile-name');
         const badgeEl = document.getElementById('admin-profile-badge');
         const manageBtn = document.getElementById('manage-admins-btn');
-        const changePasswordBtn = document.getElementById('change-password-btn');
         if (nameEl) nameEl.textContent = admin.full_name || admin.username;
         if (badgeEl) badgeEl.style.display = 'flex';
         const isSuperOrProjectAdmin = ['superadmin', 'project_admin'].includes(admin.role);
-        if (manageBtn) manageBtn.classList.toggle('hide', !isSuperOrProjectAdmin);
+        const isAccountRole = ['superadmin', 'project_admin', 'agent'].includes(admin.role);
+        if (manageBtn) manageBtn.classList.toggle('hide', !isAccountRole);
         const knowledgeBtn = document.getElementById('knowledge-settings-btn');
-        if (knowledgeBtn) knowledgeBtn.classList.toggle('hide', !isSuperOrProjectAdmin);
-        if (changePasswordBtn && String(admin.username || '').startsWith('sso:')) changePasswordBtn.classList.add('hide');
+        if (knowledgeBtn) knowledgeBtn.classList.toggle('hide', admin.role !== 'superadmin');
+        // Project Admin and Agent can only open the account/QR workspace; all
+        // channel, knowledge and data-export settings stay Superadmin-only.
+        ['keyword-settings-btn', 'channel-settings-btn', 'export-csv-btn', 'export-jsonl-btn'].forEach(id => {
+            document.getElementById(id)?.classList.toggle('hide', admin.role !== 'superadmin');
+        });
         if (deleteSessionBtn) deleteSessionBtn.classList.toggle('hide', admin.role !== 'superadmin');
         if (projectFilter && admin.role !== 'superadmin' && admin.project_id) {
             projectFilter.title = `Dự án được phân quyền: ${admin.project_id}`;
@@ -1109,6 +1075,45 @@ async function loadProjects() {
     updateProjectFilterDropdown([]);
     fillAdminProjectSelect();
     renderProjectList();
+    syncProjectBrandEditor();
+    updateConsoleBrand();
+}
+
+function updateConsoleBrand() {
+    const el = document.getElementById('console-brand-name');
+    if (!el || !CURRENT_ADMIN?.project_id) return;
+    const project = (PROJECTS || []).find(p => p.id === CURRENT_ADMIN.project_id);
+    el.textContent = project?.display_name || project?.name || CURRENT_ADMIN.project_id;
+}
+
+function syncProjectBrandEditor() {
+    const select = document.getElementById('project-brand-project-select');
+    const input = document.getElementById('project-display-name');
+    if (!select || !input) return;
+    select.innerHTML = (PROJECTS || []).map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name || p.id)}</option>`).join('');
+    const sync = () => {
+        const project = (PROJECTS || []).find(p => p.id === select.value);
+        input.value = project?.display_name || project?.name || '';
+    };
+    select.onchange = sync;
+    sync();
+}
+
+async function saveProjectDisplayName() {
+    const select = document.getElementById('project-brand-project-select');
+    const input = document.getElementById('project-display-name');
+    const projectId = select?.value;
+    const displayName = input?.value.trim();
+    if (!projectId || !displayName) return alert('Hãy chọn project và nhập tên hiển thị.');
+    try {
+        const r = await authFetch(`${API_BASE}/api/admin/projects/${encodeURIComponent(projectId)}/display-name`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName })
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Không thể lưu tên hiển thị.');
+        await loadProjects();
+        alert('Đã lưu tên hiển thị trên header.');
+    } catch (error) { alert(error.message); }
 }
 
 function fillAdminProjectSelect() {
@@ -2198,6 +2203,7 @@ const projectAddBtn = document.getElementById('project-add-btn');
 if (projectAddBtn) projectAddBtn.addEventListener('click', addProject);
 const projectNewName = document.getElementById('project-new-name');
 if (projectNewName) projectNewName.addEventListener('keypress', (e) => { if (e.key === 'Enter') addProject(); });
+document.getElementById('project-display-name-save-btn')?.addEventListener('click', saveProjectDisplayName);
 
 // Đăng nhập từ form bằng tài khoản DealPhuQuoc. Cổng Deal sẽ xác thực rồi
 // trả về URL này với token SSO ngắn hạn.
@@ -2810,6 +2816,82 @@ const adminMgmtCloseTopBtn = document.getElementById('admin-mgmt-close-top-btn')
 const adminMgmtCloseBtn = document.getElementById('admin-mgmt-close-btn');
 const adminUserForm = document.getElementById('admin-user-form');
 const adminListContainer = document.getElementById('admin-list-container');
+const accountProjectContext = document.getElementById('account-project-context');
+const adminMgmtProjectSelect = document.getElementById('admin-mgmt-project-select');
+const qrConciergePanel = document.getElementById('qr-concierge-panel');
+const qrOwnerSelect = document.getElementById('qr-owner-select');
+const qrCreateBtn = document.getElementById('qr-create-btn');
+const qrAccountList = document.getElementById('qr-account-list');
+let adminMgmtUsers = [];
+
+function getAdminMgmtProjectId() {
+    return CURRENT_ADMIN?.role === 'superadmin'
+        ? (adminMgmtProjectSelect?.value || '')
+        : (CURRENT_ADMIN?.project_id || '');
+}
+
+function isQrConciergeProject(projectId) {
+    return (PROJECTS || []).some(p => p.id === projectId && p.project_type === 'qr_concierge');
+}
+
+async function refreshQrAccounts() {
+    const projectId = getAdminMgmtProjectId();
+    if (!qrConciergePanel || !projectId) return;
+    const enabled = isQrConciergeProject(projectId);
+    qrConciergePanel.classList.toggle('hide', !enabled);
+    if (!enabled) return;
+
+    const canCreate = ['superadmin', 'project_admin'].includes(CURRENT_ADMIN?.role);
+    document.getElementById('qr-create-controls')?.classList.toggle('hide', !canCreate);
+    if (canCreate && qrOwnerSelect) {
+        const eligible = adminMgmtUsers.filter(u => u.project_id === projectId && u.role === 'agent' && u.is_active);
+        qrOwnerSelect.innerHTML = eligible.length
+            ? eligible.map(u => `<option value="${u.id}">${escapeHtml(u.full_name || u.username)}</option>`).join('')
+            : '<option value="">Chưa có Agent hoạt động</option>';
+    }
+    if (qrAccountList) qrAccountList.innerHTML = '<div class="qr-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải mã QR…</div>';
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/qr-accounts?projectId=${encodeURIComponent(projectId)}`);
+        const accounts = await res.json();
+        if (!res.ok) throw new Error(accounts.error || 'Không tải được mã QR.');
+        if (!accounts.length) {
+            qrAccountList.innerHTML = '<div class="qr-empty"><i class="ri-qr-code-line"></i><span>Chưa có mã QR nào cho project này.</span></div>';
+            return;
+        }
+        qrAccountList.innerHTML = accounts.map(account => {
+            const imageUrl = `https://quickchart.io/qr?size=180&text=${encodeURIComponent(account.chat_url)}`;
+            return `<article class="qr-account-card">
+                <img src="${imageUrl}" alt="QR chat của ${escapeHtml(account.owner_name)}" loading="lazy">
+                <div class="qr-account-info"><strong>${escapeHtml(account.label)}</strong><span><i class="ri-user-3-line"></i> ${escapeHtml(account.owner_name)}</span><small>${escapeHtml(account.chat_url)}</small></div>
+                <div class="qr-account-actions"><button type="button" onclick="window.copyQrChatLink('${account.chat_url}')"><i class="ri-file-copy-line"></i> Sao chép</button><a href="${imageUrl}" target="_blank" rel="noopener"><i class="ri-download-2-line"></i> Mở QR</a></div>
+            </article>`;
+        }).join('');
+    } catch (error) {
+        qrAccountList.innerHTML = `<div class="qr-empty qr-error">${escapeHtml(error.message)}</div>`;
+    }
+}
+
+window.copyQrChatLink = async (url) => {
+    try { await navigator.clipboard.writeText(url); alert('Đã sao chép link QR.'); }
+    catch { window.prompt('Sao chép link QR:', url); }
+};
+
+adminMgmtProjectSelect?.addEventListener('change', () => {
+    loadAdminUsers();
+});
+qrCreateBtn?.addEventListener('click', async () => {
+    const projectId = getAdminMgmtProjectId();
+    const ownerAdminId = Number(qrOwnerSelect?.value || 0);
+    if (!projectId || !ownerAdminId) return alert('Hãy chọn Agent trước khi tạo QR.');
+    qrCreateBtn.disabled = true;
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/qr-accounts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, ownerAdminId, label: `QR chat · ${qrOwnerSelect.options[qrOwnerSelect.selectedIndex].text}` }) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Không thể tạo QR.');
+        await refreshQrAccounts();
+    } catch (error) { alert(error.message); }
+    finally { qrCreateBtn.disabled = false; }
+});
 
 if (manageAdminsBtn) manageAdminsBtn.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -2821,8 +2903,7 @@ if (adminUserForm) adminUserForm.addEventListener('submit', handleAdminUserSubmi
 
 const adminFormId = document.getElementById('admin-form-id');
 const adminFormFullname = document.getElementById('admin-form-fullname');
-const adminFormUsername = document.getElementById('admin-form-username');
-const adminFormPassword = document.getElementById('admin-form-password');
+const adminFormEmail = document.getElementById('admin-form-email');
 const adminFormRole = document.getElementById('admin-form-role');
 const adminFormProject = document.getElementById('admin-form-project');
 const adminFormActive = document.getElementById('admin-form-active');
@@ -2863,13 +2944,23 @@ function openAdminMgmt() {
     
     const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
     const isProjectAdmin = CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin';
+    const isAgent = CURRENT_ADMIN && CURRENT_ADMIN.role === 'agent';
 
     const projectMgmtBox = document.querySelector('.admin-project-management');
     const projectFormGroup = document.getElementById('admin-form-project-group');
     const roleSelect = document.getElementById('admin-form-role');
     const subtitleEl = document.getElementById('admin-mgmt-subtitle');
 
-    if (isProjectAdmin) {
+    // Only Superadmin can switch the project context. Other roles are always
+    // locked to the project assigned to their account.
+    if (accountProjectContext) accountProjectContext.classList.toggle('hide', !isSuper);
+    if (isSuper && adminMgmtProjectSelect) {
+        adminMgmtProjectSelect.innerHTML = (PROJECTS || []).map(p =>
+            `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name || p.id)} · ${escapeHtml(p.id)}</option>`
+        ).join('');
+    }
+
+    if (isProjectAdmin || isAgent) {
         if (projectMgmtBox) projectMgmtBox.classList.add('hide');
         if (projectFormGroup) projectFormGroup.classList.add('hide');
         if (roleSelect) {
@@ -2879,6 +2970,12 @@ function openAdminMgmt() {
         }
         if (subtitleEl) {
             subtitleEl.textContent = `Quản lý danh sách Agent tư vấn của bạn [${CURRENT_ADMIN.project_id || 'Dự án'}].`;
+        }
+        if (isAgent) {
+            if (adminUserForm) adminUserForm.closest('.admin-user-form-panel')?.classList.add('hide');
+            if (subtitleEl) subtitleEl.textContent = `Tài khoản và mã QR của bạn [${CURRENT_ADMIN.project_id || 'Dự án'}].`;
+        } else {
+            adminUserForm?.closest('.admin-user-form-panel')?.classList.remove('hide');
         }
     } else {
         if (projectMgmtBox) projectMgmtBox.classList.remove('hide');
@@ -2895,6 +2992,7 @@ function openAdminMgmt() {
         if (subtitleEl) {
             subtitleEl.textContent = 'Quản lý tài khoản, phân quyền và trạng thái hoạt động của nhân viên toàn hệ thống.';
         }
+        adminUserForm?.closest('.admin-user-form-panel')?.classList.remove('hide');
 
         // Populate projects in form dropdown
         if (adminFormProject) {
@@ -2930,12 +3028,18 @@ async function loadAdminUsers() {
             adminListContainer.innerHTML = '<p style="color:#f87171;font-size:12px;text-align:center;">Lỗi tải danh sách nhân viên.</p>';
             return;
         }
+        adminMgmtUsers = users;
+        const projectId = getAdminMgmtProjectId();
+        const visibleUsers = CURRENT_ADMIN?.role === 'superadmin' && projectId
+            ? users.filter(u => u.project_id === projectId)
+            : users;
 
         const countBadge = document.getElementById('admin-user-count-badge');
-        if (countBadge) countBadge.textContent = `${users.length} nhân viên`;
+        if (countBadge) countBadge.textContent = `${visibleUsers.length} nhân viên`;
 
-        if (users.length === 0) {
+        if (visibleUsers.length === 0) {
             adminListContainer.innerHTML = '<p style="color:var(--text-secondary);font-size:12px;text-align:center;padding:24px 0;">Chưa có tài khoản nhân viên nào.</p>';
+            await refreshQrAccounts();
             return;
         }
 
@@ -2947,7 +3051,7 @@ async function loadAdminUsers() {
             'gradient-5': 'linear-gradient(135deg,#0ea5e9,#2563eb)'
         };
 
-        adminListContainer.innerHTML = users.map(u => {
+        adminListContainer.innerHTML = visibleUsers.map(u => {
             const isSelf = CURRENT_ADMIN && Number(CURRENT_ADMIN.id) === Number(u.id);
             const isCreatedByMe = CURRENT_ADMIN && u.created_by_admin_id && Number(u.created_by_admin_id) === Number(CURRENT_ADMIN.id);
             const bgGradient = avatarGradients[u.avatar_url] || avatarGradients['gradient-1'];
@@ -2997,6 +3101,7 @@ async function loadAdminUsers() {
                 </div>
             `;
         }).join('');
+        await refreshQrAccounts();
     } catch(e) {
         adminListContainer.innerHTML = '<p style="color:#f87171;font-size:12px;text-align:center;">Lỗi kết nối máy chủ.</p>';
     }
@@ -3010,7 +3115,6 @@ function resetAdminForm() {
     if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-user-add-line"></i> Lưu nhân viên';
     if (adminFormCancelBtn) adminFormCancelBtn.style.display = 'none';
     if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'none';
-    if (adminFormPassword) adminFormPassword.required = true;
     
     if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin') {
         if (adminFormRole) { adminFormRole.value = 'agent'; adminFormRole.disabled = true; }
@@ -3020,8 +3124,6 @@ function resetAdminForm() {
     }
 
     renderAdminAvatarPicker();
-    const pwLabel = document.getElementById('admin-form-password-label');
-    if (pwLabel) pwLabel.textContent = 'Mật khẩu *';
 }
 
 async function editAdminUser(id) {
@@ -3032,11 +3134,7 @@ async function editAdminUser(id) {
         if (!u) return;
         if (adminFormId) adminFormId.value = u.id;
         if (adminFormFullname) adminFormFullname.value = u.full_name || '';
-        if (adminFormUsername) adminFormUsername.value = u.username || '';
-        if (adminFormPassword) {
-            adminFormPassword.value = '';
-            adminFormPassword.required = false;
-        }
+        if (adminFormEmail) adminFormEmail.value = u.username || '';
         if (adminFormRole) {
             adminFormRole.value = u.role;
             if (CURRENT_ADMIN?.role === 'project_admin') adminFormRole.disabled = true;
@@ -3048,8 +3146,6 @@ async function editAdminUser(id) {
         if (adminFormTitle) adminFormTitle.innerHTML = `<i class="ri-edit-line" style="color:#ec4899;"></i> Sửa nhân viên: ${escapeHtml(u.full_name || u.username)}`;
         if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-save-line"></i> Cập nhật';
         if (adminFormCancelBtn) adminFormCancelBtn.style.display = 'inline-flex';
-        const pwLabel = document.getElementById('admin-form-password-label');
-        if (pwLabel) pwLabel.textContent = 'Mật khẩu mới (để trống nếu giữ nguyên)';
     } catch(e) { console.error('Error in editAdminUser:', e); }
 }
 
@@ -3075,8 +3171,7 @@ async function handleAdminUserSubmit(e) {
     const effectiveProject = isProjectAdmin ? CURRENT_ADMIN.project_id : (adminFormProject?.value.trim() || null);
 
     const payload = {
-        username: adminFormUsername?.value.trim(),
-        password: adminFormPassword?.value.trim(),
+        email: adminFormEmail?.value.trim(),
         full_name: adminFormFullname?.value.trim(),
         role: effectiveRole,
         avatar_url: adminFormAvatar?.value || 'gradient-1',
@@ -3095,7 +3190,11 @@ async function handleAdminUserSubmit(e) {
         if (res.ok) { 
             resetAdminForm(); 
             await loadAdminUsers(); 
-            alert(id ? 'Cập nhật tài khoản thành công!' : 'Tạo tài khoản nhân viên thành công!');
+            if (!id && data.qr?.chat_url) {
+                alert(`Đã tạo Agent và QR chat.\n\nLink để tạo/in QR:\n${data.qr.chat_url}\n\nKhách quét QR này sẽ được chuyển đến Agent vừa tạo.`);
+            } else {
+                alert(id ? 'Cập nhật tài khoản thành công!' : 'Tạo tài khoản nhân viên thành công!');
+            }
         } else { 
             alert('Lỗi: ' + (data.error || 'Không thể lưu.')); 
         }

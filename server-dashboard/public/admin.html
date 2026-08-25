@@ -96,7 +96,7 @@
             <div class="header-left">
                 <div class="logo">
                     <img src="/logoApp.png" alt="Pastie" class="logo-img">
-                    <span data-i18n="headerTitle">Pastie AI Console</span>
+                    <span id="console-brand-name" data-i18n="headerTitle">Pastie AI Console</span>
                 </div>
                 <div class="project-selector">
                     <i class="ri-filter-3-line"></i>
@@ -141,10 +141,6 @@
                         <div class="sdm-divider"></div>
                         <div class="sdm-group">
                             <div class="sdm-label">Tài khoản</div>
-                            <button id="change-password-btn" class="sdm-item">
-                                <span class="sdm-icon" style="background:rgba(239,43,157,.12);color:#ef2b9d;"><i class="ri-lock-password-line"></i></span>
-                                <div class="sdm-text"><span>Đổi mật khẩu</span><small>Bảo mật tài khoản của bạn</small></div>
-                            </button>
                             <button id="enable-push-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(16,185,129,.12);color:#10b981;"><i class="ri-notification-3-line"></i></span>
                                 <div class="sdm-text"><span id="enable-push-label">Bật thông báo</span><small id="enable-push-description">Nhận chat mới ngay cả khi đã đóng app</small></div>
@@ -185,19 +181,6 @@
                 <button id="logout-btn" class="icon-btn" title="Đăng xuất" data-i18n-title="logoutTitle"><i class="ri-logout-box-r-line"></i></button>
             </div>
         </header>
-
-        <div id="change-password-modal" class="modal-overlay hide">
-            <div class="login-box glass-panel" style="max-width:390px;">
-                <div class="brand-header" style="margin-bottom:18px;"><h2>Đổi mật khẩu</h2><p>Nhập mật khẩu hiện tại và mật khẩu mới.</p></div>
-                <form id="change-password-form" class="form-group" style="display:flex;flex-direction:column;gap:12px;">
-                    <input id="current-password-input" type="password" placeholder="Mật khẩu hiện tại" required>
-                    <input id="new-password-input" type="password" placeholder="Mật khẩu mới (ít nhất 8 ký tự)" minlength="8" required>
-                    <input id="confirm-password-input" type="password" placeholder="Xác nhận mật khẩu mới" minlength="8" required>
-                    <div id="change-password-error" class="error-msg"></div>
-                    <div style="display:flex;gap:8px;justify-content:flex-end;"><button id="change-password-cancel" type="button" class="secondary-btn">Hủy</button><button type="submit" class="primary-btn">Lưu mật khẩu</button></div>
-                </form>
-            </div>
-        </div>
 
         <div id="push-permission-modal" class="modal-overlay hide">
             <div class="push-permission-card">
@@ -642,7 +625,35 @@
                     </div>
                 </div>
                 <div id="project-list" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+                <div class="project-brand-editor">
+                    <select id="project-brand-project-select" aria-label="Project cần đặt tên hiển thị"></select>
+                    <input id="project-display-name" type="text" maxlength="255" placeholder="Tên hiển thị trên header, ví dụ: Hộ kinh doanh Đan Trinh">
+                    <button id="project-display-name-save-btn" type="button" class="secondary-btn">Lưu tên hiển thị</button>
+                </div>
             </div>
+
+            <section id="account-project-context" class="account-project-context" aria-label="Project đang quản lý">
+                <div>
+                    <span class="account-section-kicker">PHẠM VI QUẢN LÝ</span>
+                    <h3><i class="ri-folder-user-line"></i> Tài khoản theo project</h3>
+                </div>
+                <select id="admin-mgmt-project-select" aria-label="Chọn project"></select>
+            </section>
+
+            <section id="qr-concierge-panel" class="qr-concierge-panel hide">
+                <div class="qr-panel-heading">
+                    <div>
+                        <span class="account-section-kicker">QR CONCIERGE</span>
+                        <h3><i class="ri-qr-code-line"></i> Mã QR tiếp nhận chat</h3>
+                        <p>Mỗi mã QR thuộc một Agent. Lần quét mới sẽ thay thế phiên chat trước sau 15 phút.</p>
+                    </div>
+                    <div id="qr-create-controls" class="qr-create-controls">
+                        <select id="qr-owner-select" aria-label="Chọn Agent"></select>
+                        <button id="qr-create-btn" type="button" class="primary-btn"><i class="ri-add-line"></i> Tạo QR</button>
+                    </div>
+                </div>
+                <div id="qr-account-list" class="qr-account-list"></div>
+            </section>
 
             <!-- Grid: Left side list of users, Right side add/edit form -->
             <div class="admin-management-grid" style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; text-align: left; flex: 1; min-height: 0; overflow: hidden;">
@@ -675,13 +686,9 @@
                         </div>
 
                         <div class="form-group">
-                            <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Tên đăng nhập (Username) *</label>
-                            <input type="text" id="admin-form-username" placeholder="nguyenvana..." style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:var(--text-primary); font-family:inherit; font-size:12.5px; outline:none;" required>
-                        </div>
-
-                        <div class="form-group">
-                            <label id="admin-form-password-label" style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Mật khẩu *</label>
-                            <input type="password" id="admin-form-password" placeholder="Nhập mật khẩu bảo mật..." style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:var(--text-primary); font-family:inherit; font-size:12.5px; outline:none;" required>
+                            <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Email đăng nhập *</label>
+                            <input type="email" id="admin-form-email" placeholder="agent@company.com" autocomplete="email" style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:var(--text-primary); font-family:inherit; font-size:12.5px; outline:none;" required>
+                            <small style="display:block; margin-top:5px; color:var(--text-secondary); font-size:10.5px; line-height:1.4;">Nhân viên dùng Email OTP hoặc Google với email này để đăng nhập.</small>
                         </div>
 
                         <div class="form-group" id="admin-form-role-group">
@@ -726,6 +733,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r30"></script>
+    <script src="admin.js?v=r31"></script>
 </body>
 </html>
