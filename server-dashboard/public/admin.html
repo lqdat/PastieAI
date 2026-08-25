@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r28">
+    <link rel="stylesheet" href="admin.css?v=r29">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -603,132 +603,134 @@
     </div>
     <!-- Admin Management Modal -->
     <div id="admin-management-modal" class="modal-overlay hide">
-        <div class="login-box glass-panel admin-management-box" style="max-width: 900px; width: 95%; max-height: 92vh; display: flex; flex-direction: column;">
-            <div class="brand-header" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+        <div class="login-box glass-panel admin-management-box" style="display: flex; flex-direction: column; max-height: 92vh;">
+            <div class="brand-header" style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 12px; text-align: left;">
-                    <div class="brand-logo" style="background: linear-gradient(135deg, rgba(236,72,153,0.2), rgba(99,102,241,0.2)); color: #ec4899; width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0; font-size: 22px; border: 1px solid rgba(236,72,153,0.3);"><i class="ri-team-line"></i></div>
+                    <div class="brand-logo admin-mgmt-brand-icon"><i class="ri-team-line"></i></div>
                     <div>
-                        <h2 style="font-size: 18px; margin: 0 0 2px 0; text-align: left; color: var(--text-primary); font-weight: 700;">Quản lý nhân viên &amp; Phân quyền</h2>
-                        <p id="admin-mgmt-subtitle" style="font-size: 12px; color: var(--text-secondary); margin: 0;">Quản lý danh sách nhân viên tư vấn (Agent) và phân quyền dự án.</p>
+                        <h2 style="margin: 0 0 2px 0; text-align: left;">Quản lý nhân viên &amp; Phân quyền</h2>
+                        <p id="admin-mgmt-subtitle" style="margin: 0;">Quản lý danh sách nhân viên tư vấn (Agent) và phân quyền dự án.</p>
                     </div>
                 </div>
-                <button id="admin-mgmt-close-top-btn" class="icon-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; cursor: pointer; color: var(--text-primary); width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;"><i class="ri-close-line"></i></button>
+                <button id="admin-mgmt-close-top-btn" class="icon-btn"><i class="ri-close-line"></i></button>
             </div>
 
-            <!-- Quản lý dự án (multi-project - chỉ Superadmin) -->
-            <div class="admin-project-management" style="border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.15); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; text-align: left;">
-                <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px;">
-                    <h3 style="font-size: 13px; color: var(--text-primary); font-weight: 600; margin: 0; display: flex; align-items: center; gap: 6px;"><i class="ri-folder-3-line" style="color: var(--accent-color);"></i> Danh sách dự án hệ thống</h3>
-                    <div class="project-create-controls">
-                        <input type="text" id="project-new-name" placeholder="Tên project mới...">
-                        <input type="url" id="project-new-link" placeholder="https://website.com">
-                        <button id="project-add-btn" class="primary-btn" style="width: auto; padding: 6px 12px; font-size: 12px; white-space: nowrap;"><i class="ri-add-line"></i> Thêm</button>
+            <div style="overflow-y: auto; flex: 1; min-height: 0;">
+                <!-- Quản lý dự án (multi-project - chỉ Superadmin) -->
+                <div class="admin-mgmt-section admin-project-management">
+                    <div class="admin-mgmt-section-head">
+                        <h3><i class="ri-folder-3-line"></i> Danh sách dự án hệ thống</h3>
+                        <div class="project-create-controls">
+                            <input type="text" id="project-new-name" placeholder="Tên project mới...">
+                            <input type="url" id="project-new-link" placeholder="https://website.com">
+                            <button id="project-add-btn" class="primary-btn" style="width: auto; padding: 8px 12px; font-size: 12px; white-space: nowrap;"><i class="ri-add-line"></i> Thêm</button>
+                        </div>
                     </div>
+                    <div id="project-list"></div>
                 </div>
-                <div id="project-list" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
-            </div>
 
-            <section id="account-project-context" class="account-project-context" aria-label="Project đang quản lý">
-                <div>
-                    <span class="account-section-kicker">PHẠM VI QUẢN LÝ</span>
-                    <h3><i class="ri-folder-user-line"></i> Tài khoản theo project</h3>
-                </div>
-                <select id="admin-mgmt-project-select" aria-label="Chọn project"></select>
-            </section>
-
-            <section id="qr-concierge-panel" class="qr-concierge-panel hide">
-                <div class="qr-panel-heading">
+                <section id="account-project-context" class="admin-mgmt-section account-project-context" aria-label="Project đang quản lý">
                     <div>
-                        <span class="account-section-kicker">QR CONCIERGE</span>
-                        <h3><i class="ri-qr-code-line"></i> Mã QR tiếp nhận chat</h3>
-                        <p>Mỗi mã QR thuộc một Agent. Lần quét mới sẽ thay thế phiên chat trước sau 15 phút.</p>
+                        <span class="account-section-kicker">PHẠM VI QUẢN LÝ</span>
+                        <h3><i class="ri-folder-user-line"></i> Tài khoản theo project</h3>
                     </div>
-                    <div id="qr-create-controls" class="qr-create-controls">
-                        <select id="qr-owner-select" aria-label="Chọn Agent"></select>
-                        <button id="qr-create-btn" type="button" class="primary-btn"><i class="ri-add-line"></i> Tạo QR</button>
-                    </div>
-                </div>
-                <div id="qr-account-list" class="qr-account-list"></div>
-            </section>
+                    <select id="admin-mgmt-project-select" aria-label="Chọn project"></select>
+                </section>
 
-            <!-- Grid: Left side list of users, Right side add/edit form -->
-            <div class="admin-management-grid" style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; text-align: left; flex: 1; min-height: 0; overflow: hidden;">
-                <!-- Left panel: List -->
-                <div class="admin-users-panel" style="border-right: 1px solid rgba(255,255,255,0.08); padding-right: 18px; display: flex; flex-direction: column; min-height: 0;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <h3 style="font-size: 13.5px; color: var(--text-primary); font-weight: 600; margin: 0; display: flex; align-items: center; gap: 6px;">
-                            <i class="ri-user-line" style="color: #ec4899;"></i> Danh sách nhân viên
-                        </h3>
-                        <span id="admin-user-count-badge" style="background: rgba(255,255,255,0.08); color: var(--text-secondary); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;">0 nhân viên</span>
-                    </div>
-                    <div id="admin-list-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; max-height: 380px;">
-                        <!-- Dynamically populated -->
-                    </div>
-                </div>
-
-                <!-- Right panel: Form -->
-                <div class="admin-user-form-panel" style="display: flex; flex-direction: column; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 14px 16px; overflow-y: auto; max-height: 420px;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                        <h3 id="admin-form-title" style="font-size: 13.5px; color: var(--text-primary); font-weight: 600; margin: 0; display: flex; align-items: center; gap: 6px;">
-                            <i class="ri-user-add-line" style="color: var(--accent-color);"></i> Thêm nhân viên mới
-                        </h3>
-                    </div>
-                    <form id="admin-user-form" style="display: flex; flex-direction: column; gap: 10px;">
-                        <input type="hidden" id="admin-form-id">
-                        
-                        <div class="form-group">
-                            <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Họ và tên *</label>
-                            <input type="text" id="admin-form-fullname" placeholder="Nguyễn Văn A..." style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:var(--text-primary); font-family:inherit; font-size:12.5px; outline:none;" required>
+                <section id="qr-concierge-panel" class="admin-mgmt-section qr-concierge-panel hide">
+                    <div class="qr-panel-heading">
+                        <div>
+                            <span class="account-section-kicker">QR CONCIERGE</span>
+                            <h3><i class="ri-qr-code-line"></i> Mã QR tiếp nhận chat</h3>
+                            <p>Mỗi mã QR thuộc một Agent. Lần quét mới sẽ thay thế phiên chat trước sau 15 phút.</p>
                         </div>
-
-                        <div class="form-group">
-                            <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Email đăng nhập *</label>
-                            <input type="email" id="admin-form-email" placeholder="agent@company.com" autocomplete="email" style="width:100%; box-sizing:border-box; padding:8px 12px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:var(--text-primary); font-family:inherit; font-size:12.5px; outline:none;" required>
-                            <small style="display:block; margin-top:5px; color:var(--text-secondary); font-size:10.5px; line-height:1.4;">Nhân viên dùng Email OTP hoặc Google với email này để đăng nhập.</small>
+                        <div id="qr-create-controls" class="qr-create-controls">
+                            <select id="qr-owner-select" aria-label="Chọn Agent"></select>
+                            <button id="qr-create-btn" type="button" class="primary-btn"><i class="ri-add-line"></i> Tạo QR</button>
                         </div>
+                    </div>
+                    <div id="qr-account-list" class="qr-account-list"></div>
+                </section>
 
-                        <div class="form-group" id="admin-form-role-group">
-                            <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Vai trò (Role)</label>
-                            <select id="admin-form-role" style="width:100%;">
-                                <option value="agent">Agent (Tư vấn viên trực chat)</option>
-                                <option value="project_admin">Project Admin (Quản trị dự án)</option>
-                                <option value="superadmin">Quản trị viên tối cao (Super-Admin)</option>
-                            </select>
+                <!-- Grid: Left side list of users, Right side add/edit form -->
+                <div class="admin-management-grid" style="display: grid; text-align: left;">
+                    <!-- Left panel: List -->
+                    <div class="admin-users-panel" style="padding-right: 18px; display: flex; flex-direction: column; min-height: 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h3 style="font-size: 13.5px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px;">
+                                <i class="ri-user-line" style="color: var(--accent-color);"></i> Danh sách nhân viên
+                            </h3>
+                            <span id="admin-user-count-badge" style="background: var(--surface-neutral); color: var(--text-secondary); padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 700;">0 nhân viên</span>
                         </div>
-
-                        <div class="form-group" id="admin-form-project-group">
-                            <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Dự án được phân quyền</label>
-                            <select id="admin-form-project" style="width:100%;">
-                                <option value="">— Tất cả dự án (toàn quyền) —</option>
-                            </select>
+                        <div id="admin-list-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; max-height: 380px;">
+                            <!-- Dynamically populated -->
                         </div>
+                    </div>
 
-                        <div class="form-group">
-                            <label style="font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">Chọn màu đại diện Avatar</label>
-                            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 2px;" id="admin-avatar-picker">
-                                <!-- Gradient avatars options -->
+                    <!-- Right panel: Form -->
+                    <div class="admin-user-form-panel" style="display: flex; flex-direction: column; padding: 16px 18px; overflow-y: auto; max-height: 460px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                            <h3 id="admin-form-title" style="font-size: 13.5px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px;">
+                                <i class="ri-user-add-line" style="color: var(--accent-color);"></i> Thêm nhân viên mới
+                            </h3>
+                        </div>
+                        <form id="admin-user-form" style="display: flex; flex-direction: column; gap: 12px;">
+                            <input type="hidden" id="admin-form-id">
+
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Họ và tên *</label>
+                                <input type="text" id="admin-form-fullname" placeholder="Nguyễn Văn A..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
                             </div>
-                            <input type="hidden" id="admin-form-avatar">
-                        </div>
 
-                        <div class="form-group" id="admin-form-status-group" style="display:none; align-items:center; gap:8px; margin-top: 4px;">
-                            <input type="checkbox" id="admin-form-active" style="cursor:pointer; width: 16px; height: 16px;">
-                            <label for="admin-form-active" style="font-size: 12px; font-weight: 500; color: var(--text-primary); cursor:pointer;">Tài khoản đang hoạt động</label>
-                        </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Email đăng nhập *</label>
+                                <input type="email" id="admin-form-email" placeholder="agent@company.com" autocomplete="email" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
+                                <small style="display:block; margin-top:5px; color:var(--text-secondary); font-size:10.5px; line-height:1.4;">Nhân viên dùng Email OTP hoặc Google với email này để đăng nhập.</small>
+                            </div>
 
-                        <div style="display: flex; gap: 8px; margin-top: 12px;">
-                            <button type="submit" id="admin-form-submit-btn" class="primary-btn" style="flex:1; padding: 8px 14px; font-size: 12.5px;"><i class="ri-user-add-line"></i> Lưu nhân viên</button>
-                            <button type="button" id="admin-form-cancel-btn" class="secondary-btn" style="background:rgba(255,255,255,0.05); color:var(--text-primary); display:none; border: 1px solid rgba(255,255,255,0.1); padding: 8px 12px; font-size: 12.5px;">Hủy</button>
-                        </div>
-                    </form>
+                            <div class="form-group" id="admin-form-role-group" style="margin: 0;">
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Vai trò (Role)</label>
+                                <select id="admin-form-role" style="width:100%;">
+                                    <option value="agent">Agent (Tư vấn viên trực chat)</option>
+                                    <option value="project_admin">Project Admin (Quản trị dự án)</option>
+                                    <option value="superadmin">Quản trị viên tối cao (Super-Admin)</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" id="admin-form-project-group" style="margin: 0;">
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Dự án được phân quyền</label>
+                                <select id="admin-form-project" style="width:100%;">
+                                    <option value="">— Tất cả dự án (toàn quyền) —</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Chọn màu đại diện Avatar</label>
+                                <div style="display: flex; gap: 9px; flex-wrap: wrap; margin-bottom: 2px;" id="admin-avatar-picker">
+                                    <!-- Gradient avatars options -->
+                                </div>
+                                <input type="hidden" id="admin-form-avatar">
+                            </div>
+
+                            <div class="form-group" id="admin-form-status-group" style="display:none; align-items:center; gap:8px; margin: 0; padding: 9px 12px; background: var(--surface-neutral); border-radius: 10px;">
+                                <input type="checkbox" id="admin-form-active" style="cursor:pointer; width: 16px; height: 16px; accent-color: var(--accent-color);">
+                                <label for="admin-form-active" style="font-size: 12px; font-weight: 600; color: var(--text-primary); cursor:pointer;">Tài khoản đang hoạt động</label>
+                            </div>
+
+                            <div style="display: flex; gap: 8px; margin-top: 4px;">
+                                <button type="submit" id="admin-form-submit-btn" class="primary-btn" style="flex:1; padding: 9px 14px; font-size: 12.5px;"><i class="ri-user-add-line"></i> Lưu nhân viên</button>
+                                <button type="button" id="admin-form-cancel-btn" class="secondary-btn" style="display:none; padding: 9px 12px; font-size: 12.5px;">Hủy</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
-            <div style="text-align: right; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px;">
-                <button id="admin-mgmt-close-btn" class="secondary-btn" style="background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.1); width: 100px; padding: 6px 12px; font-size: 12px; cursor: pointer;"><i class="ri-close-line"></i> Đóng</button>
+            <div style="text-align: right; margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 12px;">
+                <button id="admin-mgmt-close-btn" class="secondary-btn" style="width: 100px; padding: 8px 12px; font-size: 12px;"><i class="ri-close-line"></i> Đóng</button>
             </div>
         </div>
     </div>
 
-    <script src="admin.js?v=r33"></script>
+    <script src="admin.js?v=r34"></script>
 </body>
 </html>
