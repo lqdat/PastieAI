@@ -251,6 +251,17 @@ app.get('/chat-widget.css', (req, res, next) => {
   next();
 });
 
+// Stable public entry point for websites embedding the chat widget. Keeping a
+// versioned URL lets us improve the implementation without changing snippets
+// already installed on customer sites.
+app.get('/widget/v1.js', (_req, res) => {
+  res.set({
+    'Content-Type': 'application/javascript; charset=utf-8',
+    'Cache-Control': 'public, max-age=300'
+  });
+  res.sendFile(path.join(__dirname, '../widget/pastie-chat.js'));
+});
+
 const crypto = require('crypto');
 
 // Cryptographically secure password hashing using Node's native PBKDF2
