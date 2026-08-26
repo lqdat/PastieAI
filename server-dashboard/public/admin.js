@@ -269,6 +269,9 @@ let currentLang = localStorage.getItem('pastie_admin_lang') || 'vi';
 
 // --- State Variables ---
 let currentSessionId = null;
+// Guards async data from the prior account when the user signs in with a
+// different admin without reloading the page.
+let adminAuthGeneration = 0;
 let currentProjectFilter = '';
 let currentDetectedLang = 'en'; // default to english for translations
 let sessionsList = [];
@@ -422,6 +425,19 @@ function getToken() {
     return localStorage.getItem('pastie_admin_token') || '';
 }
 
+function beginNewAdminSession(token) {
+    adminAuthGeneration++;
+    localStorage.setItem('pastie_admin_token', token);
+    sessionsList = [];
+    adminMessages = [];
+    adminOffset = 0;
+    adminHasMore = true;
+    adminOrder = null;
+    adminOrderSignature = '';
+    CURRENT_ADMIN = null;
+    resetActiveChatUI();
+}
+
 function authFetch(url, options = {}) {
     const token = getToken();
     const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${token}` };
@@ -481,7 +497,7 @@ window.handleGoogleCredentialResponse = async function(response) {
         });
         const data = await res.json();
         if (res.ok && data.token) {
-            localStorage.setItem('pastie_admin_token', data.token);
+            beginNewAdminSession(data.token);
             setLoginSuccess('Đăng nhập thành công! Đang vào Console...');
             setTimeout(() => {
                 hideLogin();
@@ -664,7 +680,7 @@ async function handleVerifyAdminOtp(e) {
         });
         const data = await res.json();
         if (res.ok && data.token) {
-            localStorage.setItem('pastie_admin_token', data.token);
+            beginNewAdminSession(data.token);
             setLoginSuccess('Xác thực thành công! Đang vào hệ thống...');
             if (adminOtpCountdownInterval) clearInterval(adminOtpCountdownInterval);
             setTimeout(() => {
@@ -726,7 +742,7 @@ async function doSsoLogin() {
         });
         const d = await r.json().catch(() => ({}));
         if (r.ok && d.token) {
-            localStorage.setItem('pastie_admin_token', d.token);
+            beginNewAdminSession(d.token);
             params.delete('sso');
             params.delete('token');
             params.delete('sso_token');
@@ -1164,15 +1180,24 @@ async function loadAdminProfile() {
 }
 
 async function fetchSessions() {
+    const requestGeneration = adminAuthGeneration;
     try {
         const response = await authFetch(`${API_BASE}/api/admin/chats?_=${Date.now()}`);
+        if (requestGeneration !== adminAuthGeneration) return;
         if (response.status === 401) {
             showLogin();
             return;
         }
 
         const data = await response.json();
+        if (requestGeneration !== adminAuthGeneration) return;
         sessionsList = data;
+
+        // A previous account/project may have had this chat selected. If it is
+        // not visible to the current account, clear every part of the panel.
+        if (currentSessionId && !data.some(s => s.id === currentSessionId)) {
+            resetActiveChatUI();
+        }
 
         // Sync seen counts from DB + trigger notifications for new messages
         data.forEach(s => {
@@ -2010,6 +2035,10 @@ async function loadMessages(sessionId, isLoadMore = false) {
         const response = await authFetch(`${API_BASE}/api/admin/chats/${sessionId}/messages?adminLang=${currentLang}&limit=${fetchLimit}&offset=${fetchOffset}&_=${Date.now()}`);
         const fetchedMessages = await response.json();
 
+        // Prevent a late response from the previous chat/account from being
+        // rendered after the user has changed account or selected another chat.
+        if (sessionId !== currentSessionId) return;
+
         if (!Array.isArray(fetchedMessages)) {
             if (chatMessagesContainer.querySelector('.chat-loading-state')) {
                 renderAdminMessages(false);
@@ -2699,7 +2728,12 @@ exportCsvBtn?.addEventListener('click', () => handleExport('csv'));
 exportJsonlBtn?.addEventListener('click', () => handleExport('jsonl'));
 
 logoutBtn?.addEventListener('click', () => {
+    adminAuthGeneration++;
     localStorage.removeItem('pastie_admin_token');
+    sessionsList = [];
+    adminMessages = [];
+    CURRENT_ADMIN = null;
+    resetActiveChatUI();
     showLogin();
 });
 

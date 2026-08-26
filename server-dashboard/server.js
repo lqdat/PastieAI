@@ -148,15 +148,25 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-// QR Concierge visitor slots are intentionally short-lived. The database is
-// authoritative, so expiry also works if the browser is closed or refreshed.
-// Hết phiên QR (hết giờ hoặc bị quét đè) => CHỈ đóng cuộc chat (status='closed'),
-// KHÔNG xóa: lịch sử hội thoại và file đính kèm phải giữ lại để tra cứu sau.
+// QR Concierge visitor slots are intentionally short-lived. When an idle QR
+// session expires, remove the entire conversation. Database cascade rules also
+// remove its messages and chat orders, so the next customer always starts new.
+async function removeExpiredQrSessions() {
+  const removed = await db.query(
+    `DELETE FROM sessions
+      WHERE qr_account_id IS NOT NULL AND expires_at IS NOT NULL AND expires_at <= NOW()
+      RETURNING id`
+  );
+  removed.rows.forEach(({ id }) => aiRateLimit.delete(id));
+  if (removed.rowCount) console.log(`[QR Concierge] Đã xóa ${removed.rowCount} session hết hạn.`);
+}
+
+removeExpiredQrSessions()
+  .catch((error) => console.error('[QR Concierge] Không thể dọn session hết hạn khi khởi động:', error.message));
+
 setInterval(() => {
-  db.query(`UPDATE sessions SET status = 'closed'
-            WHERE qr_account_id IS NOT NULL AND status = 'active'
-              AND expires_at IS NOT NULL AND expires_at <= NOW()`)
-    .catch((error) => console.error('[QR Concierge] Không thể đóng session hết hạn:', error.message));
+  removeExpiredQrSessions()
+    .catch((error) => console.error('[QR Concierge] Không thể xóa session hết hạn:', error.message));
 }, 60 * 1000);
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -541,9 +551,9 @@ async function closeActiveQrSession(qrAccountId, queryRunner = db) {
 
 async function expireQrSessionIfNeeded(session, queryRunner = db) {
   if (session?.status === 'active' && session.qr_account_id && session.expires_at && new Date(session.expires_at) <= new Date()) {
-    // Hết giờ phiên QR => chỉ đóng cuộc chat, giữ nguyên lịch sử và file đính kèm.
-    await queryRunner.query(`UPDATE sessions SET status = 'closed' WHERE id = $1 AND status = 'active'`, [session.id]);
-    session.status = 'closed';
+    await queryRunner.query(`DELETE FROM sessions WHERE id = $1 AND qr_account_id IS NOT NULL`, [session.id]);
+    aiRateLimit.delete(session.id);
+    session.status = 'expired';
   }
   return session;
 }
@@ -1022,8 +1032,8 @@ app.post('/api/chats/message', async (req, res) => {
       return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
     }
     await expireQrSessionIfNeeded(sessionRes.rows[0]);
-    if (sessionRes.rows[0].status === 'closed') {
-      return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
+    if (sessionRes.rows[0].status !== 'active') {
+      return res.status(410).json({ error: 'Phiên chat đã hết hạn hoặc đã bị đóng.' });
     }
 
     // Báo agent MỌI tin KHÁCH gửi đến (tin nhắn đến). KHÔNG báo tin AI/nhân viên trả lời.
@@ -1306,8 +1316,8 @@ app.post('/api/chats/:sessionId/attachments', uploadAttachmentMiddleware, async 
       return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
     }
     await expireQrSessionIfNeeded(sessionRes.rows[0]);
-    if (sessionRes.rows[0].status === 'closed') {
-      return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
+    if (sessionRes.rows[0].status !== 'active') {
+      return res.status(410).json({ error: 'Phiên chat đã hết hạn hoặc đã bị đóng.' });
     }
     const session = sessionRes.rows[0];
 
@@ -1560,6 +1570,7 @@ app.get('/api/chats/:sessionId/state', async (req, res) => {
     );
     if (r.rows.length === 0) return res.status(404).json({ error: 'not found' });
     const s = await expireQrSessionIfNeeded(r.rows[0]);
+    if (s.status !== 'active') return res.status(410).json({ error: 'session expired' });
     const mode = (s.claimed_by_admin_id || s.requested_agent) ? 'human' : 'ai';
     res.json({ status: s.status, mode });
   } catch (e) {
@@ -1886,8 +1897,8 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
       return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
     }
     await expireQrSessionIfNeeded(sessionRes.rows[0]);
-    if (sessionRes.rows[0].status === 'closed') {
-      return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
+    if (sessionRes.rows[0].status !== 'active') {
+      return res.status(410).json({ error: 'Phiên chat đã hết hạn hoặc đã bị đóng.' });
     }
 
     const session = sessionRes.rows[0];
