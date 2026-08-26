@@ -2124,7 +2124,7 @@ async function loadMessages(sessionId, isLoadMore = false) {
     }
 }
 
-function renderAdminMessages(isLoadMore = false) {
+function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     const previousScrollHeight = chatMessagesContainer.scrollHeight;
     const isNearBottom = (chatMessagesContainer.scrollHeight - chatMessagesContainer.scrollTop - chatMessagesContainer.clientHeight) < 100;
@@ -2222,7 +2222,7 @@ function renderAdminMessages(isLoadMore = false) {
     if (isLoadMore) {
         chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight - previousScrollHeight;
     } else {
-        if (isFirstLoad || isNearBottom) {
+        if (forceScrollToLatest || isFirstLoad || isNearBottom) {
             chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
         }
     }
@@ -2253,11 +2253,11 @@ function renderAdminInvoice() {
             <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> Hóa đơn đã gửi khách</span>
             <span class="admin-invoice-status ${adminOrder.status === 'paid' ? 'is-paid' : 'is-waiting'}">${escapeHtml(statusText)}</span>
         </div>
-        ${preview ? `<a class="admin-invoice-preview" href="${pdf || preview}" target="_blank" rel="noopener noreferrer" title="Mở hóa đơn PDF"><img src="${preview}" alt="Hóa đơn"></a>` : ''}
+        ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(pdf || preview)}" data-preview-type="document" data-preview-title="Hóa đơn"><img src="${escapeHtml(preview)}" alt="Hóa đơn"></button>` : ''}
         <div class="admin-invoice-meta">
             <span><strong>${escapeHtml(totalText)} ₫</strong></span>
             ${methodText ? `<span><i class="ri-bank-card-line"></i> ${escapeHtml(methodText)}</span>` : ''}
-            ${pdf ? `<a href="${pdf}" target="_blank" rel="noopener noreferrer"><i class="ri-file-pdf-2-line"></i> Mở PDF</a>` : ''}
+            ${pdf ? `<button type="button" class="attachment-preview-trigger admin-invoice-open" data-preview-url="${escapeHtml(pdf)}" data-preview-type="document" data-preview-title="Hóa đơn"><i class="ri-file-pdf-2-line"></i> Mở PDF</button>` : ''}
         </div>
     `;
     chatMessagesContainer.appendChild(wrapper);
@@ -2303,7 +2303,8 @@ async function sendMessage(e) {
         created_at: new Date()
     };
     adminMessages.push(newMsgObj);
-    renderAdminMessages(false);
+    // Luôn đưa agent đến tin mình vừa gửi, kể cả lúc đang xem lịch sử cũ.
+    renderAdminMessages(false, true);
 
     try {
         const response = await authFetch(`${API_BASE}/api/chats/message`, {
@@ -2325,7 +2326,7 @@ async function sendMessage(e) {
             if (idx !== -1 && data.message) {
                 adminMessages[idx] = data.message;
             }
-            renderAdminMessages(false);
+            renderAdminMessages(false, true);
         } else {
             adminMessages = adminMessages.filter(m => m.id !== newMsgObj.id);
             renderAdminMessages(false);
@@ -2362,7 +2363,7 @@ async function sendAttachment(file) {
         attachment_size: file.size,
     };
     adminMessages.push(newMsgObj);
-    renderAdminMessages(false);
+    renderAdminMessages(false, true);
 
     try {
         const formData = new FormData();
@@ -2381,7 +2382,7 @@ async function sendAttachment(file) {
             if (idx !== -1) adminMessages.splice(idx, 1);
             alert(dict.sendError ? dict.sendError + (data.error || '') : (data.error || 'Không thể gửi file.'));
         }
-        renderAdminMessages(false);
+        renderAdminMessages(false, true);
     } catch (e) {
         console.error('Attachment upload error:', e);
         adminMessages = adminMessages.filter(m => m.id !== tempId);
@@ -2616,29 +2617,63 @@ function formatAttachmentSize(bytes) {
 // Returns '' when the message has no attachment.
 function renderAttachmentHtml(msg) {
     if (!msg.attachment_key || !msg.attachment_url) return '';
-    const url = msg.attachment_url;
+    const url = escapeHtml(msg.attachment_url);
     const name = escapeHtml(msg.attachment_name || 'file');
     const sizeStr = formatAttachmentSize(msg.attachment_size);
 
     if (msg.attachment_type === 'image') {
-        return `<a class="attachment-card attachment-image" href="${url}" target="_blank" rel="noopener noreferrer">
+        return `<button type="button" class="attachment-card attachment-image attachment-preview-trigger" data-preview-url="${url}" data-preview-type="image" data-preview-title="${name}">
             <img src="${url}" alt="${name}" loading="lazy" />
-        </a>`;
+        </button>`;
     }
     if (msg.attachment_type === 'video') {
         return `<div class="attachment-card attachment-video">
             <video src="${url}" controls preload="metadata"></video>
         </div>`;
     }
-    return `<a class="attachment-card attachment-document" href="${url}" target="_blank" rel="noopener noreferrer" download="${name}">
+    return `<button type="button" class="attachment-card attachment-document attachment-preview-trigger" data-preview-url="${url}" data-preview-type="document" data-preview-title="${name}">
         <i class="ri-file-text-line"></i>
         <div class="attachment-doc-info">
             <span class="attachment-doc-name">${name}</span>
             ${sizeStr ? `<span class="attachment-doc-size">${sizeStr}</span>` : ''}
         </div>
-        <i class="ri-download-2-line attachment-doc-download"></i>
-    </a>`;
+        <i class="ri-eye-line attachment-doc-download"></i>
+    </button>`;
 }
+
+const mediaPreviewModal = document.getElementById('media-preview-modal');
+const mediaPreviewTitle = document.getElementById('media-preview-title');
+const mediaPreviewImage = document.getElementById('media-preview-image');
+const mediaPreviewVideo = document.getElementById('media-preview-video');
+const mediaPreviewFrame = document.getElementById('media-preview-frame');
+
+function closeMediaPreview() {
+    mediaPreviewModal?.classList.add('hide');
+    if (mediaPreviewImage) mediaPreviewImage.removeAttribute('src');
+    if (mediaPreviewVideo) { mediaPreviewVideo.pause(); mediaPreviewVideo.removeAttribute('src'); }
+    if (mediaPreviewFrame) mediaPreviewFrame.removeAttribute('src');
+}
+
+function openMediaPreview(url, type = 'document', title = 'Tệp đính kèm') {
+    if (!url || !mediaPreviewModal) return;
+    if (mediaPreviewTitle) mediaPreviewTitle.textContent = title;
+    mediaPreviewImage?.classList.toggle('hide', type !== 'image');
+    mediaPreviewVideo?.classList.toggle('hide', type !== 'video');
+    mediaPreviewFrame?.classList.toggle('hide', type === 'image' || type === 'video');
+    if (type === 'image' && mediaPreviewImage) mediaPreviewImage.src = url;
+    else if (type === 'video' && mediaPreviewVideo) mediaPreviewVideo.src = url;
+    else if (mediaPreviewFrame) mediaPreviewFrame.src = url;
+    mediaPreviewModal.classList.remove('hide');
+}
+
+chatMessagesContainer?.addEventListener('click', (event) => {
+    const trigger = event.target.closest('.attachment-preview-trigger');
+    if (!trigger) return;
+    event.preventDefault();
+    openMediaPreview(trigger.dataset.previewUrl, trigger.dataset.previewType, trigger.dataset.previewTitle);
+});
+document.getElementById('media-preview-close-btn')?.addEventListener('click', closeMediaPreview);
+mediaPreviewModal?.addEventListener('click', (event) => { if (event.target === mediaPreviewModal) closeMediaPreview(); });
 
 // Event Bindings
 const pushPermissionModal = document.getElementById('push-permission-modal');

@@ -792,6 +792,16 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r46"></script>
+    <!-- Popup xem ảnh/tài liệu ngay trong Console, không mở tab mới. -->
+    <div id="media-preview-modal" class="media-preview-overlay hide" role="dialog" aria-modal="true" aria-label="Xem tệp đính kèm">
+        <section class="media-preview-dialog" role="document">
+            <header class="media-preview-header"><strong id="media-preview-title">Tệp đính kèm</strong><button id="media-preview-close-btn" type="button" aria-label="Đóng">✕</button></header>
+            <img id="media-preview-image" class="media-preview-image hide" alt="">
+            <video id="media-preview-video" class="media-preview-video hide" controls></video>
+            <iframe id="media-preview-frame" class="media-preview-frame hide" title="Xem tệp đính kèm"></iframe>
+        </section>
+    </div>
+
+    <script src="admin.js?v=r47"></script>
 </body>
 </html>
