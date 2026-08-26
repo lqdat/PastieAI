@@ -907,98 +907,51 @@ const isStandaloneWebApp = window.matchMedia?.('(display-mode: standalone)').mat
 const canOpenMobileShareSheet = typeof navigator.share === 'function'
     && (navigator.maxTouchPoints > 0 || window.matchMedia?.('(pointer: coarse)').matches);
 
-// ── Tạo shortcut trên màn hình chính (Add to Home Screen) ───────────────────
-// Android/Chrome/Edge: trình duyệt bắn sự kiện 'beforeinstallprompt', giữ lại
-// rồi gọi prompt() là hiện hộp thoại cài đặt thật -> tạo shortcut chỉ 1 chạm.
-// iOS/Safari: KHÔNG có API nào cài được từ trang web (Apple không mở). Chỉ có
-// thể mở menu Chia sẻ và hướng dẫn khách chọn "Thêm vào Màn hình chính".
-let deferredInstallPrompt = null;
-const isTouchDevice = navigator.maxTouchPoints > 0 || window.matchMedia?.('(pointer: coarse)').matches;
+// ── Hướng dẫn bật thông báo trên iPhone/iPad ────────────────────────────────
+// iOS chỉ cho phép Web Push khi trang được mở từ shortcut ngoài Màn hình chính,
+// và KHÔNG có API nào để web tự thêm shortcut (Apple không mở). Nên ở đây chỉ
+// hiển thị các bước để khách tự làm — không nút bấm nào thay thế được bước này.
+// Lưu ý: shortcut phải tạo TỪ SAFARI; Chrome/Edge/Firefox trên iOS tạo shortcut
+// nhưng shortcut đó không nhận được Web Push.
+const isIosNonSafariBrowser = isAppleMobile && /CriOS|FxiOS|EdgiOS|OPiOS/i.test(navigator.userAgent);
 
+// Vẫn giữ sự kiện của Android để dùng sau; hiện tại không gắn vào nút nào.
+let deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();
     deferredInstallPrompt = event;
-    updateShortcutButton();
-});
-window.addEventListener('appinstalled', () => {
-    deferredInstallPrompt = null;
-    setShortcutHint('Đã tạo shortcut. Hãy mở Pastie Console từ màn hình chính rồi bật thông báo.', 'ok');
-    updateShortcutButton();
 });
 
-function setShortcutHint(message, kind = '') {
-    const hint = document.getElementById('push-modal-shortcut-hint');
-    if (!hint) return;
-    hint.textContent = message || '';
-    hint.classList.toggle('hide', !message);
-    hint.classList.remove('is-ok', 'is-warn');
-    if (kind) hint.classList.add(kind === 'ok' ? 'is-ok' : 'is-warn');
-}
+function renderPushSteps(issue) {
+    const list = document.getElementById('push-modal-steps');
+    if (!list) return;
 
-// Nút chỉ có ý nghĩa trên điện thoại/tablet và khi CHƯA cài. Đã mở từ shortcut
-// (standalone) thì ẩn hẳn.
-function updateShortcutButton() {
-    const button = document.getElementById('push-modal-shortcut');
-    const label = document.getElementById('push-modal-shortcut-label');
-    if (!button) return;
+    const shareStep = 'Nhấn nút <b>Chia sẻ</b> ở thanh công cụ Safari (ô vuông có mũi tên hướng lên).';
+    let steps = null;
 
-    const alreadyInstalled = isStandaloneWebApp;
-    const canInstall = !!deferredInstallPrompt;
-    const canGuideOnIos = isAppleMobile && !alreadyInstalled;
-    const show = !inIframe && !alreadyInstalled && isTouchDevice && (canInstall || canGuideOnIos);
-
-    button.classList.toggle('hide', !show);
-    if (!show) return;
-    if (label) label.textContent = canInstall ? 'Tạo shortcut trên điện thoại' : 'Thêm vào Màn hình chính';
-}
-
-async function createHomeScreenShortcut() {
-    const button = document.getElementById('push-modal-shortcut');
-
-    // Android: cài thật, tự động.
-    if (deferredInstallPrompt) {
-        const prompt = deferredInstallPrompt;
-        deferredInstallPrompt = null;
-        if (button) button.disabled = true;
-        try {
-            prompt.prompt();
-            const choice = await prompt.userChoice;
-            if (choice?.outcome === 'accepted') {
-                setShortcutHint('Đang tạo shortcut… Mở Pastie Console từ màn hình chính rồi bật thông báo.', 'ok');
-            } else {
-                deferredInstallPrompt = prompt; // để khách bấm lại được
-                setShortcutHint('Bạn đã bỏ qua. Có thể tạo shortcut lại bất cứ lúc nào.');
-            }
-        } catch (error) {
-            setShortcutHint('Không thể mở hộp thoại cài đặt. Hãy dùng menu trình duyệt → "Thêm vào Màn hình chính".');
-        } finally {
-            if (button) button.disabled = false;
-            updateShortcutButton();
-        }
-        return;
+    if (issue === 'ios-home-screen') {
+        steps = [
+            ...(isIosNonSafariBrowser
+                ? ['Mở lại trang này bằng <b>Safari</b> — thông báo trên iPhone/iPad chỉ hoạt động qua Safari.']
+                : []),
+            shareStep,
+            'Kéo xuống chọn <b>Thêm vào Màn hình chính</b>, rồi nhấn <b>Thêm</b>.',
+            'Mở Pastie Console từ <b>biểu tượng vừa tạo</b> trên Màn hình chính.',
+            'Bấm <b>Bật thông báo ngay</b> và chọn <b>Cho phép</b>.',
+        ];
+    } else if (issue !== 'unsupported' && typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+        steps = [
+            'Nhấn vào <b>biểu tượng khóa</b> cạnh thanh địa chỉ của trình duyệt.',
+            'Mở <b>Cài đặt trang web</b> (Site settings / Quyền).',
+            'Đổi mục <b>Thông báo</b> sang <b>Cho phép</b>.',
+            'Tải lại trang rồi bấm <b>Bật thông báo ngay</b>.',
+        ];
     }
 
-    // iOS: Apple không cho web tự thêm shortcut — chỉ mở được menu Chia sẻ.
-    if (isAppleMobile) {
-        setShortcutHint('Trong menu vừa mở, kéo xuống và chọn "Thêm vào Màn hình chính". Sau đó mở Pastie Console từ biểu tượng mới để bật thông báo.');
-        if (typeof navigator.share === 'function') {
-            try {
-                await navigator.share({ title: 'Pastie AI Console', text: 'Thêm Pastie Console vào Màn hình chính để nhận thông báo.', url: window.location.href });
-            } catch (error) {
-                if (error?.name !== 'AbortError') {
-                    setShortcutHint('Hãy nhấn nút Chia sẻ ở thanh công cụ Safari, rồi chọn "Thêm vào Màn hình chính".');
-                }
-            }
-        } else {
-            setShortcutHint('Hãy nhấn nút Chia sẻ ở thanh công cụ Safari, rồi chọn "Thêm vào Màn hình chính".');
-        }
-        return;
-    }
-
-    setShortcutHint('Hãy dùng menu của trình duyệt và chọn "Thêm vào Màn hình chính".');
+    if (!steps) { list.classList.add('hide'); list.innerHTML = ''; return; }
+    list.innerHTML = steps.map((step) => `<li>${step}</li>`).join('');
+    list.classList.remove('hide');
 }
-
-document.getElementById('push-modal-shortcut')?.addEventListener('click', () => { void createHomeScreenShortcut(); });
 
 function getPushSupportIssue() {
     // Do not rely solely on the iOS user-agent: recent Safari builds can reduce
@@ -1016,22 +969,24 @@ function setPushModalMode(issue = null) {
     // Nút chính LUÔN là "Bật thông báo". Việc tạo shortcut đã tách thành nút riêng
     // bên dưới, nên không đổi nút này thành "Mở menu Chia sẻ" nữa.
     if (issue === 'ios-home-screen') {
-        if (description) description.textContent = 'Trên iPhone/iPad, thông báo chỉ hoạt động khi mở Pastie Console từ shortcut ngoài màn hình chính. Hãy tạo shortcut bên dưới trước, rồi bật thông báo.';
-        if (button) button.innerHTML = '<i class="ri-notification-3-fill"></i> Bật thông báo ngay';
-        updateShortcutButton();
+        if (description) description.textContent = 'Trên iPhone/iPad, thông báo chỉ hoạt động khi mở Pastie Console từ Màn hình chính. Làm theo các bước sau:';
+        // Vô hiệu hóa nút thay vì để bấm mà không có gì xảy ra: ở trạng thái này
+        // trình duyệt chắc chắn không cho xin quyền, nên nút phải nhìn ra là không bấm được.
+        if (button) { button.disabled = true; button.innerHTML = '<i class="ri-smartphone-line"></i> Cần thêm vào Màn hình chính'; }
+        renderPushSteps(issue);
         return;
     }
     if (issue === 'unsupported') {
         if (description) description.textContent = 'Phiên bản trình duyệt này chưa hỗ trợ thông báo đẩy. Hãy cập nhật Safari hoặc dùng Chrome/Edge phiên bản mới.';
-        if (button) button.innerHTML = '<i class="ri-notification-off-line"></i> Trình duyệt chưa hỗ trợ';
-        updateShortcutButton();
+        if (button) { button.disabled = true; button.innerHTML = '<i class="ri-notification-off-line"></i> Trình duyệt chưa hỗ trợ'; }
+        renderPushSteps(issue);
         return;
     }
     if (description) description.textContent = Notification.permission === 'denied'
         ? 'Thông báo đã bị chặn. Hãy mở phần Cài đặt trang web / quyền riêng tư của trình duyệt (biểu tượng khóa cạnh thanh địa chỉ) và chọn Cho phép thông báo.'
         : 'Bật thông báo để nhận tin ngay khi hệ thống chuyển cuộc trò chuyện cần Agent hỗ trợ.';
-    if (button) button.innerHTML = '<i class="ri-notification-3-fill"></i> Bật thông báo ngay';
-    updateShortcutButton();
+    if (button) { button.disabled = false; button.innerHTML = '<i class="ri-notification-3-fill"></i> Bật thông báo ngay'; }
+    renderPushSteps(issue);
 }
 
 async function setupPushNotifications() {
@@ -1074,11 +1029,9 @@ async function enablePushNotifications() {
     if (inIframe) { postToParent({ type: 'pastie-enable-notifications' }); return true; }
     const supportIssue = getPushSupportIssue();
     if (supportIssue === 'ios-home-screen') {
-        // iOS chỉ cho phép Web Push khi chạy từ shortcut màn hình chính. Không tự
-        // mở menu Chia sẻ nữa — chỉ dẫn khách sang nút "Tạo shortcut" bên dưới.
-        updateShortcutButton();
-        setShortcutHint('Hãy tạo shortcut trước, rồi mở Pastie Console từ biểu tượng đó để bật thông báo.');
-        throw new Error('Trên iPhone/iPad cần tạo shortcut màn hình chính trước khi bật được thông báo.');
+        setPushModalMode(supportIssue);
+        pushPermissionModal?.classList.remove('hide');
+        throw new Error('Trên iPhone/iPad cần thêm Pastie Console vào Màn hình chính trước khi bật được thông báo.');
     }
     if (supportIssue) throw new Error('Phiên bản trình duyệt này chưa hỗ trợ thông báo đẩy.');
     // Phải xin quyền trước bất kỳ await nào: mobile chỉ cho phép trong hành động chạm trực tiếp.
@@ -2658,13 +2611,9 @@ document.getElementById('agent-push-btn')?.addEventListener('click', handleEnabl
 document.getElementById('push-modal-confirm')?.addEventListener('click', () => {
     const button = document.getElementById('push-modal-confirm');
     const supportIssue = getPushSupportIssue();
-    if (supportIssue === 'ios-home-screen') {
-        // Không mở menu Chia sẻ từ nút này nữa; chỉ nhắc và làm nổi nút tạo shortcut.
-        updateShortcutButton();
-        setShortcutHint('Trên iPhone/iPad cần tạo shortcut màn hình chính trước, rồi mở Pastie Console từ biểu tượng đó để bật thông báo.');
-        return;
-    }
-    if (supportIssue) return;
+    // iOS chưa thêm vào Màn hình chính / trình duyệt không hỗ trợ: chỉ hiện các
+    // bước hướng dẫn (nút cũng đã bị disable nên thực tế không bấm tới đây được).
+    if (supportIssue) { setPushModalMode(supportIssue); return; }
     if (button) { button.disabled = true; button.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang bật thông báo...'; }
     enablePushNotifications().then(() => {
         closePushPermissionModal();
