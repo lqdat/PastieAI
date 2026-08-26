@@ -2461,57 +2461,63 @@ button {
 }
 .admin-invoice-meta a:hover { text-decoration: underline; }
 
-/* --- Bộ lọc trạng thái hội thoại (pill, theo phong cách DealPhuQuoc) --- */
+/* --- Bộ lọc trạng thái hội thoại, đồng bộ pill DealPhuQuoc --- */
 .session-status-filter {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-    padding: 0 16px 12px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    padding: 0 16px 14px;
     border-bottom: 1px solid var(--panel-border);
 }
 .ssf-btn {
-    display: inline-flex;
+    display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
-    padding: 8px 13px;
-    border: 1px solid rgba(239, 43, 157, .14);
+    min-width: 0;
+    padding: 10px 7px;
+    border: 1px solid #eadce6;
     border-radius: 999px;
     background: #fff;
     color: var(--text-primary);
     font-family: inherit;
-    font-size: 12.5px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 700;
     white-space: nowrap;
     cursor: pointer;
-    box-shadow: 0 2px 7px rgba(110, 43, 83, .06);
+    box-shadow: 0 4px 10px rgba(60, 34, 54, .14);
     transition: all 0.2s ease;
 }
-.ssf-btn i { font-size: 15px; color: var(--text-secondary); transition: color 0.2s ease; }
+.ssf-emoji { font-size: 17px; line-height: 1; }
 .ssf-btn:hover {
-    border-color: rgba(239, 43, 157, .38);
-    box-shadow: 0 4px 12px rgba(110, 43, 83, .1);
+    border-color: rgba(239, 43, 157, .55);
+    box-shadow: 0 6px 14px rgba(60, 34, 54, .18);
     transform: translateY(-1px);
 }
-/* Đang chọn: nền hồng nhạt + viền đậm + chữ hồng (giống pill "Tất cả" bên DealPhuQuoc) */
+/* Pill đang chọn: nền hồng nhạt và viền đậm như DealPhuQuoc. */
 .ssf-btn.is-active {
-    background: linear-gradient(135deg, #ffe0f0 0%, #fff2f9 100%);
+    background: linear-gradient(135deg, #ffddec 0%, #fff5fa 100%);
     border-color: #2f2438;
     color: var(--accent-color);
-    box-shadow: 0 3px 11px rgba(239, 43, 157, .16);
+    box-shadow: 0 4px 12px rgba(239, 43, 157, .22);
 }
-.ssf-btn.is-active i { color: var(--accent-color); }
 .ssf-count {
-    padding: 1px 7px;
+    flex: 0 0 auto;
+    min-width: 17px;
+    padding: 2px 5px;
     border-radius: 999px;
-    background: var(--surface-neutral);
+    background: #f4edf2;
     color: var(--text-secondary);
-    font-size: 10.5px;
+    font-size: 10px;
     font-weight: 800;
+    text-align: center;
 }
 .ssf-btn.is-active .ssf-count { background: rgba(239, 43, 157, .16); color: var(--accent-color); }
 @media (max-width: 768px) {
-    .session-status-filter { padding: 0 12px 10px; gap: 6px; }
-    .ssf-btn { padding: 8px 11px; font-size: 12px; }
+    .session-status-filter { gap: 7px; padding: 0 12px 12px; }
+    .ssf-btn { gap: 4px; padding: 9px 4px; font-size: 11px; }
+    .ssf-emoji { font-size: 15px; }
+    .ssf-count { min-width: 15px; padding: 2px 4px; font-size: 9px; }
 }
 
 /* --- Modal xem trước mã QR --- */
