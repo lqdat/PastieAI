@@ -2461,53 +2461,64 @@ button {
 }
 .admin-invoice-meta a:hover { text-decoration: underline; }
 
-/* --- Bộ lọc trạng thái hội thoại (Đang mở / Đã đóng) --- */
+/* --- Bộ lọc trạng thái hội thoại (pill, theo phong cách DealPhuQuoc) --- */
 .session-status-filter {
     display: flex;
-    gap: 6px;
+    flex-wrap: wrap;
+    gap: 7px;
     padding: 0 16px 12px;
     border-bottom: 1px solid var(--panel-border);
 }
 .ssf-btn {
-    flex: 1;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    gap: 5px;
-    padding: 7px 6px;
-    border: 1px solid var(--panel-border);
-    border-radius: var(--radius-md);
+    gap: 6px;
+    padding: 8px 13px;
+    border: 1px solid rgba(239, 43, 157, .14);
+    border-radius: 999px;
     background: #fff;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-family: inherit;
-    font-size: 11.5px;
+    font-size: 12.5px;
     font-weight: 600;
     white-space: nowrap;
     cursor: pointer;
+    box-shadow: 0 2px 7px rgba(110, 43, 83, .06);
     transition: all 0.2s ease;
 }
-.ssf-btn:hover { border-color: var(--accent-color); color: var(--text-primary); }
-.ssf-btn.is-active {
-    border-color: var(--accent-color);
-    background: var(--accent-color);
-    color: #fff;
-    box-shadow: 0 4px 10px 0 var(--accent-glow);
+.ssf-btn i { font-size: 15px; color: var(--text-secondary); transition: color 0.2s ease; }
+.ssf-btn:hover {
+    border-color: rgba(239, 43, 157, .38);
+    box-shadow: 0 4px 12px rgba(110, 43, 83, .1);
+    transform: translateY(-1px);
 }
+/* Đang chọn: nền hồng nhạt + viền đậm + chữ hồng (giống pill "Tất cả" bên DealPhuQuoc) */
+.ssf-btn.is-active {
+    background: linear-gradient(135deg, #ffe0f0 0%, #fff2f9 100%);
+    border-color: #2f2438;
+    color: var(--accent-color);
+    box-shadow: 0 3px 11px rgba(239, 43, 157, .16);
+}
+.ssf-btn.is-active i { color: var(--accent-color); }
 .ssf-count {
-    padding: 1px 6px;
-    border-radius: 9px;
+    padding: 1px 7px;
+    border-radius: 999px;
     background: var(--surface-neutral);
     color: var(--text-secondary);
-    font-size: 10px;
+    font-size: 10.5px;
     font-weight: 800;
 }
-.ssf-btn.is-active .ssf-count { background: rgba(255, 255, 255, .26); color: #fff; }
+.ssf-btn.is-active .ssf-count { background: rgba(239, 43, 157, .16); color: var(--accent-color); }
 @media (max-width: 768px) {
-    .session-status-filter { padding: 0 12px 10px; }
-    .ssf-btn { font-size: 11px; padding: 8px 5px; }
+    .session-status-filter { padding: 0 12px 10px; gap: 6px; }
+    .ssf-btn { padding: 8px 11px; font-size: 12px; }
 }
 
 /* --- Modal xem trước mã QR --- */
+/* Modal này được mở TỪ BÊN TRONG modal Quản lý tài khoản. Cả hai cùng dùng
+   .modal-overlay (z-index: 2000); khi z-index bằng nhau thì thứ tự trong DOM
+   quyết định, mà modal Quản lý nằm sau nên sẽ đè lên. Nâng lớp để QR luôn nổi trên. */
+#qr-preview-modal { z-index: 2100; }
 .qr-preview-box { max-width: 460px; text-align: center; }
 .qr-preview-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; text-align: left; }
 .qr-preview-heading h2 { margin: 0 0 2px; font-size: 17px; }

@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r36">
+    <link rel="stylesheet" href="admin.css?v=r38">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -225,9 +225,9 @@
                     <button id="refresh-sessions-btn" class="icon-btn" title="Tải lại" data-i18n-title="refreshTitle"><i class="ri-refresh-line"></i></button>
                 </div>
                 <div class="session-status-filter" id="session-status-filter" role="tablist">
-                    <button type="button" class="ssf-btn is-active" data-status="all" role="tab">Tất cả <span class="ssf-count" id="ssf-count-all">0</span></button>
-                    <button type="button" class="ssf-btn" data-status="active" role="tab">Đang mở <span class="ssf-count" id="ssf-count-active">0</span></button>
-                    <button type="button" class="ssf-btn" data-status="closed" role="tab">Đã đóng <span class="ssf-count" id="ssf-count-closed">0</span></button>
+                    <button type="button" class="ssf-btn is-active" data-status="all" role="tab"><i class="ri-chat-3-line"></i> Tất cả <span class="ssf-count" id="ssf-count-all">0</span></button>
+                    <button type="button" class="ssf-btn" data-status="active" role="tab"><i class="ri-chat-smile-2-line"></i> Đang mở <span class="ssf-count" id="ssf-count-active">0</span></button>
+                    <button type="button" class="ssf-btn" data-status="closed" role="tab"><i class="ri-checkbox-circle-line"></i> Đã đóng <span class="ssf-count" id="ssf-count-closed">0</span></button>
                 </div>
                 <div class="sessions-list" id="sessions-list-container">
                     <div class="empty-state" data-i18n="loadingConversations">Đang tải cuộc hội thoại...</div>
@@ -791,6 +791,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r42"></script>
+    <script src="admin.js?v=r43"></script>
 </body>
 </html>

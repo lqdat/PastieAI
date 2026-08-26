@@ -1248,6 +1248,11 @@ function updateAgentHeaderUI() {
     if (nameEl) nameEl.textContent = agentName;
     if (identityEl) identityEl.classList.toggle('hide', !agentName);
 
+    // Tên đã hiện to ở header trái rồi thì badge tên bên phải là thừa.
+    // (loadAdminProfile đặt display:flex bằng inline style nên phải ghi đè ở đây.)
+    const profileBadge = document.getElementById('admin-profile-badge');
+    if (profileBadge) profileBadge.style.display = agentName ? 'none' : 'flex';
+
     document.getElementById('project-selector-wrap')?.classList.toggle('hide', isAgentRole);
 
     // Agent chỉ được XEM ngôn ngữ của cuộc trò chuyện, không được đổi.
