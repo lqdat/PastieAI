@@ -1655,15 +1655,27 @@ function renderSessionsList(sessions) {
 // mà KHÔNG phải gọi selectSession() — vốn xoá trắng khung chat rồi tải lại
 // toàn bộ tin nhắn, làm mất vị trí cuộn và nội dung đang soạn dở.
 // =====================================================================
+function isQrChatOwnedByCurrentAgent(session) {
+    return CURRENT_ADMIN?.role === 'agent' && isQrConciergeProject(session?.project_id);
+}
+
 function applyChatPermissionUI(session) {
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     // Manage input visibility and claim status
     const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
+    const isQrOwnedAgentChat = isQrChatOwnedByCurrentAgent(session);
     const isClaimedByMe = session.claimed_by_admin_id && Number(session.claimed_by_admin_id) === Number(CURRENT_ADMIN?.id);
     const isAssignedToMe = session.assigned_admin_id && Number(session.assigned_admin_id) === Number(CURRENT_ADMIN?.id);
     const isClaimedByOther = session.claimed_by_admin_id && Number(session.claimed_by_admin_id) !== Number(CURRENT_ADMIN?.id);
 
     const claimChatBtn = document.getElementById('claim-chat-btn');
+
+    // QR Concierge is one QR → one owner agent. There is nothing to claim,
+    // reassign or manually close; expiry is managed automatically by the QR
+    // session itself. Keep the reply composer available to its owner.
+    if (claimChatBtn) claimChatBtn.classList.toggle('hide', isQrOwnedAgentChat);
+    if (assigneeSelectorContainer) assigneeSelectorContainer.classList.toggle('hide', isQrOwnedAgentChat);
+    if (isQrOwnedAgentChat) closeSessionBtn.classList.add('hide');
 
     if (session.status === 'closed') {
         chatInputContainer.classList.add('hide');
@@ -1671,10 +1683,10 @@ function applyChatPermissionUI(session) {
         if (claimChatBtn) claimChatBtn.classList.add('hide');
     } else {
         chatInputContainer.classList.remove('hide');
-        closeSessionBtn.classList.remove('hide');
+        if (!isQrOwnedAgentChat) closeSessionBtn.classList.remove('hide');
 
         // Check if user has permission to reply
-        const canReply = isSuper || isClaimedByMe || isAssignedToMe;
+        const canReply = isQrOwnedAgentChat || isSuper || isClaimedByMe || isAssignedToMe;
         if (chatInput) {
             chatInput.disabled = !canReply;
             if (!canReply) {
@@ -1690,7 +1702,7 @@ function applyChatPermissionUI(session) {
         if (sendBtn) sendBtn.disabled = !canReply;
 
         // Update claim button UI
-        if (claimChatBtn) {
+        if (claimChatBtn && !isQrOwnedAgentChat) {
             claimChatBtn.classList.remove('hide');
             if (isClaimedByMe) {
                 claimChatBtn.disabled = true;
@@ -1946,13 +1958,20 @@ async function selectSession(sessionId) {
         deleteSessionBtn.classList.toggle('hide', !isSuperAdmin);
     }
 
+    // QR agent sessions are permanently assigned by their QR account. No
+    // claim/reassign action is shown or requested for them.
+    const isQrOwnedAgentChat = isQrChatOwnedByCurrentAgent(session);
+
     // Populate and sync assignee selector
     if (chatAssigneeSelect) {
-        await loadAssigneesForChat(session.project_id);
-        chatAssigneeSelect.value = session.assigned_admin_id ? String(session.assigned_admin_id) : '';
-        const canReassign = CURRENT_ADMIN && ['superadmin', 'project_owner', 'project_admin'].includes(CURRENT_ADMIN.role);
+        if (!isQrOwnedAgentChat) {
+            await loadAssigneesForChat(session.project_id);
+            chatAssigneeSelect.value = session.assigned_admin_id ? String(session.assigned_admin_id) : '';
+        }
+        const canReassign = !isQrOwnedAgentChat && CURRENT_ADMIN && ['superadmin', 'project_owner', 'project_admin'].includes(CURRENT_ADMIN.role);
         chatAssigneeSelect.disabled = !canReassign;
         if (assigneeSelectorContainer) {
+            assigneeSelectorContainer.classList.toggle('hide', isQrOwnedAgentChat);
             assigneeSelectorContainer.title = canReassign ? 'Phân công cuộc trò chuyện cho nhân viên' : 'Nhân viên phụ trách cuộc trò chuyện';
         }
     }
