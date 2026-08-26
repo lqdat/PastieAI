@@ -150,20 +150,13 @@ setInterval(() => {
 
 // QR Concierge visitor slots are intentionally short-lived. The database is
 // authoritative, so expiry also works if the browser is closed or refreshed.
-// Hết phiên QR (hết giờ hoặc bị quét đè) => xóa hẳn cuộc chat luôn (messages bị
-// xóa theo nhờ ON DELETE CASCADE), không chỉ chuyển sang trạng thái 'closed'.
+// Hết phiên QR (hết giờ hoặc bị quét đè) => CHỈ đóng cuộc chat (status='closed'),
+// KHÔNG xóa: lịch sử hội thoại và file đính kèm phải giữ lại để tra cứu sau.
 setInterval(() => {
-  db.query(`DELETE FROM sessions
+  db.query(`UPDATE sessions SET status = 'closed'
             WHERE qr_account_id IS NOT NULL AND status = 'active'
-              AND expires_at IS NOT NULL AND expires_at <= NOW()
-            RETURNING id, project_id`)
-    .then((result) => {
-      // Dọn file đính kèm trên bucket theo từng session vừa bị xóa (chỉ áp dụng dự án QR).
-      for (const row of result.rows) {
-        void s3.deleteSessionAttachments(row.project_id, row.id);
-      }
-    })
-    .catch((error) => console.error('[QR Concierge] Không thể xóa session hết hạn:', error.message));
+              AND expires_at IS NOT NULL AND expires_at <= NOW()`)
+    .catch((error) => console.error('[QR Concierge] Không thể đóng session hết hạn:', error.message));
 }, 60 * 1000);
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -539,22 +532,17 @@ async function resolveQrChatAccount(projectId, qrCode, queryRunner = db) {
 async function closeActiveQrSession(qrAccountId, queryRunner = db) {
   // One QR represents one reception slot. A new scan immediately releases the
   // previous customer so the assigned agent only has the latest conversation.
-  // Xóa hẳn cuộc chat cũ (không chỉ đóng) — messages xóa theo nhờ ON DELETE CASCADE.
-  const result = await queryRunner.query(
-    `DELETE FROM sessions WHERE qr_account_id = $1 AND status = 'active' RETURNING id, project_id`,
+  // Chỉ ĐÓNG cuộc chat cũ, không xóa — lịch sử vẫn tra cứu được sau này.
+  await queryRunner.query(
+    `UPDATE sessions SET status = 'closed' WHERE qr_account_id = $1 AND status = 'active'`,
     [qrAccountId]
   );
-  // Dọn file đính kèm trên bucket theo cuộc chat vừa bị xóa (chỉ áp dụng dự án QR).
-  for (const row of result.rows) {
-    void s3.deleteSessionAttachments(row.project_id, row.id);
-  }
 }
 
 async function expireQrSessionIfNeeded(session, queryRunner = db) {
   if (session?.status === 'active' && session.qr_account_id && session.expires_at && new Date(session.expires_at) <= new Date()) {
-    // Hết giờ phiên QR => xóa hẳn cuộc chat (cascade xóa messages), không chỉ đóng.
-    const result = await queryRunner.query(`DELETE FROM sessions WHERE id = $1 AND status = 'active' RETURNING id, project_id`, [session.id]);
-    if (result.rows[0]) void s3.deleteSessionAttachments(result.rows[0].project_id, result.rows[0].id);
+    // Hết giờ phiên QR => chỉ đóng cuộc chat, giữ nguyên lịch sử và file đính kèm.
+    await queryRunner.query(`UPDATE sessions SET status = 'closed' WHERE id = $1 AND status = 'active'`, [session.id]);
     session.status = 'closed';
   }
   return session;
@@ -1092,7 +1080,11 @@ app.post('/api/chats/message', async (req, res) => {
 
     // Update session detected language — prioritize the language actually detected from the message text
     // over the widget's static UI language (visitorLang), so the AI replies in the language the visitor is typing in.
-    if (sender === 'visitor') {
+    //
+    // Ngoại lệ: dự án QR Concierge. Khách đã tự chọn ngôn ngữ lúc đăng nhập, nên
+    // nhắn xen một câu tiếng khác (tên riêng, một từ tiếng Anh…) không được phép
+    // đổi ngôn ngữ của cả phiên — nếu không hóa đơn và giao diện sẽ nhảy lung tung.
+    if (sender === 'visitor' && !sessionRes.rows[0].qr_account_id) {
       const updateLang = detectedLang || visitorLang;
       if (updateLang) {
         await db.query('UPDATE sessions SET detected_language = $1 WHERE id = $2', [updateLang, sessionId]);
@@ -1410,17 +1402,25 @@ app.post('/api/chats/session/language', async (req, res) => {
   }
 
   try {
-    const validLangs = ['vi', 'en', 'ru', 'zh', 'unknown'];
+    const validLangs = ['vi', 'en', 'ru', 'zh', 'ko', 'unknown'];
     const updateLang = validLangs.includes(language.toLowerCase()) ? language.toLowerCase() : 'unknown';
+
+    const existing = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy phiên chat.' });
+    }
+
+    // Dự án QR: ngôn ngữ do khách tự chọn lúc đăng nhập và phải giữ nguyên cả
+    // phiên (hóa đơn, giao diện đều bám theo nó). Chặn ngay ở server để Agent
+    // không đổi được, kể cả khi gọi thẳng API.
+    if (existing.rows[0].qr_account_id) {
+      return res.json({ success: true, session: existing.rows[0], locked: true });
+    }
 
     const result = await db.query(
       'UPDATE sessions SET detected_language = $1 WHERE id = $2 RETURNING *',
       [updateLang, sessionId]
     );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Không tìm thấy phiên chat.' });
-    }
 
     res.json({ success: true, session: result.rows[0] });
   } catch (error) {
@@ -1769,25 +1769,10 @@ app.post('/api/chats/session/request-agent', async (req, res) => {
 });
 
 // 4d. Update Session Language
-app.post('/api/chats/session/language', async (req, res) => {
-  const { sessionId, language } = req.body;
-  if (!sessionId || !language) {
-    return res.status(400).json({ error: 'Thiếu sessionId hoặc language.' });
-  }
-
-  try {
-    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
-    if (sessionRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Không tìm thấy phiên chat.' });
-    }
-
-    await db.query('UPDATE sessions SET detected_language = $1 WHERE id = $2', [language, sessionId]);
-    res.json({ success: true, language });
-  } catch (error) {
-    console.error('Update session language error:', error);
-    res.status(500).json({ error: 'Lỗi hệ thống khi cập nhật ngôn ngữ.' });
-  }
-});
+// (Route '/api/chats/session/language' TRÙNG LẶP đã được gỡ bỏ tại đây.
+//  Express chỉ chạy handler đăng ký ĐẦU TIÊN, nên khối này chưa bao giờ được
+//  gọi tới — giữ lại chỉ gây hiểu nhầm khi sửa logic ngôn ngữ. Xem định nghĩa
+//  thật ở phía trên, nơi có kiểm tra 'ko' và khóa ngôn ngữ cho phiên QR.)
 
 /**
  * @openapi
@@ -2325,19 +2310,15 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, async (r
 app.post('/api/chats/:sessionId/order/finish', async (req, res) => {
   const order = await getChatOrderForVisitor(req.params.sessionId);
   if (!order || order.status !== 'paid') return res.status(409).json({ error: 'Chỉ có thể kết thúc sau khi đơn đã được xác nhận thanh toán.' });
-  const client = await db.pool.connect();
   try {
-    await client.query('BEGIN');
-    await client.query('DELETE FROM messages WHERE session_id = $1', [req.params.sessionId]);
-    await client.query('DELETE FROM chat_orders WHERE session_id = $1', [req.params.sessionId]);
-    await client.query(`UPDATE sessions SET status = 'closed' WHERE id = $1`, [req.params.sessionId]);
-    await client.query('COMMIT');
-    res.json({ success: true, action: 'logout_and_clear_chat' });
+    // Khách bấm "Kết thúc" => CHỈ đóng cuộc trò chuyện. Tin nhắn, hóa đơn và file
+    // đính kèm được giữ nguyên để Agent/Superadmin còn tra cứu lại sau này.
+    await db.query(`UPDATE sessions SET status = 'closed' WHERE id = $1`, [req.params.sessionId]);
+    res.json({ success: true, action: 'logout_and_close_chat' });
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('Finish order error:', error);
     res.status(500).json({ error: 'Không thể kết thúc đơn hàng.' });
-  } finally { client.release(); }
+  }
 });
 
 // --- ADMIN AUTHENTICATION ENDPOINTS ---
@@ -3085,6 +3066,12 @@ app.get('/api/admin/me', checkAdminAuth, async (req, res) => {
 // chỉ dành cho Superadmin/Project Admin) — ở đây chỉ cho sửa đúng full_name của
 // chính người đang đăng nhập, nên Agent dùng được mà không mở thêm quyền nào khác.
 app.put('/api/admin/me/display-name', checkAdminAuth, async (req, res) => {
+  // Agent không được tự đổi tên hiển thị — tên này là thứ khách nhìn thấy nên
+  // do Superadmin/Project Admin quản lý. Chặn ở server chứ không chỉ ẩn ô nhập.
+  if (req.admin.role === 'agent') {
+    return res.status(403).json({ error: 'Bạn không có quyền đổi tên hiển thị. Vui lòng liên hệ quản trị viên.' });
+  }
+
   const fullName = String(req.body?.full_name || '').trim();
 
   if (!fullName) {

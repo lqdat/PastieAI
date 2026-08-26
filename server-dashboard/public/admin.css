@@ -2460,3 +2460,95 @@ button {
     text-decoration: none;
 }
 .admin-invoice-meta a:hover { text-decoration: underline; }
+
+/* --- Bộ lọc trạng thái hội thoại (Đang mở / Đã đóng) --- */
+.session-status-filter {
+    display: flex;
+    gap: 6px;
+    padding: 0 16px 12px;
+    border-bottom: 1px solid var(--panel-border);
+}
+.ssf-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 7px 6px;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-md);
+    background: #fff;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.ssf-btn:hover { border-color: var(--accent-color); color: var(--text-primary); }
+.ssf-btn.is-active {
+    border-color: var(--accent-color);
+    background: var(--accent-color);
+    color: #fff;
+    box-shadow: 0 4px 10px 0 var(--accent-glow);
+}
+.ssf-count {
+    padding: 1px 6px;
+    border-radius: 9px;
+    background: var(--surface-neutral);
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 800;
+}
+.ssf-btn.is-active .ssf-count { background: rgba(255, 255, 255, .26); color: #fff; }
+@media (max-width: 768px) {
+    .session-status-filter { padding: 0 12px 10px; }
+    .ssf-btn { font-size: 11px; padding: 8px 5px; }
+}
+
+/* --- Modal xem trước mã QR --- */
+.qr-preview-box { max-width: 460px; text-align: center; }
+.qr-preview-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; text-align: left; }
+.qr-preview-heading h2 { margin: 0 0 2px; font-size: 17px; }
+.qr-preview-heading p { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.qr-preview-heading p:empty { display: none; }
+.qr-preview-body { display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 6px; }
+.qr-preview-body img {
+    width: min(280px, 100%);
+    height: auto;
+    padding: 12px;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg, 14px);
+    background: #fff;
+    box-shadow: var(--shadow-sm);
+}
+.qr-preview-link {
+    margin: 0;
+    max-width: 100%;
+    color: var(--text-secondary);
+    font-size: 11.5px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+}
+.qr-preview-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; width: 100%; }
+.qr-preview-actions .secondary-btn,
+.qr-preview-actions .primary-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: auto;
+    flex: 1 1 150px;
+    padding: 10px 14px;
+    font-size: 12.5px;
+    text-decoration: none;
+}
+
+/* Agent chỉ được xem tên hiển thị */
+.self-profile-panel.is-readonly .self-profile-form input {
+    background: var(--surface-neutral);
+    color: var(--text-secondary);
+    cursor: default;
+}

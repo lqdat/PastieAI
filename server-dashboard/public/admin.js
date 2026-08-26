@@ -288,6 +288,8 @@ let adminIsLoadingMore = false;
 let adminIsSending = false;
 let adminIsSyncingMessages = false;
 // Hóa đơn của cuộc chat đang mở — Agent cần nhìn thấy đúng hóa đơn đã gửi cho khách.
+// Bộ lọc trạng thái hội thoại: 'all' | 'active' | 'closed'
+let currentStatusFilter = localStorage.getItem('pastie_admin_status_filter') || 'all';
 let adminOrder = null;
 let adminOrderSignature = '';
 
@@ -1247,6 +1249,13 @@ function updateAgentHeaderUI() {
     if (identityEl) identityEl.classList.toggle('hide', !agentName);
 
     document.getElementById('project-selector-wrap')?.classList.toggle('hide', isAgentRole);
+
+    // Agent chỉ được XEM ngôn ngữ của cuộc trò chuyện, không được đổi.
+    const detailLangEl = document.getElementById('detail-lang-select');
+    if (detailLangEl) {
+        detailLangEl.disabled = isAgentRole;
+        detailLangEl.title = isAgentRole ? 'Chỉ quản trị viên mới đổi được ngôn ngữ' : '';
+    }
     document.getElementById('agent-account-btn')?.classList.toggle('hide', !isAgentRole);
 
     // Chỉ hiện nút "Mã QR" khi dự án của Agent thực sự là QR Concierge.
@@ -1356,9 +1365,23 @@ function getDeviceIcon(device) {
 function renderSessionsList(sessions) {
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     // Filter sessions by selected project
-    const filtered = currentProjectFilter 
+    const byProject = currentProjectFilter
         ? sessions.filter(s => s.project_id === currentProjectFilter)
         : sessions;
+
+    // Số đếm tính trên phạm vi dự án đang chọn, để con số khớp với thứ đang thấy.
+    const activeCount = byProject.filter(s => s.status !== 'closed').length;
+    const closedCount = byProject.length - activeCount;
+    const setCount = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+    setCount('ssf-count-all', byProject.length);
+    setCount('ssf-count-active', activeCount);
+    setCount('ssf-count-closed', closedCount);
+
+    const filtered = currentStatusFilter === 'active'
+        ? byProject.filter(s => s.status !== 'closed')
+        : currentStatusFilter === 'closed'
+        ? byProject.filter(s => s.status === 'closed')
+        : byProject;
 
     if (filtered.length === 0) {
         sessionsListContainer.innerHTML = `<div class="empty-state" data-i18n="emptyConversations">${dict.emptyConversations}</div>`;
@@ -2595,6 +2618,22 @@ document.addEventListener('click', (event) => {
     }
 });
 
+document.getElementById('session-status-filter')?.addEventListener('click', (event) => {
+    const button = event.target.closest('.ssf-btn');
+    if (!button) return;
+    currentStatusFilter = button.dataset.status || 'all';
+    localStorage.setItem('pastie_admin_status_filter', currentStatusFilter);
+    document.querySelectorAll('#session-status-filter .ssf-btn').forEach((element) => {
+        element.classList.toggle('is-active', element.dataset.status === currentStatusFilter);
+    });
+    renderSessionsList(sessionsList);
+});
+
+// Khôi phục lựa chọn đã lưu (script nằm cuối body nên DOM đã sẵn sàng).
+document.querySelectorAll('#session-status-filter .ssf-btn').forEach((element) => {
+    element.classList.toggle('is-active', element.dataset.status === currentStatusFilter);
+});
+
 projectFilter?.addEventListener('change', (e) => {
     currentProjectFilter = e.target.value;
     renderSessionsList(sessionsList);
@@ -3369,6 +3408,19 @@ function applyAdminMgmtFocus() {
         const input = document.getElementById('self-display-name-input');
         if (input) input.value = CURRENT_ADMIN?.full_name || CURRENT_ADMIN?.username || '';
         setSelfProfileStatus('');
+
+        // Agent chỉ được xem tên hiển thị của mình; việc đổi tên do quản trị viên làm.
+        const isAgentRole = CURRENT_ADMIN?.role === 'agent';
+        const saveBtn = document.getElementById('self-display-name-save');
+        if (input) input.readOnly = isAgentRole;
+        if (saveBtn) saveBtn.classList.toggle('hide', isAgentRole);
+        selfPanel?.classList.toggle('is-readonly', isAgentRole);
+        const hint = selfPanel?.querySelector('.self-profile-heading p');
+        if (hint) {
+            hint.textContent = isAgentRole
+                ? 'Tên này hiện trên thanh tiêu đề và là tên khách nhìn thấy. Liên hệ quản trị viên nếu cần đổi.'
+                : 'Tên này hiện trên thanh tiêu đề và là tên khách nhìn thấy khi bạn trả lời chat.';
+        }
     }
 
     if (adminMgmtFocus === 'qr') {
@@ -3401,6 +3453,10 @@ function setSelfProfileStatus(message, kind = '') {
 
 async function handleSelfDisplayNameSubmit(event) {
     event.preventDefault();
+    if (CURRENT_ADMIN?.role === 'agent') {
+        setSelfProfileStatus('Bạn không có quyền đổi tên hiển thị.', 'error');
+        return;
+    }
     const input = document.getElementById('self-display-name-input');
     const saveBtn = document.getElementById('self-display-name-save');
     const fullName = (input?.value || '').trim();

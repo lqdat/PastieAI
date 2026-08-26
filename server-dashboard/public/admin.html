@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r34">
+    <link rel="stylesheet" href="admin.css?v=r36">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -223,6 +223,11 @@
                 <div class="sidebar-header">
                     <h3 data-i18n="chatListTitle">Hội thoại chat</h3>
                     <button id="refresh-sessions-btn" class="icon-btn" title="Tải lại" data-i18n-title="refreshTitle"><i class="ri-refresh-line"></i></button>
+                </div>
+                <div class="session-status-filter" id="session-status-filter" role="tablist">
+                    <button type="button" class="ssf-btn is-active" data-status="all" role="tab">Tất cả <span class="ssf-count" id="ssf-count-all">0</span></button>
+                    <button type="button" class="ssf-btn" data-status="active" role="tab">Đang mở <span class="ssf-count" id="ssf-count-active">0</span></button>
+                    <button type="button" class="ssf-btn" data-status="closed" role="tab">Đã đóng <span class="ssf-count" id="ssf-count-closed">0</span></button>
                 </div>
                 <div class="sessions-list" id="sessions-list-container">
                     <div class="empty-state" data-i18n="loadingConversations">Đang tải cuộc hội thoại...</div>
@@ -621,6 +626,27 @@
             </form>
         </div>
     </div>
+    <!-- QR Preview Modal -->
+    <div id="qr-preview-modal" class="modal-overlay hide">
+        <div class="login-box glass-panel qr-preview-box">
+            <div class="brand-header qr-preview-header">
+                <div class="qr-preview-heading">
+                    <h2 id="qr-preview-title">Mã QR tiếp nhận chat</h2>
+                    <p id="qr-preview-agent"></p>
+                </div>
+                <button id="qr-preview-close-btn" class="icon-btn" type="button" title="Đóng"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="qr-preview-body">
+                <img id="qr-preview-image" alt="Mã QR tiếp nhận chat">
+                <p class="qr-preview-link" id="qr-preview-link"></p>
+                <div class="qr-preview-actions">
+                    <button id="qr-preview-copy-btn" type="button" class="secondary-btn"><i class="ri-file-copy-line"></i> Sao chép link</button>
+                    <a id="qr-preview-download-btn" class="primary-btn" download="pastie-qr.png" target="_blank" rel="noopener noreferrer"><i class="ri-download-2-line"></i> Tải mã QR</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Admin Management Modal -->
     <div id="admin-management-modal" class="modal-overlay hide">
         <div class="login-box glass-panel admin-management-box" style="display: flex; flex-direction: column; max-height: 92vh;">
@@ -765,6 +791,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r40"></script>
+    <script src="admin.js?v=r42"></script>
 </body>
 </html>
