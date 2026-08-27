@@ -149,24 +149,27 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // QR Concierge visitor slots are intentionally short-lived. When an idle QR
-// session expires, remove the entire conversation. Database cascade rules also
-// remove its messages and chat orders, so the next customer always starts new.
-async function removeExpiredQrSessions() {
-  const removed = await db.query(
-    `DELETE FROM sessions
-      WHERE qr_account_id IS NOT NULL AND expires_at IS NOT NULL AND expires_at <= NOW()
+// session expires, close it but retain the conversation, translations, orders
+// and attachments so staff can review the complete customer history later.
+async function closeExpiredQrSessions() {
+  const closed = await db.query(
+    `UPDATE sessions SET status = 'closed'
+      WHERE qr_account_id IS NOT NULL
+        AND status = 'active'
+        AND expires_at IS NOT NULL
+        AND expires_at <= NOW()
       RETURNING id`
   );
-  removed.rows.forEach(({ id }) => aiRateLimit.delete(id));
-  if (removed.rowCount) console.log(`[QR Concierge] Đã xóa ${removed.rowCount} session hết hạn.`);
+  closed.rows.forEach(({ id }) => aiRateLimit.delete(id));
+  if (closed.rowCount) console.log(`[QR Concierge] Đã đóng ${closed.rowCount} session hết hạn.`);
 }
 
-removeExpiredQrSessions()
-  .catch((error) => console.error('[QR Concierge] Không thể dọn session hết hạn khi khởi động:', error.message));
+closeExpiredQrSessions()
+  .catch((error) => console.error('[QR Concierge] Không thể đóng session hết hạn khi khởi động:', error.message));
 
 setInterval(() => {
-  removeExpiredQrSessions()
-    .catch((error) => console.error('[QR Concierge] Không thể xóa session hết hạn:', error.message));
+  closeExpiredQrSessions()
+    .catch((error) => console.error('[QR Concierge] Không thể đóng session hết hạn:', error.message));
 }, 60 * 1000);
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -551,9 +554,13 @@ async function closeActiveQrSession(qrAccountId, queryRunner = db) {
 
 async function expireQrSessionIfNeeded(session, queryRunner = db) {
   if (session?.status === 'active' && session.qr_account_id && session.expires_at && new Date(session.expires_at) <= new Date()) {
-    await queryRunner.query(`DELETE FROM sessions WHERE id = $1 AND qr_account_id IS NOT NULL`, [session.id]);
+    await queryRunner.query(
+      `UPDATE sessions SET status = 'closed'
+        WHERE id = $1 AND qr_account_id IS NOT NULL AND status = 'active'`,
+      [session.id]
+    );
     aiRateLimit.delete(session.id);
-    session.status = 'expired';
+    session.status = 'closed';
   }
   return session;
 }
