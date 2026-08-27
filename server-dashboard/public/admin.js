@@ -22,6 +22,7 @@ const TRANSLATIONS = {
         chatInputPlaceholder: "Gõ câu trả lời tại đây...",
         detailsTitle: "Thông tin chi tiết",
         detectedLangLabel: "Ngôn ngữ phát hiện",
+        languageLabel: "Ngôn ngữ",
         notDetected: "Chưa phát hiện",
         intentTagsLabel: "Ý định cuộc trò chuyện",
         aiSummaryLabel: "Tóm tắt nội dung cuộc chat",
@@ -75,6 +76,7 @@ const TRANSLATIONS = {
         chatInputPlaceholder: "Type your reply here...",
         detailsTitle: "Details",
         detectedLangLabel: "Detected language",
+        languageLabel: "Language",
         notDetected: "Not detected",
         intentTagsLabel: "Conversation intent",
         aiSummaryLabel: "Chat summary",
@@ -128,6 +130,7 @@ const TRANSLATIONS = {
         chatInputPlaceholder: "Введите ваш ответ здесь...",
         detailsTitle: "Детали",
         detectedLangLabel: "Обнаруженный язык",
+        languageLabel: "Язык",
         notDetected: "Не определен",
         intentTagsLabel: "Намерение диалога",
         aiSummaryLabel: "Сводка диалога",
@@ -181,6 +184,7 @@ const TRANSLATIONS = {
         chatInputPlaceholder: "在此输入您的回复...",
         detailsTitle: "详细信息",
         detectedLangLabel: "检测到的语言",
+        languageLabel: "语言",
         notDetected: "未检测到",
         intentTagsLabel: "对话意图",
         aiSummaryLabel: "对话摘要",
@@ -234,6 +238,7 @@ const TRANSLATIONS = {
         chatInputPlaceholder: "여기에 답변을 입력하세요...",
         detailsTitle: "상세 정보",
         detectedLangLabel: "감지된 언어",
+        languageLabel: "언어",
         notDetected: "감지되지 않음",
         intentTagsLabel: "의도 태그",
         aiSummaryLabel: "AI 요약",
@@ -395,6 +400,7 @@ function applyTranslations(lang) {
     } else {
         const session = sessionsList.find(s => s.id === currentSessionId);
         if (session) {
+            applyDetailsPanelMode(session);
             const summaryText = document.getElementById('detail-summary');
             if (summaryText && (!session.ai_summary)) {
                 summaryText.textContent = dictObj.closeChatToAnalyze;
@@ -1659,6 +1665,19 @@ function isQrChatOwnedByCurrentAgent(session) {
     return CURRENT_ADMIN?.role === 'agent' && isQrConciergeProject(session?.project_id);
 }
 
+function applyDetailsPanelMode(session) {
+    const isQrAgentChat = isQrChatOwnedByCurrentAgent(session);
+    document.getElementById('detail-channel-card')?.classList.toggle('hide', isQrAgentChat);
+    document.getElementById('detail-project-card')?.classList.toggle('hide', isQrAgentChat);
+
+    const languageLabel = document.getElementById('detail-language-label');
+    if (languageLabel) {
+        const translationKey = isQrAgentChat ? 'languageLabel' : 'detectedLangLabel';
+        languageLabel.dataset.i18n = translationKey;
+        languageLabel.textContent = (TRANSLATIONS[currentLang] || TRANSLATIONS.vi)[translationKey];
+    }
+}
+
 function applyChatPermissionUI(session) {
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     // Manage input visibility and claim status
@@ -1758,6 +1777,7 @@ async function selectSession(sessionId) {
 
     const session = sessionsList.find(s => s.id === sessionId);
     if (!session) return;
+    applyDetailsPanelMode(session);
 
     // Show header details
     chatTitleName.textContent = session.visitor_name;
