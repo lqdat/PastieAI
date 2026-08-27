@@ -1438,12 +1438,13 @@ button {
 .self-profile-heading h3 { margin:3px 0 0; font-size:15px; color:var(--text-primary); }
 .self-profile-heading h3 i { color: var(--accent-color); margin-right:5px; }
 .self-profile-heading p { margin:5px 0 0; max-width:550px; color:var(--text-secondary); font-size:11.5px; line-height:1.45; }
-.self-profile-form {
-    display:flex;
-    align-items:center;
-    gap:8px;
-    margin-top:12px;
-}
+.self-account-meta { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px; margin-top:14px; }
+.self-account-meta-item { min-width:0; padding:10px 12px; border:1px solid rgba(109,91,208,.14); border-radius:10px; background:rgba(255,255,255,.72); display:grid; grid-template-columns:16px minmax(0,1fr); column-gap:7px; }
+.self-account-meta-item i { grid-row:1 / span 2; color:var(--accent-color); font-size:15px; padding-top:1px; }
+.self-account-meta-item span { color:var(--text-secondary); font-size:10px; font-weight:700; }
+.self-account-meta-item strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary); font-size:12px; font-weight:700; }
+.self-profile-form { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:8px; margin-top:12px; }
+.self-profile-form label { grid-column:1 / -1; color:var(--text-secondary); font-size:11px; font-weight:700; }
 .self-profile-form input {
     flex:1 1 auto;
     min-width:0;
@@ -1474,7 +1475,8 @@ button {
 .self-profile-status.is-ok { color: var(--success-color, #10b981); }
 .self-profile-status.is-error { color: #ef4444; }
 @media (max-width: 768px) {
-    .self-profile-form { flex-direction:column; align-items:stretch; }
+    .self-account-meta { grid-template-columns:1fr; }
+    .self-profile-form { grid-template-columns:1fr; align-items:stretch; }
     .self-profile-form .primary-btn { width:100%; }
 }
 

@@ -3437,10 +3437,33 @@ window.openQrPreview = (encodedImageUrl, encodedLabel, encodedOwner, encodedChat
     qrPreviewAgent.textContent = owner ? `Agent phụ trách: ${owner}` : '';
     qrPreviewImage.src = imageUrl;
     qrPreviewLink.textContent = chatUrl;
-    qrPreviewDownloadBtn.href = imageUrl;
+    qrPreviewDownloadBtn.onclick = () => downloadQrImage(imageUrl, label || 'pastie-qr');
     qrPreviewCopyBtn.onclick = () => window.copyQrChatLink(chatUrl);
     qrPreviewModal.classList.remove('hide');
 };
+
+async function downloadQrImage(imageUrl, label) {
+    const safeName = String(label || 'pastie-qr')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'pastie-qr';
+    const filename = `${safeName}.png`;
+    try {
+        const response = await fetch(imageUrl);
+        if (!response.ok) throw new Error('Không thể tải ảnh QR.');
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (error) {
+        alert('Không thể tải ảnh QR. Vui lòng thử lại.');
+    }
+}
 
 function closeQrPreview() {
     qrPreviewModal?.classList.add('hide');
@@ -3545,7 +3568,18 @@ function applyAdminMgmtFocus() {
     selfPanel?.classList.toggle('hide', !showSelfProfile);
     if (showSelfProfile) {
         const input = document.getElementById('self-display-name-input');
+        const meta = document.getElementById('self-account-meta');
         if (input) input.value = CURRENT_ADMIN?.full_name || CURRENT_ADMIN?.username || '';
+        if (meta) {
+            const roleNames = { agent: 'Agent tư vấn', project_admin: 'Quản trị dự án', superadmin: 'Superadmin' };
+            const email = CURRENT_ADMIN?.username || '—';
+            const project = CURRENT_ADMIN?.project_id || 'Toàn hệ thống';
+            const role = roleNames[CURRENT_ADMIN?.role] || 'Tài khoản';
+            meta.innerHTML = `
+                <div class="self-account-meta-item"><i class="ri-mail-line"></i><span>Email đăng nhập</span><strong>${escapeHtml(email)}</strong></div>
+                <div class="self-account-meta-item"><i class="ri-folder-3-line"></i><span>Dự án</span><strong>${escapeHtml(project)}</strong></div>
+                <div class="self-account-meta-item"><i class="ri-shield-user-line"></i><span>Vai trò</span><strong>${escapeHtml(role)}</strong></div>`;
+        }
         setSelfProfileStatus('');
 
         // Agent chỉ được xem tên hiển thị của mình; việc đổi tên do quản trị viên làm.
@@ -3568,7 +3602,8 @@ function applyAdminMgmtFocus() {
         if (titleEl) titleEl.textContent = 'Mã QR tiếp nhận chat';
         if (subtitleEl) subtitleEl.textContent = 'Quét mã QR này để khách bắt đầu cuộc trò chuyện với bạn.';
     } else if (adminMgmtFocus === 'account') {
-        grid?.classList.remove('hide');
+        // Agent chỉ cần một hồ sơ; không lặp lại cùng thông tin ở danh sách tài khoản.
+        grid?.classList.toggle('hide', CURRENT_ADMIN?.role === 'agent');
         qrConciergePanel?.classList.add('hide');
         if (titleEl) titleEl.textContent = 'Quản lý tài khoản';
         if (subtitleEl) subtitleEl.textContent = 'Thông tin và tên hiển thị của tài khoản bạn.';

@@ -642,7 +642,7 @@
                 <p class="qr-preview-link" id="qr-preview-link"></p>
                 <div class="qr-preview-actions">
                     <button id="qr-preview-copy-btn" type="button" class="secondary-btn"><i class="ri-file-copy-line"></i> Sao chép link</button>
-                    <a id="qr-preview-download-btn" class="primary-btn" download="pastie-qr.png" target="_blank" rel="noopener noreferrer"><i class="ri-download-2-line"></i> Tải mã QR</a>
+                    <button id="qr-preview-download-btn" type="button" class="primary-btn"><i class="ri-download-2-line"></i> Tải mã QR</button>
                 </div>
             </div>
         </div>
@@ -684,14 +684,16 @@
                     <select id="admin-mgmt-project-select" aria-label="Chọn project"></select>
                 </section>
 
-                <!-- Tự đổi tên hiển thị (hiện với Agent) -->
-                <section id="self-profile-panel" class="admin-mgmt-section self-profile-panel hide" aria-label="Tên hiển thị của bạn">
+                <!-- Hồ sơ rút gọn của Agent: không lặp lại thẻ tài khoản bên dưới. -->
+                <section id="self-profile-panel" class="admin-mgmt-section self-profile-panel hide" aria-label="Thông tin tài khoản của bạn">
                     <div class="self-profile-heading">
-                        <span class="account-section-kicker">HỒ SƠ CỦA BẠN</span>
-                        <h3><i class="ri-id-card-line"></i> Tên hiển thị</h3>
-                        <p>Tên này hiện trên thanh tiêu đề và là tên khách nhìn thấy khi bạn trả lời chat.</p>
+                        <span class="account-section-kicker">TÀI KHOẢN CỦA BẠN</span>
+                        <h3><i class="ri-id-card-line"></i> Hồ sơ tài khoản</h3>
+                        <p>Thông tin dùng để định danh bạn trên console và trong cuộc trò chuyện với khách.</p>
                     </div>
+                    <div id="self-account-meta" class="self-account-meta" aria-label="Thông tin đăng nhập"></div>
                     <form id="self-profile-form" class="self-profile-form">
+                        <label for="self-display-name-input">Tên hiển thị với khách</label>
                         <input type="text" id="self-display-name-input" maxlength="255" placeholder="Nhập tên hiển thị..." autocomplete="off" required>
                         <button type="submit" id="self-display-name-save" class="primary-btn"><i class="ri-save-line"></i> Lưu</button>
                     </form>
@@ -792,6 +794,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r46"></script>
+    <script src="admin.js?v=r47"></script>
 </body>
 </html>
