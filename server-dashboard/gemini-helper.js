@@ -98,14 +98,26 @@ function decodeHtmlEntities(text = '') {
 //
 // Nếu Gemini lỗi hoặc quá GEMINI_TRANSLATE_TIMEOUT_MS thì tự rơi sang NMT, nên
 // đường dịch không bao giờ chết hẳn khi một bên gặp sự cố.
-const TRANSLATION_PROVIDER = (process.env.TRANSLATION_PROVIDER || 'gemini').toLowerCase();
+//
+// ĐO THẬT trên Railway (26/08/2026, dịch vi -> en, câu chat thật):
+//     "ok"                    Gemini 1951ms  |  NMT  251ms
+//     "cảm ơn bạn nhé"        Gemini 4885ms  |  NMT 1266ms
+//     "phòng còn trống ko a"  Gemini 4808ms  |  NMT  111ms
+//     "bn tiền 1 đêm v ạ"     Gemini 7020ms  |  NMT  125ms
+// Chậm hơn 4-56 lần, trong khi bản dịch ra gần như y hệt: NMT xử lý đúng cả
+// viết tắt kiểu "bn tiền", "ko a", "v ạ". Vì vậy MẶC ĐỊNH LÀ 'nmt'.
+// Muốn thử lại Gemini thì đặt TRANSLATION_PROVIDER=gemini, nhưng hãy đo lại
+// bằng translate-bench.js trước khi bật cho khách.
+const TRANSLATION_PROVIDER = (process.env.TRANSLATION_PROVIDER || 'nmt').toLowerCase();
 // Cho phép trỏ riêng model dịch sang bản nhẹ/nhanh hơn mà không đụng tới
 // chatbot và phần tóm tắt. Bỏ trống thì dùng chung chuỗi model ở trên.
 const GEMINI_TRANSLATE_MODELS = (process.env.GEMINI_TRANSLATE_MODELS || '')
   .split(',')
   .map(model => model.trim())
   .filter(Boolean);
-const GEMINI_TRANSLATE_TIMEOUT_MS = Number(process.env.GEMINI_TRANSLATE_TIMEOUT_MS || 2500);
+// Dịch nằm trên đường tới hạn nên phải THẤT BẠI NHANH rồi nhường cho NMT.
+// 2500ms là quá dài: log thực tế cho thấy nó cộng dồn thành >7s.
+const GEMINI_TRANSLATE_TIMEOUT_MS = Number(process.env.GEMINI_TRANSLATE_TIMEOUT_MS || 1500);
 
 const LANGUAGE_NAMES = {
   vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese (Simplified)', ko: 'Korean',
@@ -166,23 +178,18 @@ Keep emoji, names, numbers and links unchanged. If it is already in ${targetName
 
 ${text}`;
 
-  const models = GEMINI_TRANSLATE_MODELS.length ? GEMINI_TRANSLATE_MODELS : GEMINI_MODELS;
-  let lastError;
-  for (const modelName of models) {
-    try {
-      const model = ai.getGenerativeModel({ model: modelName });
-      const result = await withTimeout(
-        model.generateContent(prompt),
-        GEMINI_TRANSLATE_TIMEOUT_MS,
-        `Gemini dịch quá ${GEMINI_TRANSLATE_TIMEOUT_MS}ms`
-      );
-      return cleanTranslationOutput(result.response.text(), text);
-    } catch (error) {
-      lastError = error;
-      console.warn(`[Gemini] Dịch bằng ${modelName} thất bại:`, error.message);
-    }
-  }
-  throw lastError || new Error('Không có model Gemini nào khả dụng');
+  // CHỈ thử ĐÚNG MỘT model. Chuỗi fallback nhiều model hợp lý cho chatbot,
+  // nhưng ở đây mỗi lần thử hỏng lại cộng thêm một khoảng timeout — log thực tế
+  // cho thấy 3 model x 2500ms = hơn 7 giây trước khi chịu rơi sang NMT. Với dịch
+  // realtime thì thà hỏng ngay rồi để NMT trả lời trong ~150ms.
+  const modelName = (GEMINI_TRANSLATE_MODELS.length ? GEMINI_TRANSLATE_MODELS : GEMINI_MODELS)[0];
+  const model = ai.getGenerativeModel({ model: modelName });
+  const result = await withTimeout(
+    model.generateContent(prompt),
+    GEMINI_TRANSLATE_TIMEOUT_MS,
+    `Gemini dịch quá ${GEMINI_TRANSLATE_TIMEOUT_MS}ms`
+  );
+  return cleanTranslationOutput(result.response.text(), text);
 }
 
 async function translateWithNmt(text, targetLang) {
