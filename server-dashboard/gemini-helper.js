@@ -84,42 +84,171 @@ function decodeHtmlEntities(text = '') {
     .replace(/&gt;/g, '>');
 }
 
-async function translateText(text, targetLang) {
-  const sourceText = String(text || '').trim();
-  if (!sourceText) return { translatedText: sourceText, detectedLang: 'unknown' };
+// ── Dịch chat: Gemini làm chính, Cloud Translation (NMT) làm dự phòng ────────
+//
+// Vì sao bản Gemini cũ chậm và bản này không:
+//   1. Bản cũ bắt model trả JSON {"translated_text","detected_language"} rồi
+//      strip markdown + JSON.parse. Model phải sinh thêm token cấu trúc nên
+//      chậm hẳn. Ở đây model chỉ trả về ĐÚNG câu dịch, không gì khác.
+//   2. Lý do duy nhất phải dùng JSON là để lấy detected_language. Giờ tách hẳn:
+//      nếu nơi gọi đã biết ngôn ngữ nguồn thì bỏ qua bước phát hiện; nếu chưa
+//      biết thì gọi endpoint detect của Cloud Translation CHẠY SONG SONG với
+//      Gemini — tổng thời gian bằng cái chậm hơn, không phải tổng hai cái.
+//   3. Prompt ngắn lại: ít token đầu vào thì phản hồi tới sớm hơn.
+//
+// Nếu Gemini lỗi hoặc quá GEMINI_TRANSLATE_TIMEOUT_MS thì tự rơi sang NMT, nên
+// đường dịch không bao giờ chết hẳn khi một bên gặp sự cố.
+const TRANSLATION_PROVIDER = (process.env.TRANSLATION_PROVIDER || 'gemini').toLowerCase();
+// Cho phép trỏ riêng model dịch sang bản nhẹ/nhanh hơn mà không đụng tới
+// chatbot và phần tóm tắt. Bỏ trống thì dùng chung chuỗi model ở trên.
+const GEMINI_TRANSLATE_MODELS = (process.env.GEMINI_TRANSLATE_MODELS || '')
+  .split(',')
+  .map(model => model.trim())
+  .filter(Boolean);
+const GEMINI_TRANSLATE_TIMEOUT_MS = Number(process.env.GEMINI_TRANSLATE_TIMEOUT_MS || 2500);
 
-  if (!GOOGLE_TRANSLATE_API_KEY) {
-    console.error('[Cloud Translation] GOOGLE_TRANSLATE_API_KEY not set; returning original text.');
-    return { translatedText: sourceText, detectedLang: 'unknown' };
-  }
+const LANGUAGE_NAMES = {
+  vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese (Simplified)', ko: 'Korean',
+};
 
+const normalizeLangCode = (value) => String(value || '').trim().toLowerCase().slice(0, 2);
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(label || `Timeout sau ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+// Chỉ phát hiện ngôn ngữ, không dịch. Rẻ và nhanh hơn nhiều so với bắt Gemini
+// vừa dịch vừa trả về mã ngôn ngữ trong JSON.
+async function detectLanguageWithNmt(text) {
+  if (!GOOGLE_TRANSLATE_API_KEY) return 'unknown';
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timer = setTimeout(() => controller.abort(), 4000);
+  try {
+    const response = await fetch(
+      `https://translation.googleapis.com/language/translate/v2/detect?key=${encodeURIComponent(GOOGLE_TRANSLATE_API_KEY)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: text }),
+        signal: controller.signal,
+      }
+    );
+    const data = await response.json().catch(() => ({}));
+    const detected = data?.data?.detections?.[0]?.[0]?.language;
+    return detected ? normalizeLangCode(detected) : 'unknown';
+  } catch (error) {
+    return 'unknown';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Model đôi khi vẫn trả kèm dấu ngoặc kép hoặc rào đón dù prompt đã yêu cầu
+// không làm vậy — dọn lại cho chắc.
+function cleanTranslationOutput(raw, fallback) {
+  let output = String(raw || '').trim();
+  if (!output) return fallback;
+  output = output.replace(/^```[a-z]*\s*/i, '').replace(/```$/, '').trim();
+  if (output.length > 1 && /^".*"$/s.test(output)) output = output.slice(1, -1).trim();
+  return output || fallback;
+}
+
+async function translateWithGemini(text, targetLang) {
+  const targetName = LANGUAGE_NAMES[normalizeLangCode(targetLang)] || targetLang;
+  // Prompt cố tình ngắn: mỗi token đầu vào đều cộng vào độ trễ.
+  const prompt = `Translate the chat message below into ${targetName}.
+Reply with ONLY the translation - no quotes, no explanation, no extra text.
+Keep emoji, names, numbers and links unchanged. If it is already in ${targetName}, repeat it unchanged.
+
+${text}`;
+
+  const models = GEMINI_TRANSLATE_MODELS.length ? GEMINI_TRANSLATE_MODELS : GEMINI_MODELS;
+  let lastError;
+  for (const modelName of models) {
+    try {
+      const model = ai.getGenerativeModel({ model: modelName });
+      const result = await withTimeout(
+        model.generateContent(prompt),
+        GEMINI_TRANSLATE_TIMEOUT_MS,
+        `Gemini dịch quá ${GEMINI_TRANSLATE_TIMEOUT_MS}ms`
+      );
+      return cleanTranslationOutput(result.response.text(), text);
+    } catch (error) {
+      lastError = error;
+      console.warn(`[Gemini] Dịch bằng ${modelName} thất bại:`, error.message);
+    }
+  }
+  throw lastError || new Error('Không có model Gemini nào khả dụng');
+}
+
+async function translateWithNmt(text, targetLang) {
+  if (!GOOGLE_TRANSLATE_API_KEY) throw new Error('GOOGLE_TRANSLATE_API_KEY chưa được cấu hình');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
   try {
     const response = await fetch(
       `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(GOOGLE_TRANSLATE_API_KEY)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q: sourceText, target: String(targetLang || 'en').toLowerCase(), format: 'text' }),
-        signal: controller.signal
+        body: JSON.stringify({ q: text, target: normalizeLangCode(targetLang) || 'en', format: 'text' }),
+        signal: controller.signal,
       }
     );
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.data?.translations?.[0]) {
       throw new Error(data?.error?.message || `HTTP ${response.status}`);
     }
-
     const result = data.data.translations[0];
     return {
-      translatedText: decodeHtmlEntities(result.translatedText || sourceText),
-      detectedLang: String(result.detectedSourceLanguage || 'unknown').toLowerCase()
+      translatedText: decodeHtmlEntities(result.translatedText || text),
+      detectedLang: normalizeLangCode(result.detectedSourceLanguage) || 'unknown',
     };
-  } catch (error) {
-    console.error('[Cloud Translation] translateText failed:', error.message);
-    return { translatedText: sourceText, detectedLang: 'unknown' };
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * @param {string} text
+ * @param {string} targetLang
+ * @param {{ sourceLang?: string }} [options] - Truyền sourceLang khi đã biết
+ *        ngôn ngữ nguồn để bỏ hẳn một lượt gọi phát hiện ngôn ngữ.
+ */
+async function translateText(text, targetLang, options = {}) {
+  const sourceText = String(text || '').trim();
+  if (!sourceText) return { translatedText: sourceText, detectedLang: 'unknown', provider: 'none' };
+
+  const knownSource = normalizeLangCode(options.sourceLang);
+  const useGemini = TRANSLATION_PROVIDER === 'gemini' && !!ai;
+
+  if (useGemini) {
+    try {
+      // Dịch và phát hiện ngôn ngữ chạy song song: tổng thời gian bằng cái chậm
+      // hơn. Bỏ qua phát hiện nếu nơi gọi đã biết ngôn ngữ nguồn.
+      const [translatedText, detectedLang] = await Promise.all([
+        translateWithGemini(sourceText, targetLang),
+        knownSource && knownSource !== 'unknown'
+          ? Promise.resolve(knownSource)
+          : detectLanguageWithNmt(sourceText),
+      ]);
+      return { translatedText, detectedLang: detectedLang || 'unknown', provider: 'gemini' };
+    } catch (error) {
+      console.warn('[Dịch] Gemini thất bại, chuyển sang Cloud Translation:', error.message);
+    }
+  }
+
+  try {
+    const result = await translateWithNmt(sourceText, targetLang);
+    return { ...result, detectedLang: knownSource || result.detectedLang, provider: 'nmt' };
+  } catch (error) {
+    console.error('[Dịch] Cloud Translation cũng thất bại:', error.message);
+    // Cả hai đường đều chết: trả nguyên văn để tin nhắn không bị mất.
+    return { translatedText: sourceText, detectedLang: knownSource || 'unknown', provider: 'none' };
   }
 }
 
