@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r40">
+    <link rel="stylesheet" href="admin.css?v=r41">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -225,10 +225,10 @@
                     <h3 data-i18n="chatListTitle">Hội thoại chat</h3>
                     <button id="refresh-sessions-btn" class="icon-btn" title="Tải lại" data-i18n-title="refreshTitle"><i class="ri-refresh-line"></i></button>
                 </div>
-                <div class="session-status-filter" id="session-status-filter" role="tablist" aria-label="Lọc trạng thái hội thoại">
-                    <button type="button" class="ssf-btn is-active" data-status="all" role="tab"><span class="ssf-emoji" aria-hidden="true">💬</span><span>Tất cả</span><span class="ssf-count" id="ssf-count-all">0</span></button>
-                    <button type="button" class="ssf-btn" data-status="active" role="tab"><span class="ssf-emoji" aria-hidden="true">🟢</span><span>Đang mở</span><span class="ssf-count" id="ssf-count-active">0</span></button>
-                    <button type="button" class="ssf-btn" data-status="closed" role="tab"><span class="ssf-emoji" aria-hidden="true">✅</span><span>Đã đóng</span><span class="ssf-count" id="ssf-count-closed">0</span></button>
+                <div class="session-status-filter" id="session-status-filter" role="tablist">
+                    <button type="button" class="ssf-btn is-active" data-status="all" role="tab"><i class="ri-chat-3-line"></i> Tất cả <span class="ssf-count" id="ssf-count-all">0</span></button>
+                    <button type="button" class="ssf-btn" data-status="active" role="tab"><i class="ri-chat-smile-2-line"></i> Đang mở <span class="ssf-count" id="ssf-count-active">0</span></button>
+                    <button type="button" class="ssf-btn" data-status="closed" role="tab"><i class="ri-checkbox-circle-line"></i> Đã đóng <span class="ssf-count" id="ssf-count-closed">0</span></button>
                 </div>
                 <div class="sessions-list" id="sessions-list-container">
                     <div class="empty-state" data-i18n="loadingConversations">Đang tải cuộc hội thoại...</div>
@@ -792,16 +792,6 @@
         </div>
     </div>
 
-    <!-- Popup xem ảnh/tài liệu ngay trong Console, không mở tab mới. -->
-    <div id="media-preview-modal" class="media-preview-overlay hide" role="dialog" aria-modal="true" aria-label="Xem tệp đính kèm">
-        <section class="media-preview-dialog" role="document">
-            <header class="media-preview-header"><strong id="media-preview-title">Tệp đính kèm</strong><button id="media-preview-close-btn" type="button" aria-label="Đóng">✕</button></header>
-            <img id="media-preview-image" class="media-preview-image hide" alt="">
-            <video id="media-preview-video" class="media-preview-video hide" controls></video>
-            <iframe id="media-preview-frame" class="media-preview-frame hide" title="Xem tệp đính kèm"></iframe>
-        </section>
-    </div>
-
-    <script src="admin.js?v=r47"></script>
+    <script src="admin.js?v=r46"></script>
 </body>
 </html>

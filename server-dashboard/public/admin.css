@@ -994,9 +994,6 @@ button {
     text-decoration: none;
     color: inherit;
 }
-.attachment-preview-trigger { border: 0; font: inherit; text-align: inherit; cursor: pointer; }
-.attachment-image.attachment-preview-trigger { padding: 0; background: transparent; }
-.attachment-document.attachment-preview-trigger { width: 100%; color: inherit; text-align: left; cursor: pointer; }
 .attachment-image img {
     display: block;
     max-width: 260px;
@@ -1103,7 +1100,7 @@ button {
 }
 .detail-user-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--panel-border); border-radius:12px; background:var(--surface-neutral); }
 .detail-user-avatar { width:38px; height:38px; flex:0 0 38px; display:grid; place-items:center; border-radius:50%; color:#fff; font-size:15px; font-weight:800; background:linear-gradient(145deg,#f438a1,#c90c6c); box-shadow:0 5px 12px rgba(201,12,108,.22); }
-.detail-user-meta { display:grid; gap:2px; min-width:0; }.detail-user-meta strong { color:var(--text-primary); font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.detail-user-meta span { color:var(--text-secondary); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.detail-user-meta { display:grid; gap:3px; min-width:0; }.detail-user-meta strong { color:var(--text-primary); font-size:14px; min-width:0; overflow-wrap:anywhere; }.detail-user-meta span { color:var(--text-secondary); font-size:12px; min-width:0; line-height:1.45; overflow-wrap:anywhere; }
 .detail-project-url { color:var(--text-secondary); font-size:11px; font-weight:500; text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.detail-project-url:hover { color:var(--accent-color); text-decoration:underline; }
 .detail-select {
     width: 100%;
@@ -2442,7 +2439,7 @@ button {
 }
 .admin-invoice-status.is-waiting { color: #b45309; background: rgba(245, 158, 11, .14); }
 .admin-invoice-status.is-paid { color: #0f7a52; background: rgba(16, 185, 129, .14); }
-.admin-invoice-preview { display: block; width: 100%; padding: 0; line-height: 0; border-radius: 12px; overflow: hidden; background: transparent; }
+.admin-invoice-preview { display: block; line-height: 0; border-radius: 12px; overflow: hidden; }
 .admin-invoice-preview img { display: block; width: 100%; height: auto; border-radius: 12px; }
 .admin-invoice-meta {
     display: flex;
@@ -2454,7 +2451,7 @@ button {
     color: var(--text-secondary);
 }
 .admin-invoice-meta strong { color: var(--accent-color); font-size: 14px; }
-.admin-invoice-meta a, .admin-invoice-open {
+.admin-invoice-meta a {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -2462,76 +2459,59 @@ button {
     font-weight: 700;
     text-decoration: none;
 }
-.admin-invoice-open { padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
-.admin-invoice-meta a:hover, .admin-invoice-open:hover { text-decoration: underline; }
+.admin-invoice-meta a:hover { text-decoration: underline; }
 
-/* Popup xem ảnh / PDF / tài liệu, dùng ngay trong dashboard. */
-.media-preview-overlay { position: fixed; inset: 0; z-index: 2600; display: grid; place-items: center; padding: 20px; background: rgba(31, 22, 37, .6); backdrop-filter: blur(5px); }
-.media-preview-dialog { display: flex; flex-direction: column; width: min(94vw, 860px); height: min(88dvh, 820px); overflow: hidden; border: 1px solid rgba(255,255,255,.5); border-radius: 18px; background: #fff; box-shadow: 0 25px 75px rgba(20, 12, 25, .36); }
-.media-preview-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; padding: 13px 16px; border-bottom: 1px solid var(--panel-border); }
-.media-preview-header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: 14px; }
-.media-preview-header button { width: 32px; height: 32px; border: 0; border-radius: 50%; color: var(--text-secondary); background: var(--surface-neutral); cursor: pointer; }
-.media-preview-image, .media-preview-video { display: block; max-width: 100%; max-height: 100%; min-height: 0; margin: auto; object-fit: contain; background: #17121a; }
-.media-preview-frame { flex: 1; min-height: 0; width: 100%; border: 0; background: #f7f4f8; }
-@media (max-width: 700px) { .media-preview-overlay { padding: 0; } .media-preview-dialog { width: 100%; height: 100dvh; border-radius: 0; } }
-
-/* --- Bộ lọc trạng thái hội thoại, đồng bộ pill DealPhuQuoc --- */
+/* --- Bộ lọc trạng thái hội thoại (pill, theo phong cách DealPhuQuoc) --- */
 .session-status-filter {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    padding: 0 16px 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    padding: 0 16px 12px;
     border-bottom: 1px solid var(--panel-border);
 }
 .ssf-btn {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
     gap: 6px;
-    min-width: 0;
-    padding: 10px 7px;
-    border: 1px solid #eadce6;
+    padding: 8px 13px;
+    border: 1px solid rgba(239, 43, 157, .14);
     border-radius: 999px;
     background: #fff;
     color: var(--text-primary);
     font-family: inherit;
-    font-size: 12px;
-    font-weight: 700;
+    font-size: 12.5px;
+    font-weight: 600;
     white-space: nowrap;
     cursor: pointer;
-    box-shadow: 0 4px 10px rgba(60, 34, 54, .14);
+    box-shadow: 0 2px 7px rgba(110, 43, 83, .06);
     transition: all 0.2s ease;
 }
-.ssf-emoji { font-size: 17px; line-height: 1; }
+.ssf-btn i { font-size: 15px; color: var(--text-secondary); transition: color 0.2s ease; }
 .ssf-btn:hover {
-    border-color: rgba(239, 43, 157, .55);
-    box-shadow: 0 6px 14px rgba(60, 34, 54, .18);
+    border-color: rgba(239, 43, 157, .38);
+    box-shadow: 0 4px 12px rgba(110, 43, 83, .1);
     transform: translateY(-1px);
 }
-/* Pill đang chọn: nền hồng nhạt và viền đậm như DealPhuQuoc. */
+/* Đang chọn: nền hồng nhạt + viền đậm + chữ hồng (giống pill "Tất cả" bên DealPhuQuoc) */
 .ssf-btn.is-active {
-    background: linear-gradient(135deg, #ffddec 0%, #fff5fa 100%);
+    background: linear-gradient(135deg, #ffe0f0 0%, #fff2f9 100%);
     border-color: #2f2438;
     color: var(--accent-color);
-    box-shadow: 0 4px 12px rgba(239, 43, 157, .22);
+    box-shadow: 0 3px 11px rgba(239, 43, 157, .16);
 }
+.ssf-btn.is-active i { color: var(--accent-color); }
 .ssf-count {
-    flex: 0 0 auto;
-    min-width: 17px;
-    padding: 2px 5px;
+    padding: 1px 7px;
     border-radius: 999px;
-    background: #f4edf2;
+    background: var(--surface-neutral);
     color: var(--text-secondary);
-    font-size: 10px;
+    font-size: 10.5px;
     font-weight: 800;
-    text-align: center;
 }
 .ssf-btn.is-active .ssf-count { background: rgba(239, 43, 157, .16); color: var(--accent-color); }
 @media (max-width: 768px) {
-    .session-status-filter { gap: 7px; padding: 0 12px 12px; }
-    .ssf-btn { gap: 4px; padding: 9px 4px; font-size: 11px; }
-    .ssf-emoji { font-size: 15px; }
-    .ssf-count { min-width: 15px; padding: 2px 4px; font-size: 9px; }
+    .session-status-filter { padding: 0 12px 10px; gap: 6px; }
+    .ssf-btn { padding: 8px 11px; font-size: 12px; }
 }
 
 /* --- Modal xem trước mã QR --- */
