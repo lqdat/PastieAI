@@ -16,6 +16,7 @@ const dealSync = require('./deal-sync');
 const invoiceHelper = require('./invoice-helper');
 const multer = require('multer');
 const s3 = require('./s3-helper');
+const speech = require('./groq-speech');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -195,6 +196,25 @@ const attachmentUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: Math.max(...Object.values(ATTACHMENT_LIMITS_BYTES)) },
 });
+// Bản ghi giọng nói chỉ để chuyển thành chữ rồi bỏ đi — không lưu vào bucket,
+// không gắn vào tin nhắn. Giới hạn nhỏ hơn attachment vì đây là câu nói ngắn.
+const VOICE_MAX_BYTES = 12 * 1024 * 1024;
+const voiceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: VOICE_MAX_BYTES },
+});
+function uploadVoiceMiddleware(req, res, next) {
+  voiceUpload.single('audio')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'Đoạn ghi âm quá dài, hãy nói ngắn lại.' });
+      }
+      return res.status(400).json({ error: err.message || 'Lỗi khi tải bản ghi âm lên.' });
+    }
+    next();
+  });
+}
+
 function uploadAttachmentMiddleware(req, res, next) {
   attachmentUpload.single('file')(req, res, (err) => {
     if (err) {
@@ -1271,6 +1291,52 @@ app.post('/api/chats/message', async (req, res) => {
 // Gửi file đính kèm (hình ảnh / video / tài liệu) trong một cuộc chat.
 // Dùng chung cho cả khách (widget) và nhân viên (dashboard) — sender phân biệt qua field 'sender'.
 // File lưu trên bucket S3-compatible theo cấu trúc thư mục {project_id}/{session_id}/...
+// Đọc để nhập chữ: nhận bản ghi âm, trả về chữ. KHÔNG tạo tin nhắn, KHÔNG lưu
+// audio — chữ được trả về cho client điền vào ô nhập, người dùng sửa rồi tự bấm
+// gửi như gõ tay bình thường. Nhờ vậy toàn bộ đường dịch/lưu hiện có giữ nguyên.
+app.post('/api/chats/:sessionId/transcribe', uploadVoiceMiddleware, async (req, res) => {
+  const { sessionId } = req.params;
+
+  if (!speech.isConfigured) {
+    return res.status(503).json({ error: 'Tính năng nhập bằng giọng nói chưa được cấu hình.' });
+  }
+  if (!req.file) {
+    return res.status(400).json({ error: 'Không nhận được bản ghi âm.' });
+  }
+
+  try {
+    // Chỉ cho phép trên phiên chat đang hoạt động — tránh bị gọi bừa từ bên ngoài.
+    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
+    }
+    await expireQrSessionIfNeeded(sessionRes.rows[0]);
+    if (sessionRes.rows[0].status === 'closed') {
+      return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
+    }
+    const session = sessionRes.rows[0];
+
+    // Ngôn ngữ người nói: client gửi lên (nhân viên dùng ngôn ngữ dashboard,
+    // khách dùng ngôn ngữ đã chọn lúc đăng nhập QR); không có thì lấy của phiên.
+    const language = req.body?.language || session.admin_language || session.detected_language;
+
+    const { text } = await speech.transcribeAudio(
+      req.file.buffer,
+      req.file.originalname || 'voice.webm',
+      req.file.mimetype,
+      language
+    );
+
+    if (!text) {
+      return res.status(422).json({ error: 'Không nghe rõ, vui lòng thử lại.' });
+    }
+    res.json({ success: true, text });
+  } catch (error) {
+    console.error('Transcribe error:', error.message);
+    res.status(500).json({ error: error.message || 'Không thể nhận diện giọng nói.' });
+  }
+});
+
 app.post('/api/chats/:sessionId/attachments', uploadAttachmentMiddleware, async (req, res) => {
   const { sessionId } = req.params;
   const { sender } = req.body;

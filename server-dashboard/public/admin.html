@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r41">
+    <link rel="stylesheet" href="admin.css?v=r42">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -289,6 +289,13 @@
 
                 <!-- Chat Input area -->
                 <div class="chat-input-area hide" id="chat-input-container">
+                    <div class="voice-status-bar hide" id="voice-status-bar">
+                        <span class="voice-dot"></span>
+                        <span id="voice-status-text">Đang ghi âm</span>
+                        <span class="voice-timer" id="voice-timer">0:00</span>
+                        <button type="button" class="voice-stop-btn" id="voice-stop-btn"><i class="ri-stop-circle-line"></i> Dừng</button>
+                        <button type="button" class="voice-cancel-btn" id="voice-cancel-btn">Hủy</button>
+                    </div>
                     <div class="translation-status-bar">
                         <i class="ri-sparkling-fill"></i>
                         <span data-i18n="aiTranslationPrompt">Tin nhắn của bạn sẽ được tự động dịch sang ngôn ngữ của khách</span>
@@ -296,6 +303,7 @@
                     <form id="chat-form" class="chat-form">
                         <input type="file" id="chat-attachment-input" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip" hidden>
                         <button type="button" class="attach-btn" id="chat-attach-btn" title="Đính kèm file"><i class="ri-attachment-2"></i></button>
+                        <button type="button" class="mic-btn hide" id="chat-mic-btn" title="Đọc để nhập chữ"><i class="ri-mic-line" id="chat-mic-icon"></i></button>
                         <input type="text" id="chat-input" placeholder="Gõ câu trả lời bằng tiếng Việt tại đây..." data-i18n-placeholder="chatInputPlaceholder" autocomplete="off">
                         <button type="submit" class="send-btn"><i class="ri-send-plane-2-fill"></i></button>
                     </form>

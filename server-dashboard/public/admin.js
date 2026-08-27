@@ -2413,6 +2413,147 @@ async function sendAttachment(file) {
     }
 }
 
+// ── Đọc để nhập chữ ─────────────────────────────────────────────────────────
+// Ghi âm -> gửi lên nhận diện -> chữ đổ vào ô nhập. KHÔNG tự gửi tin: người dùng
+// sửa lại chỗ nhận diện sai rồi bấm gửi như gõ tay. Bản ghi âm không được lưu ở
+// đâu cả, chỉ tồn tại trong bộ nhớ tới lúc nhận được chữ.
+const VOICE_MAX_SECONDS = 60;
+let voiceRecorder = null;
+let voiceStream = null;
+let voiceChunks = [];
+let voiceTimerId = null;
+let voiceStartedAt = 0;
+let voiceCancelled = false;
+let voiceBusy = false;
+
+const voiceSupported = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+
+function setVoiceUi(state, message) {
+    const bar = document.getElementById('voice-status-bar');
+    const text = document.getElementById('voice-status-text');
+    const micBtn = document.getElementById('chat-mic-btn');
+    const micIcon = document.getElementById('chat-mic-icon');
+    const stopBtn = document.getElementById('voice-stop-btn');
+    const cancelBtn = document.getElementById('voice-cancel-btn');
+
+    bar?.classList.toggle('hide', state === 'idle');
+    bar?.classList.toggle('is-working', state === 'working');
+    micBtn?.classList.toggle('is-recording', state === 'recording');
+    if (micIcon) micIcon.className = state === 'recording' ? 'ri-stop-circle-fill' : 'ri-mic-line';
+    if (micBtn) micBtn.title = state === 'recording' ? 'Dừng ghi' : 'Đọc để nhập chữ';
+    if (text) text.textContent = message || (state === 'recording' ? 'Đang ghi âm' : 'Đang nhận diện…');
+    // Lúc đang nhận diện thì không cho bấm dừng/hủy nữa cho khỏi rối trạng thái.
+    if (stopBtn) stopBtn.classList.toggle('hide', state !== 'recording');
+    if (cancelBtn) cancelBtn.classList.toggle('hide', state !== 'recording');
+}
+
+function stopVoiceTracks() {
+    voiceStream?.getTracks().forEach((track) => track.stop());
+    voiceStream = null;
+}
+
+function tickVoiceTimer() {
+    const el = document.getElementById('voice-timer');
+    if (!el) return;
+    const seconds = Math.floor((Date.now() - voiceStartedAt) / 1000);
+    el.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    // Tự dừng trước khi đoạn ghi dài quá mức cần thiết cho một tin nhắn chat.
+    if (seconds >= VOICE_MAX_SECONDS) stopVoiceRecording();
+}
+
+async function startVoiceRecording() {
+    if (!currentSessionId || voiceBusy) return;
+    voiceCancelled = false;
+    voiceChunks = [];
+    try {
+        voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (error) {
+        const denied = error?.name === 'NotAllowedError' || error?.name === 'SecurityError';
+        alert(denied
+            ? 'Trình duyệt đang chặn micro. Hãy bấm biểu tượng khóa cạnh thanh địa chỉ và cho phép Micro, rồi thử lại.'
+            : 'Không truy cập được micro trên thiết bị này.');
+        return;
+    }
+
+    // Để trình duyệt tự chọn định dạng nó hỗ trợ: Chrome ra WebM, iOS ra MP4.
+    // Whisper trên Groq nhận cả hai nên không cần ép codec.
+    const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+    const mimeType = preferred.find((type) => window.MediaRecorder.isTypeSupported?.(type));
+    voiceRecorder = new MediaRecorder(voiceStream, mimeType ? { mimeType } : undefined);
+
+    voiceRecorder.addEventListener('dataavailable', (event) => {
+        if (event.data && event.data.size) voiceChunks.push(event.data);
+    });
+    voiceRecorder.addEventListener('stop', () => { void finishVoiceRecording(); });
+
+    voiceRecorder.start();
+    voiceStartedAt = Date.now();
+    setVoiceUi('recording');
+    tickVoiceTimer();
+    voiceTimerId = setInterval(tickVoiceTimer, 250);
+}
+
+function stopVoiceRecording() {
+    if (voiceTimerId) { clearInterval(voiceTimerId); voiceTimerId = null; }
+    if (voiceRecorder && voiceRecorder.state !== 'inactive') voiceRecorder.stop();
+    else { stopVoiceTracks(); setVoiceUi('idle'); }
+}
+
+function cancelVoiceRecording() {
+    voiceCancelled = true;
+    stopVoiceRecording();
+}
+
+async function finishVoiceRecording() {
+    stopVoiceTracks();
+    const chunks = voiceChunks;
+    voiceChunks = [];
+    const type = voiceRecorder?.mimeType || 'audio/webm';
+    voiceRecorder = null;
+
+    if (voiceCancelled || !chunks.length) { setVoiceUi('idle'); return; }
+
+    setVoiceUi('working');
+    voiceBusy = true;
+    try {
+        const blob = new Blob(chunks, { type });
+        const extension = type.includes('mp4') ? 'mp4' : type.includes('ogg') ? 'ogg' : 'webm';
+        const form = new FormData();
+        form.append('audio', blob, `voice.${extension}`);
+        form.append('language', currentLang || 'vi');
+
+        const response = await authFetch(`${API_BASE}/api/chats/${currentSessionId}/transcribe`, {
+            method: 'POST',
+            body: form,
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Không nhận diện được giọng nói.');
+
+        // Ghi đè nội dung đang có trong ô nhập, rồi đưa con trỏ về cuối để sửa tiếp.
+        if (chatInput) {
+            chatInput.value = data.text;
+            chatInput.focus();
+            chatInput.setSelectionRange?.(chatInput.value.length, chatInput.value.length);
+        }
+    } catch (error) {
+        alert(error.message || 'Không nhận diện được giọng nói.');
+    } finally {
+        voiceBusy = false;
+        setVoiceUi('idle');
+    }
+}
+
+// Trình duyệt không hỗ trợ thì ẩn hẳn nút, không để nút bấm vào chẳng có gì xảy ra.
+if (voiceSupported) document.getElementById('chat-mic-btn')?.classList.remove('hide');
+
+document.getElementById('chat-mic-btn')?.addEventListener('click', () => {
+    if (voiceBusy) return;
+    if (voiceRecorder && voiceRecorder.state === 'recording') stopVoiceRecording();
+    else void startVoiceRecording();
+});
+document.getElementById('voice-stop-btn')?.addEventListener('click', stopVoiceRecording);
+document.getElementById('voice-cancel-btn')?.addEventListener('click', cancelVoiceRecording);
+
 document.getElementById('chat-attach-btn')?.addEventListener('click', () => {
     document.getElementById('chat-attachment-input')?.click();
 });
