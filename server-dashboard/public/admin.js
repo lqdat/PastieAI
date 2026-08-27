@@ -2413,10 +2413,10 @@ async function sendAttachment(file) {
     }
 }
 
-// ── Đọc để nhập chữ ─────────────────────────────────────────────────────────
-// Ghi âm -> gửi lên nhận diện -> chữ đổ vào ô nhập. KHÔNG tự gửi tin: người dùng
-// sửa lại chỗ nhận diện sai rồi bấm gửi như gõ tay. Bản ghi âm không được lưu ở
-// đâu cả, chỉ tồn tại trong bộ nhớ tới lúc nhận được chữ.
+// ── Đọc để nhập chữ realtime ────────────────────────────────────────────────
+// SpeechRecognition đổ chữ tạm thời trực tiếp vào textarea. MediaRecorder vẫn
+// giữ bản ghi trong RAM để Groq hiệu chỉnh hoặc làm fallback khi trình duyệt
+// không có nhận diện realtime. Audio không được lưu thành tin nhắn.
 const VOICE_MAX_SECONDS = 60;
 let voiceRecorder = null;
 let voiceStream = null;
@@ -2425,26 +2425,43 @@ let voiceTimerId = null;
 let voiceStartedAt = 0;
 let voiceCancelled = false;
 let voiceBusy = false;
+let voiceRecognition = null;
+let voiceFinalText = '';
+let voiceLiveText = '';
+let voiceDraftBefore = '';
+let voiceSkipBatch = false;
+let voicePermissionGranted = false;
 
 const voiceSupported = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+
+function resizeAgentChatInput() {
+    if (!chatInput) return;
+    chatInput.style.height = '0px';
+    const lineHeight = Number.parseFloat(getComputedStyle(chatInput).lineHeight) || 21;
+    const maxHeight = lineHeight * 5 + 24;
+    chatInput.style.height = `${Math.min(chatInput.scrollHeight, maxHeight)}px`;
+    chatInput.style.overflowY = chatInput.scrollHeight > maxHeight ? 'auto' : 'hidden';
+
+    const hasText = !!chatInput.value.trim();
+    document.getElementById('chat-attach-btn')?.classList.toggle('hide', hasText);
+    document.getElementById('chat-mic-btn')?.classList.toggle('hide', hasText || !voiceSupported);
+    const sendBtn = chatForm?.querySelector('.send-btn');
+    sendBtn?.classList.toggle('hide', !hasText);
+}
 
 function setVoiceUi(state, message) {
     const bar = document.getElementById('voice-status-bar');
     const text = document.getElementById('voice-status-text');
     const micBtn = document.getElementById('chat-mic-btn');
     const micIcon = document.getElementById('chat-mic-icon');
-    const stopBtn = document.getElementById('voice-stop-btn');
-    const cancelBtn = document.getElementById('voice-cancel-btn');
 
     bar?.classList.toggle('hide', state === 'idle');
     bar?.classList.toggle('is-working', state === 'working');
     micBtn?.classList.toggle('is-recording', state === 'recording');
     if (micIcon) micIcon.className = state === 'recording' ? 'ri-stop-circle-fill' : 'ri-mic-line';
     if (micBtn) micBtn.title = state === 'recording' ? 'Dừng ghi' : 'Đọc để nhập chữ';
-    if (text) text.textContent = message || (state === 'recording' ? 'Đang ghi âm' : 'Đang nhận diện…');
-    // Lúc đang nhận diện thì không cho bấm dừng/hủy nữa cho khỏi rối trạng thái.
-    if (stopBtn) stopBtn.classList.toggle('hide', state !== 'recording');
-    if (cancelBtn) cancelBtn.classList.toggle('hide', state !== 'recording');
+    if (text) text.textContent = message || (state === 'recording' ? 'Đang lắng nghe…' : 'Đang nhận diện…');
+    resizeAgentChatInput();
 }
 
 function stopVoiceTracks() {
@@ -2461,12 +2478,73 @@ function tickVoiceTimer() {
     if (seconds >= VOICE_MAX_SECONDS) stopVoiceRecording();
 }
 
+function stopVoiceRecognition(abort = false) {
+    const recognition = voiceRecognition;
+    voiceRecognition = null;
+    if (!recognition) return;
+    recognition.onresult = null;
+    recognition.onend = null;
+    recognition.onerror = null;
+    try { abort ? recognition.abort() : recognition.stop(); } catch (_) { /* đã dừng */ }
+}
+
+function startVoiceRecognition() {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) return;
+
+    const recognition = new Recognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = ({ vi: 'vi-VN', en: 'en-US', ru: 'ru-RU', zh: 'zh-CN', ko: 'ko-KR' })[currentLang] || currentLang || 'vi-VN';
+    recognition.onresult = (event) => {
+        let interim = '';
+        for (let index = event.resultIndex; index < event.results.length; index += 1) {
+            const result = event.results[index];
+            const text = result[0]?.transcript?.trim() || '';
+            if (!text) continue;
+            if (result.isFinal) voiceFinalText = [voiceFinalText, text].filter(Boolean).join(' ');
+            else interim = [interim, text].filter(Boolean).join(' ');
+        }
+        voiceLiveText = [voiceFinalText, interim].filter(Boolean).join(' ').trim();
+        chatInput.value = [voiceDraftBefore.trim(), voiceLiveText].filter(Boolean).join(' ');
+        resizeAgentChatInput();
+    };
+    recognition.onerror = () => { /* MediaRecorder + Groq là fallback */ };
+    recognition.onend = () => {
+        if (voiceRecorder?.state === 'recording' && !voiceCancelled) {
+            setTimeout(() => { try { recognition.start(); } catch (_) { /* chờ lần ghi sau */ } }, 120);
+        }
+    };
+    voiceRecognition = recognition;
+    try { recognition.start(); } catch (_) { voiceRecognition = null; }
+}
+
+async function getVoiceStream() {
+    // Permissions API chỉ dùng để đọc trạng thái. Hộp xin quyền thực tế chỉ có
+    // thể xuất hiện ở lần getUserMedia đầu tiên; sau khi granted trình duyệt tự
+    // tái sử dụng quyền website cho các lần ghi tiếp theo.
+    if (!voicePermissionGranted && navigator.permissions?.query) {
+        try {
+            const permission = await navigator.permissions.query({ name: 'microphone' });
+            voicePermissionGranted = permission.state === 'granted';
+        } catch (_) { /* Safari chưa hỗ trợ query microphone */ }
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    voicePermissionGranted = true;
+    return stream;
+}
+
 async function startVoiceRecording() {
-    if (!currentSessionId || voiceBusy) return;
+    if (!currentSessionId || voiceBusy || !voiceSupported) return;
+    chatInput?.blur();
     voiceCancelled = false;
+    voiceSkipBatch = false;
     voiceChunks = [];
+    voiceFinalText = '';
+    voiceLiveText = '';
+    voiceDraftBefore = chatInput?.value || '';
     try {
-        voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        voiceStream = await getVoiceStream();
     } catch (error) {
         const denied = error?.name === 'NotAllowedError' || error?.name === 'SecurityError';
         alert(denied
@@ -2487,6 +2565,7 @@ async function startVoiceRecording() {
     voiceRecorder.addEventListener('stop', () => { void finishVoiceRecording(); });
 
     voiceRecorder.start();
+    startVoiceRecognition();
     voiceStartedAt = Date.now();
     setVoiceUi('recording');
     tickVoiceTimer();
@@ -2494,6 +2573,7 @@ async function startVoiceRecording() {
 }
 
 function stopVoiceRecording() {
+    stopVoiceRecognition();
     if (voiceTimerId) { clearInterval(voiceTimerId); voiceTimerId = null; }
     if (voiceRecorder && voiceRecorder.state !== 'inactive') voiceRecorder.stop();
     else { stopVoiceTracks(); setVoiceUi('idle'); }
@@ -2501,7 +2581,26 @@ function stopVoiceRecording() {
 
 function cancelVoiceRecording() {
     voiceCancelled = true;
+    stopVoiceRecognition(true);
+    voiceDraftBefore = '';
+    voiceFinalText = '';
+    voiceLiveText = '';
+    if (chatInput) chatInput.value = '';
+    setVoiceUi('idle');
     stopVoiceRecording();
+}
+
+function editVoiceRecording() {
+    stopVoiceRecording();
+    setVoiceUi('idle');
+    chatInput?.focus({ preventScroll: true });
+    chatInput?.setSelectionRange?.(chatInput.value.length, chatInput.value.length);
+}
+
+function sendVoiceText() {
+    if (!chatInput?.value.trim()) return;
+    voiceSkipBatch = true;
+    chatForm?.requestSubmit();
 }
 
 async function finishVoiceRecording() {
@@ -2511,9 +2610,15 @@ async function finishVoiceRecording() {
     const type = voiceRecorder?.mimeType || 'audio/webm';
     voiceRecorder = null;
 
-    if (voiceCancelled || !chunks.length) { setVoiceUi('idle'); return; }
+    if (voiceCancelled || !chunks.length || voiceSkipBatch) {
+        voiceSkipBatch = false;
+        setVoiceUi('idle');
+        return;
+    }
 
-    setVoiceUi('working');
+    const liveText = voiceLiveText.trim();
+    const draftAtStop = [voiceDraftBefore.trim(), liveText].filter(Boolean).join(' ');
+    setVoiceUi(liveText ? 'idle' : 'working');
     voiceBusy = true;
     try {
         const blob = new Blob(chunks, { type });
@@ -2529,30 +2634,31 @@ async function finishVoiceRecording() {
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Không nhận diện được giọng nói.');
 
-        // Ghi đè nội dung đang có trong ô nhập, rồi đưa con trỏ về cuối để sửa tiếp.
+        const refinedText = [voiceDraftBefore.trim(), String(data.text || '').trim()].filter(Boolean).join(' ');
         if (chatInput) {
-            chatInput.value = data.text;
-            chatInput.focus();
-            chatInput.setSelectionRange?.(chatInput.value.length, chatInput.value.length);
+            if (!liveText || chatInput.value.trim() === draftAtStop.trim()) chatInput.value = refinedText;
+            resizeAgentChatInput();
         }
     } catch (error) {
-        alert(error.message || 'Không nhận diện được giọng nói.');
+        if (!liveText) alert(error.message || 'Không nhận diện được giọng nói.');
     } finally {
         voiceBusy = false;
         setVoiceUi('idle');
     }
 }
 
-// Trình duyệt không hỗ trợ thì ẩn hẳn nút, không để nút bấm vào chẳng có gì xảy ra.
-if (voiceSupported) document.getElementById('chat-mic-btn')?.classList.remove('hide');
-
 document.getElementById('chat-mic-btn')?.addEventListener('click', () => {
+    if (!voiceSupported) return alert('Trình duyệt này chưa hỗ trợ ghi âm.');
     if (voiceBusy) return;
     if (voiceRecorder && voiceRecorder.state === 'recording') stopVoiceRecording();
     else void startVoiceRecording();
 });
-document.getElementById('voice-stop-btn')?.addEventListener('click', stopVoiceRecording);
-document.getElementById('voice-cancel-btn')?.addEventListener('click', cancelVoiceRecording);
+document.getElementById('voice-delete-btn')?.addEventListener('click', cancelVoiceRecording);
+document.getElementById('voice-send-btn')?.addEventListener('click', sendVoiceText);
+document.getElementById('voice-main-send-btn')?.addEventListener('click', sendVoiceText);
+document.getElementById('voice-edit-btn')?.addEventListener('click', editVoiceRecording);
+chatInput?.addEventListener('input', resizeAgentChatInput);
+resizeAgentChatInput();
 
 document.getElementById('chat-attach-btn')?.addEventListener('click', () => {
     document.getElementById('chat-attachment-input')?.click();
