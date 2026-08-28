@@ -928,7 +928,8 @@ button {
     display: flex;
     gap: 12px;
 }
-.chat-form input {
+.chat-form input,
+.chat-form textarea {
     flex-grow: 1;
     background: #fff;
     border: 1px solid var(--panel-border);
@@ -940,7 +941,15 @@ button {
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
 }
-.chat-form input:focus {
+.chat-form textarea {
+    min-height: 48px;
+    max-height: 129px;
+    resize: none;
+    overflow-y: hidden;
+    line-height: 21px;
+}
+.chat-form input:focus,
+.chat-form textarea:focus {
     border-color: var(--accent-color);
     box-shadow: 0 0 0 3px rgba(239, 43, 157, 0.1);
 }
@@ -1823,7 +1832,7 @@ button {
     .ai .message-bubble { background: linear-gradient(135deg, #f2e9ff 0%, #fbf7ff 100%); border-color: rgba(157,92,218,.2); }
     .system .message-bubble { background: #fff8fc; border-color: rgba(239,43,157,.1); }
     .translated-text-wrapper { border-color: rgba(239,43,157,.16); color: #b51f78; }
-    .chat-form input, .form-group input { background: #fff; border-color: rgba(239,43,157,.16); }
+    .chat-form input, .chat-form textarea, .form-group input { background: #fff; border-color: rgba(239,43,157,.16); }
     .chat-welcome-state i { color: rgba(239,43,157,.22); }
     ::-webkit-scrollbar-thumb { background: rgba(239,43,157,.22); }
     ::-webkit-scrollbar-thumb:hover { background: rgba(239,43,157,.38); }
@@ -2088,7 +2097,7 @@ button {
   .message-time { font-size: 11px; }
   .chat-input-area { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
   .chat-input-area .chat-form { gap: 8px; }
-  .chat-input-area input { min-height: 46px; font-size: 16px; }
+  .chat-input-area input, .chat-input-area textarea { min-height: 46px; font-size: 16px; }
   .send-btn { width: 46px; height: 46px; }
   .icon-btn, .settings-trigger-btn { min-width: 44px; min-height: 44px; }
 
@@ -2652,6 +2661,35 @@ button {
     border-color: rgba(239, 43, 157, .28);
     background: var(--accent-soft, rgba(239, 43, 157, .07));
 }
+.agent-voice-panel {
+    display: grid;
+    justify-items: center;
+    gap: 11px;
+    margin-bottom: 12px;
+    padding: 14px 18px;
+    border: 1px solid rgba(239, 43, 157, .2);
+    border-radius: var(--radius-lg, 16px);
+    background: linear-gradient(180deg, #fff, #fff8fc);
+}
+.agent-voice-panel.is-working { opacity: .78; }
+.agent-voice-title { display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: 12.5px; font-weight: 700; }
+.agent-voice-main {
+    display: grid;
+    place-items: center;
+    width: 58px;
+    height: 58px;
+    border: 0;
+    border-radius: 50%;
+    color: #fff;
+    background: linear-gradient(135deg, var(--accent-color), #c63bd4);
+    box-shadow: 0 0 0 8px rgba(239,43,157,.1), 0 9px 22px rgba(224,42,136,.24);
+    font-size: 24px;
+    cursor: pointer;
+    animation: micPulse 1.6s ease-in-out infinite;
+}
+.agent-voice-actions { display: grid; grid-template-columns: repeat(3, minmax(76px, 1fr)); gap: 12px; width: min(100%, 330px); }
+.agent-voice-actions button { display: grid; justify-items: center; gap: 3px; padding: 5px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.agent-voice-actions button i { color: var(--accent-color); font-size: 20px; }
 .voice-dot {
     width: 9px;
     height: 9px;
@@ -2686,5 +2724,5 @@ button {
 .voice-stop-btn:hover { border-color: #ef4444; color: #ef4444; }
 .voice-cancel-btn:hover { border-color: var(--panel-border); color: var(--text-primary); }
 @media (prefers-reduced-motion: reduce) {
-    .mic-btn.is-recording, .voice-dot { animation: none; }
+    .mic-btn.is-recording, .voice-dot, .agent-voice-main { animation: none; }
 }

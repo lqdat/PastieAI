@@ -2310,10 +2310,16 @@ async function sendMessage(e) {
     const text = chatInput.value.trim();
     if (!text || !currentSessionId) return;
 
+    if (voiceRecorder?.state === 'recording') {
+        voiceSkipBatch = true;
+        stopVoiceRecording();
+    }
+
     adminIsSending = true;
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
 
     chatInput.value = '';
+    resizeAgentChatInput();
     
     // Add temp bubble immediately
     const newMsgObj = {
@@ -3694,47 +3700,199 @@ window.copyQrChatLink = async (url, isEncoded = false) => {
     catch { window.prompt('Sao chép link QR:', link); }
 };
 
-window.openQrPreview = (encodedImageUrl, encodedLabel, encodedOwner, encodedChatUrl) => {
+let qrPreviewPosterUrl = '';
+
+function loadPosterImage(url) {
+    return fetch(url)
+        .then(response => {
+            if (!response.ok) throw new Error('Không tải được tài nguyên poster.');
+            return response.blob();
+        })
+        .then(blob => new Promise((resolve, reject) => {
+            const objectUrl = URL.createObjectURL(blob);
+            const image = new Image();
+            image.onload = () => { URL.revokeObjectURL(objectUrl); resolve(image); };
+            image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Không đọc được ảnh.')); };
+            image.src = objectUrl;
+        }));
+}
+
+function drawPosterRoundedRect(ctx, x, y, width, height, radius) {
+    const r = Math.min(radius, width / 2, height / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + width, y, x + width, y + height, r);
+    ctx.arcTo(x + width, y + height, x, y + height, r);
+    ctx.arcTo(x, y + height, x, y, r);
+    ctx.arcTo(x, y, x + width, y, r);
+    ctx.closePath();
+}
+
+function drawPosterText(ctx, text, centerX, startY, maxWidth, lineHeight, maxLines = 2) {
+    const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+    const lines = [];
+    let current = '';
+    words.forEach(word => {
+        const candidate = current ? `${current} ${word}` : word;
+        if (current && ctx.measureText(candidate).width > maxWidth) {
+            lines.push(current);
+            current = word;
+        } else current = candidate;
+    });
+    if (current) lines.push(current);
+    const visible = lines.slice(0, maxLines);
+    if (lines.length > maxLines && visible.length) {
+        let last = visible[visible.length - 1];
+        while (last && ctx.measureText(`${last}…`).width > maxWidth) last = last.slice(0, -1);
+        visible[visible.length - 1] = `${last}…`;
+    }
+    visible.forEach((line, index) => ctx.fillText(line, centerX, startY + index * lineHeight));
+    return visible.length;
+}
+
+async function createBrandedQrPoster(imageUrl, businessName) {
+    const [qrImage, logoImage] = await Promise.all([
+        loadPosterImage(imageUrl),
+        loadPosterImage('/logoApp.png'),
+    ]);
+    const canvas = document.createElement('canvas');
+    // Poster 4:5 nhỏ gọn để in bảng để bàn/giấy nhỏ, không dùng tỷ lệ A4.
+    canvas.width = 1080;
+    canvas.height = 1350;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Trình duyệt không hỗ trợ tạo ảnh QR.');
+
+    ctx.fillStyle = '#fffafd';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const topGradient = ctx.createLinearGradient(0, 0, canvas.width, 350);
+    topGradient.addColorStop(0, '#fff0f7');
+    topGradient.addColorStop(.55, '#fff8ed');
+    topGradient.addColorStop(1, '#f2edff');
+    ctx.fillStyle = topGradient;
+    ctx.fillRect(0, 0, canvas.width, 390);
+    const accent = ctx.createLinearGradient(0, 0, canvas.width, 0);
+    accent.addColorStop(0, '#ef2d92');
+    accent.addColorStop(.62, '#d81379');
+    accent.addColorStop(1, '#f4a62a');
+    ctx.fillStyle = accent;
+    ctx.fillRect(0, 0, canvas.width, 22);
+
+    ctx.drawImage(logoImage, 90, 58, 104, 104);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#33243c';
+    ctx.font = '800 46px Arial, sans-serif';
+    ctx.fillText('PASTIE CHAT', 222, 121);
+    ctx.fillStyle = '#c52d77';
+    ctx.font = '700 20px Arial, sans-serif';
+    ctx.fillText('KẾT NỐI TƯ VẤN TRỰC TIẾP', 225, 155);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#a12d68';
+    ctx.font = '700 20px Arial, sans-serif';
+    ctx.fillText('CHÀO MỪNG QUÝ KHÁCH ĐẾN VỚI', canvas.width / 2, 224);
+    ctx.fillStyle = '#30233a';
+    ctx.font = '800 50px Arial, sans-serif';
+    const businessLines = drawPosterText(ctx, businessName || 'Hộ kinh doanh', canvas.width / 2, 292, 900, 58, 2);
+
+    const cardY = businessLines > 1 ? 420 : 370;
+    const cardX = 190;
+    const cardSize = 700;
+    ctx.save();
+    ctx.shadowColor = 'rgba(100, 48, 78, .16)';
+    ctx.shadowBlur = 42;
+    ctx.shadowOffsetY = 18;
+    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 56);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = '#f1cedf';
+    ctx.lineWidth = 3;
+    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 56);
+    ctx.stroke();
+
+    const qrPadding = 70;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(qrImage, cardX + qrPadding, cardY + qrPadding, cardSize - qrPadding * 2, cardSize - qrPadding * 2);
+    ctx.imageSmoothingEnabled = true;
+
+    const copyY = cardY + cardSize + 50;
+    ctx.fillStyle = '#30233a';
+    ctx.font = '800 32px Arial, sans-serif';
+    ctx.fillText('QUÉT MÃ ĐỂ BẮT ĐẦU TRÒ CHUYỆN', canvas.width / 2, copyY);
+    ctx.fillStyle = '#786b7b';
+    ctx.font = '400 25px Arial, sans-serif';
+    ctx.fillText('và được tư vấn ngay', canvas.width / 2, copyY + 42);
+
+    ctx.fillStyle = '#fff0f7';
+    drawPosterRoundedRect(ctx, 245, copyY + 68, 590, 54, 27);
+    ctx.fill();
+    ctx.fillStyle = '#b62b70';
+    ctx.font = '700 20px Arial, sans-serif';
+    ctx.fillText('Mở Camera điện thoại  •  Hướng vào mã QR', canvas.width / 2, copyY + 103);
+
+    ctx.fillStyle = '#9a8b99';
+    ctx.font = '500 18px Arial, sans-serif';
+    ctx.fillText('Được vận hành bởi Pastie', canvas.width / 2, 1325);
+
+    return new Promise((resolve, reject) => canvas.toBlob(
+        blob => blob ? resolve(blob) : reject(new Error('Không thể xuất poster QR.')),
+        'image/png',
+    ));
+}
+
+function downloadPosterBlob(blob, label) {
+    const safeName = String(label || 'pastie-qr')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'pastie-qr';
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `${safeName}-poster.png`;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+}
+
+window.openQrPreview = async (encodedImageUrl, encodedLabel, encodedOwner, encodedChatUrl) => {
     const imageUrl = decodeURIComponent(encodedImageUrl);
     const label = decodeURIComponent(encodedLabel);
     const owner = decodeURIComponent(encodedOwner);
     const chatUrl = decodeURIComponent(encodedChatUrl);
     if (!qrPreviewModal) return;
-    qrPreviewTitle.textContent = label || 'Mã QR tiếp nhận chat';
-    qrPreviewAgent.textContent = owner ? `Agent phụ trách: ${owner}` : '';
+    qrPreviewTitle.textContent = 'Poster QR dành cho khách hàng';
+    qrPreviewAgent.textContent = owner || label || '';
     qrPreviewImage.src = imageUrl;
     qrPreviewLink.textContent = chatUrl;
-    qrPreviewDownloadBtn.onclick = () => downloadQrImage(imageUrl, label || 'pastie-qr');
+    qrPreviewDownloadBtn.disabled = true;
+    qrPreviewDownloadBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang tạo poster…';
     qrPreviewCopyBtn.onclick = () => window.copyQrChatLink(chatUrl);
     qrPreviewModal.classList.remove('hide');
-};
-
-async function downloadQrImage(imageUrl, label) {
-    const safeName = String(label || 'pastie-qr')
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'pastie-qr';
-    const filename = `${safeName}.png`;
     try {
-        const response = await fetch(imageUrl);
-        if (!response.ok) throw new Error('Không thể tải ảnh QR.');
-        const blob = await response.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = objectUrl;
-        link.download = filename;
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        const posterBlob = await createBrandedQrPoster(imageUrl, owner || label);
+        if (qrPreviewPosterUrl) URL.revokeObjectURL(qrPreviewPosterUrl);
+        qrPreviewPosterUrl = URL.createObjectURL(posterBlob);
+        qrPreviewImage.src = qrPreviewPosterUrl;
+        qrPreviewDownloadBtn.disabled = false;
+        qrPreviewDownloadBtn.innerHTML = '<i class="ri-download-2-line"></i> Tải poster QR';
+        qrPreviewDownloadBtn.onclick = () => downloadPosterBlob(posterBlob, owner || label || 'pastie-qr');
     } catch (error) {
-        alert('Không thể tải ảnh QR. Vui lòng thử lại.');
+        console.error('QR poster error:', error);
+        qrPreviewDownloadBtn.disabled = false;
+        qrPreviewDownloadBtn.innerHTML = '<i class="ri-refresh-line"></i> Thử tạo lại';
+        qrPreviewDownloadBtn.onclick = () => window.openQrPreview(encodedImageUrl, encodedLabel, encodedOwner, encodedChatUrl);
     }
-}
+};
 
 function closeQrPreview() {
     qrPreviewModal?.classList.add('hide');
     if (qrPreviewImage) qrPreviewImage.removeAttribute('src');
+    if (qrPreviewPosterUrl) {
+        URL.revokeObjectURL(qrPreviewPosterUrl);
+        qrPreviewPosterUrl = '';
+    }
 }
 
 qrPreviewCloseBtn?.addEventListener('click', closeQrPreview);
