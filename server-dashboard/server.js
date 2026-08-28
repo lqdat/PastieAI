@@ -559,6 +559,20 @@ async function closeActiveQrSession(qrAccountId, queryRunner = db) {
   );
 }
 
+async function closeActiveQrSessionsForVisitor(projectId, email, queryRunner = db) {
+  if (!projectId || !email) return;
+  // Một khách chỉ có một phiên QR đang mở trong project. Khi khách đăng nhập từ
+  // QR khác, đóng phiên QR cũ nhưng vẫn giữ lịch sử cho Agent tra cứu.
+  await queryRunner.query(
+    `UPDATE sessions SET status = 'closed'
+      WHERE project_id = $1
+        AND LOWER(visitor_email) = LOWER($2)
+        AND qr_account_id IS NOT NULL
+        AND status = 'active'`,
+    [projectId, String(email).trim()]
+  );
+}
+
 async function expireQrSessionIfNeeded(session, queryRunner = db) {
   if (session?.status === 'active' && session.qr_account_id && session.expires_at && new Date(session.expires_at) <= new Date()) {
     // Hết giờ phiên QR => chỉ đóng cuộc chat, giữ nguyên lịch sử và file đính kèm.
@@ -916,7 +930,10 @@ app.post('/api/otp/verify', async (req, res) => {
       if (!qrAccount) console.error('Error during auto-assignment calculations:', assignError.message);
     }
 
-    if (qrAccount) await closeActiveQrSession(qrAccount.id);
+    if (qrAccount) {
+      await closeActiveQrSessionsForVisitor(projectId, email);
+      await closeActiveQrSession(qrAccount.id);
+    }
     await db.query(
       `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id, qr_account_id, expires_at)
        VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8, $9, $10, $11)`,
@@ -1964,7 +1981,22 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
     const email = (session.visitor_email || '').trim();
     const phone = (session.visitor_phone || '').trim();
     let result;
-    if (email || phone) {
+    if (session.qr_account_id) {
+      // Mỗi lần đăng nhập QR là một cuộc chat độc lập. Không gộp lịch sử theo
+      // email như widget cũ, nếu không khách sẽ thấy lại tin của phiên đã đóng.
+      result = await db.query(
+        `SELECT * FROM messages
+         WHERE session_id = $1
+           AND NOT (sender = 'system' AND (
+             original_text ILIKE '[Hệ thống] Cuộc trò chuyện đã được chỉ định cho:%'
+             OR original_text ILIKE '[System] The conversation has been assigned to:%'
+             OR original_text ILIKE 'The conversation has been assigned to:%'
+           ))
+         ORDER BY created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [sessionId, limit, offset]
+      );
+    } else if (email || phone) {
       const identityConditions = [];
       const identityParams = [session.project_id];
 
@@ -2972,6 +3004,7 @@ app.post('/api/qr-chat/google', async (req, res) => {
     if (!profile.email || (profile.email_verified !== 'true' && profile.email_verified !== true)) return res.status(401).json({ error: 'Email Google chưa được xác thực.' });
     const account = await resolveQrChatAccount(projectId, qrCode);
     if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
+    await closeActiveQrSessionsForVisitor(projectId, profile.email);
     await closeActiveQrSession(account.id);
     const sessionId = randomUUID();
     const { browser, device } = parseUserAgent(req.headers['user-agent'] || '');
