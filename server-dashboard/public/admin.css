@@ -2734,3 +2734,161 @@ button {
 @media (prefers-reduced-motion: reduce) {
     .mic-btn.is-recording, .voice-dot, .agent-voice-main { animation: none; }
 }
+
+/* --- Bảng ghi âm (kiểu Zalo) ------------------------------------------------
+   Nút micro tròn lớn ở giữa, bấm hoặc bấm giữ. Không có lựa chọn gửi bản ghi âm
+   vì tính năng này chỉ chuyển giọng nói thành chữ rồi bỏ bản ghi đi. */
+.voice-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 2050;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: rgba(38, 20, 45, .45);
+    backdrop-filter: blur(4px);
+}
+.voice-sheet-panel {
+    width: min(100%, 460px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 24px calc(30px + env(safe-area-inset-bottom));
+    border-radius: 26px 26px 0 0;
+    background: var(--panel-bg, #fff);
+    box-shadow: 0 -12px 40px rgba(45, 35, 53, .22);
+    animation: voiceSheetUp .24s cubic-bezier(.22, 1, .36, 1);
+}
+@keyframes voiceSheetUp { from { transform: translateY(18px); opacity: .6; } to { transform: none; opacity: 1; } }
+.voice-sheet-grip {
+    width: 40px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--panel-border);
+    margin-bottom: 6px;
+}
+.voice-sheet-title {
+    margin: 0;
+    font-size: 15.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-align: center;
+}
+.voice-sheet-timer {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity .2s ease, color .2s ease;
+}
+.voice-sheet-timer.is-live { opacity: 1; color: #ef4444; }
+.voice-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 26px;
+    width: 100%;
+    margin: 4px 0;
+}
+.voice-orb-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.voice-orb-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    min-height: 18px;
+}
+.voice-action {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    padding: 6px;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color .18s ease, transform .18s ease;
+}
+.voice-action i { font-size: 26px; }
+.voice-action:hover { color: var(--text-primary); transform: translateY(-1px); }
+#voice-delete-btn:hover { color: #ef4444; }
+
+.voice-orb {
+    position: relative;
+    width: 108px;
+    height: 108px;
+    margin: 4px 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--accent-color);
+    color: #fff;
+    font-size: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 10px 26px var(--accent-glow, rgba(239, 43, 157, .32));
+    transition: transform .16s ease, background .2s ease, box-shadow .2s ease;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.voice-orb:active { transform: scale(.95); }
+.voice-orb:disabled { cursor: not-allowed; }
+.voice-orb.is-recording { background: #ef4444; box-shadow: 0 10px 26px rgba(239, 68, 68, .38); }
+.voice-orb.is-working { background: var(--text-muted); box-shadow: none; }
+/* Vòng sóng lan ra khi đang ghi — chỉ hiện lúc recording. */
+.voice-orb-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+}
+.voice-orb.is-recording .voice-orb-ring {
+    opacity: 1;
+    animation: voiceOrbRing 1.5s ease-out infinite;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, .5);
+}
+@keyframes voiceOrbRing {
+    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, .5); }
+    100% { box-shadow: 0 0 0 26px rgba(239, 68, 68, 0); }
+}
+.voice-sheet-hint {
+    margin: 0;
+    max-width: 32ch;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    text-align: center;
+}
+.voice-sheet-close {
+    margin-top: 4px;
+    padding: 11px 30px;
+    border: 1px solid var(--panel-border);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color .2s ease, color .2s ease;
+}
+.voice-sheet-close:hover:not(:disabled) { border-color: var(--accent-color); color: var(--text-primary); }
+.voice-sheet-close:disabled { opacity: .5; cursor: not-allowed; }
+/* Trên màn hình rộng, cho bảng nổi giữa thay vì dính đáy. */
+@media (min-width: 769px) {
+    .voice-sheet { align-items: center; }
+    .voice-sheet-panel { border-radius: 26px; padding-bottom: 26px; animation-name: voiceSheetIn; }
+    @keyframes voiceSheetIn { from { transform: scale(.96); opacity: .6; } to { transform: none; opacity: 1; } }
+}
+@media (prefers-reduced-motion: reduce) {
+    .voice-sheet-panel, .voice-orb.is-recording .voice-orb-ring { animation: none; }
+}

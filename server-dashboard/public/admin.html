@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r43">
+    <link rel="stylesheet" href="admin.css?v=r45">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -199,6 +199,33 @@
             </div>
         </header>
 
+        <!-- Bảng ghi âm kiểu Zalo: nút micro tròn lớn giữa màn hình, bấm hoặc bấm giữ.
+             Không có lựa chọn "gửi bản ghi âm" vì tính năng này chỉ chuyển thành chữ. -->
+        <div id="voice-sheet" class="voice-sheet hide">
+            <div class="voice-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="voice-sheet-title">
+                <div class="voice-sheet-grip"></div>
+                <p class="voice-sheet-title" id="voice-sheet-title">Bấm hoặc bấm giữ để ghi âm</p>
+                <div class="voice-sheet-timer" id="voice-sheet-timer">0:00</div>
+                <div class="voice-actions">
+                    <button type="button" class="voice-action hide" id="voice-delete-btn">
+                        <i class="ri-delete-bin-line"></i><span>Xóa</span>
+                    </button>
+                    <div class="voice-orb-wrap">
+                        <button type="button" class="voice-orb" id="voice-orb" aria-label="Ghi âm">
+                            <span class="voice-orb-ring"></span>
+                            <i class="ri-mic-fill" id="voice-orb-icon"></i>
+                        </button>
+                        <span class="voice-orb-label" id="voice-orb-label"></span>
+                    </div>
+                    <button type="button" class="voice-action hide" id="voice-edit-btn">
+                        <i class="ri-edit-line"></i><span>Chỉnh sửa</span>
+                    </button>
+                </div>
+                <p class="voice-sheet-hint" id="voice-sheet-hint">Chữ sẽ hiện trong ô nhập để bạn sửa trước khi gửi</p>
+                <button type="button" class="voice-sheet-close" id="voice-sheet-close">Đóng</button>
+            </div>
+        </div>
+
         <div id="push-permission-modal" class="modal-overlay hide">
             <div class="push-permission-card">
                 <div class="push-modal-visual"><i class="ri-notification-3-fill"></i><span class="push-modal-spark spark-one">✦</span><span class="push-modal-spark spark-two">✦</span></div>
@@ -289,21 +316,6 @@
 
                 <!-- Chat Input area -->
                 <div class="chat-input-area hide" id="chat-input-container">
-                    <div class="agent-voice-panel hide" id="voice-status-bar">
-                        <div class="agent-voice-title">
-                            <span class="voice-dot"></span>
-                            <span id="voice-status-text">Đang lắng nghe…</span>
-                            <span class="voice-timer" id="voice-timer">0:00</span>
-                        </div>
-                        <button type="button" class="agent-voice-main" id="voice-main-send-btn" title="Gửi nội dung nhận diện">
-                            <i class="ri-send-plane-2-fill"></i>
-                        </button>
-                        <div class="agent-voice-actions">
-                            <button type="button" id="voice-delete-btn"><i class="ri-delete-bin-line"></i><span>Xóa</span></button>
-                            <button type="button" id="voice-send-btn"><i class="ri-send-plane-fill"></i><span>Gửi</span></button>
-                            <button type="button" id="voice-edit-btn"><i class="ri-edit-line"></i><span>Chỉnh sửa</span></button>
-                        </div>
-                    </div>
                     <div class="translation-status-bar">
                         <i class="ri-sparkling-fill"></i>
                         <span data-i18n="aiTranslationPrompt">Tin nhắn của bạn sẽ được tự động dịch sang ngôn ngữ của khách</span>
@@ -810,6 +822,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r48"></script>
+    <script src="admin.js?v=r50"></script>
 </body>
 </html>
