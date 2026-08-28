@@ -3751,6 +3751,16 @@ function drawPosterText(ctx, text, centerX, startY, maxWidth, lineHeight, maxLin
 }
 
 async function createBrandedQrPoster(imageUrl, businessName) {
+    // Canvas phải chờ webfont hoàn tất; nếu vẽ sớm trình duyệt có thể dùng font
+    // fallback thiếu glyph và làm lỗi dấu tiếng Việt trong ảnh PNG tải xuống.
+    if (document.fonts?.load) {
+        await Promise.allSettled([
+            document.fonts.load('400 25px "Be Vietnam Pro"'),
+            document.fonts.load('500 20px "Be Vietnam Pro"'),
+            document.fonts.load('700 32px "Be Vietnam Pro"'),
+            document.fonts.load('800 50px "Be Vietnam Pro"'),
+        ]);
+    }
     const [qrImage, logoImage] = await Promise.all([
         loadPosterImage(imageUrl),
         loadPosterImage('/logoApp.png'),
@@ -3761,6 +3771,7 @@ async function createBrandedQrPoster(imageUrl, businessName) {
     canvas.height = 1350;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Trình duyệt không hỗ trợ tạo ảnh QR.');
+    const posterFont = '"Be Vietnam Pro", "Segoe UI", Arial, sans-serif';
 
     ctx.fillStyle = '#fffafd';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -3781,18 +3792,18 @@ async function createBrandedQrPoster(imageUrl, businessName) {
     ctx.drawImage(logoImage, 90, 58, 104, 104);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#33243c';
-    ctx.font = '800 46px Arial, sans-serif';
+    ctx.font = `800 46px ${posterFont}`;
     ctx.fillText('PASTIE CHAT', 222, 121);
     ctx.fillStyle = '#c52d77';
-    ctx.font = '700 20px Arial, sans-serif';
-    ctx.fillText('KẾT NỐI TƯ VẤN TRỰC TIẾP', 225, 155);
+    ctx.font = `700 18px ${posterFont}`;
+    ctx.fillText('KẾT NỐI TƯ VẤN • LIVE SUPPORT', 225, 155);
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#a12d68';
-    ctx.font = '700 20px Arial, sans-serif';
-    ctx.fillText('CHÀO MỪNG QUÝ KHÁCH ĐẾN VỚI', canvas.width / 2, 224);
+    ctx.font = `700 18px ${posterFont}`;
+    ctx.fillText('CHÀO MỪNG QUÝ KHÁCH • WELCOME TO', canvas.width / 2, 224);
     ctx.fillStyle = '#30233a';
-    ctx.font = '800 50px Arial, sans-serif';
+    ctx.font = `800 50px ${posterFont}`;
     const businessLines = drawPosterText(ctx, businessName || 'Hộ kinh doanh', canvas.width / 2, 292, 900, 58, 2);
 
     const cardY = businessLines > 1 ? 420 : 370;
@@ -3818,22 +3829,22 @@ async function createBrandedQrPoster(imageUrl, businessName) {
 
     const copyY = cardY + cardSize + 50;
     ctx.fillStyle = '#30233a';
-    ctx.font = '800 32px Arial, sans-serif';
+    ctx.font = `800 29px ${posterFont}`;
     ctx.fillText('QUÉT MÃ ĐỂ BẮT ĐẦU TRÒ CHUYỆN', canvas.width / 2, copyY);
     ctx.fillStyle = '#786b7b';
-    ctx.font = '400 25px Arial, sans-serif';
-    ctx.fillText('và được tư vấn ngay', canvas.width / 2, copyY + 42);
+    ctx.font = `700 23px ${posterFont}`;
+    ctx.fillText('SCAN TO START A CHAT', canvas.width / 2, copyY + 38);
 
     ctx.fillStyle = '#fff0f7';
-    drawPosterRoundedRect(ctx, 245, copyY + 68, 590, 54, 27);
+    drawPosterRoundedRect(ctx, 205, copyY + 66, 670, 54, 27);
     ctx.fill();
     ctx.fillStyle = '#b62b70';
-    ctx.font = '700 20px Arial, sans-serif';
-    ctx.fillText('Mở Camera điện thoại  •  Hướng vào mã QR', canvas.width / 2, copyY + 103);
+    ctx.font = `700 17px ${posterFont}`;
+    ctx.fillText('Mở Camera / Open Camera  •  Hướng vào QR / Point at QR', canvas.width / 2, copyY + 101);
 
     ctx.fillStyle = '#9a8b99';
-    ctx.font = '500 18px Arial, sans-serif';
-    ctx.fillText('Được vận hành bởi Pastie', canvas.width / 2, 1325);
+    ctx.font = `500 16px ${posterFont}`;
+    ctx.fillText('Vận hành bởi Pastie  •  Powered by Pastie', canvas.width / 2, 1325);
 
     return new Promise((resolve, reject) => canvas.toBlob(
         blob => blob ? resolve(blob) : reject(new Error('Không thể xuất poster QR.')),
