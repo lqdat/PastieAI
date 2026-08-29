@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r47">
+    <link rel="stylesheet" href="admin.css?v=r49">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -116,6 +116,9 @@
                 <button id="agent-account-btn" class="header-quick-btn hide" type="button" title="Quản lý tài khoản của bạn">
                     <i class="ri-user-settings-line"></i><span>Quản lý tài khoản</span>
                 </button>
+                <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, nhóm và QR">
+                    <i class="ri-organization-chart"></i><span>Sale &amp; Nhóm</span>
+                </button>
                 <button id="agent-qr-btn" class="header-quick-btn header-quick-btn-qr hide" type="button" title="Mã QR tiếp nhận chat">
                     <i class="ri-qr-code-line"></i><span>Mã QR</span>
                 </button>
@@ -198,6 +201,106 @@
                 <button id="logout-btn" class="icon-btn" title="Đăng xuất" data-i18n-title="logoutTitle"><i class="ri-logout-box-r-line"></i></button>
             </div>
         </header>
+
+
+        <!-- Quản lý tổ chức: Agent (superadmin) / Sale / Nhóm / QR.
+             Mọi thao tác ở đây đều được backend kiểm tra quyền lại, form này chỉ
+             là lớp trình bày. -->
+        <div id="org-modal" class="modal-overlay hide">
+            <div class="org-card">
+                <header class="org-head">
+                    <div>
+                        <p class="org-kicker">PHÂN CẤP TỔ CHỨC</p>
+                        <h2 id="org-title">Quản lý Sale và nhóm</h2>
+                    </div>
+                    <button type="button" class="icon-btn" id="org-close-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
+                </header>
+
+                <nav class="org-tabs" id="org-tabs">
+                    <button type="button" class="org-tab hide" data-org-tab="agents">Agent</button>
+                    <button type="button" class="org-tab is-active" data-org-tab="sales">Sale</button>
+                    <button type="button" class="org-tab" data-org-tab="groups">Nhóm</button>
+                    <button type="button" class="org-tab" data-org-tab="qr">QR</button>
+                </nav>
+
+                <p class="org-status hide" id="org-status"></p>
+
+                <!-- Agent: chỉ superadmin -->
+                <section class="org-pane hide" data-org-pane="agents">
+                    <form class="org-form" id="org-agent-form">
+                        <div class="org-form-row">
+                            <label>Tên Agent<input type="text" id="org-agent-name" required placeholder="Nguyễn Văn A"></label>
+                            <label>Email đăng nhập<input type="email" id="org-agent-email" required placeholder="agent@vidu.com"></label>
+                        </div>
+                        <div class="org-form-row">
+                            <label>Dự án<select id="org-agent-project"></select></label>
+                            <label>Giờ đăng nhập
+                                <span class="org-hour-pair">
+                                    <input type="time" id="org-agent-start" value="07:00">
+                                    <em>đến</em>
+                                    <input type="time" id="org-agent-end" value="22:00">
+                                </span>
+                            </label>
+                        </div>
+                        <button type="submit" class="org-submit"><i class="ri-user-add-line"></i> Tạo Agent</button>
+                        <p class="org-hint">Agent đăng nhập bằng OTP email hoặc Google, không có mật khẩu. Agent không tự sửa được tên, email, dự án hay giờ của mình.</p>
+                    </form>
+                    <div class="org-list" id="org-agent-list"></div>
+                </section>
+
+                <!-- Sale -->
+                <section class="org-pane" data-org-pane="sales">
+                    <form class="org-form" id="org-sale-form">
+                        <div class="org-form-row">
+                            <label>Tên hiển thị<input type="text" id="org-sale-name" required placeholder="Sale An"></label>
+                            <label>Email đăng nhập<input type="email" id="org-sale-email" required placeholder="sale@vidu.com"></label>
+                        </div>
+                        <div class="org-form-row">
+                            <label>Nhóm tham gia<select id="org-sale-group"><option value="">— Chưa gán nhóm —</option></select></label>
+                            <label>Giờ đăng nhập
+                                <span class="org-hour-pair">
+                                    <input type="time" id="org-sale-start" value="08:00">
+                                    <em>đến</em>
+                                    <input type="time" id="org-sale-end" value="17:00">
+                                </span>
+                            </label>
+                        </div>
+                        <button type="submit" class="org-submit"><i class="ri-user-add-line"></i> Tạo Sale</button>
+                        <p class="org-hint">Ca qua nửa đêm hợp lệ: đặt giờ bắt đầu lớn hơn giờ kết thúc, ví dụ 18:00 đến 02:00.</p>
+                    </form>
+                    <div class="org-list" id="org-sale-list"></div>
+                </section>
+
+                <!-- Nhóm -->
+                <section class="org-pane hide" data-org-pane="groups">
+                    <form class="org-form" id="org-group-form">
+                        <div class="org-form-row">
+                            <label>Tên nhóm<input type="text" id="org-group-name" required placeholder="Lễ tân"></label>
+                            <label>Mô tả<input type="text" id="org-group-desc" placeholder="Không bắt buộc"></label>
+                        </div>
+                        <button type="submit" class="org-submit"><i class="ri-team-line"></i> Tạo nhóm</button>
+                    </form>
+                    <div class="org-list" id="org-group-list"></div>
+                </section>
+
+                <!-- QR -->
+                <section class="org-pane hide" data-org-pane="qr">
+                    <form class="org-form" id="org-qr-form">
+                        <div class="org-form-row">
+                            <label>Tên QR<input type="text" id="org-qr-label" required placeholder="Bàn 1"></label>
+                            <label>Nhóm tiếp nhận<select id="org-qr-group"></select></label>
+                        </div>
+                        <div class="org-form-row">
+                            <label>Sale ưu tiên<select id="org-qr-sale"><option value="">— Không chỉ định —</option></select></label>
+                            <span></span>
+                        </div>
+                        <button type="submit" class="org-submit"><i class="ri-qr-code-line"></i> Tạo QR</button>
+                        <p class="org-hint">Sale ưu tiên phải là thành viên của nhóm tiếp nhận. Ngoài ca của Sale ưu tiên, chat tự về hàng đợi chung của nhóm chứ không chặn khách.</p>
+                    </form>
+                    <div class="org-list" id="org-qr-list"></div>
+                </section>
+            </div>
+        </div>
 
         <div id="push-permission-modal" class="modal-overlay hide">
             <div class="push-permission-card">
@@ -813,6 +916,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r52"></script>
+    <script src="admin.js?v=r54"></script>
 </body>
 </html>

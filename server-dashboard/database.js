@@ -23,6 +23,116 @@ pool.on('error', (err) => {
 // SQL query runner helper
 const query = (text, params) => pool.query(text, params);
 
+
+// Gom dữ liệu QR chưa có chủ về một Agent: tạo "Nhóm mặc định" nếu chưa có, đưa
+// mọi Sale chưa được Agent nào quản lý trong project vào nhóm, và gắn các QR còn
+// lơ lửng vào nhóm đó. Chạy lại nhiều lần đều an toàn.
+//
+// Gọi ở hai nơi: cuối migration (khi project đã sẵn có Agent) và ngay sau khi
+// superadmin tạo Agent đầu tiên cho project.
+async function adoptOrphanQrDataForProject(projectId, agentId) {
+  if (!projectId || !agentId) return null;
+  let group = await query(
+    `SELECT id FROM agent_groups WHERE project_id = $1 AND name = 'Nhóm mặc định' LIMIT 1`,
+    [projectId]
+  );
+  if (group.rows.length === 0) {
+    group = await query(
+      `INSERT INTO agent_groups (project_id, agent_id, name, description)
+       VALUES ($1, $2, 'Nhóm mặc định', 'Tạo tự động khi chuyển sang cấu trúc Agent - Sale')
+       RETURNING id`,
+      [projectId, agentId]
+    );
+  }
+  const groupId = group.rows[0].id;
+
+  // Sale chưa có Agent quản lý thì về tay Agent này.
+  await query(
+    `UPDATE admins SET managed_by_admin_id = $2
+      WHERE project_id = $1 AND role = 'sale' AND managed_by_admin_id IS NULL`,
+    [projectId, agentId]
+  );
+  await query(
+    `INSERT INTO agent_group_sales (group_id, sale_id)
+     SELECT $1, id FROM admins WHERE project_id = $2 AND role = 'sale'
+     ON CONFLICT (group_id, sale_id) DO NOTHING`,
+    [groupId, projectId]
+  );
+  await query(
+    `UPDATE qr_chat_accounts SET group_id = $1 WHERE project_id = $2 AND group_id IS NULL`,
+    [groupId, projectId]
+  );
+  return groupId;
+}
+
+
+// Migration một chiều, chạy được nhiều lần mà không hỏng: đưa dữ liệu QR
+// Concierge cũ sang cấu trúc Agent - Sale - Nhóm.
+//
+//  1. Mọi tài khoản role 'agent' thuộc project qr_concierge trở thành 'sale'.
+//     Chỉ đổi những tài khoản CHƯA có Sale nào quản lý, để lần chạy sau không
+//     đụng vào các Agent quản lý mới do superadmin tạo (những tài khoản này
+//     luôn có managed_by_admin_id trỏ về superadmin).
+//  2. Mỗi project qr_concierge được cấp một "Nhóm mặc định".
+//  3. Sale cũ và QR cũ được đưa vào nhóm mặc định của project tương ứng.
+//  4. Tài khoản chưa có khung giờ nào được cấp 00:00-23:59 để không bị khóa oan.
+async function migrateQrAgentsToSales() {
+  try {
+    const qrProjects = await query(`SELECT id FROM projects WHERE project_type = 'qr_concierge'`);
+    if (qrProjects.rows.length === 0) return;
+    const projectIds = qrProjects.rows.map((row) => row.id);
+
+    // 1. agent -> sale, CHỈ MỘT LẦN.
+    //    Không thể phân biệt bằng managed_by_admin_id: cột đó là ON DELETE SET
+    //    NULL, nên xóa superadmin đã tạo Agent là Agent đó thành mồ côi và lần
+    //    khởi động sau sẽ bị hạ xuống sale. Dùng cờ trong schema_migrations mới
+    //    chắc chắn.
+    const flag = await query(
+      `INSERT INTO schema_migrations (name) VALUES ('qr_agents_to_sales')
+       ON CONFLICT (name) DO NOTHING RETURNING name`
+    );
+    if (flag.rows.length > 0) {
+      const converted = await query(
+        `UPDATE admins SET role = 'sale'
+         WHERE role = 'agent' AND project_id = ANY($1::varchar[])
+         RETURNING id, project_id`,
+        [projectIds]
+      );
+      console.log(`[Migration] Chuyển ${converted.rows.length} tài khoản agent QR thành sale.`);
+    }
+
+    // 2-3. Nhóm mặc định: chỉ tạo được khi project đã có Agent quản lý, vì
+    // agent_groups.agent_id là NOT NULL. Ngay sau khi đổi agent -> sale thì
+    // thường CHƯA có Agent nào, nên bước này sẽ không làm gì. Việc bàn giao
+    // (tạo nhóm mặc định, gom Sale và QR cũ vào) được thực hiện lúc superadmin
+    // tạo Agent đầu tiên cho project — xem adoptOrphanQrData() trong server.js.
+    // Đúng thứ tự bước 6-7 ở mục 19 của kế hoạch.
+    for (const projectId of projectIds) {
+      const owner = await query(
+        `SELECT id FROM admins WHERE project_id = $1 AND role = 'agent' AND is_active = TRUE ORDER BY id LIMIT 1`,
+        [projectId]
+      );
+      if (owner.rows.length === 0) continue;
+      await adoptOrphanQrDataForProject(projectId, owner.rows[0].id);
+    }
+
+    // 4. Giờ mặc định cả ngày cho tài khoản chưa cấu hình, tránh khóa nhầm.
+    //    CHỈ cấp cho tài khoản thuộc project QR Concierge. DealPhuQuoc cũng cấp
+    //    role 'agent' cho nhân viên của họ; tạo khung giờ cho những tài khoản đó
+    //    là kéo luật ca kíp sang một dự án đáng lẽ không bị đụng tới.
+    await query(
+      `INSERT INTO account_access_hours (admin_id, start_time, end_time)
+       SELECT a.id, '00:00', '23:59' FROM admins a
+       WHERE a.role IN ('agent', 'sale')
+         AND a.project_id = ANY($1::varchar[])
+         AND NOT EXISTS (SELECT 1 FROM account_access_hours h WHERE h.admin_id = a.id)`,
+      [projectIds]
+    );
+  } catch (err) {
+    console.error('[Migration] Chuyển agent QR sang sale thất bại:', err.message);
+  }
+}
+
 // Initialize DB schema automatically
 async function initializeDatabase() {
   try {
@@ -325,6 +435,111 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
       );
     `);
 
+    // ------------------------------------------------------------------
+    // Phân cấp Agent - Sale - Nhóm - QR (chỉ áp dụng cho project qr_concierge)
+    //
+    // Quyết định đã chốt:
+    //  - Cấp mới chỉ dùng cho project_type = 'qr_concierge'. Các role cũ
+    //    (subadmin, project_owner, project_admin) giữ nguyên cho DealPhuQuoc và
+    //    Pastie Landing, không đụng tới.
+    //  - 'agent' cũ trong QR Concierge đổi thành 'sale'; 'agent' mới là cấp
+    //    quản lý Sale. Xem migrateQrAgentsToSales() bên dưới.
+    //  - Nguồn sự thật cho "Sale nào đang xử lý chat" là sessions.claimed_by_admin_id
+    //    (đã dùng sẵn khắp nơi, có claimed_at và operator_no đi kèm).
+    //    sessions.assigned_admin_id GIỮ NGUYÊN cho flow cũ, không dùng cho QR.
+    //  - Giờ lưu dạng TIME trần + cột timezone; so sánh thực hiện trong Node
+    //    (xem workingHours() trong server.js) để không phụ thuộc tz database của
+    //    Postgres, vốn chạy UTC trên Railway.
+    // ------------------------------------------------------------------
+
+    // Agent quản lý được gắn với người tạo ra mình (superadmin), Sale gắn với Agent.
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS managed_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_admins_managed_by ON admins(managed_by_admin_id);`);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS agent_groups (
+        id SERIAL PRIMARY KEY,
+        project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        agent_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        name VARCHAR(150) NOT NULL,
+        description TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_agent_groups_agent ON agent_groups(agent_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_agent_groups_project ON agent_groups(project_id);`);
+
+    // Một Sale có thể thuộc nhiều nhóm nên khóa chính là cặp (group, sale).
+    await query(`
+      CREATE TABLE IF NOT EXISTS agent_group_sales (
+        group_id INT NOT NULL REFERENCES agent_groups(id) ON DELETE CASCADE,
+        sale_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (group_id, sale_id)
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_group_sales_sale ON agent_group_sales(sale_id);`);
+
+    // Giờ được phép ĐĂNG NHẬP. Nhiều dòng cho một tài khoản = nhiều khung giờ
+    // trong ngày (ví dụ 08:00-12:00 và 13:30-18:00). Khung qua nửa đêm hợp lệ:
+    // start_time > end_time nghĩa là ca vắt sang ngày hôm sau.
+    await query(`
+      CREATE TABLE IF NOT EXISTS account_access_hours (
+        id SERIAL PRIMARY KEY,
+        admin_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        start_time TIME NOT NULL,
+        end_time TIME NOT NULL,
+        timezone VARCHAR(60) NOT NULL DEFAULT 'Asia/Bangkok',
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_access_hours_admin ON account_access_hours(admin_id);`);
+
+    // Giờ NHẬN CHAT của từng Sale trong từng nhóm. Đây là lớp kiểm tra thứ hai,
+    // độc lập với giờ đăng nhập ở trên.
+    await query(`
+      CREATE TABLE IF NOT EXISTS group_sale_hours (
+        id SERIAL PRIMARY KEY,
+        group_id INT NOT NULL REFERENCES agent_groups(id) ON DELETE CASCADE,
+        sale_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        start_time TIME NOT NULL,
+        end_time TIME NOT NULL,
+        timezone VARCHAR(60) NOT NULL DEFAULT 'Asia/Bangkok',
+        priority INT NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_group_sale_hours_lookup ON group_sale_hours(group_id, sale_id);`);
+
+    // QR gắn vào đúng một nhóm, có thể chỉ định một Sale ưu tiên.
+    await query(`ALTER TABLE qr_chat_accounts ADD COLUMN IF NOT EXISTS group_id INT REFERENCES agent_groups(id) ON DELETE SET NULL;`);
+    await query(`ALTER TABLE qr_chat_accounts ADD COLUMN IF NOT EXISTS preferred_sale_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
+    await query(`ALTER TABLE qr_chat_accounts ADD COLUMN IF NOT EXISTS display_label VARCHAR(300);`);
+    await query(`ALTER TABLE qr_chat_accounts ADD COLUMN IF NOT EXISTS created_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
+
+    // Định tuyến chat: waiting = chưa ai nhận, assigned = đã có Sale, closed = đã đóng.
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS group_id INT REFERENCES agent_groups(id) ON DELETE SET NULL;`);
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS preferred_sale_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS routing_status VARCHAR(20);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_sessions_routing ON sessions(group_id, routing_status);`);
+
+    // Bảng cờ cho các migration DỮ LIỆU chỉ được chạy đúng một lần. Khác với
+    // CREATE TABLE IF NOT EXISTS (chạy lại vô hại), việc đổi role là thao tác
+    // một chiều nên phải có cờ, nếu không mỗi lần khởi động lại sẽ hạ cấp luôn
+    // các Agent quản lý mới do superadmin tạo.
+    await query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        name VARCHAR(120) PRIMARY KEY,
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await migrateQrAgentsToSales();
+
     console.log('Database tables verified/created successfully.');
   } catch (err) {
     console.error('Failed to initialize database tables:', err.message);
@@ -338,5 +553,6 @@ module.exports = {
   query,
   pool,
   initializeDatabase,
+  adoptOrphanQrDataForProject,
   initPromise
 };

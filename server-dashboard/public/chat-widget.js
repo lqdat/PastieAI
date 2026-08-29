@@ -1,8 +1,14 @@
 (function() {
     // --- Widget Configuration ---
-    const _scriptEl = document.querySelector('script[src*="chat-widget.js"]');
+    // `currentScript` is important when the widget is loaded through the small
+    // embed loader: it ensures this instance reads its own configuration.
+    const _scriptEl = document.currentScript || Array.from(document.scripts)
+        .reverse()
+        .find((script) => /chat-widget\.js(?:\?|$)/.test(script.src));
     const CONFIG = {
         BACKEND_URL: (function() {
+            const configuredUrl = _scriptEl && _scriptEl.dataset.backend;
+            if (configuredUrl) return configuredUrl.replace(/\/$/, '');
             if (_scriptEl && _scriptEl.src) {
                 try {
                     const url = new URL(_scriptEl.src);
@@ -14,7 +20,19 @@
             return 'http://localhost:3000';
         })(),
         PROJECT_ID: (_scriptEl && _scriptEl.dataset.project) || 'pastie-landingpage',
-        POLL_INTERVAL: 4000
+        QR_CODE: (_scriptEl && _scriptEl.dataset.qrCode) || '',
+        // Faster updates without overlapping requests on slower mobile networks.
+        POLL_INTERVAL: 2000
+    };
+
+    // Keep visitor data separate for each tenant project. This avoids one
+    // website accidentally reopening another website's chat session.
+    const storageScope = `${CONFIG.PROJECT_ID}_${CONFIG.QR_CODE || 'default'}`;
+    const storageKey = (name) => `pastie_chat_${storageScope}_${name}`;
+    const storage = {
+        get(name) { try { return sessionStorage.getItem(storageKey(name)); } catch (e) { return null; } },
+        set(name, value) { try { sessionStorage.setItem(storageKey(name), value); } catch (e) {} },
+        remove(name) { try { sessionStorage.removeItem(storageKey(name)); } catch (e) {} }
     };
 
     // --- State Management ---
@@ -23,13 +41,13 @@
         step: 'chat',
         // 'init' = OTP form | 'otp' = OTP code | 'ai' = verified AI chat | 'human' = human agent
         mode: (function() {
-            const sid = sessionStorage.getItem('pastie_chat_session_id');
+            const sid = storage.get('session_id');
             if (!sid) return 'init';
-            return sessionStorage.getItem('pastie_chat_mode') || 'ai';
+            return storage.get('mode') || 'ai';
         })(),
-        sessionId: sessionStorage.getItem('pastie_chat_session_id') || null,
-        visitorName: sessionStorage.getItem('pastie_chat_visitor_name') || '',
-        visitorEmail: sessionStorage.getItem('pastie_chat_visitor_email') || '',
+        sessionId: storage.get('session_id') || null,
+        visitorName: storage.get('visitor_name') || '',
+        visitorEmail: storage.get('visitor_email') || '',
         lastMessageCount: 0,
         lastSeenCount: 0, // số tin đã xem (khi mở chat) -> tính badge tin NHẬN chưa đọc
         pollInterval: null,
@@ -41,6 +59,7 @@
         isTyping: false,
         typingTimeout: null,
         isSending: false,
+        isSyncing: false,
         messages: [],
         offset: 0,
         limit: 15,
@@ -214,6 +233,47 @@
             backToAI: '返回助手',
             sessionEnded: '对话已结束，我们将继续为您服务 ↓'
         }
+        ,ko: {
+            headerTitle: "Pastie 고객지원",
+            headerStatus: "보통 몇 분 내에 답변드립니다",
+            initTitle: "상담을 시작합니다",
+            initDesc: "성함과 이메일을 남겨주시면 상담원이 도와드립니다.",
+            initNameLabel: "성함",
+            initNamePlaceholder: "성함을 입력하세요",
+            initEmailLabel: "이메일",
+            initEmailPlaceholder: "you@email.com",
+            initBtnSubmit: "인증번호 받기",
+            initErrorFields: "성함과 이메일을 모두 입력해 주세요.",
+            initErrorConn: "서버에 연결할 수 없습니다. 다시 시도해 주세요.",
+            otpTitle: "이메일 인증",
+            otpDesc: "다음 주소로 보낸 6자리 인증번호를 입력하세요:",
+            otpLabel: "인증번호",
+            otpPlaceholder: "6자리 숫자",
+            otpBtnSubmit: "인증하고 채팅 시작",
+            otpBtnResend: "인증번호 재전송",
+            otpBtnResendCooldown: "초 후 재전송",
+            otpErrorEmpty: "인증번호를 입력해 주세요.",
+            otpErrorInvalid: "인증번호가 올바르지 않거나 만료되었습니다.",
+            otpErrorConn: "서버에 연결할 수 없습니다. 다시 시도해 주세요.",
+            chatInputPlaceholder: "메시지를 입력하세요…",
+            chatThinking: "입력 중…",
+            loadingSend: "전송 중…",
+            loadingVerify: "확인 중…",
+            defaultError: "문제가 발생했습니다. 다시 시도해 주세요.",
+            typingText: "입력 중…",
+            chatStartWelcome: "무엇을 도와드릴까요? 편하게 메시지를 남겨주세요.",
+            loadOlder: "이전 메시지 보기",
+            loadingMore: "불러오는 중…",
+            miniSenderAgent: "상담원",
+            miniSenderVisitor: "나",
+            miniSenderSystem: "시스템",
+            miniSenderAI: "Pat",
+            btnMeetCSKH: "상담원 연결",
+            btnCloseCSKH: "상담 종료",
+            confirmEndChat: "상담원과의 대화를 종료하시겠습니까?",
+            backToAI: "상담이 종료되었습니다. Pat이 계속 도와드릴게요! 🌴",
+            sessionEnded: "상담 세션이 종료되었습니다."
+        }
     };
 
     // DOM Elements
@@ -228,13 +288,16 @@
     } catch(e) {}
 
     // --- UI Dynamic Injection ---
-    const WIDGET_CSS = `#pastie-chat-widget-root{--widget-accent:#ff758f;--widget-bg:rgba(25,15,22,.88);--widget-border:rgba(255,255,255,.08);--widget-text:#f8fafc;--widget-text-sec:#f1b5c2;--widget-glass-blur:blur(20px);font-family:'Be Vietnam Pro',sans-serif;position:fixed;bottom:24px;right:24px;z-index:39;display:flex;flex-direction:column;align-items:flex-end;gap:16px}.pastie-chat-launcher{width:60px;height:60px;border-radius:50%;background:var(--widget-accent);color:#fff;box-shadow:0 8px 24px rgba(255,117,143,.35);display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;transition:all .3s cubic-bezier(.4,0,.2,1);position:relative}.pastie-chat-launcher:hover{transform:scale(1.08) translateY(-2px);box-shadow:0 12px 30px rgba(255,117,143,.45)}.pastie-chat-launcher i{font-size:26px;transition:transform .4s}.pastie-chat-launcher.active i{transform:rotate(90deg)}.pastie-chat-badge{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;background:#f43f5e;border:2px solid #fff;border-radius:9px;display:none;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;line-height:1}@keyframes pulse-dot{0%{transform:scale(.9);opacity:1}50%{transform:scale(1.2);opacity:.8}100%{transform:scale(.9);opacity:1}}.pastie-chat-window{width:380px;height:520px;border:1px solid var(--widget-border);background:var(--widget-bg);backdrop-filter:var(--widget-glass-blur);-webkit-backdrop-filter:var(--widget-glass-blur);border-radius:20px;box-shadow:0 12px 40px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden;opacity:0;transform:scale(.9) translateY(20px);pointer-events:none;transition:all .3s cubic-bezier(.4,0,.2,1);transform-origin:bottom right}.pastie-chat-window.open{opacity:1;transform:scale(1) translateY(0);pointer-events:auto}.pastie-chat-header{padding:18px 20px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--widget-border);display:flex;align-items:center;gap:12px}.pastie-chat-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#ff758f,#ff9eae);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px}.pastie-chat-header-info{flex-grow:1}.pastie-chat-header-info h4{margin:0;color:var(--widget-text);font-size:15px;font-weight:600}.pastie-chat-header-info p{margin:2px 0 0;color:var(--widget-text-sec);font-size:11px;display:flex;align-items:center;gap:4px}.pastie-chat-status-dot{width:6px;height:6px;background:#10b981;border-radius:50%;display:inline-block}.pastie-chat-body{flex-grow:1;overflow-y:auto;position:relative;display:flex;flex-direction:column}.pastie-chat-view{padding:24px;display:flex;flex-direction:column;justify-content:center;height:100%}.pastie-chat-view h3{margin:0 0 8px;color:var(--widget-text);font-size:18px;font-weight:600}.pastie-chat-view p{margin:0 0 20px;color:var(--widget-text-sec);font-size:13.5px;line-height:1.5}.pastie-chat-form-group{margin-bottom:16px;display:flex;flex-direction:column;gap:6px}.pastie-chat-form-group label{font-size:11px;font-weight:600;text-transform:uppercase;color:var(--widget-text-sec);letter-spacing:.5px}.pastie-chat-form-group input{width:100%;padding:12px 16px;background:rgba(255,255,255,.04);border:1px solid var(--widget-border);border-radius:10px;color:var(--widget-text);font-family:inherit;font-size:14px;outline:none;transition:all .3s;box-sizing:border-box}.pastie-chat-form-group input:focus{border-color:var(--widget-accent);background:rgba(255,255,255,.08)}.pastie-chat-error{color:#f43f5e;font-size:13px;margin-bottom:12px;display:none}.pastie-chat-btn{background:var(--widget-accent);color:#fff;border:none;padding:12px;border-radius:10px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .3s;box-shadow:0 4px 12px rgba(255,117,143,.3);width:100%}.pastie-chat-btn:hover:not(:disabled){background:#ff4d6d;transform:translateY(-1px)}.pastie-chat-btn:disabled{opacity:.6;cursor:not-allowed}.pastie-chat-btn-link{background:transparent;border:none;color:var(--widget-text-sec);font-family:inherit;font-size:12px;cursor:pointer;text-decoration:underline;margin-top:14px;align-self:center}.pastie-chat-btn-link:hover{color:var(--widget-text)}.pastie-chat-thread{flex-grow:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px}.pastie-msg{display:flex;flex-direction:column;max-width:80%}.pastie-msg.visitor{align-self:flex-end}.pastie-msg.agent,.pastie-msg.ai{align-self:flex-start}.pastie-msg.system{align-self:center;max-width:90%}.pastie-msg-bubble{padding:12px 16px;border-radius:16px;font-size:13.5px;line-height:1.45}.visitor .pastie-msg-bubble{background:var(--widget-accent);color:#fff;border-bottom-right-radius:4px}.agent .pastie-msg-bubble,.ai .pastie-msg-bubble{background:rgba(255,255,255,.05);border:1px solid var(--widget-border);color:var(--widget-text);border-bottom-left-radius:4px}.system .pastie-msg-bubble{background:rgba(255,255,255,.03);border:1px solid var(--widget-border);color:var(--widget-text-sec);padding:4px 12px;border-radius:20px;font-size:11.5px;text-align:center}.pastie-msg-time{font-size:9.5px;color:var(--widget-text-sec);margin-top:4px}.visitor .pastie-msg-time{align-self:flex-end}.agent .pastie-msg-time,.ai .pastie-msg-time{align-self:flex-start}.pastie-chat-footer{padding:14px 16px 18px;border-top:1px solid var(--widget-border)}.pastie-chat-input-row{display:flex;gap:8px}.pastie-chat-input-row input{flex-grow:1;background:rgba(255,255,255,.04);border:1px solid var(--widget-border);border-radius:10px;padding:10px 14px;color:var(--widget-text);font-family:inherit;font-size:13.5px;outline:none}.pastie-chat-input-row input:focus{border-color:var(--widget-accent)}.pastie-chat-send-btn{width:38px;height:38px;border-radius:10px;background:var(--widget-accent);color:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .2s;flex-shrink:0}.pastie-chat-send-btn:hover{transform:scale(1.05)}.pastie-chat-hide{display:none!important}.pastie-chat-thread::-webkit-scrollbar{width:4px}.pastie-chat-thread::-webkit-scrollbar-track{background:transparent}.pastie-chat-thread::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:10px}.pastie-ai-toggle-pill{position:fixed;bottom:95px;right:24px;z-index:38;background:rgba(15,12,30,.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);color:#f8fafc;padding:8px 16px;border-radius:20px;font-family:'Be Vietnam Pro',sans-serif;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.35);display:flex;align-items:center;gap:8px;transition:all .3s cubic-bezier(.4,0,.2,1)}.pastie-ai-toggle-pill:hover{transform:translateY(-2px);background:var(--widget-accent);border-color:var(--widget-accent)}.pastie-typing-indicator-bubble{padding:10px 14px!important}.pastie-typing-indicator{display:flex;align-items:center;gap:6px;height:14px}.pastie-typing-dot{width:6px;height:6px;background:rgba(255,255,255,.7);border-radius:50%;animation:pastieBouncing 1.4s infinite ease-in-out both}.pastie-typing-dot:nth-child(1){animation-delay:-.32s}.pastie-typing-dot:nth-child(2){animation-delay:-.16s}@keyframes pastieBouncing{0%,80%,100%{transform:scale(.3);opacity:.3}40%{transform:scale(1);opacity:1}}.pastie-chat-mini-bubble{position:absolute;bottom:80px;right:0;width:280px;background:var(--widget-bg);backdrop-filter:var(--widget-glass-blur);-webkit-backdrop-filter:var(--widget-glass-blur);border:1px solid var(--widget-border);border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.35);padding:8px 12px;display:flex;align-items:center;gap:10px;z-index:37;opacity:0;transform:translateY(10px) scale(.95);pointer-events:none;transition:all .3s cubic-bezier(.4,0,.2,1);font-family:'Be Vietnam Pro',sans-serif;cursor:pointer}.pastie-chat-mini-bubble.show{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}.pastie-chat-mini-bubble::after{content:'';position:absolute;bottom:-6px;right:24px;width:12px;height:12px;background:rgba(25,15,22,.94);border-right:1px solid var(--widget-border);border-bottom:1px solid var(--widget-border);transform:rotate(45deg)}.pastie-chat-mini-body{display:flex;gap:10px;align-items:center;flex-grow:1;overflow:hidden}.pastie-chat-mini-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#ff758f,#ff9eae);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0}.pastie-chat-mini-text-container{display:flex;flex-direction:column;gap:2px;flex-grow:1;overflow:hidden}.pastie-chat-mini-sender{display:none}.pastie-chat-mini-text{font-size:13px;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4;text-align:left}.pastie-chat-mini-close{background:transparent;border:none;color:rgba(255,255,255,.4);cursor:pointer;padding:2px;display:flex;align-items:center;justify-content:center;font-size:16px;transition:color .2s,transform .2s;border-radius:4px;flex-shrink:0;margin-left:4px}.pastie-chat-mini-close:hover{color:#f8fafc;background:rgba(255,255,255,.08)}.pastie-chat-header-action-btn{border:none;outline:none;font-family:'Be Vietnam Pro',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:6px 12px;border-radius:20px;cursor:pointer;transition:all .3s cubic-bezier(.4,0,.2,1);display:none;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.15)}.pastie-chat-header-action-btn:hover{transform:translateY(-1px)}.pastie-chat-header-action-btn.meet-cskh{background:linear-gradient(135deg,#10b981,#059669);color:#fff;box-shadow:0 4px 12px rgba(16,185,129,.25)}.pastie-chat-header-action-btn.meet-cskh:hover{background:linear-gradient(135deg,#34d399,#10b981);box-shadow:0 6px 16px rgba(16,185,129,.35)}.pastie-chat-header-action-btn.close-cskh{background:linear-gradient(135deg,#f43f5e,#e11d48);color:#fff;box-shadow:0 4px 12px rgba(244,63,94,.25)}.pastie-chat-header-action-btn.close-cskh:hover{background:linear-gradient(135deg,#fb7185,#f43f5e);box-shadow:0 6px 16px rgba(244,63,94,.35)}.pastie-chat-avatar,.pastie-chat-mini-avatar{background:#fff;overflow:hidden;padding:3px}.pastie-chat-avatar img,.pastie-chat-mini-avatar img{width:100%;height:100%;object-fit:contain;display:block}.pastie-wa-link{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px;padding:9px 12px;border-radius:10px;background:#25D366;color:#fff;font-family:'Be Vietnam Pro',sans-serif;font-size:13px;font-weight:600;text-decoration:none;box-shadow:0 4px 12px rgba(37,211,102,.3);transition:all .2s}.pastie-wa-link:hover{background:#1ebe5d;transform:translateY(-1px)}.pastie-wa-link i{font-size:16px}`;
+    const WIDGET_CSS = `#pastie-chat-widget-root{--widget-accent:#ff758f;--widget-bg:rgba(25,15,22,.88);--widget-border:rgba(255,255,255,.08);--widget-text:#f8fafc;--widget-text-sec:#f1b5c2;--widget-glass-blur:blur(20px);font-family:'Be Vietnam Pro',sans-serif;position:fixed;bottom:24px;right:24px;z-index:39;display:flex;flex-direction:column;align-items:flex-end;gap:16px}.pastie-chat-launcher{width:60px;height:60px;border-radius:50%;background:var(--widget-accent);color:#fff;box-shadow:0 8px 24px rgba(255,117,143,.35);display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;transition:all .3s cubic-bezier(.4,0,.2,1);position:relative}.pastie-chat-launcher:hover{transform:scale(1.08) translateY(-2px);box-shadow:0 12px 30px rgba(255,117,143,.45)}.pastie-chat-launcher i{font-size:26px;transition:transform .4s}.pastie-chat-launcher.active i{transform:rotate(90deg)}.pastie-chat-badge{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;background:#f43f5e;border:2px solid #fff;border-radius:9px;display:none;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;line-height:1}@keyframes pulse-dot{0%{transform:scale(.9);opacity:1}50%{transform:scale(1.2);opacity:.8}100%{transform:scale(.9);opacity:1}}.pastie-chat-window{width:380px;height:520px;border:1px solid var(--widget-border);background:var(--widget-bg);backdrop-filter:var(--widget-glass-blur);-webkit-backdrop-filter:var(--widget-glass-blur);border-radius:20px;box-shadow:0 12px 40px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden;opacity:0;transform:scale(.9) translateY(20px);pointer-events:none;transition:all .3s cubic-bezier(.4,0,.2,1);transform-origin:bottom right}.pastie-chat-window.open{opacity:1;transform:scale(1) translateY(0);pointer-events:auto}.pastie-chat-header{padding:18px 20px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--widget-border);display:flex;align-items:center;gap:12px}.pastie-chat-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#ff758f,#ff9eae);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px}.pastie-chat-header-info{flex-grow:1}.pastie-chat-header-info h4{margin:0;color:var(--widget-text);font-size:15px;font-weight:600}.pastie-chat-header-info p{margin:2px 0 0;color:var(--widget-text-sec);font-size:11px;display:flex;align-items:center;gap:4px}.pastie-chat-status-dot{width:6px;height:6px;background:#10b981;border-radius:50%;display:inline-block}.pastie-chat-body{flex-grow:1;overflow-y:auto;position:relative;display:flex;flex-direction:column}.pastie-chat-view{padding:24px;display:flex;flex-direction:column;justify-content:center;height:100%}.pastie-chat-view h3{margin:0 0 8px;color:var(--widget-text);font-size:18px;font-weight:600}.pastie-chat-view p{margin:0 0 20px;color:var(--widget-text-sec);font-size:13.5px;line-height:1.5}.pastie-chat-form-group{margin-bottom:16px;display:flex;flex-direction:column;gap:6px}.pastie-chat-form-group label{font-size:11px;font-weight:600;text-transform:uppercase;color:var(--widget-text-sec);letter-spacing:.5px}.pastie-chat-form-group input{width:100%;padding:12px 16px;background:rgba(255,255,255,.04);border:1px solid var(--widget-border);border-radius:10px;color:var(--widget-text);font-family:inherit;font-size:14px;outline:none;transition:all .3s;box-sizing:border-box}.pastie-chat-form-group input:focus{border-color:var(--widget-accent);background:rgba(255,255,255,.08)}.pastie-chat-error{color:#f43f5e;font-size:13px;margin-bottom:12px;display:none}.pastie-chat-btn{background:var(--widget-accent);color:#fff;border:none;padding:12px;border-radius:10px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .3s;box-shadow:0 4px 12px rgba(255,117,143,.3);width:100%}.pastie-chat-btn:hover:not(:disabled){background:#ff4d6d;transform:translateY(-1px)}.pastie-chat-btn:disabled{opacity:.6;cursor:not-allowed}.pastie-chat-btn-link{background:transparent;border:none;color:var(--widget-text-sec);font-family:inherit;font-size:12px;cursor:pointer;text-decoration:underline;margin-top:14px;align-self:center}.pastie-chat-btn-link:hover{color:var(--widget-text)}.pastie-chat-thread{flex-grow:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px}.pastie-msg{display:flex;flex-direction:column;max-width:80%}.pastie-msg.visitor{align-self:flex-end}.pastie-msg.agent,.pastie-msg.ai{align-self:flex-start}.pastie-msg.system{align-self:center;max-width:90%}.pastie-msg-bubble{padding:12px 16px;border-radius:16px;font-size:13.5px;line-height:1.45}.visitor .pastie-msg-bubble{background:var(--widget-accent);color:#fff;border-bottom-right-radius:4px}.agent .pastie-msg-bubble,.ai .pastie-msg-bubble{background:rgba(255,255,255,.05);border:1px solid var(--widget-border);color:var(--widget-text);border-bottom-left-radius:4px}.system .pastie-msg-bubble{background:rgba(255,255,255,.03);border:1px solid var(--widget-border);color:var(--widget-text-sec);padding:4px 12px;border-radius:20px;font-size:11.5px;text-align:center}.pastie-msg-time{font-size:9.5px;color:var(--widget-text-sec);margin-top:4px}.visitor .pastie-msg-time{align-self:flex-end}.agent .pastie-msg-time,.ai .pastie-msg-time{align-self:flex-start}.pastie-chat-footer{padding:14px 16px 18px;border-top:1px solid var(--widget-border)}.pastie-chat-input-row{display:flex;gap:8px}.pastie-chat-input-row input{flex-grow:1;background:rgba(255,255,255,.04);border:1px solid var(--widget-border);border-radius:10px;padding:10px 14px;color:var(--widget-text);font-family:inherit;font-size:13.5px;outline:none}.pastie-chat-input-row input:focus{border-color:var(--widget-accent)}.pastie-chat-send-btn{width:38px;height:38px;border-radius:10px;background:var(--widget-accent);color:#fff;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .2s;flex-shrink:0}.pastie-chat-send-btn:hover{transform:scale(1.05)}.pastie-chat-hide{display:none!important}.pastie-chat-thread::-webkit-scrollbar{width:4px}.pastie-chat-thread::-webkit-scrollbar-track{background:transparent}.pastie-chat-thread::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:10px}.pastie-ai-toggle-pill{position:fixed;bottom:95px;right:24px;z-index:38;background:rgba(15,12,30,.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);color:#f8fafc;padding:8px 16px;border-radius:20px;font-family:'Be Vietnam Pro',sans-serif;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.35);display:flex;align-items:center;gap:8px;transition:all .3s cubic-bezier(.4,0,.2,1)}.pastie-ai-toggle-pill:hover{transform:translateY(-2px);background:var(--widget-accent);border-color:var(--widget-accent)}.pastie-typing-indicator-bubble{padding:10px 14px!important}.pastie-typing-indicator{display:flex;align-items:center;gap:6px;height:14px}.pastie-typing-dot{width:6px;height:6px;background:rgba(255,255,255,.7);border-radius:50%;animation:pastieBouncing 1.4s infinite ease-in-out both}.pastie-typing-dot:nth-child(1){animation-delay:-.32s}.pastie-typing-dot:nth-child(2){animation-delay:-.16s}@keyframes pastieBouncing{0%,80%,100%{transform:scale(.3);opacity:.3}40%{transform:scale(1);opacity:1}}.pastie-chat-mini-bubble{position:absolute;bottom:80px;right:0;width:280px;background:var(--widget-bg);backdrop-filter:var(--widget-glass-blur);-webkit-backdrop-filter:var(--widget-glass-blur);border:1px solid var(--widget-border);border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.35);padding:8px 12px;display:flex;align-items:center;gap:10px;z-index:37;opacity:0;transform:translateY(10px) scale(.95);pointer-events:none;transition:all .3s cubic-bezier(.4,0,.2,1);font-family:'Be Vietnam Pro',sans-serif;cursor:pointer}.pastie-chat-mini-bubble.show{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}.pastie-chat-mini-bubble::after{content:'';position:absolute;bottom:-6px;right:24px;width:12px;height:12px;background:rgba(25,15,22,.94);border-right:1px solid var(--widget-border);border-bottom:1px solid var(--widget-border);transform:rotate(45deg)}.pastie-chat-mini-body{display:flex;gap:10px;align-items:center;flex-grow:1;overflow:hidden}.pastie-chat-mini-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#ff758f,#ff9eae);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0}.pastie-chat-mini-text-container{display:flex;flex-direction:column;gap:2px;flex-grow:1;overflow:hidden}.pastie-chat-mini-sender{display:none}.pastie-chat-mini-text{font-size:13px;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4;text-align:left}.pastie-chat-mini-close{background:transparent;border:none;color:rgba(255,255,255,.4);cursor:pointer;padding:2px;display:flex;align-items:center;justify-content:center;font-size:16px;transition:color .2s,transform .2s;border-radius:4px;flex-shrink:0;margin-left:4px}.pastie-chat-mini-close:hover{color:#f8fafc;background:rgba(255,255,255,.08)}.pastie-chat-header-action-btn{border:none;outline:none;font-family:'Be Vietnam Pro',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:6px 12px;border-radius:20px;cursor:pointer;transition:all .3s cubic-bezier(.4,0,.2,1);display:none;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,.15)}.pastie-chat-header-action-btn:hover{transform:translateY(-1px)}.pastie-chat-header-action-btn.meet-cskh{background:linear-gradient(135deg,#10b981,#059669);color:#fff;box-shadow:0 4px 12px rgba(16,185,129,.25)}.pastie-chat-header-action-btn.meet-cskh:hover{background:linear-gradient(135deg,#34d399,#10b981);box-shadow:0 6px 16px rgba(16,185,129,.35)}.pastie-chat-header-action-btn.close-cskh{background:linear-gradient(135deg,#f43f5e,#e11d48);color:#fff;box-shadow:0 4px 12px rgba(244,63,94,.25)}.pastie-chat-header-action-btn.close-cskh:hover{background:linear-gradient(135deg,#fb7185,#f43f5e);box-shadow:0 6px 16px rgba(244,63,94,.35)}.pastie-chat-avatar,.pastie-chat-mini-avatar{background:#fff;overflow:hidden;padding:3px}.pastie-chat-avatar img,.pastie-chat-mini-avatar img{width:100%;height:100%;object-fit:contain;display:block}.pastie-wa-link{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px;padding:9px 12px;border-radius:10px;background:#25D366;color:#fff;font-family:'Be Vietnam Pro',sans-serif;font-size:13px;font-weight:600;text-decoration:none;box-shadow:0 4px 12px rgba(37,211,102,.3);transition:all .2s}.pastie-wa-link:hover{background:#1ebe5d;transform:translateY(-1px)}.pastie-wa-link i{font-size:16px}.pastie-chat-attach-btn{width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--widget-border);color:var(--widget-text-sec);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s,color .2s;flex-shrink:0;font-size:16px}.pastie-chat-attach-btn:hover{background:rgba(255,255,255,.1);color:var(--widget-text)}.pastie-attachment-card{display:block;border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;margin-bottom:6px}.pastie-attachment-card img{display:block;max-width:220px;max-height:220px;width:100%;height:auto;border-radius:12px;object-fit:cover}.pastie-attachment-card video{display:block;max-width:230px;max-height:230px;width:100%;border-radius:12px;background:#000}.pastie-attachment-doc{display:flex;align-items:center;gap:8px;padding:9px 11px;background:rgba(255,255,255,.06);border:1px solid var(--widget-border);border-radius:12px;min-width:170px;max-width:230px;margin-bottom:6px}.pastie-attachment-doc i{font-size:19px;color:var(--widget-accent);flex-shrink:0}.pastie-attachment-doc-info{display:flex;flex-direction:column;gap:1px;min-width:0;flex-grow:1}.pastie-attachment-doc-name{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--widget-text)}.pastie-attachment-doc-size{font-size:10px;color:var(--widget-text-sec)}`;
+
+    // Keep unbroken URLs (for example Meta/WhatsApp setup links) inside the chat bubble.
+    const WIDGET_STYLE_OVERRIDES = `#pastie-chat-widget-root .pastie-msg{min-width:0}#pastie-chat-widget-root .pastie-msg-bubble,#pastie-chat-widget-root .pastie-msg-bubble *{min-width:0;overflow-wrap:anywhere;word-break:break-word}#pastie-chat-widget-root .pastie-chat-header{padding:14px 16px;gap:10px}#pastie-chat-widget-root .pastie-chat-header-action-btn.meet-cskh{display:inline-flex!important;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:8px 12px;border:1px solid rgba(255,255,255,.44);border-radius:12px;background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;font-size:11px;font-weight:800;letter-spacing:.15px;text-transform:none;white-space:nowrap;box-shadow:0 5px 16px rgba(5,150,105,.28)}#pastie-chat-widget-root .pastie-chat-header-action-btn.meet-cskh i{font-size:16px;line-height:1}#pastie-chat-widget-root .pastie-chat-header-action-btn.meet-cskh:hover{transform:translateY(-1px) scale(1.02);background:linear-gradient(135deg,#34d399 0%,#059669 100%);box-shadow:0 8px 20px rgba(5,150,105,.36)}#pastie-chat-widget-root .pastie-chat-header-action-btn.meet-cskh:active{transform:translateY(0) scale(.98)}#pastie-chat-widget-root .pastie-chat-header-action-btn.meet-cskh:disabled{opacity:.72;cursor:wait;transform:none}@media(max-width:480px){#pastie-chat-widget-root .pastie-chat-header{padding:13px 14px}#pastie-chat-widget-root .pastie-chat-header-action-btn.meet-cskh{min-height:38px;padding:8px 10px;font-size:10.5px}#pastie-chat-widget-root .pastie-chat-header-action-btn.meet-cskh i{font-size:17px}}`;
 
     function injectAssets() {
         if (!document.querySelector('#pastie-widget-style')) {
             const style = document.createElement('style');
             style.id = 'pastie-widget-style';
-            style.textContent = WIDGET_CSS;
+            style.textContent = WIDGET_CSS + WIDGET_STYLE_OVERRIDES;
             document.head.appendChild(style);
         }
         if (!document.querySelector('link[href*="Be+Vietnam+Pro"]')) {
@@ -310,6 +373,10 @@
                             </a>
                             <form id="pastie-chat-form" onsubmit="event.preventDefault();">
                                 <div class="pastie-chat-input-row">
+                                    <input type="file" id="pastie-chat-attachment-input" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip" hidden>
+                                    <button type="button" class="pastie-chat-attach-btn" id="btn-attach-file" title="Đính kèm file">
+                                        <i class="ri-attachment-2"></i>
+                                    </button>
                                     <input type="text" id="pastie-chat-input" placeholder="${t.chatInputPlaceholder}" autocomplete="off">
                                     <button type="submit" class="pastie-chat-send-btn" id="btn-send-message">
                                         <i class="ri-send-plane-2-fill"></i>
@@ -418,9 +485,11 @@
         if (!btn) return;
         const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
 
+        // Khách chỉ có một hành động: yêu cầu gặp nhân viên khi trợ lý tự động đang hoạt động.
+        // Không có luồng kết thúc/đóng phiên từ giao diện khách.
         if (state.mode === 'ai' && state.sessionId) {
             btn.className = 'pastie-chat-header-action-btn meet-cskh';
-            btn.textContent = t.btnMeetCSKH || 'Gặp CSKH';
+            btn.innerHTML = `<i class="ri-customer-service-2-fill" aria-hidden="true"></i><span>${t.btnMeetCSKH || 'Gặp CSKH'}</span>`;
             btn.style.display = 'block';
             btn.onclick = () => requestAgentDirect();
         } else {
@@ -445,48 +514,12 @@
             const data = await res.json();
             if (res.ok && data.success) {
                 state.mode = 'human';
-                sessionStorage.setItem('pastie_chat_mode', 'human');
+                storage.set('mode', 'human');
                 switchView('chat');
                 loadMessageHistory();
             }
         } catch(e) {}
         if (btn) btn.disabled = false;
-        updateHeaderActionButton();
-    }
-
-    async function handleEndChatSession() {
-        const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
-        if (!confirm(t.confirmEndChat)) return;
-
-        const btn = document.getElementById('pastie-chat-header-action-btn');
-        if (btn) { btn.disabled = true; btn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i>`; }
-
-        try {
-            await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/close`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionId: state.sessionId })
-            });
-        } catch(e) {}
-
-        // Clear session, go back to init form
-        state.sessionId = null;
-        state.mode = 'init';
-        state.messages = [];
-        state.lastMessageCount = 0;
-        state.offset = 0;
-        state.hasMore = true;
-        state.requestingAgent = false;
-        state.visitorName = '';
-        state.visitorEmail = '';
-        sessionStorage.removeItem('pastie_chat_session_id');
-        sessionStorage.removeItem('pastie_chat_mode');
-        sessionStorage.removeItem('pastie_chat_visitor_name');
-        sessionStorage.removeItem('pastie_chat_visitor_email');
-        stopPolling();
-
-        if (btn) btn.disabled = false;
-        switchView('init');
         updateHeaderActionButton();
     }
 
@@ -498,21 +531,21 @@
         state.offset = 0;
         state.hasMore = true;
         state.requestingAgent = false;
-        sessionStorage.removeItem('pastie_chat_session_id');
-        sessionStorage.removeItem('pastie_chat_mode');
+        storage.remove('session_id');
+        storage.remove('mode');
         stopPolling();
 
         try {
             const r = await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/anonymous`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, visitorLang: state.detectedLang || 'vi' })
+                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, qrCode: CONFIG.QR_CODE || undefined, visitorLang: state.detectedLang || 'vi' })
             });
             const d = await r.json();
             if (d.success) {
                 state.sessionId = d.sessionId;
-                sessionStorage.setItem('pastie_chat_session_id', d.sessionId);
-                sessionStorage.setItem('pastie_chat_mode', 'ai');
+                storage.set('session_id', d.sessionId);
+                storage.set('mode', 'ai');
                 startPolling();
                 loadMessageHistory();
                 updateHeaderActionButton();
@@ -527,20 +560,20 @@
         if (!email || state.sessionId) return;
         state.visitorName = name || 'Khách';
         state.visitorEmail = email;
-        sessionStorage.setItem('pastie_chat_visitor_name', state.visitorName);
-        sessionStorage.setItem('pastie_chat_visitor_email', state.visitorEmail);
+        storage.set('visitor_name', state.visitorName);
+        storage.set('visitor_email', state.visitorEmail);
         try {
             const r = await fetch(`${CONFIG.BACKEND_URL}/api/chats/session/identified`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, name: state.visitorName, email, visitorLang: state.detectedLang || 'vi' })
+                body: JSON.stringify({ projectId: CONFIG.PROJECT_ID, qrCode: CONFIG.QR_CODE || undefined, name: state.visitorName, email, visitorLang: state.detectedLang || 'vi' })
             });
             const d = await r.json();
             if (d.success && d.sessionId) {
                 state.sessionId = d.sessionId;
                 state.mode = 'ai';
-                sessionStorage.setItem('pastie_chat_session_id', d.sessionId);
-                sessionStorage.setItem('pastie_chat_mode', 'ai');
+                storage.set('session_id', d.sessionId);
+                storage.set('mode', 'ai');
                 switchView('chat');
             } else {
                 switchView('init');
@@ -708,8 +741,8 @@
             if (res.ok) {
                 state.visitorName = name;
                 state.visitorEmail = email;
-                sessionStorage.setItem('pastie_chat_visitor_name', name);
-                sessionStorage.setItem('pastie_chat_visitor_email', email);
+                storage.set('visitor_name', name);
+                storage.set('visitor_email', email);
                 switchView('otp');
                 startOtpCooldown();
             } else {
@@ -760,7 +793,7 @@
                 if (res.ok && data.success) {
                     state.mode = 'human';
                     state.requestingAgent = false;
-                    sessionStorage.setItem('pastie_chat_mode', 'human');
+                    storage.set('mode', 'human');
                     switchView('chat');
                     loadMessageHistory();
                 } else {
@@ -777,6 +810,7 @@
                         code,
                         name: state.visitorName,
                         projectId: CONFIG.PROJECT_ID,
+                        qrCode: CONFIG.QR_CODE || undefined,
                         language: state.detectedLang
                     })
                 });
@@ -785,8 +819,8 @@
                     state.mode = 'ai';
                     state.sessionId = data.sessionId;
                     state.requestingAgent = false;
-                    sessionStorage.setItem('pastie_chat_session_id', data.sessionId);
-                    sessionStorage.setItem('pastie_chat_mode', 'ai');
+                    storage.set('session_id', data.sessionId);
+                    storage.set('mode', 'ai');
                     switchView('chat');
                 } else {
                     errorEl.textContent = data.error || t.otpErrorInvalid;
@@ -882,9 +916,68 @@
         }
     }
 
+    // Send a file attachment (image / video / document) in human or AI mode.
+    async function sendAttachment(file) {
+        if (!file || state.isUploadingAttachment || !state.sessionId) return;
+        if ((state.mode !== 'ai' && state.mode !== 'human')) return;
+
+        state.isUploadingAttachment = true;
+        const tempId = 'temp_' + Date.now();
+        const tempObjectUrl = URL.createObjectURL(file);
+        const tempType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'document';
+        const captionByType = { image: '📷 [Hình ảnh]', video: '🎥 [Video]', document: '📎 [Tài liệu]' };
+        const newMsgObj = {
+            id: tempId,
+            sender: 'visitor',
+            original_text: captionByType[tempType],
+            created_at: new Date(),
+            attachment_key: 'pending',
+            attachment_url: tempObjectUrl,
+            attachment_type: tempType,
+            attachment_name: file.name,
+            attachment_size: file.size,
+        };
+        state.messages.push(newMsgObj);
+        renderMessageThread(false);
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('sender', 'visitor');
+
+            const res = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/attachments`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (res.status === 404 || res.status === 410) {
+                await autoRestartAISession();
+                return;
+            }
+
+            const data = await res.json();
+            const idx = state.messages.findIndex(m => m.id === tempId);
+            if (data.success && data.message) {
+                if (idx !== -1) state.messages[idx] = data.message;
+            } else {
+                if (idx !== -1) state.messages.splice(idx, 1);
+            }
+            renderMessageThread(false);
+        } catch (e) {
+            console.error('Failed to send attachment:', e);
+            state.messages = state.messages.filter(m => m.id !== tempId);
+            renderMessageThread(false);
+        } finally {
+            URL.revokeObjectURL(tempObjectUrl);
+            state.isUploadingAttachment = false;
+        }
+    }
+
     // --- Polling & Message History ---
     async function loadMessageHistory(isLoadMore = false) {
-        if (!state.sessionId) return;
+        // A slow mobile request must not race the next polling cycle and redraw old data.
+        if (!state.sessionId || state.isSyncing) return;
+        state.isSyncing = true;
 
         let fetchLimit = state.limit;
         let fetchOffset = state.offset;
@@ -952,7 +1045,7 @@
                     const st = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/state?_=${Date.now()}`).then(r => r.ok ? r.json() : null);
                     if (st && st.mode && st.mode !== state.mode) {
                         state.mode = st.mode;
-                        sessionStorage.setItem('pastie_chat_mode', st.mode);
+                        storage.set('mode', st.mode);
                         updateHeaderActionButton();
                     }
                 } catch {}
@@ -964,6 +1057,8 @@
             refreshUnreadBadge();
         } catch(e) {
             console.error('Failed to load message history:', e);
+        } finally {
+            state.isSyncing = false;
         }
     }
 
@@ -1017,10 +1112,12 @@
             let displayHtml = '';
             if (msg.sender === 'visitor') {
                 const primaryText = msg.translated_text || msg.original_text;
-                displayHtml = `<div class="pastie-msg-bubble"><div>${escapeHtml(primaryText)}</div></div><div class="pastie-msg-time">${timeStr}</div>`;
+                const attachmentHtml = renderAttachmentHtml(msg);
+                displayHtml = `<div class="pastie-msg-bubble">${attachmentHtml}<div>${escapeHtml(primaryText)}</div></div><div class="pastie-msg-time">${timeStr}</div>`;
             } else if (msg.sender === 'agent' || msg.sender === 'ai') {
                 const primaryText = msg.translated_text || msg.original_text;
-                displayHtml = `<div class="pastie-msg-bubble"><div>${escapeHtml(primaryText)}</div></div><div class="pastie-msg-time">${timeStr}</div>`;
+                const attachmentHtml = renderAttachmentHtml(msg);
+                displayHtml = `<div class="pastie-msg-bubble">${attachmentHtml}<div>${escapeHtml(primaryText)}</div></div><div class="pastie-msg-time">${timeStr}</div>`;
             } else {
                 const primaryText = msg.translated_text || msg.original_text;
                 displayHtml = `<div class="pastie-msg-bubble"><div>${escapeHtml(primaryText)}</div></div>`;
@@ -1104,6 +1201,33 @@
         return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
     }
 
+    function formatAttachmentSize(bytes) {
+        if (!bytes && bytes !== 0) return '';
+        if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    function renderAttachmentHtml(msg) {
+        if (!msg.attachment_key || !msg.attachment_url) return '';
+        const url = msg.attachment_url;
+        const name = escapeHtml(msg.attachment_name || 'file');
+        const sizeStr = formatAttachmentSize(msg.attachment_size);
+
+        if (msg.attachment_type === 'image') {
+            return `<a class="pastie-attachment-card" href="${url}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="${name}" loading="lazy"></a>`;
+        }
+        if (msg.attachment_type === 'video') {
+            return `<div class="pastie-attachment-card"><video src="${url}" controls preload="metadata"></video></div>`;
+        }
+        return `<a class="pastie-attachment-doc" href="${url}" target="_blank" rel="noopener noreferrer" download="${name}">
+            <i class="ri-file-text-line"></i>
+            <div class="pastie-attachment-doc-info">
+                <span class="pastie-attachment-doc-name">${name}</span>
+                ${sizeStr ? `<span class="pastie-attachment-doc-size">${sizeStr}</span>` : ''}
+            </div>
+        </a>`;
+    }
+
     // Handle URL hash to trigger human chat (#chat-with-human)
     function checkHashForHumanChat() {
         if (window.location.hash === '#chat-with-human') {
@@ -1179,6 +1303,18 @@
         // Chat form
         const chatForm = document.getElementById('pastie-chat-form');
         if (chatForm) chatForm.addEventListener('submit', (e) => { e.preventDefault(); sendMessage(); });
+
+        // Attachment button
+        const attachBtn = document.getElementById('btn-attach-file');
+        const attachInput = document.getElementById('pastie-chat-attachment-input');
+        if (attachBtn && attachInput) {
+            attachBtn.addEventListener('click', () => attachInput.click());
+            attachInput.addEventListener('change', (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (file) sendAttachment(file);
+                e.target.value = '';
+            });
+        }
 
         // Enter key bindings
         const nameInput = document.getElementById('input-name');

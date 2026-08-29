@@ -80,17 +80,42 @@ async function notifyChatRecipients(session, { title, preview = '', tag }) {
   void notifyDealBell(session, { title, preview });
   if (!vapidConfigured) return;
   try {
-    const subscriptions = await db.query(
-      `SELECT ps.id, ps.endpoint, ps.p256dh, ps.auth
-       FROM push_subscriptions ps JOIN admins a ON a.id = ps.admin_id
-       WHERE a.is_active = TRUE AND a.role IN ('superadmin', 'project_admin', 'agent')
-         AND (
-           a.role = 'superadmin'
-           OR ($2::integer IS NOT NULL AND a.id = $2)
-           OR ($2::integer IS NULL AND a.project_id = $1)
-         )`,
-      [session.project_id, session.claimed_by_admin_id || null]
-    );
+    let subscriptions;
+    if (session.group_id) {
+      // Chat đi theo nhóm: chỉ báo cho Sale đang đủ điều kiện nhận chat của nhóm
+      // đó ngay lúc này, cộng Agent quản lý nhóm và superadmin. Sale ngoài ca
+      // không bị làm phiền, và Agent luôn biết khi không có ai trực (mục 13).
+      const eligible = await listAvailableSales(session.group_id);
+      // Sale ưu tiên chỉ được ưu tiên khi đang trong ca; ngoài ca thì bỏ qua chứ
+      // không chặn khách (mục 12 kế hoạch).
+      const preferred = session.preferred_sale_id && eligible.includes(session.preferred_sale_id)
+        ? [session.preferred_sale_id]
+        : eligible;
+      const targets = session.claimed_by_admin_id ? [session.claimed_by_admin_id] : preferred;
+      subscriptions = await db.query(
+        `SELECT ps.id, ps.endpoint, ps.p256dh, ps.auth
+         FROM push_subscriptions ps JOIN admins a ON a.id = ps.admin_id
+         WHERE a.is_active = TRUE
+           AND (
+             a.id = ANY($2::int[])
+             OR a.role = 'superadmin'
+             OR a.id = (SELECT agent_id FROM agent_groups WHERE id = $3)
+           )`,
+        [session.project_id, targets, session.group_id]
+      );
+    } else {
+      subscriptions = await db.query(
+        `SELECT ps.id, ps.endpoint, ps.p256dh, ps.auth
+         FROM push_subscriptions ps JOIN admins a ON a.id = ps.admin_id
+         WHERE a.is_active = TRUE AND a.role IN ('superadmin', 'project_admin', 'agent', 'sale')
+           AND (
+             a.role = 'superadmin'
+             OR ($2::integer IS NOT NULL AND a.id = $2)
+             OR ($2::integer IS NULL AND a.project_id = $1)
+           )`,
+        [session.project_id, session.claimed_by_admin_id || null]
+      );
+    }
     const payload = JSON.stringify({
       title,
       body: `${session.visitor_name || 'Khách hàng'}: ${(preview || 'Có tin nhắn mới cần phản hồi.').slice(0, 120)}`,
@@ -154,7 +179,8 @@ setInterval(() => {
 // Hết phiên QR (hết giờ hoặc bị quét đè) => CHỈ đóng cuộc chat (status='closed'),
 // KHÔNG xóa: lịch sử hội thoại và file đính kèm phải giữ lại để tra cứu sau.
 setInterval(() => {
-  db.query(`UPDATE sessions SET status = 'closed'
+  db.query(`UPDATE sessions SET status = 'closed',
+                   routing_status = CASE WHEN routing_status IS NULL THEN NULL ELSE 'closed' END
             WHERE qr_account_id IS NOT NULL AND status = 'active'
               AND expires_at IS NOT NULL AND expires_at <= NOW()`)
     .catch((error) => console.error('[QR Concierge] Không thể đóng session hết hạn:', error.message));
@@ -523,25 +549,192 @@ async function checkAdminAuth(req, res, next) {
   }
 }
 
-const ADMIN_ROLES = new Set(['superadmin', 'project_owner', 'project_admin', 'agent']);
+const ADMIN_ROLES = new Set(['superadmin', 'project_owner', 'project_admin', 'agent', 'sale']);
 const isSuperAdmin = (admin) => admin?.role === 'superadmin';
 const isProjectOwner = (admin) => admin?.role === 'project_owner';
 const isProjectAdmin = (admin) => admin?.role === 'project_admin';
-const isChatStaff = (admin) => isSuperAdmin(admin) || isProjectOwner(admin) || isProjectAdmin(admin) || admin?.role === 'agent';
+// 'agent' giờ là cấp QUẢN LÝ Sale (chỉ trong project qr_concierge); 'sale' là
+// người trực tiếp trả lời chat — vai trò mà 'agent' đảm nhiệm trước đây.
+const isAgentManager = (admin) => admin?.role === 'agent';
+const isSale = (admin) => admin?.role === 'sale';
+const isChatStaff = (admin) => isSuperAdmin(admin) || isProjectOwner(admin) || isProjectAdmin(admin) || isAgentManager(admin) || isSale(admin);
 
 function canAccessProject(admin, projectId) {
   return isSuperAdmin(admin) || (admin?.project_id && admin.project_id === projectId);
+}
+
+// --- Khung giờ làm việc ------------------------------------------------------
+// Giờ lưu trong DB là TIME trần kèm tên timezone. So sánh thực hiện ở đây bằng
+// Intl thay vì trong SQL, vì Postgres trên Railway chạy UTC và việc dựa vào tz
+// database của server là nguồn lỗi lệch múi giờ kinh điển.
+const DEFAULT_WORK_TIMEZONE = process.env.WORK_TIMEZONE || 'Asia/Bangkok';
+// Đệm sau khi hết ca, để Sale kịp kết thúc cuộc đang dở thay vì bị cắt giữa câu.
+const SHIFT_GRACE_MINUTES = Number(process.env.SHIFT_GRACE_MINUTES || 10);
+
+// Số phút kể từ 00:00 tại timezone chỉ định.
+function minutesNowInZone(timeZone) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: timeZone || DEFAULT_WORK_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0);
+  return (hour % 24) * 60 + minute;
+}
+
+function parseTimeToMinutes(value) {
+  const [hour, minute] = String(value || '00:00').split(':');
+  return (Number(hour) || 0) * 60 + (Number(minute) || 0);
+}
+
+// Một khung giờ. start < end là ca trong ngày; start > end là ca vắt qua nửa
+// đêm (ví dụ 18:00-02:00) nên điều kiện là "hoặc" thay vì "và".
+function isWithinWindow(row, graceMinutes = 0) {
+  if (!row || row.is_active === false) return false;
+  const now = minutesNowInZone(row.timezone);
+  const start = parseTimeToMinutes(row.start_time);
+  const end = parseTimeToMinutes(row.end_time) + graceMinutes;
+  if (start === end) return true; // khung rỗng coi như cả ngày
+  if (start < end) return now >= start && now < end;
+  return now >= start || now < end % (24 * 60);
+}
+
+function isWithinAnyWindow(rows, graceMinutes = 0) {
+  if (!Array.isArray(rows) || rows.length === 0) return true; // chưa cấu hình = không giới hạn
+  return rows.some((row) => isWithinWindow(row, graceMinutes));
+}
+
+// Mô tả khung giờ cho thông báo lỗi: "08:00 đến 17:00", nhiều khung nối bằng "hoặc".
+function describeWindows(rows) {
+  return (rows || [])
+    .filter((row) => row.is_active !== false)
+    .map((row) => `${String(row.start_time).slice(0, 5)} đến ${String(row.end_time).slice(0, 5)}`)
+    .join(' hoặc ');
+}
+
+async function getAccessHours(adminId, queryRunner = db) {
+  const result = await queryRunner.query(
+    `SELECT start_time, end_time, timezone, is_active FROM account_access_hours
+     WHERE admin_id = $1 AND is_active = TRUE ORDER BY start_time`,
+    [adminId]
+  );
+  return result.rows;
+}
+
+// Danh sách project QR Concierge, có cache vì được hỏi ở mọi request. Toàn bộ
+// phân cấp Agent - Sale (kể cả luật khung giờ) CHỈ áp dụng cho các project này.
+let qrProjectIdsCache = { ids: new Set(), fetchedAt: 0 };
+const QR_PROJECT_CACHE_MS = 60000;
+
+async function getQrProjectIds() {
+  if (Date.now() - qrProjectIdsCache.fetchedAt < QR_PROJECT_CACHE_MS) return qrProjectIdsCache.ids;
+  try {
+    const result = await db.query(`SELECT id FROM projects WHERE project_type = 'qr_concierge'`);
+    qrProjectIdsCache = { ids: new Set(result.rows.map((row) => row.id)), fetchedAt: Date.now() };
+  } catch (error) {
+    console.error('Không tải được danh sách project QR:', error.message);
+  }
+  return qrProjectIdsCache.ids;
+}
+
+// Chỉ Agent quản lý và Sale CỦA PROJECT QR mới bị ràng buộc khung giờ.
+//
+// Quan trọng: DealPhuQuoc cũng cấp role 'agent' (xem resolveAdminUserAndLogin),
+// nên nếu chỉ xét role thì nhân viên DealPhuQuoc sẽ bị khóa theo ca — đúng thứ
+// mục 1 của kế hoạch cấm. Vì vậy phải xét thêm project_id.
+async function isHourRestrictedAdmin(admin) {
+  if (admin?.role !== 'agent' && admin?.role !== 'sale') return false;
+  if (!admin?.project_id) return false; // không gắn project thì không thuộc phạm vi QR
+  return (await getQrProjectIds()).has(admin.project_id);
+}
+
+// Trả về null nếu được phép, hoặc chuỗi thông báo nếu ngoài giờ.
+async function checkWorkingHours(admin, graceMinutes = 0) {
+  if (!(await isHourRestrictedAdmin(admin))) return null;
+  const rows = await getAccessHours(admin.id);
+  if (isWithinAnyWindow(rows, graceMinutes)) return null;
+  const windows = describeWindows(rows);
+  return windows
+    ? `Tài khoản của bạn chỉ được phép đăng nhập từ ${windows}.`
+    : 'Tài khoản của bạn hiện không nằm trong khung giờ làm việc.';
+}
+
+// Chặn mọi thao tác ngoài giờ và thu hồi luôn token, để dashboard tự đăng xuất
+// ở lần gọi API kế tiếp thay vì tiếp tục hiển thị dữ liệu cũ.
+async function requireWorkingHours(req, res, next) {
+  try {
+    const message = await checkWorkingHours(req.admin, SHIFT_GRACE_MINUTES);
+    if (!message) return next();
+    if (req.admin?.token) {
+      await db.query('DELETE FROM admin_sessions WHERE token = $1', [req.admin.token]).catch(() => {});
+    }
+    return res.status(403).json({ error: message, code: 'OUT_OF_HOURS' });
+  } catch (error) {
+    console.error('Working-hours check error:', error);
+    return next(); // lỗi tra cứu giờ không được khóa người đang làm việc
+  }
+}
+
+// Sale có được nhận chat của nhóm này lúc này không: phải vừa trong giờ đăng
+// nhập, vừa trong giờ nhận chat của chính nhóm đó (mục 9 của kế hoạch).
+async function isSaleAvailableForGroup(saleId, groupId, queryRunner = db) {
+  const result = await queryRunner.query(
+    `SELECT gs.sale_id,
+            a.is_active,
+            COALESCE(json_agg(DISTINCT jsonb_build_object(
+              'start_time', gh.start_time, 'end_time', gh.end_time, 'timezone', gh.timezone
+            )) FILTER (WHERE gh.id IS NOT NULL), '[]') AS group_hours
+     FROM agent_group_sales gs
+     JOIN admins a ON a.id = gs.sale_id
+     LEFT JOIN group_sale_hours gh
+       ON gh.group_id = gs.group_id AND gh.sale_id = gs.sale_id AND gh.is_active = TRUE
+     WHERE gs.group_id = $1 AND gs.sale_id = $2 AND gs.is_active = TRUE
+     GROUP BY gs.sale_id, a.is_active`,
+    [groupId, saleId]
+  );
+  if (result.rows.length === 0 || !result.rows[0].is_active) return false;
+  if (!isWithinAnyWindow(await getAccessHours(saleId, queryRunner))) return false;
+  return isWithinAnyWindow(result.rows[0].group_hours);
+}
+
+// Danh sách Sale đủ điều kiện nhận chat của một nhóm ngay lúc này.
+async function listAvailableSales(groupId, queryRunner = db) {
+  const result = await queryRunner.query(
+    `SELECT gs.sale_id AS id,
+            COALESCE(json_agg(DISTINCT jsonb_build_object(
+              'start_time', gh.start_time, 'end_time', gh.end_time, 'timezone', gh.timezone
+            )) FILTER (WHERE gh.id IS NOT NULL), '[]') AS group_hours,
+            COALESCE(json_agg(DISTINCT jsonb_build_object(
+              'start_time', ah.start_time, 'end_time', ah.end_time, 'timezone', ah.timezone
+            )) FILTER (WHERE ah.id IS NOT NULL), '[]') AS access_hours
+     FROM agent_group_sales gs
+     JOIN admins a ON a.id = gs.sale_id AND a.is_active = TRUE
+     LEFT JOIN group_sale_hours gh
+       ON gh.group_id = gs.group_id AND gh.sale_id = gs.sale_id AND gh.is_active = TRUE
+     LEFT JOIN account_access_hours ah ON ah.admin_id = gs.sale_id AND ah.is_active = TRUE
+     WHERE gs.group_id = $1 AND gs.is_active = TRUE
+     GROUP BY gs.sale_id`,
+    [groupId]
+  );
+  return result.rows
+    .filter((row) => isWithinAnyWindow(row.access_hours) && isWithinAnyWindow(row.group_hours))
+    .map((row) => row.id);
 }
 
 async function resolveQrChatAccount(projectId, qrCode, queryRunner = db) {
   if (!qrCode) return null;
   const result = await queryRunner.query(
     `SELECT q.id, q.project_id, q.owner_admin_id, q.label,
+            q.group_id, q.preferred_sale_id,
             COALESCE(p.ai_enabled, p.project_type <> 'qr_concierge') AS ai_enabled,
-            a.full_name AS owner_name
+            a.full_name AS owner_name,
+            g.name AS group_name
        FROM qr_chat_accounts q
        JOIN projects p ON p.id = q.project_id
        JOIN admins a ON a.id = q.owner_admin_id
+       LEFT JOIN agent_groups g ON g.id = q.group_id
       WHERE q.project_id = $1 AND q.code = $2
         AND q.is_active = TRUE AND p.project_type = 'qr_concierge' AND a.is_active = TRUE`,
     [projectId, qrCode]
@@ -554,7 +747,9 @@ async function closeActiveQrSession(qrAccountId, queryRunner = db) {
   // previous customer so the assigned agent only has the latest conversation.
   // Chỉ ĐÓNG cuộc chat cũ, không xóa — lịch sử vẫn tra cứu được sau này.
   await queryRunner.query(
-    `UPDATE sessions SET status = 'closed' WHERE qr_account_id = $1 AND status = 'active'`,
+    `UPDATE sessions SET status = 'closed',
+            routing_status = CASE WHEN routing_status IS NULL THEN NULL ELSE 'closed' END
+      WHERE qr_account_id = $1 AND status = 'active'`,
     [qrAccountId]
   );
 }
@@ -564,7 +759,8 @@ async function closeActiveQrSessionsForVisitor(projectId, email, queryRunner = d
   // Một khách chỉ có một phiên QR đang mở trong project. Khi khách đăng nhập từ
   // QR khác, đóng phiên QR cũ nhưng vẫn giữ lịch sử cho Agent tra cứu.
   await queryRunner.query(
-    `UPDATE sessions SET status = 'closed'
+    `UPDATE sessions SET status = 'closed',
+            routing_status = CASE WHEN routing_status IS NULL THEN NULL ELSE 'closed' END
       WHERE project_id = $1
         AND LOWER(visitor_email) = LOWER($2)
         AND qr_account_id IS NOT NULL
@@ -576,7 +772,12 @@ async function closeActiveQrSessionsForVisitor(projectId, email, queryRunner = d
 async function expireQrSessionIfNeeded(session, queryRunner = db) {
   if (session?.status === 'active' && session.qr_account_id && session.expires_at && new Date(session.expires_at) <= new Date()) {
     // Hết giờ phiên QR => chỉ đóng cuộc chat, giữ nguyên lịch sử và file đính kèm.
-    await queryRunner.query(`UPDATE sessions SET status = 'closed' WHERE id = $1 AND status = 'active'`, [session.id]);
+    await queryRunner.query(
+      `UPDATE sessions SET status = 'closed',
+              routing_status = CASE WHEN routing_status IS NULL THEN NULL ELSE 'closed' END
+        WHERE id = $1 AND status = 'active'`,
+      [session.id]
+    );
     session.status = 'closed';
   }
   return session;
@@ -935,9 +1136,13 @@ app.post('/api/otp/verify', async (req, res) => {
       await closeActiveQrSession(qrAccount.id);
     }
     await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id, qr_account_id, expires_at)
-       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8, $9, $10, $11)`,
-      [sessionId, projectId, finalName, email, finalLang, browser, device, clientIp, assignedAdminId, qrAccount?.id || null, qrAccount ? new Date(Date.now() + QR_CHAT_SESSION_MS) : null]
+      // Định tuyến QR: chat vào hàng đợi của nhóm gắn với QR. routing_status chỉ
+      // được đặt cho phiên QR có nhóm — phiên của flow cũ vẫn để NULL nên không
+      // lọt vào bộ lọc "đang chờ / đang xử lý" của Agent.
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id, qr_account_id, expires_at, group_id, preferred_sale_id, routing_status)
+       VALUES ($1, $2, $3, $4, $5, TRUE, 'active', $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      [sessionId, projectId, finalName, email, finalLang, browser, device, clientIp, assignedAdminId, qrAccount?.id || null, qrAccount ? new Date(Date.now() + QR_CHAT_SESSION_MS) : null,
+       qrAccount?.group_id || null, qrAccount?.preferred_sale_id || null, qrAccount?.group_id ? 'waiting' : null]
     );
 
     // Only chatbot-enabled projects receive an automatic greeting.
@@ -1040,12 +1245,39 @@ app.post('/api/otp/verify', async (req, res) => {
  *         description: Lỗi hệ thống khi dịch/lưu tin nhắn
  */
 // 3. Log Message and Translate (2-way Translation & AI Chatbot / Multi-Channel Router)
+// Ba endpoint gửi tin / đính kèm / ghi âm dùng chung cho cả khách lẫn nhân viên
+// nên không gắn checkAdminAuth được. Dashboard vẫn gửi kèm Bearer token, nên khi
+// sender là nhân viên ta soi token đó để chặn thao tác ngoài ca (mục 8 kế hoạch).
+// Khách không có token thì bỏ qua, không ảnh hưởng gì.
+async function blockStaffOutOfHours(req, res, sender) {
+  if (sender !== 'agent' && sender !== 'admin') return false;
+  const header = req.headers['authorization'] || '';
+  if (!header.startsWith('Bearer ')) return false;
+  const token = header.substring(7);
+  try {
+    const result = await db.query(
+      `SELECT a.id, a.role, a.project_id FROM admin_sessions s JOIN admins a ON a.id = s.admin_id WHERE s.token = $1`,
+      [token]
+    );
+    if (result.rows.length === 0) return false;
+    const message = await checkWorkingHours(result.rows[0], SHIFT_GRACE_MINUTES);
+    if (!message) return false;
+    await db.query('DELETE FROM admin_sessions WHERE token = $1', [token]).catch(() => {});
+    res.status(403).json({ error: message, code: 'OUT_OF_HOURS' });
+    return true;
+  } catch (error) {
+    console.error('Staff out-of-hours check error:', error);
+    return false;
+  }
+}
+
 app.post('/api/chats/message', async (req, res) => {
   const { sessionId, sender, text, targetLang, visitorLang, adminLang } = req.body;
 
   if (!sessionId || !sender || !text || !targetLang) {
     return res.status(400).json({ error: 'Thiếu thông số đầu vào bắt buộc.' });
   }
+  if (await blockStaffOutOfHours(req, res, sender)) return;
 
   try {
     // Verify session is active
@@ -1358,6 +1590,7 @@ app.post('/api/chats/:sessionId/attachments', uploadAttachmentMiddleware, async 
   const { sessionId } = req.params;
   const { sender } = req.body;
 
+  if (await blockStaffOutOfHours(req, res, sender)) return;
   if (!sessionId || (sender !== 'visitor' && sender !== 'agent')) {
     return res.status(400).json({ error: 'Thiếu thông số đầu vào bắt buộc.' });
   }
@@ -1638,13 +1871,22 @@ app.post('/api/chats/session/close', async (req, res) => {
 app.get('/api/chats/:sessionId/state', async (req, res) => {
   try {
     const r = await db.query(
-      'SELECT id, status, claimed_by_admin_id, requested_agent, qr_account_id, expires_at FROM sessions WHERE id = $1',
+      'SELECT id, status, claimed_by_admin_id, requested_agent, qr_account_id, expires_at, group_id, routing_status FROM sessions WHERE id = $1',
       [req.params.sessionId]
     );
     if (r.rows.length === 0) return res.status(404).json({ error: 'not found' });
     const s = await expireQrSessionIfNeeded(r.rows[0]);
     const mode = (s.claimed_by_admin_id || s.requested_agent) ? 'human' : 'ai';
-    res.json({ status: s.status, mode });
+    // Khách cần biết đang chờ hay đã có người tiếp nhận (mục 13 kế hoạch).
+    // waitingForStaff = chưa ai nhận VÀ hiện không có Sale nào trong ca, để portal
+    // hiện đúng "đang chờ tư vấn viên" thay vì im lặng.
+    let routingStatus = s.routing_status || null;
+    let waitingForStaff = false;
+    if (routingStatus === 'waiting' && s.group_id) {
+      const available = await listAvailableSales(s.group_id);
+      waitingForStaff = available.length === 0;
+    }
+    res.json({ status: s.status, mode, routingStatus, waitingForStaff });
   } catch (e) {
     res.status(500).json({ error: 'state error' });
   }
@@ -1782,9 +2024,13 @@ app.post('/api/chats/session/identified', async (req, res) => {
   try {
     if (qrAccount) await closeActiveQrSession(qrAccount.id);
     await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, visitor_phone, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id, qr_account_id, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, TRUE, 'active', $7, $8, $9, $10, $11, $12)`,
-      [sessionId, projectId, name || 'Khách', email, phone || null, visitorLang, browser, device, clientIp, assignedAdminId, qrAccount?.id || null, qrAccount ? new Date(Date.now() + QR_CHAT_SESSION_MS) : null]
+      // Định tuyến QR: chat vào hàng đợi của nhóm gắn với QR. routing_status chỉ
+      // được đặt cho phiên QR có nhóm — phiên của flow cũ vẫn để NULL nên không
+      // lọt vào bộ lọc "đang chờ / đang xử lý" của Agent.
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, visitor_phone, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id, qr_account_id, expires_at, group_id, preferred_sale_id, routing_status)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, 'active', $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+      [sessionId, projectId, name || 'Khách', email, phone || null, visitorLang, browser, device, clientIp, assignedAdminId, qrAccount?.id || null, qrAccount ? new Date(Date.now() + QR_CHAT_SESSION_MS) : null,
+       qrAccount?.group_id || null, qrAccount?.preferred_sale_id || null, qrAccount?.group_id ? 'waiting' : null]
     );
     res.json({ success: true, sessionId });
   } catch (error) {
@@ -2249,7 +2495,7 @@ async function getChatOrderForVisitor(sessionId) {
 }
 
 // Agent creates a draft bill. Example body: { sessionId, items:[{name:'Nước',quantity:2,unitPrice:10000}] }
-app.post('/api/admin/orders', checkAdminAuth, async (req, res) => {
+app.post('/api/admin/orders', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const { sessionId, items } = req.body || {};
   if (!sessionId || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Cần sessionId và ít nhất một sản phẩm.' });
   const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1 AND status = $2', [sessionId, 'active']);
@@ -2319,7 +2565,7 @@ app.post('/samplebill', checkAdminAuth, async (req, res) => {
 // payload with its own structured bill and optional image/PDF URLs. It uses the
 // existing staff authentication for now; a dedicated integration key can be
 // added when the external system is connected.
-app.put('/api/admin/orders/:orderId/invoice', checkAdminAuth, async (req, res) => {
+app.put('/api/admin/orders/:orderId/invoice', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const { invoice, items, totalAmount } = req.body || {};
   if (!invoice || typeof invoice !== 'object' || Array.isArray(invoice)) {
     return res.status(400).json({ error: 'invoice phải là một JSON object.' });
@@ -2394,7 +2640,7 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
   res.json({ success: true, order: updated.rows[0] });
 });
 
-app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, async (req, res) => {
+app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const orderRes = await db.query('SELECT o.*, s.project_id FROM chat_orders o JOIN sessions s ON s.id = o.session_id WHERE o.id = $1', [req.params.orderId]);
   const order = orderRes.rows[0];
   if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
@@ -2415,7 +2661,12 @@ app.post('/api/chats/:sessionId/order/finish', async (req, res) => {
   try {
     // Khách bấm "Kết thúc" => CHỈ đóng cuộc trò chuyện. Tin nhắn, hóa đơn và file
     // đính kèm được giữ nguyên để Agent/Superadmin còn tra cứu lại sau này.
-    await db.query(`UPDATE sessions SET status = 'closed' WHERE id = $1`, [req.params.sessionId]);
+    await db.query(
+      `UPDATE sessions SET status = 'closed',
+              routing_status = CASE WHEN routing_status IS NULL THEN NULL ELSE 'closed' END
+        WHERE id = $1`,
+      [req.params.sessionId]
+    );
     res.json({ success: true, action: 'logout_and_close_chat' });
   } catch (error) {
     console.error('Finish order error:', error);
@@ -2447,6 +2698,9 @@ app.post('/api/admin/login', async (req, res) => {
     if (!isValid) {
       return res.status(401).json({ error: 'Tên đăng nhập hoặc mật khẩu không chính xác.' });
     }
+
+    const hoursError = await checkWorkingHours(admin);
+    if (hoursError) return res.status(403).json({ error: hoursError, code: 'OUT_OF_HOURS' });
 
     // Create session token (8 hours)
     const token = randomUUID();
@@ -2599,6 +2853,19 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }) {
   }
 
   // 4. Tạo token session
+    // Chặn cấp token ngoài khung giờ (mục 8 kế hoạch). Không có đệm ở bước đăng
+    // nhập: đệm chỉ dành cho người đang làm dở, không phải để vào ca muộn.
+  // Chặn cấp token ngoài khung giờ (mục 8 kế hoạch). Không có đệm ở bước đăng
+  // nhập: đệm chỉ dành cho người đang làm dở, không phải để vào ca muộn.
+  // Ném lỗi thay vì trả về object vì cả hai nơi gọi hàm này đều bắt lỗi theo
+  // error.status, giống nhánh tài khoản DealPhuQuoc bị khóa ở trên.
+  const hoursError = await checkWorkingHours(admin);
+  if (hoursError) {
+    const err = new Error(hoursError);
+    err.status = 403;
+    throw err;
+  }
+
   const sessionToken = randomUUID();
   const expiresAt = new Date(Date.now() + ADMIN_SESSION_MS); // 8 hours
   await db.query('INSERT INTO admin_sessions (token, admin_id, expires_at) VALUES ($1, $2, $3)', [sessionToken, admin.id, expiresAt]);
@@ -2889,6 +3156,9 @@ app.post('/api/admin/sso', async (req, res) => {
       )).rows[0];
     }
 
+    const ssoHoursError = await checkWorkingHours(admin);
+    if (ssoHoursError) return res.status(403).json({ error: ssoHoursError, code: 'OUT_OF_HOURS' });
+
     const sessionToken = randomUUID();
     const expiresAt = new Date(Date.now() + ADMIN_SESSION_MS); // 8 hours
     await db.query('INSERT INTO admin_sessions (token, admin_id, expires_at) VALUES ($1, $2, $3)', [sessionToken, admin.id, expiresAt]);
@@ -2930,7 +3200,7 @@ app.get('/api/admin/push/public-key', checkAdminAuth, (_req, res) => {
   res.json({ enabled: vapidConfigured, publicKey: vapidConfigured ? VAPID_PUBLIC_KEY : null });
 });
 
-app.post('/api/admin/push/subscribe', checkAdminAuth, async (req, res) => {
+app.post('/api/admin/push/subscribe', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const subscription = req.body?.subscription;
   const endpoint = subscription?.endpoint;
   const keys = subscription?.keys;
@@ -3009,9 +3279,13 @@ app.post('/api/qr-chat/google', async (req, res) => {
     const sessionId = randomUUID();
     const { browser, device } = parseUserAgent(req.headers['user-agent'] || '');
     await db.query(
-      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id, qr_account_id, expires_at)
-       VALUES ($1, $2, $3, $4, 'vi', TRUE, 'active', $5, $6, $7, $8, $9, $10)`,
-      [sessionId, projectId, profile.name || 'Khách hàng', profile.email, browser, device, getClientIp(req), account.owner_admin_id, account.id, new Date(Date.now() + QR_CHAT_SESSION_MS)]
+      // Định tuyến QR: chat vào hàng đợi của nhóm gắn với QR. routing_status chỉ
+      // được đặt cho phiên QR có nhóm — phiên của flow cũ vẫn để NULL nên không
+      // lọt vào bộ lọc "đang chờ / đang xử lý" của Agent.
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id, qr_account_id, expires_at, group_id, preferred_sale_id, routing_status)
+       VALUES ($1, $2, $3, $4, 'vi', TRUE, 'active', $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      [sessionId, projectId, profile.name || 'Khách hàng', profile.email, browser, device, getClientIp(req), account.owner_admin_id, account.id, new Date(Date.now() + QR_CHAT_SESSION_MS),
+       account.group_id || null, account.preferred_sale_id || null, account.group_id ? 'waiting' : null]
     );
     await upsertCustomer({
       projectId,
@@ -3455,7 +3729,7 @@ app.delete('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
 // bao giờ chạy. Xem sửa lỗi ở định nghĩa đầu tiên của '/api/admin/assignees'.)
 
 // Reassign a session to an admin (Super-Admin or Sub-Admin can reassign)
-app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, async (req, res) => {
+app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const { sessionId } = req.params;
   const { assignedAdminId } = req.body; // Can be ID or null
 
@@ -3518,7 +3792,7 @@ app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, async (req, res) =
 });
 
 // Claim an unassigned chat. Once claimed, only the owner or a superadmin can reply.
-app.post('/api/admin/chats/:sessionId/claim', checkAdminAuth, async (req, res) => {
+app.post('/api/admin/chats/:sessionId/claim', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const { sessionId } = req.params;
   if (!isChatStaff(req.admin)) return res.status(403).json({ error: 'Bạn không có quyền tiếp nhận chat.' });
   try {
@@ -3532,11 +3806,25 @@ app.post('/api/admin/chats/:sessionId/claim', checkAdminAuth, async (req, res) =
     const firstClaim = !session.claimed_by_admin_id;
     // Gán số tổng đài viên ngẫu nhiên (giữ ổn định cho phiên); chỉ đặt lần đầu
     const operatorNo = session.operator_no || (100 + Math.floor(Math.random() * 900));
-    await db.query(
-      `UPDATE sessions SET claimed_by_admin_id = $1, claimed_at = NOW(), operator_no = COALESCE(operator_no, $3)
-       WHERE id = $2`,
-      [req.admin.id, sessionId, operatorNo]
+
+    // Claim NGUYÊN TỬ. Câu kiểm tra ở trên chỉ để trả thông báo đẹp; nó không đủ
+    // để tránh tranh chấp vì giữa SELECT và UPDATE có thể có Sale khác chen vào.
+    // Điều kiện claimed_by_admin_id IS NULL nằm ngay trong UPDATE mới là thứ bảo
+    // đảm chỉ đúng một người nhận được chat.
+    const claimResult = await db.query(
+      `UPDATE sessions
+          SET claimed_by_admin_id = $1,
+              claimed_at = NOW(),
+              operator_no = COALESCE(operator_no, $3),
+              routing_status = CASE WHEN routing_status IS NULL THEN NULL ELSE 'assigned' END
+        WHERE id = $2
+          AND (claimed_by_admin_id IS NULL OR claimed_by_admin_id = $1 OR $4)
+        RETURNING claimed_by_admin_id`,
+      [req.admin.id, sessionId, operatorNo, isSuperAdmin(req.admin)]
     );
+    if (claimResult.rows.length === 0) {
+      return res.status(409).json({ error: 'Chat này đã được nhân viên khác tiếp nhận.' });
+    }
     // Lần đầu tiếp nhận -> chèn tin hệ thống hiển thị cho khách "Tổng đài viên số XXX đã tiếp nhận"
     if (firstClaim) {
       const lang = session.detected_language || 'vi';
@@ -3601,7 +3889,7 @@ app.post('/api/admin/chats/:sessionId/claim', checkAdminAuth, async (req, res) =
  *         description: Lỗi hệ thống
  */
 // 1. Get all sessions (grouped by email + projectId to avoid duplicates in sidebar)
-app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
+app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const { projectId } = req.query;
   
   try {
@@ -3633,12 +3921,37 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
       conditions.push(`s.project_id = $${params.length + 1}`);
       params.push(scopedProject);
     }
-    // QR Concierge agents see only conversations created through QR codes they own.
-    // Other project types retain the existing shared-project inbox behaviour.
-    if (req.admin.role === 'agent') {
-      conditions.push(`(s.project_id <> 'qr-concierge' OR s.assigned_admin_id = $${params.length + 1})`);
+    // Sale chỉ thấy chat của những nhóm mình thuộc về, và chỉ trong khung giờ
+    // nhận chat của chính nhóm đó. Chat đã tự tay tiếp nhận thì luôn thấy, kể cả
+    // sau khi hết ca — nếu không thì cuộc đang dở sẽ biến mất giữa chừng.
+    if (isSale(req.admin)) {
+      const groups = await db.query(
+        'SELECT group_id FROM agent_group_sales WHERE sale_id = $1 AND is_active = TRUE',
+        [req.admin.id]
+      );
+      const openGroups = [];
+      for (const row of groups.rows) {
+        if (await isSaleAvailableForGroup(req.admin.id, row.group_id)) openGroups.push(row.group_id);
+      }
+      conditions.push(`(s.group_id = ANY($${params.length + 1}::int[]) OR s.claimed_by_admin_id = $${params.length + 2})`);
+      params.push(openGroups, req.admin.id);
+    } else if (isAgentManager(req.admin)) {
+      // Agent quản lý thấy toàn bộ chat của các nhóm mình sở hữu, cộng các phiên
+      // QR cũ chưa được gắn nhóm (dữ liệu trước migration).
+      conditions.push(`(
+        s.project_id <> 'qr-concierge'
+        OR s.assigned_admin_id = $${params.length + 1}
+        OR s.group_id IN (SELECT id FROM agent_groups WHERE agent_id = $${params.length + 1})
+      )`);
       params.push(req.admin.id);
     }
+    // Bộ lọc trạng thái định tuyến cho giao diện Agent: đang chờ / đang xử lý / đã đóng.
+    const routing = String(req.query.routing || '').trim();
+    if (['waiting', 'assigned', 'closed'].includes(routing)) {
+      conditions.push(`s.routing_status = $${params.length + 1}`);
+      params.push(routing);
+    }
+
     queryText += ' WHERE ' + conditions.join(' AND ');
     queryText += ' ORDER BY s.created_at DESC';
 
@@ -3688,7 +4001,7 @@ app.get('/api/admin/chats', checkAdminAuth, async (req, res) => {
  *       500:
  *         description: Lỗi hệ thống
  */
-app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, async (req, res) => {
+app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const { sessionId } = req.params;
   const adminLang = req.query.adminLang || 'vi';
   const limit = parseInt(req.query.limit) || 15;
@@ -5254,7 +5567,7 @@ async function ensureReadReceiptsTable() {
 }
 
 // Mark session as read for current admin
-app.post('/api/admin/chats/:sessionId/read', checkAdminAuth, async (req, res) => {
+app.post('/api/admin/chats/:sessionId/read', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const { sessionId } = req.params;
   const adminId = req.admin.id;
   try {
@@ -5273,6 +5586,605 @@ app.post('/api/admin/chats/:sessionId/read', checkAdminAuth, async (req, res) =>
     res.status(500).json({ error: e.message });
   }
 });
+
+// ============================================================================
+// Phân cấp Agent - Sale - Nhóm - QR  (chỉ áp dụng project qr_concierge)
+//
+// Quy tắc chung cho cả khối này:
+//  - Mọi kiểm tra quyền đều ở backend. Frontend ẩn nút chỉ là lớp trang trí.
+//  - Agent chỉ thao tác được trên dữ liệu thuộc phạm vi của chính mình:
+//    Sale do mình tạo (admins.managed_by_admin_id) và nhóm do mình sở hữu
+//    (agent_groups.agent_id). Superadmin đi qua mọi ràng buộc này.
+// ============================================================================
+
+// Chuẩn hóa một khung giờ người dùng gửi lên. Trả về null nếu không hợp lệ.
+function normalizeHourWindow(entry) {
+  if (!entry) return null;
+  const clean = (value) => {
+    const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(value || '').trim());
+    return match ? `${match[1].padStart(2, '0')}:${match[2]}` : null;
+  };
+  const start = clean(entry.start_time ?? entry.start);
+  const end = clean(entry.end_time ?? entry.end);
+  if (!start || !end) return null;
+  return { start, end, timezone: String(entry.timezone || DEFAULT_WORK_TIMEZONE).slice(0, 60) };
+}
+
+// Ghi đè toàn bộ khung giờ của một tài khoản trong một transaction: xóa hết rồi
+// chèn lại. Đơn giản hơn điều chỉnh từng dòng và không bao giờ để lại dòng mồ côi.
+async function replaceAccessHours(adminId, windows) {
+  const rows = (Array.isArray(windows) ? windows : []).map(normalizeHourWindow).filter(Boolean);
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM account_access_hours WHERE admin_id = $1', [adminId]);
+    for (const row of rows) {
+      await client.query(
+        `INSERT INTO account_access_hours (admin_id, start_time, end_time, timezone) VALUES ($1, $2, $3, $4)`,
+        [adminId, row.start, row.end, row.timezone]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  return rows;
+}
+
+async function replaceGroupSaleHours(groupId, saleId, windows) {
+  const rows = (Array.isArray(windows) ? windows : []).map(normalizeHourWindow).filter(Boolean);
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM group_sale_hours WHERE group_id = $1 AND sale_id = $2', [groupId, saleId]);
+    for (const row of rows) {
+      await client.query(
+        `INSERT INTO group_sale_hours (group_id, sale_id, start_time, end_time, timezone) VALUES ($1, $2, $3, $4, $5)`,
+        [groupId, saleId, row.start, row.end, row.timezone]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  return rows;
+}
+
+// Chỉ cho phép superadmin, hoặc Agent quản lý CỦA MỘT PROJECT QR CONCIERGE.
+//
+// Kiểm tra loại project là bắt buộc, không phải cho đẹp: DealPhuQuoc cũng cấp
+// role 'agent' cho nhân viên của họ, nên nếu chỉ xét role thì một nhân viên
+// DealPhuQuoc có thể gọi thẳng /api/agent/sales và tạo tài khoản trong dự án của
+// mình. Frontend đã ẩn nút, nhưng ẩn nút không phải là phân quyền.
+async function requireAgentManager(req, res) {
+  if (isSuperAdmin(req.admin)) return true;
+  if (isAgentManager(req.admin) && req.admin.project_id
+      && (await getQrProjectIds()).has(req.admin.project_id)) return true;
+  res.status(403).json({ error: 'Chỉ Agent quản lý của dự án QR mới được thực hiện thao tác này.' });
+  return false;
+}
+
+// Nhóm có thuộc phạm vi của Agent đang gọi không.
+async function loadOwnedGroup(req, groupId) {
+  const result = await db.query('SELECT * FROM agent_groups WHERE id = $1', [groupId]);
+  const group = result.rows[0];
+  if (!group) return null;
+  if (isSuperAdmin(req.admin)) return group;
+  return group.agent_id === req.admin.id ? group : null;
+}
+
+// Sale có thuộc phạm vi của Agent đang gọi không.
+async function loadOwnedSale(req, saleId) {
+  const result = await db.query(`SELECT * FROM admins WHERE id = $1 AND role = 'sale'`, [saleId]);
+  const sale = result.rows[0];
+  if (!sale) return null;
+  if (isSuperAdmin(req.admin)) return sale;
+  return sale.managed_by_admin_id === req.admin.id ? sale : null;
+}
+
+// --- Superadmin: quản lý Agent ----------------------------------------------
+
+app.get('/api/superadmin/agents', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được xem danh sách Agent.' });
+  try {
+    const result = await db.query(
+      `SELECT a.id, a.username, a.full_name, a.project_id, a.is_active, a.created_at,
+              (SELECT COUNT(*) FROM admins s WHERE s.managed_by_admin_id = a.id AND s.role = 'sale') AS sale_count,
+              (SELECT COUNT(*) FROM agent_groups g WHERE g.agent_id = a.id) AS group_count,
+              COALESCE(json_agg(json_build_object(
+                'start_time', h.start_time, 'end_time', h.end_time, 'timezone', h.timezone
+              ) ORDER BY h.start_time) FILTER (WHERE h.id IS NOT NULL), '[]') AS access_hours
+         FROM admins a
+         LEFT JOIN account_access_hours h ON h.admin_id = a.id AND h.is_active = TRUE
+        WHERE a.role = 'agent'
+        GROUP BY a.id
+        ORDER BY a.created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('List agents error:', error);
+    res.status(500).json({ error: 'Không tải được danh sách Agent.' });
+  }
+});
+
+app.post('/api/superadmin/agents', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được tạo Agent.' });
+  const { email, fullName, projectId, accessHours } = req.body || {};
+  const username = String(email || '').trim().toLowerCase();
+  if (!username || !fullName || !projectId) return res.status(400).json({ error: 'Cần email, tên Agent và project.' });
+
+  try {
+    const project = await db.query(`SELECT id FROM projects WHERE id = $1 AND project_type = 'qr_concierge'`, [projectId]);
+    if (!project.rows[0]) return res.status(400).json({ error: 'Project này không phải QR Concierge.' });
+    const exists = await db.query('SELECT id FROM admins WHERE LOWER(username) = $1', [username]);
+    if (exists.rows[0]) return res.status(400).json({ error: 'Email này đã tồn tại trong hệ thống.' });
+
+    // Schema cũ bắt buộc password_hash; Agent đăng nhập bằng OTP/Google nên mật
+    // khẩu chỉ là chuỗi ngẫu nhiên không bao giờ được dùng.
+    const passwordHash = await hashPassword(randomUUID());
+    const created = await db.query(
+      `INSERT INTO admins (username, password_hash, full_name, role, project_id, managed_by_admin_id, is_active)
+       VALUES ($1, $2, $3, 'agent', $4, $5, TRUE)
+       RETURNING id, username, full_name, role, project_id, is_active, created_at`,
+      [username, passwordHash, String(fullName).trim().slice(0, 255), projectId, req.admin.id]
+    );
+    const hours = await replaceAccessHours(created.rows[0].id, accessHours);
+
+    // Bàn giao dữ liệu QR cũ chưa có chủ (Sale và QR còn lơ lửng sau migration)
+    // cho Agent đầu tiên của project. Bước 6-7 ở mục 19 của kế hoạch.
+    const adoptedGroupId = await db.adoptOrphanQrDataForProject(projectId, created.rows[0].id)
+      .catch((error) => { console.error('Adopt orphan QR data failed:', error.message); return null; });
+
+    res.status(201).json({ success: true, agent: { ...created.rows[0], access_hours: hours }, adoptedGroupId });
+  } catch (error) {
+    console.error('Create agent error:', error);
+    res.status(500).json({ error: 'Không tạo được Agent.' });
+  }
+});
+
+app.put('/api/superadmin/agents/:agentId', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được sửa Agent.' });
+  const agentId = Number(req.params.agentId);
+  const { fullName, projectId, isActive, accessHours } = req.body || {};
+  try {
+    const agent = await db.query(`SELECT id FROM admins WHERE id = $1 AND role = 'agent'`, [agentId]);
+    if (!agent.rows[0]) return res.status(404).json({ error: 'Không tìm thấy Agent.' });
+
+    const updated = await db.query(
+      `UPDATE admins
+          SET full_name = COALESCE($2, full_name),
+              project_id = COALESCE($3, project_id),
+              is_active = COALESCE($4, is_active)
+        WHERE id = $1
+        RETURNING id, username, full_name, role, project_id, is_active`,
+      [agentId, fullName ? String(fullName).trim().slice(0, 255) : null, projectId || null,
+       typeof isActive === 'boolean' ? isActive : null]
+    );
+    if (Array.isArray(accessHours)) await replaceAccessHours(agentId, accessHours);
+    // Khóa tài khoản thì đóng luôn mọi phiên đang mở, không đợi token hết hạn.
+    if (isActive === false) await db.query('DELETE FROM admin_sessions WHERE admin_id = $1', [agentId]);
+    res.json({ success: true, agent: updated.rows[0] });
+  } catch (error) {
+    console.error('Update agent error:', error);
+    res.status(500).json({ error: 'Không cập nhật được Agent.' });
+  }
+});
+
+// --- Agent: quản lý Sale -----------------------------------------------------
+
+app.get('/api/agent/sales', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const scoped = !isSuperAdmin(req.admin);
+    const result = await db.query(
+      `SELECT a.id, a.username, a.full_name, a.is_active, a.project_id, a.created_at,
+              COALESCE(json_agg(DISTINCT jsonb_build_object(
+                'start_time', h.start_time, 'end_time', h.end_time, 'timezone', h.timezone
+              )) FILTER (WHERE h.id IS NOT NULL), '[]') AS access_hours,
+              COALESCE(json_agg(DISTINCT jsonb_build_object(
+                'group_id', g.id, 'name', g.name
+              )) FILTER (WHERE g.id IS NOT NULL), '[]') AS groups
+         FROM admins a
+         LEFT JOIN account_access_hours h ON h.admin_id = a.id AND h.is_active = TRUE
+         LEFT JOIN agent_group_sales gs ON gs.sale_id = a.id AND gs.is_active = TRUE
+         LEFT JOIN agent_groups g ON g.id = gs.group_id
+        WHERE a.role = 'sale' ${scoped ? 'AND a.managed_by_admin_id = $1' : ''}
+        GROUP BY a.id
+        ORDER BY a.full_name`,
+      scoped ? [req.admin.id] : []
+    );
+    // Báo thêm Sale nào đang trong giờ, để Agent nhìn phát biết ai trực.
+    res.json(result.rows.map((row) => ({ ...row, on_shift: isWithinAnyWindow(row.access_hours) })));
+  } catch (error) {
+    console.error('List sales error:', error);
+    res.status(500).json({ error: 'Không tải được danh sách Sale.' });
+  }
+});
+
+app.post('/api/agent/sales', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const { email, fullName, accessHours, groupIds } = req.body || {};
+  const username = String(email || '').trim().toLowerCase();
+  if (!username || !fullName) return res.status(400).json({ error: 'Cần email và tên hiển thị của Sale.' });
+
+  const projectId = isSuperAdmin(req.admin) ? (req.body.projectId || null) : req.admin.project_id;
+  if (!projectId) return res.status(400).json({ error: 'Sale phải thuộc một project cụ thể.' });
+
+  try {
+    const exists = await db.query('SELECT id FROM admins WHERE LOWER(username) = $1', [username]);
+    if (exists.rows[0]) return res.status(400).json({ error: 'Email này đã tồn tại trong hệ thống.' });
+
+    const passwordHash = await hashPassword(randomUUID());
+    const created = await db.query(
+      `INSERT INTO admins (username, password_hash, full_name, role, project_id, managed_by_admin_id, created_by_admin_id, is_active)
+       VALUES ($1, $2, $3, 'sale', $4, $5, $5, TRUE)
+       RETURNING id, username, full_name, role, project_id, is_active, created_at`,
+      [username, passwordHash, String(fullName).trim().slice(0, 255), projectId, req.admin.id]
+    );
+    const saleId = created.rows[0].id;
+    const hours = await replaceAccessHours(saleId, accessHours);
+
+    // Chỉ nhận những nhóm thuộc phạm vi của chính Agent này.
+    for (const groupId of Array.isArray(groupIds) ? groupIds : []) {
+      const group = await loadOwnedGroup(req, Number(groupId));
+      if (!group) continue;
+      await db.query(
+        `INSERT INTO agent_group_sales (group_id, sale_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [group.id, saleId]
+      );
+    }
+    res.status(201).json({ success: true, sale: { ...created.rows[0], access_hours: hours } });
+  } catch (error) {
+    console.error('Create sale error:', error);
+    res.status(500).json({ error: 'Không tạo được tài khoản Sale.' });
+  }
+});
+
+app.put('/api/agent/sales/:saleId', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const saleId = Number(req.params.saleId);
+  const { fullName, accessHours } = req.body || {};
+  try {
+    const sale = await loadOwnedSale(req, saleId);
+    if (!sale) return res.status(404).json({ error: 'Không tìm thấy Sale trong phạm vi của bạn.' });
+    const updated = await db.query(
+      `UPDATE admins SET full_name = COALESCE($2, full_name) WHERE id = $1
+       RETURNING id, username, full_name, is_active`,
+      [saleId, fullName ? String(fullName).trim().slice(0, 255) : null]
+    );
+    if (Array.isArray(accessHours)) await replaceAccessHours(saleId, accessHours);
+    res.json({ success: true, sale: updated.rows[0] });
+  } catch (error) {
+    console.error('Update sale error:', error);
+    res.status(500).json({ error: 'Không cập nhật được Sale.' });
+  }
+});
+
+app.patch('/api/agent/sales/:saleId/status', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const saleId = Number(req.params.saleId);
+  const { isActive } = req.body || {};
+  if (typeof isActive !== 'boolean') return res.status(400).json({ error: 'Cần trường isActive.' });
+  try {
+    const sale = await loadOwnedSale(req, saleId);
+    if (!sale) return res.status(404).json({ error: 'Không tìm thấy Sale trong phạm vi của bạn.' });
+    await db.query('UPDATE admins SET is_active = $2 WHERE id = $1', [saleId, isActive]);
+    if (!isActive) await db.query('DELETE FROM admin_sessions WHERE admin_id = $1', [saleId]);
+    res.json({ success: true, isActive });
+  } catch (error) {
+    console.error('Toggle sale error:', error);
+    res.status(500).json({ error: 'Không đổi được trạng thái Sale.' });
+  }
+});
+
+// --- Agent: quản lý nhóm -----------------------------------------------------
+
+app.get('/api/agent/groups', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const scoped = !isSuperAdmin(req.admin);
+    const result = await db.query(
+      `SELECT g.id, g.name, g.description, g.is_active, g.project_id, g.created_at,
+              COALESCE(json_agg(DISTINCT jsonb_build_object(
+                'sale_id', s.id, 'full_name', s.full_name, 'is_active', s.is_active
+              )) FILTER (WHERE s.id IS NOT NULL), '[]') AS sales,
+              (SELECT COUNT(*) FROM sessions se WHERE se.group_id = g.id AND se.routing_status = 'waiting') AS waiting_count,
+              (SELECT COUNT(*) FROM sessions se WHERE se.group_id = g.id AND se.routing_status = 'assigned') AS active_count
+         FROM agent_groups g
+         LEFT JOIN agent_group_sales gs ON gs.group_id = g.id AND gs.is_active = TRUE
+         LEFT JOIN admins s ON s.id = gs.sale_id
+        WHERE 1 = 1 ${scoped ? 'AND g.agent_id = $1' : ''}
+        GROUP BY g.id
+        ORDER BY g.created_at`,
+      scoped ? [req.admin.id] : []
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('List groups error:', error);
+    res.status(500).json({ error: 'Không tải được danh sách nhóm.' });
+  }
+});
+
+app.post('/api/agent/groups', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const { name, description } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'Cần tên nhóm.' });
+  const projectId = isSuperAdmin(req.admin) ? (req.body.projectId || null) : req.admin.project_id;
+  if (!projectId) return res.status(400).json({ error: 'Nhóm phải thuộc một project cụ thể.' });
+  try {
+    const created = await db.query(
+      `INSERT INTO agent_groups (project_id, agent_id, name, description) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [projectId, isSuperAdmin(req.admin) ? (req.body.agentId || req.admin.id) : req.admin.id,
+       String(name).trim().slice(0, 150), String(description || '').trim() || null]
+    );
+    res.status(201).json({ success: true, group: created.rows[0] });
+  } catch (error) {
+    console.error('Create group error:', error);
+    res.status(500).json({ error: 'Không tạo được nhóm.' });
+  }
+});
+
+app.put('/api/agent/groups/:groupId', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const { name, description, isActive } = req.body || {};
+  try {
+    const group = await loadOwnedGroup(req, Number(req.params.groupId));
+    if (!group) return res.status(404).json({ error: 'Không tìm thấy nhóm trong phạm vi của bạn.' });
+    const updated = await db.query(
+      `UPDATE agent_groups SET name = COALESCE($2, name), description = COALESCE($3, description),
+              is_active = COALESCE($4, is_active)
+        WHERE id = $1 RETURNING *`,
+      [group.id, name ? String(name).trim().slice(0, 150) : null,
+       description !== undefined ? String(description || '').trim() : null,
+       typeof isActive === 'boolean' ? isActive : null]
+    );
+    res.json({ success: true, group: updated.rows[0] });
+  } catch (error) {
+    console.error('Update group error:', error);
+    res.status(500).json({ error: 'Không cập nhật được nhóm.' });
+  }
+});
+
+app.delete('/api/agent/groups/:groupId', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const group = await loadOwnedGroup(req, Number(req.params.groupId));
+    if (!group) return res.status(404).json({ error: 'Không tìm thấy nhóm trong phạm vi của bạn.' });
+    // Còn QR đang trỏ vào thì không cho xóa, nếu không QR sẽ mồ côi và khách quét
+    // vào sẽ không biết định tuyến đi đâu.
+    const qrCount = await db.query('SELECT COUNT(*)::int AS total FROM qr_chat_accounts WHERE group_id = $1 AND is_active = TRUE', [group.id]);
+    if (qrCount.rows[0].total > 0) {
+      return res.status(400).json({ error: `Nhóm này đang có ${qrCount.rows[0].total} QR. Hãy chuyển QR sang nhóm khác trước khi xóa.` });
+    }
+    await db.query('DELETE FROM agent_groups WHERE id = $1', [group.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete group error:', error);
+    res.status(500).json({ error: 'Không xóa được nhóm.' });
+  }
+});
+
+app.post('/api/agent/groups/:groupId/sales', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const { saleId } = req.body || {};
+  try {
+    const group = await loadOwnedGroup(req, Number(req.params.groupId));
+    if (!group) return res.status(404).json({ error: 'Không tìm thấy nhóm trong phạm vi của bạn.' });
+    const sale = await loadOwnedSale(req, Number(saleId));
+    if (!sale) return res.status(404).json({ error: 'Không tìm thấy Sale trong phạm vi của bạn.' });
+    await db.query(
+      `INSERT INTO agent_group_sales (group_id, sale_id) VALUES ($1, $2)
+       ON CONFLICT (group_id, sale_id) DO UPDATE SET is_active = TRUE`,
+      [group.id, sale.id]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Add sale to group error:', error);
+    res.status(500).json({ error: 'Không thêm được Sale vào nhóm.' });
+  }
+});
+
+app.delete('/api/agent/groups/:groupId/sales/:saleId', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const group = await loadOwnedGroup(req, Number(req.params.groupId));
+    if (!group) return res.status(404).json({ error: 'Không tìm thấy nhóm trong phạm vi của bạn.' });
+    await db.query('DELETE FROM agent_group_sales WHERE group_id = $1 AND sale_id = $2', [group.id, Number(req.params.saleId)]);
+    await db.query('DELETE FROM group_sale_hours WHERE group_id = $1 AND sale_id = $2', [group.id, Number(req.params.saleId)]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Remove sale from group error:', error);
+    res.status(500).json({ error: 'Không gỡ được Sale khỏi nhóm.' });
+  }
+});
+
+// --- Khung giờ ---------------------------------------------------------------
+
+app.put('/api/agent/accounts/:accountId/access-hours', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const accountId = Number(req.params.accountId);
+  try {
+    const sale = await loadOwnedSale(req, accountId);
+    // Agent chỉ sửa được giờ của Sale mình quản lý. Giờ của chính Agent do
+    // superadmin đặt, Agent không tự nối ca của mình được.
+    if (!sale && !isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Bạn không có quyền sửa giờ của tài khoản này.' });
+    const hours = await replaceAccessHours(accountId, req.body?.accessHours);
+    // Đổi giờ xong mà tài khoản rơi ra ngoài ca thì đóng phiên đang mở luôn.
+    if (!isWithinAnyWindow(hours)) await db.query('DELETE FROM admin_sessions WHERE admin_id = $1', [accountId]);
+    res.json({ success: true, accessHours: hours });
+  } catch (error) {
+    console.error('Update access hours error:', error);
+    res.status(500).json({ error: 'Không cập nhật được khung giờ.' });
+  }
+});
+
+app.put('/api/agent/groups/:groupId/sales/:saleId/hours', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const group = await loadOwnedGroup(req, Number(req.params.groupId));
+    if (!group) return res.status(404).json({ error: 'Không tìm thấy nhóm trong phạm vi của bạn.' });
+    const sale = await loadOwnedSale(req, Number(req.params.saleId));
+    if (!sale) return res.status(404).json({ error: 'Không tìm thấy Sale trong phạm vi của bạn.' });
+    const hours = await replaceGroupSaleHours(group.id, sale.id, req.body?.hours);
+    res.json({ success: true, hours });
+  } catch (error) {
+    console.error('Update group sale hours error:', error);
+    res.status(500).json({ error: 'Không cập nhật được giờ nhận chat.' });
+  }
+});
+
+// --- Agent: quản lý QR -------------------------------------------------------
+
+app.get('/api/agent/qr-accounts', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const scoped = !isSuperAdmin(req.admin);
+    const result = await db.query(
+      `SELECT q.id, q.code, q.label, q.display_label, q.is_active, q.created_at,
+              g.id AS group_id, g.name AS group_name,
+              s.id AS preferred_sale_id, s.full_name AS preferred_sale_name
+         FROM qr_chat_accounts q
+         LEFT JOIN agent_groups g ON g.id = q.group_id
+         LEFT JOIN admins s ON s.id = q.preferred_sale_id
+        WHERE q.is_active = TRUE ${scoped ? 'AND g.agent_id = $1' : ''}
+        ORDER BY q.created_at DESC`,
+      scoped ? [req.admin.id] : []
+    );
+    res.json(result.rows.map((row) => ({ ...row, chat_url: qrCustomerChatUrl(req, row.code) })));
+  } catch (error) {
+    console.error('List agent QR error:', error);
+    res.status(500).json({ error: 'Không tải được danh sách QR.' });
+  }
+});
+
+app.post('/api/agent/qr-accounts', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const { groupId, label, preferredSaleId } = req.body || {};
+  if (!label) return res.status(400).json({ error: 'Cần tên QR.' });
+  try {
+    const group = await loadOwnedGroup(req, Number(groupId));
+    if (!group) return res.status(404).json({ error: 'Không tìm thấy nhóm trong phạm vi của bạn.' });
+
+    let preferredId = null;
+    if (preferredSaleId) {
+      const sale = await loadOwnedSale(req, Number(preferredSaleId));
+      if (!sale) return res.status(400).json({ error: 'Sale ưu tiên không thuộc phạm vi của bạn.' });
+      // Sale ưu tiên bắt buộc phải là thành viên của chính nhóm này.
+      const member = await db.query(
+        'SELECT 1 FROM agent_group_sales WHERE group_id = $1 AND sale_id = $2',
+        [group.id, sale.id]
+      );
+      if (!member.rows[0]) return res.status(400).json({ error: 'Sale ưu tiên phải là thành viên của nhóm này.' });
+      preferredId = sale.id;
+    }
+
+    const code = `qr_${randomUUID().replace(/-/g, '')}`;
+    const created = await db.query(
+      `INSERT INTO qr_chat_accounts (project_id, owner_admin_id, code, label, group_id, preferred_sale_id, created_by_admin_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $2) RETURNING *`,
+      [group.project_id, group.agent_id, code, String(label).trim().slice(0, 255), group.id, preferredId]
+    );
+    res.status(201).json({ success: true, account: created.rows[0], chat_url: qrCustomerChatUrl(req, code) });
+  } catch (error) {
+    console.error('Create agent QR error:', error);
+    res.status(500).json({ error: 'Không tạo được QR.' });
+  }
+});
+
+app.put('/api/agent/qr-accounts/:qrId', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const { label, groupId, preferredSaleId } = req.body || {};
+  try {
+    const qr = await db.query('SELECT * FROM qr_chat_accounts WHERE id = $1', [Number(req.params.qrId)]);
+    if (!qr.rows[0]) return res.status(404).json({ error: 'Không tìm thấy QR.' });
+    const currentGroup = await loadOwnedGroup(req, qr.rows[0].group_id);
+    if (!currentGroup && !isSuperAdmin(req.admin)) return res.status(403).json({ error: 'QR này không thuộc phạm vi của bạn.' });
+
+    let nextGroupId = qr.rows[0].group_id;
+    if (groupId && Number(groupId) !== nextGroupId) {
+      const target = await loadOwnedGroup(req, Number(groupId));
+      if (!target) return res.status(400).json({ error: 'Nhóm đích không thuộc phạm vi của bạn.' });
+      nextGroupId = target.id;
+    }
+
+    // Đổi nhóm mà Sale ưu tiên cũ không thuộc nhóm mới thì bỏ ưu tiên đi, thay vì
+    // để lại một con trỏ sai khiến chat không bao giờ tới đúng người.
+    let preferredId = preferredSaleId === undefined ? qr.rows[0].preferred_sale_id : (preferredSaleId || null);
+    if (preferredId) {
+      const member = await db.query(
+        'SELECT 1 FROM agent_group_sales WHERE group_id = $1 AND sale_id = $2',
+        [nextGroupId, Number(preferredId)]
+      );
+      if (!member.rows[0]) preferredId = null;
+    }
+
+    const updated = await db.query(
+      `UPDATE qr_chat_accounts
+          SET label = COALESCE($2, label), group_id = $3, preferred_sale_id = $4
+        WHERE id = $1 RETURNING *`,
+      [qr.rows[0].id, label ? String(label).trim().slice(0, 255) : null, nextGroupId, preferredId]
+    );
+    res.json({ success: true, account: updated.rows[0] });
+  } catch (error) {
+    console.error('Update agent QR error:', error);
+    res.status(500).json({ error: 'Không cập nhật được QR.' });
+  }
+});
+
+app.post('/api/agent/qr-accounts/:qrId/revoke', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const qr = await db.query('SELECT * FROM qr_chat_accounts WHERE id = $1', [Number(req.params.qrId)]);
+    if (!qr.rows[0]) return res.status(404).json({ error: 'Không tìm thấy QR.' });
+    const group = await loadOwnedGroup(req, qr.rows[0].group_id);
+    if (!group && !isSuperAdmin(req.admin)) return res.status(403).json({ error: 'QR này không thuộc phạm vi của bạn.' });
+    await db.query('UPDATE qr_chat_accounts SET is_active = FALSE WHERE id = $1', [qr.rows[0].id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Revoke QR error:', error);
+    res.status(500).json({ error: 'Không thu hồi được QR.' });
+  }
+});
+
+// --- Chuyển chat sang Sale khác ----------------------------------------------
+
+app.post('/api/chats/:sessionId/transfer', checkAdminAuth, requireWorkingHours, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const { saleId } = req.body || {};
+  try {
+    const session = await db.query('SELECT id, project_id, group_id FROM sessions WHERE id = $1', [req.params.sessionId]);
+    if (!session.rows[0]) return res.status(404).json({ error: 'Không tìm thấy cuộc trò chuyện.' });
+    if (!canAccessProject(req.admin, session.rows[0].project_id)) {
+      return res.status(403).json({ error: 'Bạn không có quyền với chat của project này.' });
+    }
+    const sale = await loadOwnedSale(req, Number(saleId));
+    if (!sale) return res.status(404).json({ error: 'Không tìm thấy Sale trong phạm vi của bạn.' });
+    if (session.rows[0].group_id) {
+      const member = await db.query(
+        'SELECT 1 FROM agent_group_sales WHERE group_id = $1 AND sale_id = $2 AND is_active = TRUE',
+        [session.rows[0].group_id, sale.id]
+      );
+      if (!member.rows[0]) return res.status(400).json({ error: 'Sale này không thuộc nhóm tiếp nhận của QR.' });
+    }
+    // Chuyển là ghi đè có chủ đích, không dùng điều kiện IS NULL như claim.
+    await db.query(
+      `UPDATE sessions SET claimed_by_admin_id = $2, claimed_at = NOW(), routing_status = 'assigned' WHERE id = $1`,
+      [session.rows[0].id, sale.id]
+    );
+    res.json({ success: true, saleId: sale.id });
+  } catch (error) {
+    console.error('Transfer chat error:', error);
+    res.status(500).json({ error: 'Không chuyển được chat.' });
+  }
+});
+
+
 
 // Start Server
 async function startServer() {
