@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r49">
+    <link rel="stylesheet" href="admin.css?v=r50">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -211,7 +211,7 @@
                 <header class="org-head">
                     <div>
                         <p class="org-kicker">PHÂN CẤP TỔ CHỨC</p>
-                        <h2 id="org-title">Quản lý Sale và nhóm</h2>
+                        <h2 id="org-title">Quản lý Sale, nhóm và QR</h2>
                     </div>
                     <button type="button" class="icon-btn" id="org-close-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
                 </header>
@@ -234,16 +234,10 @@
                         </div>
                         <div class="org-form-row">
                             <label>Dự án<select id="org-agent-project"></select></label>
-                            <label>Giờ đăng nhập
-                                <span class="org-hour-pair">
-                                    <input type="time" id="org-agent-start" value="07:00">
-                                    <em>đến</em>
-                                    <input type="time" id="org-agent-end" value="22:00">
-                                </span>
-                            </label>
+                            <label>Giới hạn số Sale<input type="number" id="org-agent-sale-limit" min="0" step="1" placeholder="Để trống = không giới hạn"></label>
                         </div>
                         <button type="submit" class="org-submit"><i class="ri-user-add-line"></i> Tạo Agent</button>
-                        <p class="org-hint">Agent đăng nhập bằng OTP email hoặc Google, không có mật khẩu. Agent không tự sửa được tên, email, dự án hay giờ của mình.</p>
+                        <p class="org-hint">Agent đăng nhập bằng OTP email hoặc Google, không có mật khẩu, và <strong>không bị giới hạn giờ đăng nhập</strong>. Sale, nhóm và mã QR do chính Agent tự thiết lập — Admin tổng chỉ tạo Agent và đặt trần số Sale.</p>
                     </form>
                     <div class="org-list" id="org-agent-list"></div>
                 </section>
@@ -290,12 +284,8 @@
                             <label>Tên QR<input type="text" id="org-qr-label" required placeholder="Bàn 1"></label>
                             <label>Nhóm tiếp nhận<select id="org-qr-group"></select></label>
                         </div>
-                        <div class="org-form-row">
-                            <label>Sale ưu tiên<select id="org-qr-sale"><option value="">— Không chỉ định —</option></select></label>
-                            <span></span>
-                        </div>
                         <button type="submit" class="org-submit"><i class="ri-qr-code-line"></i> Tạo QR</button>
-                        <p class="org-hint">Sale ưu tiên phải là thành viên của nhóm tiếp nhận. Ngoài ca của Sale ưu tiên, chat tự về hàng đợi chung của nhóm chứ không chặn khách.</p>
+                        <p class="org-hint">Một nhóm tạo được nhiều mã QR, phân biệt bằng tên (Bàn 1, Bàn 2, Phòng 101…). QR không chỉ định Sale nào cả: khách quét mã nào thì chat cũng vào hàng đợi chung của nhóm, Sale đang trong ca cùng nhận thông báo, ai tiếp nhận trước thì người đó xử lý.</p>
                     </form>
                     <div class="org-list" id="org-qr-list"></div>
                 </section>
@@ -916,6 +906,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r54"></script>
+    <script src="admin.js?v=r55"></script>
 </body>
 </html>

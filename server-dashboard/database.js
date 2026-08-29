@@ -116,14 +116,15 @@ async function migrateQrAgentsToSales() {
       await adoptOrphanQrDataForProject(projectId, owner.rows[0].id);
     }
 
-    // 4. Giờ mặc định cả ngày cho tài khoản chưa cấu hình, tránh khóa nhầm.
-    //    CHỈ cấp cho tài khoản thuộc project QR Concierge. DealPhuQuoc cũng cấp
-    //    role 'agent' cho nhân viên của họ; tạo khung giờ cho những tài khoản đó
-    //    là kéo luật ca kíp sang một dự án đáng lẽ không bị đụng tới.
+    // 4. Giờ mặc định cả ngày cho Sale chưa cấu hình, tránh khóa nhầm.
+    //    CHỈ role 'sale' và CHỈ trong project QR Concierge:
+    //      - Agent quản lý KHÔNG bị ràng buộc giờ đăng nhập.
+    //      - DealPhuQuoc cũng cấp role 'agent' cho nhân viên của họ; cấp khung giờ
+    //        cho những tài khoản đó là kéo luật ca kíp sang dự án không liên quan.
     await query(
       `INSERT INTO account_access_hours (admin_id, start_time, end_time)
        SELECT a.id, '00:00', '23:59' FROM admins a
-       WHERE a.role IN ('agent', 'sale')
+       WHERE a.role = 'sale'
          AND a.project_id = ANY($1::varchar[])
          AND NOT EXISTS (SELECT 1 FROM account_access_hours h WHERE h.admin_id = a.id)`,
       [projectIds]
@@ -251,28 +252,14 @@ async function initializeDatabase() {
       );
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_qr_chat_accounts_project_owner ON qr_chat_accounts(project_id, owner_admin_id);`);
-    // One customer-facing QR is allowed per agent. Keep legacy rows for any
-    // historical sessions, but deactivate duplicate QR codes before enforcing
-    // the rule and never show them in the admin UI.
-    await query(`
-      WITH ranked_qr AS (
-        SELECT id, ROW_NUMBER() OVER (
-          PARTITION BY project_id, owner_admin_id
-          ORDER BY created_at DESC, id DESC
-        ) AS row_number
-        FROM qr_chat_accounts
-        WHERE is_active = TRUE
-      )
-      UPDATE qr_chat_accounts AS q
-         SET is_active = FALSE
-        FROM ranked_qr AS ranked
-       WHERE q.id = ranked.id AND ranked.row_number > 1;
-    `);
-    await query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_qr_chat_accounts_one_active_per_agent
-        ON qr_chat_accounts(project_id, owner_admin_id)
-        WHERE is_active = TRUE;
-    `);
+    // Trước đây mỗi Agent chỉ được một QR, ràng buộc bằng unique index dưới đây.
+    // Luật mới: QR thuộc về NHÓM, và một nhóm tạo được bao nhiêu QR cũng được
+    // (Bàn 1, Bàn 2, Phòng 101...). Vì vậy phải GỠ index cũ, nếu không lệnh tạo
+    // QR thứ hai sẽ vỡ vì trùng khóa.
+    //
+    // Việc dồn trùng (deactivate QR thừa) cũng bỏ luôn: giờ QR thừa là hợp lệ.
+    await query(`DROP INDEX IF EXISTS idx_qr_chat_accounts_one_active_per_agent;`);
+    // (Index thay thế được tạo bên dưới, sau khi cột group_id đã được thêm.)
     await query(`CREATE INDEX IF NOT EXISTS idx_sessions_qr_active ON sessions(qr_account_id, status);`);
 
     await query(`
@@ -455,6 +442,10 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // Agent quản lý được gắn với người tạo ra mình (superadmin), Sale gắn với Agent.
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS managed_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
     await query(`CREATE INDEX IF NOT EXISTS idx_admins_managed_by ON admins(managed_by_admin_id);`);
+    // Trần số Sale mà một Agent được phép tạo. Superadmin đặt lúc tạo Agent;
+    // NULL = không giới hạn. Đây là đòn bẩy duy nhất superadmin giữ lại đối với
+    // tổ chức bên trong của Agent — mọi thứ còn lại Agent tự sắp xếp.
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS sale_limit INT;`);
 
     await query(`
       CREATE TABLE IF NOT EXISTS agent_groups (
@@ -515,15 +506,25 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_group_sale_hours_lookup ON group_sale_hours(group_id, sale_id);`);
 
-    // QR gắn vào đúng một nhóm, có thể chỉ định một Sale ưu tiên.
+    // QR gắn vào đúng một nhóm. Một nhóm có thể có nhiều QR, phân biệt bằng tên
+    // (Bàn 1, Bàn 2, Phòng 101...). KHÔNG có Sale ưu tiên: mọi chat từ QR đều về
+    // hàng đợi chung của nhóm, ai đang trong ca thì nhận.
     await query(`ALTER TABLE qr_chat_accounts ADD COLUMN IF NOT EXISTS group_id INT REFERENCES agent_groups(id) ON DELETE SET NULL;`);
-    await query(`ALTER TABLE qr_chat_accounts ADD COLUMN IF NOT EXISTS preferred_sale_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
     await query(`ALTER TABLE qr_chat_accounts ADD COLUMN IF NOT EXISTS display_label VARCHAR(300);`);
     await query(`ALTER TABLE qr_chat_accounts ADD COLUMN IF NOT EXISTS created_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
+    // Tên QR là duy nhất TRONG MỘT NHÓM. Giữa các nhóm khác nhau thì trùng tên
+    // vô hại — "Bàn 1" của Lễ tân và "Bàn 1" của Nhà hàng là hai chỗ khác nhau.
+    // Chỉ áp cho QR đã gắn nhóm; QR cũ chưa gắn nhóm không bị đụng tới.
+    // Phải đặt SAU lệnh thêm cột group_id ở trên, nếu không index sẽ tham chiếu
+    // một cột chưa tồn tại trên database mới tinh.
+    await query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_qr_unique_label_per_group
+        ON qr_chat_accounts(group_id, LOWER(label))
+        WHERE is_active = TRUE AND group_id IS NOT NULL;
+    `);
 
     // Định tuyến chat: waiting = chưa ai nhận, assigned = đã có Sale, closed = đã đóng.
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS group_id INT REFERENCES agent_groups(id) ON DELETE SET NULL;`);
-    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS preferred_sale_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS routing_status VARCHAR(20);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_sessions_routing ON sessions(group_id, routing_status);`);
 

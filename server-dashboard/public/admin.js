@@ -4472,10 +4472,17 @@ function switchOrgTab(name) {
 }
 
 function openOrgModal() {
+    // Hai màn hình tách bạch, không chồng lấn:
+    //   Superadmin -> chỉ thẻ Agent (tạo Agent + đặt trần số Sale).
+    //   Agent quản lý -> Sale / Nhóm / QR, tự sắp xếp tổ chức của mình.
+    // Superadmin cố tình KHÔNG thiết lập thay Agent; backend cũng trả 403.
     const isSuper = CURRENT_ADMIN?.role === 'superadmin';
     document.querySelector('[data-org-tab="agents"]')?.classList.toggle('hide', !isSuper);
+    ['sales', 'groups', 'qr'].forEach((name) => {
+        document.querySelector(`[data-org-tab="${name}"]`)?.classList.toggle('hide', isSuper);
+    });
     const title = document.getElementById('org-title');
-    if (title) title.textContent = isSuper ? 'Quản lý Agent, Sale và nhóm' : 'Quản lý Sale và nhóm';
+    if (title) title.textContent = isSuper ? 'Quản lý Agent' : 'Quản lý Sale, nhóm và QR';
 
     if (isSuper) {
         const select = document.getElementById('org-agent-project');
@@ -4490,7 +4497,7 @@ function openOrgModal() {
     document.getElementById('org-modal')?.classList.remove('hide');
     switchOrgTab(isSuper ? 'agents' : 'sales');
     // Nhóm được tải sẵn vì hai form Sale và QR đều cần danh sách nhóm.
-    void loadOrgGroups(true);
+    if (!isSuper) void loadOrgGroups(true);
 }
 
 function closeOrgModal() {
@@ -4510,8 +4517,8 @@ async function loadOrgAgents() {
                 <div class="org-item-main">
                     <strong>${escapeHtml(agent.full_name || agent.username)}</strong>
                     <small>${escapeHtml(agent.username)} · ${escapeHtml(agent.project_id || '—')}</small>
-                    <small><i class="ri-time-line"></i> ${escapeHtml(formatHourWindows(agent.access_hours))}
-                        · ${agent.sale_count} Sale · ${agent.group_count} nhóm</small>
+                    <small><i class="ri-team-line"></i> ${agent.sale_count}${agent.sale_limit ? '/' + agent.sale_limit : ''} Sale
+                        · ${agent.group_count} nhóm${agent.sale_limit && agent.sale_count >= agent.sale_limit ? ' · <b>đã hết suất</b>' : ''}</small>
                 </div>
                 <button type="button" class="org-toggle" data-agent-toggle="${agent.id}" data-active="${agent.is_active}">
                     ${agent.is_active ? 'Đang hoạt động' : 'Đã khóa'}
@@ -4544,7 +4551,6 @@ async function loadOrgSales() {
                     ${sale.is_active ? 'Đang hoạt động' : 'Đã khóa'}
                 </button>
             </article>`).join('') : '<p class="org-empty">Chưa có Sale nào.</p>';
-        refreshOrgSaleOptions();
     } catch (error) {
         box.innerHTML = `<p class="org-empty">${escapeHtml(error.message)}</p>`;
     }
@@ -4578,19 +4584,6 @@ async function loadOrgGroups(quiet) {
     }
 }
 
-// Danh sách Sale ưu tiên chỉ nên gồm thành viên của nhóm đang chọn ở form QR;
-// chọn người ngoài nhóm thì backend sẽ từ chối.
-function refreshOrgSaleOptions() {
-    const select = document.getElementById('org-qr-sale');
-    if (!select) return;
-    const groupId = Number(document.getElementById('org-qr-group')?.value || 0);
-    const group = ORG_GROUPS.find((item) => item.id === groupId);
-    const memberIds = new Set((group?.sales || []).map((sale) => Number(sale.sale_id)));
-    const members = ORG_SALES.filter((sale) => memberIds.has(Number(sale.id)));
-    select.innerHTML = '<option value="">— Không chỉ định —</option>' +
-        members.map((sale) => `<option value="${sale.id}">${escapeHtml(sale.full_name || sale.username)}</option>`).join('');
-}
-
 // --- QR ----------------------------------------------------------------------
 
 async function loadOrgQr() {
@@ -4604,12 +4597,11 @@ async function loadOrgQr() {
             <article class="org-item">
                 <div class="org-item-main">
                     <strong>${escapeHtml(account.label)}</strong>
-                    <small>${escapeHtml(account.group_name || 'chưa gán nhóm')}${account.preferred_sale_name ? ' · ưu tiên ' + escapeHtml(account.preferred_sale_name) : ''}</small>
+                    <small><i class="ri-team-line"></i> ${escapeHtml(account.group_name || 'chưa gán nhóm')}</small>
                     <small><a href="${escapeHtml(account.chat_url)}" target="_blank" rel="noopener">Mở liên kết QR</a></small>
                 </div>
                 <button type="button" class="org-remove" data-qr-revoke="${account.id}" title="Thu hồi QR"><i class="ri-forbid-line"></i></button>
             </article>`).join('') : '<p class="org-empty">Chưa có QR nào.</p>';
-        refreshOrgSaleOptions();
     } catch (error) {
         box.innerHTML = `<p class="org-empty">${escapeHtml(error.message)}</p>`;
     }
@@ -4626,7 +4618,6 @@ document.getElementById('org-tabs')?.addEventListener('click', (event) => {
     const tab = event.target.closest('[data-org-tab]');
     if (tab) switchOrgTab(tab.dataset.orgTab);
 });
-document.getElementById('org-qr-group')?.addEventListener('change', refreshOrgSaleOptions);
 
 document.getElementById('org-agent-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -4638,7 +4629,7 @@ document.getElementById('org-agent-form')?.addEventListener('submit', async (eve
                 fullName: document.getElementById('org-agent-name').value.trim(),
                 email: document.getElementById('org-agent-email').value.trim(),
                 projectId: document.getElementById('org-agent-project').value,
-                accessHours: orgHourWindows('org-agent-start', 'org-agent-end'),
+                saleLimit: document.getElementById('org-agent-sale-limit').value,
             }),
         });
         event.target.reset();
@@ -4687,7 +4678,6 @@ document.getElementById('org-group-form')?.addEventListener('submit', async (eve
 
 document.getElementById('org-qr-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const preferred = document.getElementById('org-qr-sale').value;
     try {
         await orgFetch('/api/agent/qr-accounts', {
             method: 'POST',
@@ -4695,7 +4685,6 @@ document.getElementById('org-qr-form')?.addEventListener('submit', async (event)
             body: JSON.stringify({
                 label: document.getElementById('org-qr-label').value.trim(),
                 groupId: Number(document.getElementById('org-qr-group').value),
-                preferredSaleId: preferred ? Number(preferred) : null,
             }),
         });
         document.getElementById('org-qr-label').value = '';
