@@ -1340,41 +1340,55 @@ function updateConsoleBrand() {
 // Gọi ở cả loadAdminProfile và loadProjects vì nút QR phụ thuộc PROJECTS đã tải.
 function updateAgentHeaderUI() {
     const isAgentRole = isRestrictedConsole();
+    const role = CURRENT_ADMIN?.role || 'agent';
 
     updateConsoleBrand();
 
     const identityEl = document.getElementById('agent-identity');
+    const labelEl = document.getElementById('agent-identity-label');
     const nameEl = document.getElementById('agent-display-name');
     const agentName = isAgentRole ? (CURRENT_ADMIN.full_name || CURRENT_ADMIN.username || '') : '';
+    
     if (nameEl) nameEl.textContent = agentName;
+    if (labelEl) {
+        labelEl.textContent = role === 'sale' ? 'Sale' : (role === 'agent' ? 'Agent' : 'Admin');
+    }
     if (identityEl) identityEl.classList.toggle('hide', !agentName);
 
     // Tên đã hiện to ở header trái rồi thì badge tên bên phải là thừa.
-    // (loadAdminProfile đặt display:flex bằng inline style nên phải ghi đè ở đây.)
     const profileBadge = document.getElementById('admin-profile-badge');
     if (profileBadge) profileBadge.style.display = agentName ? 'none' : 'flex';
 
     document.getElementById('project-selector-wrap')?.classList.toggle('hide', isAgentRole);
 
-    // Agent chỉ được XEM ngôn ngữ của cuộc trò chuyện, không được đổi.
+    // Agent/Sale chỉ được XEM ngôn ngữ của cuộc trò chuyện, không được đổi.
     const detailLangEl = document.getElementById('detail-lang-select');
     if (detailLangEl) {
         detailLangEl.disabled = isAgentRole;
         detailLangEl.title = isAgentRole ? 'Chỉ quản trị viên mới đổi được ngôn ngữ' : '';
     }
-    document.getElementById('agent-account-btn')?.classList.toggle('hide', !isAgentRole);
+    
+    // Nút mở Trung tâm Quản trị & Cài đặt (Unified Control Hub): hiển thị cho mọi vai trò với nhãn phù hợp
+    const orgBtn = document.getElementById('org-manage-btn');
+    const orgBtnLabel = document.getElementById('org-manage-btn-label');
+    if (orgBtn) {
+        orgBtn.classList.remove('hide');
+        if (orgBtnLabel) {
+            if (role === 'superadmin') orgBtnLabel.textContent = 'Quản trị & Cài đặt';
+            else if (role === 'agent') orgBtnLabel.textContent = 'Quản trị & Đội ngũ';
+            else if (role === 'sale') orgBtnLabel.textContent = 'Hồ sơ & Ca trực';
+            else orgBtnLabel.textContent = 'Cài đặt dự án';
+        }
+    }
 
-    // Chỉ Agent quản lý mới tạo và xem QR. Sale không đụng tới QR (mục 17 kế hoạch).
+    // Nút hồ sơ tài khoản
+    document.getElementById('agent-account-btn')?.classList.toggle('hide', isAgentRole);
+
+    // Chỉ Agent quản lý mới tạo và xem QR. Sale không đụng tới QR.
     const hasQr = isAgentManagerRole() && isQrConciergeProject(CURRENT_ADMIN.project_id);
     document.getElementById('agent-qr-btn')?.classList.toggle('hide', !hasQr);
 
-    // Nút quản lý Sale / nhóm: Agent quản lý của dự án QR, và superadmin.
-    const canManageOrg = isAgentManagerRole() || CURRENT_ADMIN?.role === 'superadmin';
-    document.getElementById('org-manage-btn')?.classList.toggle('hide', !canManageOrg);
-
-    // Agent không còn mục nào trong menu Cài đặt (mọi thứ đã tách ra nút riêng),
-    // nên bỏ hẳn menu và đưa nút thông báo ra ngoài header.
-    // Trong iframe thì quyền thông báo do trang cha xin, hidePushUI() sẽ ẩn nút này.
+    // Agent/Sale không dùng dropdown cũ, đã tích hợp vào Trung tâm Quản trị
     document.getElementById('settings-dropdown-wrapper')?.classList.toggle('hide', isAgentRole);
     document.getElementById('agent-push-btn')?.classList.toggle('hide', !isAgentRole || inIframe);
 
@@ -4469,20 +4483,73 @@ function switchOrgTab(name) {
     if (name === 'sales') void loadOrgSales();
     if (name === 'groups') void loadOrgGroups();
     if (name === 'qr') void loadOrgQr();
+    if (name === 'profile') void loadOrgProfile();
 }
 
-function openOrgModal() {
-    // Hai màn hình tách bạch, không chồng lấn:
-    //   Superadmin -> chỉ thẻ Agent (tạo Agent + đặt trần số Sale).
-    //   Agent quản lý -> Sale / Nhóm / QR, tự sắp xếp tổ chức của mình.
-    // Superadmin cố tình KHÔNG thiết lập thay Agent; backend cũng trả 403.
-    const isSuper = CURRENT_ADMIN?.role === 'superadmin';
-    document.querySelector('[data-org-tab="agents"]')?.classList.toggle('hide', !isSuper);
-    ['sales', 'groups', 'qr'].forEach((name) => {
-        document.querySelector(`[data-org-tab="${name}"]`)?.classList.toggle('hide', isSuper);
-    });
+function openOrgModal(initialTab = null) {
+    const role = CURRENT_ADMIN?.role || 'agent';
+    const isSuper = role === 'superadmin';
+    const isAgent = role === 'agent';
+    const isSale = role === 'sale';
+    const isProjAdmin = role === 'project_admin';
+
+    // Cập nhật thẻ định danh vai trò (Role Badge) & Thông tin dự án
+    const roleBadge = document.getElementById('org-role-badge');
+    if (roleBadge) {
+        roleBadge.className = `org-role-pill ${role}`;
+        if (isSuper) roleBadge.innerHTML = '<i class="ri-shield-user-line"></i> Quản Trị Tối Cao (Superadmin)';
+        else if (isAgent) roleBadge.innerHTML = '<i class="ri-user-star-line"></i> Agent Quản Lý (QR Concierge)';
+        else if (isSale) roleBadge.innerHTML = '<i class="ri-user-shared-line"></i> Sale Trực Ca';
+        else if (isProjAdmin) roleBadge.innerHTML = '<i class="ri-building-line"></i> Project Admin';
+        else roleBadge.innerHTML = '<i class="ri-user-line"></i> Nhân Viên';
+    }
+
+    const projNameEl = document.getElementById('org-project-name');
+    if (projNameEl) {
+        projNameEl.textContent = CURRENT_ADMIN?.project_id || (isSuper ? 'Tất cả dự án (Hệ thống)' : 'Chưa gắn dự án');
+    }
+
+    const statusPill = document.getElementById('org-status-pill');
+    if (statusPill) {
+        if (isSuper) statusPill.innerHTML = '<i class="ri-shield-check-line"></i> Toàn quyền hệ thống';
+        else if (isAgent) statusPill.innerHTML = '<i class="ri-time-line"></i> Quản trị không giới hạn giờ';
+        else if (isSale) {
+            statusPill.innerHTML = '<i class="ri-time-line"></i> Hoạt động theo ca trực';
+        } else {
+            statusPill.innerHTML = '<i class="ri-checkbox-circle-line"></i> Sẵn sàng';
+        }
+    }
+
     const title = document.getElementById('org-title');
-    if (title) title.textContent = isSuper ? 'Quản lý Agent' : 'Quản lý Sale, nhóm và QR';
+    if (title) {
+        if (isSuper) title.textContent = 'Trung Tâm Quản Trị & Cài Đặt Hệ Thống';
+        else if (isAgent) title.textContent = 'Quản Lý Đội Ngũ, Nhóm & Mã QR';
+        else if (isSale) title.textContent = 'Hồ Sơ & Thông Tin Ca Trực';
+        else title.textContent = 'Cài Đặt Dự Án & Kênh Kết Nối';
+    }
+
+    // Phân quyền hiển thị từng Tab
+    // Tab Agent: Chỉ Superadmin
+    document.querySelector('[data-org-tab="agents"]')?.classList.toggle('hide', !isSuper);
+    
+    // Tab Sale: Chỉ Agent quản lý (Superadmin xem qua Quản lý nhân viên)
+    document.querySelector('[data-org-tab="sales"]')?.classList.toggle('hide', !isAgent);
+    
+    // Tab Nhóm & QR: Agent quản lý và Superadmin
+    document.querySelector('[data-org-tab="groups"]')?.classList.toggle('hide', !isAgent && !isSuper);
+    document.querySelector('[data-org-tab="qr"]')?.classList.toggle('hide', !isAgent && !isSuper);
+    
+    // Tab Kênh & AI: Superadmin và Project Admin
+    document.querySelector('[data-org-tab="channels_ai"]')?.classList.toggle('hide', !isSuper && !isProjAdmin);
+    
+    // Tab Hồ sơ & Ca trực: Mọi vai trò
+    document.querySelector('[data-org-tab="profile"]')?.classList.remove('hide');
+    
+    // Tab Dự án & Dữ liệu: Chỉ Superadmin
+    document.querySelector('[data-org-tab="projects_data"]')?.classList.toggle('hide', !isSuper);
+    
+    // Tab Bảng phân quyền: Mọi vai trò
+    document.querySelector('[data-org-tab="permissions"]')?.classList.remove('hide');
 
     if (isSuper) {
         const select = document.getElementById('org-agent-project');
@@ -4495,36 +4562,178 @@ function openOrgModal() {
     }
 
     document.getElementById('org-modal')?.classList.remove('hide');
-    switchOrgTab(isSuper ? 'agents' : 'sales');
-    // Nhóm được tải sẵn vì hai form Sale và QR đều cần danh sách nhóm.
-    if (!isSuper) void loadOrgGroups(true);
+
+    // Xác định tab mặc định khi mở
+    let targetTab = initialTab;
+    if (!targetTab) {
+        if (isSuper) targetTab = 'agents';
+        else if (isAgent) targetTab = 'sales';
+        else if (isSale) targetTab = 'profile';
+        else if (isProjAdmin) targetTab = 'channels_ai';
+        else targetTab = 'profile';
+    }
+    switchOrgTab(targetTab);
+
+    // Tải trước danh sách nhóm nếu là Agent để form Sale và QR sẵn sàng
+    if (isAgent) void loadOrgGroups(true);
 }
 
 function closeOrgModal() {
     document.getElementById('org-modal')?.classList.add('hide');
 }
 
+// Helpers mở nhanh các modal cấu hình từ thẻ Hub
+window.openChannelSettings = () => {
+    closeOrgModal();
+    const btn = document.getElementById('channel-settings-btn');
+    if (btn) btn.click();
+};
+
+window.openKnowledgeSettings = () => {
+    closeOrgModal();
+    const btn = document.getElementById('knowledge-settings-btn');
+    if (btn) btn.click();
+};
+
+window.openKeywordSettings = () => {
+    closeOrgModal();
+    const btn = document.getElementById('keyword-settings-btn');
+    if (btn) btn.click();
+};
+
+// --- Profile & Shift Tab -----------------------------------------------------
+
+let selectedOrgAvatar = 'gradient-1';
+
+function loadOrgProfile() {
+    if (!CURRENT_ADMIN) return;
+    const nameEl = document.getElementById('org-my-name');
+    const emailEl = document.getElementById('org-my-email');
+    const roleTextEl = document.getElementById('org-my-role-text');
+    const avatarEl = document.getElementById('org-my-avatar');
+    const nameInput = document.getElementById('org-profile-name-input');
+    const shiftTitle = document.getElementById('org-my-shift-title');
+    const shiftDesc = document.getElementById('org-my-shift-desc');
+
+    const fullName = CURRENT_ADMIN.full_name || CURRENT_ADMIN.username || 'Admin';
+    if (nameEl) nameEl.textContent = fullName;
+    if (emailEl) emailEl.textContent = CURRENT_ADMIN.username || 'admin@pastie.vn';
+    if (nameInput) nameInput.value = fullName;
+
+    const role = CURRENT_ADMIN.role || 'agent';
+    if (roleTextEl) {
+        if (role === 'superadmin') roleTextEl.textContent = 'Quản trị tối cao (Superadmin)';
+        else if (role === 'agent') roleTextEl.textContent = 'Agent Quản lý (QR Concierge)';
+        else if (role === 'sale') roleTextEl.textContent = 'Nhân viên Sale (Trực ca)';
+        else if (role === 'project_admin') roleTextEl.textContent = 'Quản trị dự án (Project Admin)';
+        else roleTextEl.textContent = 'Nhân viên tư vấn';
+    }
+
+    if (avatarEl) {
+        avatarEl.textContent = fullName.trim().charAt(0).toUpperCase();
+    }
+
+    if (shiftTitle && shiftDesc) {
+        if (role === 'superadmin' || role === 'agent' || role === 'project_admin') {
+            shiftTitle.textContent = 'Quyền quản trị toàn thời gian';
+            shiftDesc.textContent = 'Tài khoản không bị giới hạn khung giờ đăng nhập hay nhận chat.';
+        } else {
+            shiftTitle.textContent = 'Khung giờ phân ca trực';
+            shiftDesc.textContent = 'Bạn nhận chat và xử lý yêu cầu của khách hàng theo ca làm việc được Agent phân công.';
+        }
+    }
+
+    // Render bảng chọn màu Avatar
+    const palette = document.getElementById('org-avatar-palette');
+    if (palette) {
+        const avatarGradients = [
+            { id: 'gradient-1', bg: 'linear-gradient(135deg,#6366f1,#8b5cf6)' },
+            { id: 'gradient-2', bg: 'linear-gradient(135deg,#ec4899,#f43f5e)' },
+            { id: 'gradient-3', bg: 'linear-gradient(135deg,#10b981,#14b8a6)' },
+            { id: 'gradient-4', bg: 'linear-gradient(135deg,#f59e0b,#f97316)' },
+            { id: 'gradient-5', bg: 'linear-gradient(135deg,#0ea5e9,#2563eb)' },
+        ];
+        selectedOrgAvatar = CURRENT_ADMIN.avatar_url || 'gradient-1';
+        palette.innerHTML = avatarGradients.map((g) => `
+            <div class="org-avatar-option ${g.id === selectedOrgAvatar ? 'is-selected' : ''}" 
+                 data-avatar="${g.id}" style="background:${g.bg};" 
+                 onclick="selectOrgAvatar('${g.id}')"></div>
+        `).join('');
+    }
+
+    // Trạng thái nút Push notification
+    const pushBtn = document.getElementById('org-profile-push-btn');
+    if (pushBtn && typeof PUSH_STATE !== 'undefined') {
+        if (PUSH_STATE === 'granted') {
+            pushBtn.textContent = '✓ Đã bật thông báo';
+            pushBtn.disabled = true;
+            pushBtn.style.opacity = '0.7';
+        } else {
+            pushBtn.textContent = 'Bật thông báo ngay';
+            pushBtn.disabled = false;
+            pushBtn.onclick = () => enablePushNotifications();
+        }
+    }
+}
+
+window.selectOrgAvatar = (avatarId) => {
+    selectedOrgAvatar = avatarId;
+    document.querySelectorAll('.org-avatar-option').forEach((el) => {
+        el.classList.toggle('is-selected', el.dataset.avatar === avatarId);
+    });
+};
+
+document.getElementById('org-profile-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const newName = document.getElementById('org-profile-name-input')?.value.trim();
+    if (!newName) return;
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/profile`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fullName: newName, avatarUrl: selectedOrgAvatar }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Không thể lưu hồ sơ.');
+        }
+        CURRENT_ADMIN.full_name = newName;
+        CURRENT_ADMIN.avatar_url = selectedOrgAvatar;
+        setOrgStatus('Đã cập nhật hồ sơ thành công.');
+        updateAgentHeaderUI();
+        loadOrgProfile();
+    } catch (error) {
+        setOrgStatus(error.message, 'error');
+    }
+});
+
 // --- Agent -------------------------------------------------------------------
 
 async function loadOrgAgents() {
     const box = document.getElementById('org-agent-list');
+    const badge = document.getElementById('org-agent-count-badge');
     if (!box) return;
-    box.innerHTML = '<p class="org-empty">Đang tải…</p>';
+    box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách Agent…</p>';
     try {
         const agents = await orgFetch('/api/superadmin/agents');
+        if (badge) badge.textContent = `${agents.length} Agent`;
         box.innerHTML = agents.length ? agents.map((agent) => `
             <article class="org-item">
                 <div class="org-item-main">
-                    <strong>${escapeHtml(agent.full_name || agent.username)}</strong>
-                    <small>${escapeHtml(agent.username)} · ${escapeHtml(agent.project_id || '—')}</small>
-                    <small><i class="ri-team-line"></i> ${agent.sale_count}${agent.sale_limit ? '/' + agent.sale_limit : ''} Sale
-                        · ${agent.group_count} nhóm${agent.sale_limit && agent.sale_count >= agent.sale_limit ? ' · <b>đã hết suất</b>' : ''}</small>
+                    <strong>
+                        ${escapeHtml(agent.full_name || agent.username)}
+                        <span class="org-shift is-on">${escapeHtml(agent.project_id || 'QR Concierge')}</span>
+                    </strong>
+                    <small>${escapeHtml(agent.username)}</small>
+                    <small><i class="ri-team-line"></i> Đã tạo: <strong>${agent.sale_count}${agent.sale_limit ? '/' + agent.sale_limit : ''} Sale</strong>
+                        · <strong>${agent.group_count} nhóm</strong>${agent.sale_limit && agent.sale_count >= agent.sale_limit ? ' · <span style="color:#ef4444;font-weight:700;">Đã hết suất</span>' : ''}</small>
                 </div>
                 <button type="button" class="org-toggle" data-agent-toggle="${agent.id}" data-active="${agent.is_active}">
-                    ${agent.is_active ? 'Đang hoạt động' : 'Đã khóa'}
+                    ${agent.is_active ? '✓ Đang hoạt động' : '✗ Đã khóa'}
                 </button>
-            </article>`).join('') : '<p class="org-empty">Chưa có Agent nào.</p>';
+            </article>`).join('') : '<p class="org-empty">Chưa có Agent nào trong hệ thống.</p>';
     } catch (error) {
+        if (badge) badge.textContent = '0 Agent';
         box.innerHTML = `<p class="org-empty">${escapeHtml(error.message)}</p>`;
     }
 }
@@ -4533,25 +4742,34 @@ async function loadOrgAgents() {
 
 async function loadOrgSales() {
     const box = document.getElementById('org-sale-list');
+    const badge = document.getElementById('org-sale-count-badge');
+    const quotaCount = document.getElementById('org-quota-count');
     if (!box) return;
-    box.innerHTML = '<p class="org-empty">Đang tải…</p>';
+    box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách Sale…</p>';
     try {
         ORG_SALES = await orgFetch('/api/agent/sales');
+        const count = ORG_SALES.length;
+        if (badge) badge.textContent = `${count} Sale`;
+        if (quotaCount) {
+            const limit = CURRENT_ADMIN?.sale_limit;
+            quotaCount.textContent = limit ? `${count}/${limit} suất đã dùng` : `${count} Sale (Không giới hạn)`;
+        }
         box.innerHTML = ORG_SALES.length ? ORG_SALES.map((sale) => `
             <article class="org-item">
                 <div class="org-item-main">
                     <strong>${escapeHtml(sale.full_name || sale.username)}
-                        <span class="org-shift ${sale.on_shift ? 'is-on' : ''}">${sale.on_shift ? 'đang trong ca' : 'ngoài ca'}</span>
+                        <span class="org-shift ${sale.on_shift ? 'is-on' : ''}">${sale.on_shift ? '🟢 Đang trong ca' : '⚪ Ngoài ca'}</span>
                     </strong>
                     <small>${escapeHtml(sale.username)}</small>
-                    <small><i class="ri-time-line"></i> ${escapeHtml(formatHourWindows(sale.access_hours))}
-                        · ${(sale.groups || []).map((g) => escapeHtml(g.name)).join(', ') || 'chưa có nhóm'}</small>
+                    <small><i class="ri-time-line"></i> Khung giờ: <strong>${escapeHtml(formatHourWindows(sale.access_hours))}</strong>
+                        · Nhóm: <strong>${(sale.groups || []).map((g) => escapeHtml(g.name)).join(', ') || 'Chưa gán nhóm'}</strong></small>
                 </div>
                 <button type="button" class="org-toggle" data-sale-toggle="${sale.id}" data-active="${sale.is_active}">
-                    ${sale.is_active ? 'Đang hoạt động' : 'Đã khóa'}
+                    ${sale.is_active ? '✓ Đang hoạt động' : '✗ Đã khóa'}
                 </button>
-            </article>`).join('') : '<p class="org-empty">Chưa có Sale nào.</p>';
+            </article>`).join('') : '<p class="org-empty">Chưa có tài khoản Sale nào.</p>';
     } catch (error) {
+        if (badge) badge.textContent = '0 Sale';
         box.innerHTML = `<p class="org-empty">${escapeHtml(error.message)}</p>`;
     }
 }
@@ -4560,19 +4778,21 @@ async function loadOrgSales() {
 
 async function loadOrgGroups(quiet) {
     const box = document.getElementById('org-group-list');
-    if (!quiet && box) box.innerHTML = '<p class="org-empty">Đang tải…</p>';
+    const badge = document.getElementById('org-group-count-badge');
+    if (!quiet && box) box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách nhóm…</p>';
     try {
         ORG_GROUPS = await orgFetch('/api/agent/groups');
+        if (badge) badge.textContent = `${ORG_GROUPS.length} Nhóm`;
         if (box && !quiet) {
             box.innerHTML = ORG_GROUPS.length ? ORG_GROUPS.map((group) => `
                 <article class="org-item">
                     <div class="org-item-main">
                         <strong>${escapeHtml(group.name)}</strong>
-                        <small>${(group.sales || []).map((s) => escapeHtml(s.full_name)).join(', ') || 'chưa có Sale'}</small>
-                        <small><i class="ri-chat-3-line"></i> ${group.waiting_count} đang chờ · ${group.active_count} đang xử lý</small>
+                        <small>Nhân viên phụ trách: <strong>${(group.sales || []).map((s) => escapeHtml(s.full_name)).join(', ') || 'Chưa có Sale'}</strong></small>
+                        <small><i class="ri-chat-3-line"></i> Hội thoại: <strong>${group.waiting_count} đang chờ</strong> · <strong>${group.active_count} đang xử lý</strong></small>
                     </div>
                     <button type="button" class="org-remove" data-group-delete="${group.id}" title="Xóa nhóm"><i class="ri-delete-bin-line"></i></button>
-                </article>`).join('') : '<p class="org-empty">Chưa có nhóm nào.</p>';
+                </article>`).join('') : '<p class="org-empty">Chưa có nhóm tiếp nhận nào.</p>';
         }
         const groupOptions = ORG_GROUPS.map((group) => `<option value="${group.id}">${escapeHtml(group.name)}</option>`).join('');
         const saleGroup = document.getElementById('org-sale-group');
@@ -4580,6 +4800,7 @@ async function loadOrgGroups(quiet) {
         const qrGroup = document.getElementById('org-qr-group');
         if (qrGroup) qrGroup.innerHTML = groupOptions || '<option value="">Chưa có nhóm</option>';
     } catch (error) {
+        if (badge) badge.textContent = '0 Nhóm';
         if (box && !quiet) box.innerHTML = `<p class="org-empty">${escapeHtml(error.message)}</p>`;
     }
 }
@@ -4588,28 +4809,35 @@ async function loadOrgGroups(quiet) {
 
 async function loadOrgQr() {
     const box = document.getElementById('org-qr-list');
+    const badge = document.getElementById('org-qr-count-badge');
     if (!box) return;
-    box.innerHTML = '<p class="org-empty">Đang tải…</p>';
+    box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách QR…</p>';
     try {
         if (ORG_SALES.length === 0) await loadOrgSales();
         const accounts = await orgFetch('/api/agent/qr-accounts');
+        if (badge) badge.textContent = `${accounts.length} QR`;
         box.innerHTML = accounts.length ? accounts.map((account) => `
             <article class="org-item">
                 <div class="org-item-main">
-                    <strong>${escapeHtml(account.label)}</strong>
-                    <small><i class="ri-team-line"></i> ${escapeHtml(account.group_name || 'chưa gán nhóm')}</small>
-                    <small><a href="${escapeHtml(account.chat_url)}" target="_blank" rel="noopener">Mở liên kết QR</a></small>
+                    <strong><i class="ri-qr-code-line" style="color:var(--accent-color);"></i> ${escapeHtml(account.label)}</strong>
+                    <small><i class="ri-team-line"></i> Nhóm tiếp nhận: <strong>${escapeHtml(account.group_name || 'Chưa gán nhóm')}</strong></small>
+                    <small style="display:flex;gap:10px;align-items:center;">
+                        <a href="${escapeHtml(account.chat_url)}" target="_blank" rel="noopener" style="color:#6366f1;font-weight:700;"><i class="ri-external-link-line"></i> Mở thử Chat</a>
+                        <a href="javascript:void(0)" onclick="openQrPreviewModal('${account.id}')" style="color:#ec4899;font-weight:700;"><i class="ri-image-line"></i> Xem Poster QR</a>
+                    </small>
                 </div>
                 <button type="button" class="org-remove" data-qr-revoke="${account.id}" title="Thu hồi QR"><i class="ri-forbid-line"></i></button>
-            </article>`).join('') : '<p class="org-empty">Chưa có QR nào.</p>';
+            </article>`).join('') : '<p class="org-empty">Chưa có mã QR nào được tạo.</p>';
     } catch (error) {
+        if (badge) badge.textContent = '0 QR';
         box.innerHTML = `<p class="org-empty">${escapeHtml(error.message)}</p>`;
     }
 }
 
-// --- Sự kiện -----------------------------------------------------------------
+// --- Sự kiện Trung Tâm Quản Trị ----------------------------------------------
 
-document.getElementById('org-manage-btn')?.addEventListener('click', openOrgModal);
+document.getElementById('org-manage-btn')?.addEventListener('click', () => openOrgModal());
+document.getElementById('agent-account-btn')?.addEventListener('click', () => openOrgModal('profile'));
 document.getElementById('org-close-btn')?.addEventListener('click', closeOrgModal);
 document.getElementById('org-modal')?.addEventListener('click', (event) => {
     if (event.target === document.getElementById('org-modal')) closeOrgModal();
@@ -4633,7 +4861,7 @@ document.getElementById('org-agent-form')?.addEventListener('submit', async (eve
             }),
         });
         event.target.reset();
-        setOrgStatus('Đã tạo Agent.');
+        setOrgStatus('Đã tạo Agent thành công.');
         await loadOrgAgents();
     } catch (error) { setOrgStatus(error.message, 'error'); }
 });
@@ -4653,7 +4881,7 @@ document.getElementById('org-sale-form')?.addEventListener('submit', async (even
             }),
         });
         event.target.reset();
-        setOrgStatus('Đã tạo Sale.');
+        setOrgStatus('Đã tạo Sale mới thành công.');
         await loadOrgSales();
         await loadOrgGroups(true);
     } catch (error) { setOrgStatus(error.message, 'error'); }
@@ -4671,7 +4899,7 @@ document.getElementById('org-group-form')?.addEventListener('submit', async (eve
             }),
         });
         event.target.reset();
-        setOrgStatus('Đã tạo nhóm.');
+        setOrgStatus('Đã tạo nhóm tiếp nhận thành công.');
         await loadOrgGroups();
     } catch (error) { setOrgStatus(error.message, 'error'); }
 });
@@ -4688,13 +4916,12 @@ document.getElementById('org-qr-form')?.addEventListener('submit', async (event)
             }),
         });
         document.getElementById('org-qr-label').value = '';
-        setOrgStatus('Đã tạo QR.');
+        setOrgStatus('Đã tạo mã QR mới thành công.');
         await loadOrgQr();
     } catch (error) { setOrgStatus(error.message, 'error'); }
 });
 
-// Các nút trong danh sách được gắn bằng ủy quyền sự kiện vì danh sách được vẽ lại
-// sau mỗi thao tác.
+// Các nút trong danh sách được gắn bằng ủy quyền sự kiện
 document.getElementById('org-modal')?.addEventListener('click', async (event) => {
     const saleToggle = event.target.closest('[data-sale-toggle]');
     if (saleToggle) {
@@ -4731,7 +4958,7 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         if (!confirm('Xóa nhóm này? Sale trong nhóm vẫn giữ tài khoản, chỉ mất phân công nhóm.')) return;
         try {
             await orgFetch(`/api/agent/groups/${groupDelete.dataset.groupDelete}`, { method: 'DELETE' });
-            setOrgStatus('Đã xóa nhóm.');
+            setOrgStatus('Đã xóa nhóm thành công.');
             await loadOrgGroups();
         } catch (error) { setOrgStatus(error.message, 'error'); }
         return;
@@ -4742,7 +4969,7 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         if (!confirm('Thu hồi QR này? Khách quét mã cũ sẽ không vào được nữa.')) return;
         try {
             await orgFetch(`/api/agent/qr-accounts/${qrRevoke.dataset.qrRevoke}/revoke`, { method: 'POST' });
-            setOrgStatus('Đã thu hồi QR.');
+            setOrgStatus('Đã thu hồi QR thành công.');
             await loadOrgQr();
         } catch (error) { setOrgStatus(error.message, 'error'); }
     }

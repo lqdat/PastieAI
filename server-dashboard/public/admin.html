@@ -98,9 +98,9 @@
                     <img src="/logoApp.png" alt="Pastie" class="logo-img">
                     <span id="console-brand-name" data-i18n="headerTitle">Pastie AI Console</span>
                 </div>
-                <!-- Tên hiển thị của Agent (chỉ hiện với role agent) -->
+                <!-- Tên hiển thị của Agent / Sale -->
                 <div id="agent-identity" class="agent-identity hide">
-                    <span class="agent-identity-label">Agent</span>
+                    <span class="agent-identity-label" id="agent-identity-label">Agent</span>
                     <span id="agent-display-name" class="agent-display-name"></span>
                 </div>
                 <div class="project-selector" id="project-selector-wrap">
@@ -112,12 +112,12 @@
                 </div>
             </div>
             <div class="header-right">
-                <!-- Nút riêng cho Agent: tách khỏi menu Cài đặt -->
-                <button id="agent-account-btn" class="header-quick-btn hide" type="button" title="Quản lý tài khoản của bạn">
-                    <i class="ri-user-settings-line"></i><span>Quản lý tài khoản</span>
+                <!-- Nút mở Trung tâm Quản trị & Cài đặt (Unified Control Hub) cho Agent / Sale / Superadmin -->
+                <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Trung tâm Quản trị &amp; Cài đặt">
+                    <i class="ri-dashboard-2-line"></i><span id="org-manage-btn-label">Quản trị &amp; Đội ngũ</span>
                 </button>
-                <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, nhóm và QR">
-                    <i class="ri-organization-chart"></i><span>Sale &amp; Nhóm</span>
+                <button id="agent-account-btn" class="header-quick-btn hide" type="button" title="Hồ sơ tài khoản của bạn">
+                    <i class="ri-user-settings-line"></i><span>Hồ sơ tài khoản</span>
                 </button>
                 <button id="agent-qr-btn" class="header-quick-btn header-quick-btn-qr hide" type="button" title="Mã QR tiếp nhận chat">
                     <i class="ri-qr-code-line"></i><span>Mã QR</span>
@@ -126,7 +126,7 @@
                     <i class="ri-notification-3-line" id="agent-push-icon"></i><span id="agent-push-label">Bật thông báo</span>
                 </button>
 
-                <!-- Settings Dropdown -->
+                <!-- Settings Dropdown (Superadmin & Project Admin) -->
                 <div class="settings-dropdown-wrapper" id="settings-dropdown-wrapper">
                     <button class="settings-trigger-btn" id="settings-trigger-btn" title="Cài đặt">
                         <i class="ri-settings-3-line"></i>
@@ -139,10 +139,10 @@
                             <strong>Thiết lập workspace</strong>
                         </div>
                         <div class="sdm-group sdm-tools-grid">
-                            <div class="sdm-label">Kênh & Công cụ</div>
+                            <div class="sdm-label">Kênh &amp; Công cụ</div>
                             <button id="knowledge-settings-btn" class="sdm-item hide">
                                 <span class="sdm-icon" style="background:rgba(99,102,241,0.15);color:#818cf8;"><i class="ri-brain-line"></i></span>
-                                <div class="sdm-text"><span>Knowledge Base</span><small>Huấn luyện & quản lý tri thức</small></div>
+                                <div class="sdm-text"><span>Knowledge Base</span><small>Huấn luyện &amp; quản lý tri thức</small></div>
                             </button>
                             <button id="keyword-settings-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(239,68,68,0.12);color:#f87171;"><i class="ri-user-voice-line"></i></span>
@@ -154,12 +154,12 @@
                             </button>
                             <button id="manage-admins-btn" class="sdm-item hide" type="button" onclick="window.openAdminManagement?.()">
                                 <span class="sdm-icon" style="background:rgba(245,158,11,0.15);color:#fbbf24;"><i class="ri-user-settings-line"></i></span>
-                                <div class="sdm-text"><span>Quản lý nhân viên</span><small>Phân quyền & tài khoản</small></div>
+                                <div class="sdm-text"><span>Quản lý nhân viên</span><small>Phân quyền &amp; tài khoản</small></div>
                             </button>
                         </div>
                         <div class="sdm-divider"></div>
                         <div class="sdm-group">
-                            <div class="sdm-label">Tài khoản</div>
+                            <div class="sdm-label">Tài khoản &amp; Thông báo</div>
                             <button id="enable-push-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(16,185,129,.12);color:#10b981;"><i class="ri-notification-3-line"></i></span>
                                 <div class="sdm-text"><span id="enable-push-label">Bật thông báo</span><small id="enable-push-description">Nhận chat mới ngay cả khi đã đóng app</small></div>
@@ -209,49 +209,73 @@
         <div id="org-modal" class="modal-overlay hide">
             <div class="org-card">
                 <header class="org-head">
-                    <div>
-                        <p class="org-kicker">PHÂN CẤP TỔ CHỨC</p>
-                        <h2 id="org-title">Quản lý Sale, nhóm và QR</h2>
+                    <div class="org-head-info">
+                        <div class="org-role-meta">
+                            <span id="org-role-badge" class="org-role-pill superadmin"><i class="ri-shield-user-line"></i> Quản Trị Tối Cao</span>
+                            <span id="org-project-badge" class="org-project-pill"><i class="ri-folder-3-line"></i> <span id="org-project-name">Dự án hệ thống</span></span>
+                            <span id="org-status-pill" class="org-status-pill"><i class="ri-time-line"></i> Không giới hạn giờ</span>
+                        </div>
+                        <h2 id="org-title">Trung Tâm Quản Trị &amp; Cài Đặt</h2>
                     </div>
                     <button type="button" class="icon-btn" id="org-close-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
                 </header>
 
                 <nav class="org-tabs" id="org-tabs">
-                    <button type="button" class="org-tab hide" data-org-tab="agents">Agent</button>
-                    <button type="button" class="org-tab is-active" data-org-tab="sales">Sale</button>
-                    <button type="button" class="org-tab" data-org-tab="groups">Nhóm</button>
-                    <button type="button" class="org-tab" data-org-tab="qr">QR</button>
+                    <button type="button" class="org-tab hide" data-org-tab="agents"><i class="ri-user-star-line"></i> <span>Agent</span></button>
+                    <button type="button" class="org-tab is-active" data-org-tab="sales"><i class="ri-user-shared-line"></i> <span>Đội ngũ Sale</span></button>
+                    <button type="button" class="org-tab" data-org-tab="groups"><i class="ri-team-line"></i> <span>Nhóm tiếp nhận</span></button>
+                    <button type="button" class="org-tab" data-org-tab="qr"><i class="ri-qr-code-line"></i> <span>Mã QR</span></button>
+                    <button type="button" class="org-tab hide" data-org-tab="channels_ai"><i class="ri-cpu-line"></i> <span>Kênh &amp; AI</span></button>
+                    <button type="button" class="org-tab" data-org-tab="profile"><i class="ri-profile-line"></i> <span>Hồ sơ &amp; Ca trực</span></button>
+                    <button type="button" class="org-tab hide" data-org-tab="projects_data"><i class="ri-database-2-line"></i> <span>Dự án &amp; Dữ liệu</span></button>
+                    <button type="button" class="org-tab" data-org-tab="permissions"><i class="ri-shield-keyhole-line"></i> <span>Bảng phân quyền</span></button>
                 </nav>
 
                 <p class="org-status hide" id="org-status"></p>
 
                 <!-- Agent: chỉ superadmin -->
                 <section class="org-pane hide" data-org-pane="agents">
+                    <div class="org-section-desc">
+                        <i class="ri-information-line"></i>
+                        <span>Superadmin tạo Agent cho từng dự án QR Concierge và đặt trần số Sale tối đa. Agent không bị khóa theo giờ và tự quản trị đội ngũ của mình.</span>
+                    </div>
                     <form class="org-form" id="org-agent-form">
                         <div class="org-form-row">
-                            <label>Tên Agent<input type="text" id="org-agent-name" required placeholder="Nguyễn Văn A"></label>
-                            <label>Email đăng nhập<input type="email" id="org-agent-email" required placeholder="agent@vidu.com"></label>
+                            <label>Tên Agent *<input type="text" id="org-agent-name" required placeholder="Nguyễn Văn A"></label>
+                            <label>Email đăng nhập *<input type="email" id="org-agent-email" required placeholder="agent@vidu.com"></label>
                         </div>
                         <div class="org-form-row">
-                            <label>Dự án<select id="org-agent-project"></select></label>
+                            <label>Dự án QR Concierge *<select id="org-agent-project"></select></label>
                             <label>Giới hạn số Sale<input type="number" id="org-agent-sale-limit" min="0" step="1" placeholder="Để trống = không giới hạn"></label>
                         </div>
-                        <button type="submit" class="org-submit"><i class="ri-user-add-line"></i> Tạo Agent</button>
-                        <p class="org-hint">Agent đăng nhập bằng OTP email hoặc Google, không có mật khẩu, và <strong>không bị giới hạn giờ đăng nhập</strong>. Sale, nhóm và mã QR do chính Agent tự thiết lập — Admin tổng chỉ tạo Agent và đặt trần số Sale.</p>
+                        <button type="submit" class="org-submit"><i class="ri-user-add-line"></i> Tạo Agent mới</button>
                     </form>
+                    <div class="org-list-header">
+                        <h4><i class="ri-list-check"></i> Danh sách Agent quản lý</h4>
+                        <span id="org-agent-count-badge" class="org-count-badge">Đang tải...</span>
+                    </div>
                     <div class="org-list" id="org-agent-list"></div>
                 </section>
 
                 <!-- Sale -->
                 <section class="org-pane" data-org-pane="sales">
+                    <div class="org-quota-banner" id="org-sale-quota-banner">
+                        <div class="org-quota-info">
+                            <i class="ri-team-line"></i>
+                            <div>
+                                <strong>Hạn mức tài khoản Sale: <span id="org-quota-count">—</span></strong>
+                                <small>Số Sale trực tiếp tiếp nhận chat của khách hàng theo ca</small>
+                            </div>
+                        </div>
+                    </div>
                     <form class="org-form" id="org-sale-form">
                         <div class="org-form-row">
-                            <label>Tên hiển thị<input type="text" id="org-sale-name" required placeholder="Sale An"></label>
-                            <label>Email đăng nhập<input type="email" id="org-sale-email" required placeholder="sale@vidu.com"></label>
+                            <label>Tên hiển thị với khách *<input type="text" id="org-sale-name" required placeholder="Sale An"></label>
+                            <label>Email đăng nhập (OTP / Google) *<input type="email" id="org-sale-email" required placeholder="sale@vidu.com"></label>
                         </div>
                         <div class="org-form-row">
-                            <label>Nhóm tham gia<select id="org-sale-group"><option value="">— Chưa gán nhóm —</option></select></label>
-                            <label>Giờ đăng nhập
+                            <label>Nhóm tham gia tiếp nhận<select id="org-sale-group"><option value="">— Chưa gán nhóm —</option></select></label>
+                            <label>Khung giờ làm việc (Nhận chat &amp; Đăng nhập)
                                 <span class="org-hour-pair">
                                     <input type="time" id="org-sale-start" value="08:00">
                                     <em>đến</em>
@@ -259,35 +283,232 @@
                                 </span>
                             </label>
                         </div>
-                        <button type="submit" class="org-submit"><i class="ri-user-add-line"></i> Tạo Sale</button>
-                        <p class="org-hint">Ca qua nửa đêm hợp lệ: đặt giờ bắt đầu lớn hơn giờ kết thúc, ví dụ 18:00 đến 02:00.</p>
+                        <button type="submit" class="org-submit"><i class="ri-user-add-line"></i> Tạo Sale mới</button>
+                        <p class="org-hint"><i class="ri-information-line"></i> Ca qua nửa đêm hợp lệ (ví dụ: 18:00 đến 02:00 sáng). Sale ngoài ca sẽ không nhận thông báo chat mới.</p>
                     </form>
+                    <div class="org-list-header">
+                        <h4><i class="ri-user-shared-line"></i> Danh sách nhân viên Sale</h4>
+                        <span id="org-sale-count-badge" class="org-count-badge">0 Sale</span>
+                    </div>
                     <div class="org-list" id="org-sale-list"></div>
                 </section>
 
                 <!-- Nhóm -->
                 <section class="org-pane hide" data-org-pane="groups">
+                    <div class="org-section-desc">
+                        <i class="ri-team-line"></i>
+                        <span>Mỗi nhóm đại diện cho một bộ phận (Lễ tân, Nhà hàng, Phòng VIP...). Khách quét QR sẽ vào hàng đợi chung của nhóm và Sale trong ca sẽ tiếp nhận.</span>
+                    </div>
                     <form class="org-form" id="org-group-form">
                         <div class="org-form-row">
-                            <label>Tên nhóm<input type="text" id="org-group-name" required placeholder="Lễ tân"></label>
-                            <label>Mô tả<input type="text" id="org-group-desc" placeholder="Không bắt buộc"></label>
+                            <label>Tên nhóm tiếp nhận *<input type="text" id="org-group-name" required placeholder="Ví dụ: Lễ tân, Nhà hàng, Phòng 101"></label>
+                            <label>Mô tả bộ phận<input type="text" id="org-group-desc" placeholder="Tùy chọn (ví dụ: Hỗ trợ khách ca sáng)"></label>
                         </div>
-                        <button type="submit" class="org-submit"><i class="ri-team-line"></i> Tạo nhóm</button>
+                        <button type="submit" class="org-submit"><i class="ri-add-circle-line"></i> Tạo nhóm tiếp nhận</button>
                     </form>
+                    <div class="org-list-header">
+                        <h4><i class="ri-organization-chart"></i> Danh sách nhóm đang hoạt động</h4>
+                        <span id="org-group-count-badge" class="org-count-badge">0 Nhóm</span>
+                    </div>
                     <div class="org-list" id="org-group-list"></div>
                 </section>
 
                 <!-- QR -->
                 <section class="org-pane hide" data-org-pane="qr">
+                    <div class="org-section-desc">
+                        <i class="ri-qr-code-line"></i>
+                        <span>Một nhóm có thể có nhiều mã QR đặt tại các vị trí (Bàn 1, Bàn 2, Phòng VIP...). Bấm để sao chép link hoặc xem Poster in ấn chuẩn khổ.</span>
+                    </div>
                     <form class="org-form" id="org-qr-form">
                         <div class="org-form-row">
-                            <label>Tên QR<input type="text" id="org-qr-label" required placeholder="Bàn 1"></label>
-                            <label>Nhóm tiếp nhận<select id="org-qr-group"></select></label>
+                            <label>Tên định danh QR (Vị trí đặt) *<input type="text" id="org-qr-label" required placeholder="Ví dụ: Bàn 1, Phòng 102, Quầy Bar"></label>
+                            <label>Nhóm tiếp nhận chat *<select id="org-qr-group"></select></label>
                         </div>
-                        <button type="submit" class="org-submit"><i class="ri-qr-code-line"></i> Tạo QR</button>
-                        <p class="org-hint">Một nhóm tạo được nhiều mã QR, phân biệt bằng tên (Bàn 1, Bàn 2, Phòng 101…). QR không chỉ định Sale nào cả: khách quét mã nào thì chat cũng vào hàng đợi chung của nhóm, Sale đang trong ca cùng nhận thông báo, ai tiếp nhận trước thì người đó xử lý.</p>
+                        <button type="submit" class="org-submit"><i class="ri-qr-code-line"></i> Tạo mã QR mới</button>
                     </form>
+                    <div class="org-list-header">
+                        <h4><i class="ri-qr-scan-line"></i> Danh sách mã QR đang hoạt động</h4>
+                        <span id="org-qr-count-badge" class="org-count-badge">0 QR</span>
+                    </div>
                     <div class="org-list" id="org-qr-list"></div>
+                </section>
+
+                <!-- Kênh & AI Tri Thức (Superadmin & Project Admin) -->
+                <section class="org-pane hide" data-org-pane="channels_ai">
+                    <div class="org-section-desc">
+                        <i class="ri-cpu-line"></i>
+                        <span>Quản lý kết nối các kênh đa nền tảng (Meta WhatsApp Business) và huấn luyện tri thức tự động cho Gemini AI.</span>
+                    </div>
+                    <div class="org-hub-grid">
+                        <div class="org-hub-card" onclick="window.openChannelSettings?.()">
+                            <div class="org-hub-icon" style="background:rgba(37,211,102,0.15);color:#25D366;"><i class="ri-whatsapp-line"></i></div>
+                            <div class="org-hub-content">
+                                <h4>WhatsApp Business Cloud API</h4>
+                                <p>Cấu hình Phone ID, WABA ID, Webhook và link chat trực tiếp với khách hàng.</p>
+                                <span class="org-hub-action"><i class="ri-settings-3-line"></i> Mở cấu hình WhatsApp</span>
+                            </div>
+                        </div>
+                        <div class="org-hub-card" onclick="window.openKnowledgeSettings?.()">
+                            <div class="org-hub-icon" style="background:rgba(99,102,241,0.15);color:#818cf8;"><i class="ri-brain-line"></i></div>
+                            <div class="org-hub-content">
+                                <h4>Knowledge Base &amp; Auto Crawler</h4>
+                                <p>Cào dữ liệu Landing Page tự động, đồng bộ DB DealPhuQuoc và tổng hợp tri thức lịch sử chat.</p>
+                                <span class="org-hub-action"><i class="ri-settings-3-line"></i> Mở Knowledge Base</span>
+                            </div>
+                        </div>
+                        <div class="org-hub-card" onclick="window.openKeywordSettings?.()">
+                            <div class="org-hub-icon" style="background:rgba(239,68,68,0.12);color:#f87171;"><i class="ri-user-voice-line"></i></div>
+                            <div class="org-hub-content">
+                                <h4>Từ khóa chuyển Agent</h4>
+                                <p>Cấu hình danh sách từ khóa để AI tự động chuyển chat cho nhân viên tiếp nhận.</p>
+                                <span class="org-hub-action"><i class="ri-settings-3-line"></i> Cài đặt từ khóa</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Hồ sơ & Ca trực (Tất cả vai trò) -->
+                <section class="org-pane hide" data-org-pane="profile">
+                    <div class="org-profile-card">
+                        <div class="org-profile-head">
+                            <div class="org-profile-avatar" id="org-my-avatar">A</div>
+                            <div class="org-profile-meta">
+                                <h3 id="org-my-name">Đang tải...</h3>
+                                <p><span id="org-my-email">admin@pastie.vn</span> · <strong id="org-my-role-text">Agent Quản lý</strong></p>
+                            </div>
+                        </div>
+                        <div class="org-profile-shift-info" id="org-my-shift-box">
+                            <div class="org-shift-indicator">
+                                <span class="online-dot active"></span>
+                                <div>
+                                    <strong id="org-my-shift-title">Trạng thái ca trực</strong>
+                                    <p id="org-my-shift-desc">Không giới hạn giờ đăng nhập (Toàn quyền quản trị)</p>
+                                </div>
+                            </div>
+                        </div>
+                        <form id="org-profile-form" class="org-form" style="margin-top:14px;">
+                            <label>Tên hiển thị với khách hàng và nội bộ *
+                                <input type="text" id="org-profile-name-input" required maxlength="100" placeholder="Tên hiển thị...">
+                            </label>
+                            <label>Màu sắc nhận diện Avatar
+                                <div class="org-avatar-palette" id="org-avatar-palette"></div>
+                            </label>
+                            <div class="org-push-toggle-box">
+                                <div class="org-push-toggle-text">
+                                    <strong><i class="ri-notification-3-line"></i> Thông báo trình duyệt (Web Push)</strong>
+                                    <small>Nhận chuông báo và popup ngay khi có khách hàng cần tiếp nhận</small>
+                                </div>
+                                <button type="button" class="primary-btn" id="org-profile-push-btn" style="width:auto;padding:7px 14px;font-size:12px;">Bật thông báo</button>
+                            </div>
+                            <button type="submit" class="org-submit" style="margin-top:6px;"><i class="ri-save-line"></i> Lưu hồ sơ tài khoản</button>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- Dự án & Xuất dữ liệu (Superadmin) -->
+                <section class="org-pane hide" data-org-pane="projects_data">
+                    <div class="org-section-desc">
+                        <i class="ri-database-2-line"></i>
+                        <span>Quản trị hệ thống đa dự án (Multi-tenant) và xuất dữ liệu hội thoại phục vụ đào tạo Sales Script / AI Finetuning.</span>
+                    </div>
+                    <div class="org-hub-grid">
+                        <div class="org-hub-card" onclick="window.openAdminManagement?.('projects')">
+                            <div class="org-hub-icon" style="background:rgba(245,158,11,0.15);color:#fbbf24;"><i class="ri-folder-settings-line"></i></div>
+                            <div class="org-hub-content">
+                                <h4>Quản lý danh sách Dự án</h4>
+                                <p>Thêm mới, cấu hình website, kích hoạt AI và phân quyền dự án.</p>
+                                <span class="org-hub-action"><i class="ri-external-link-line"></i> Mở quản lý dự án</span>
+                            </div>
+                        </div>
+                        <div class="org-hub-card" onclick="document.getElementById('export-csv-btn')?.click()">
+                            <div class="org-hub-icon" style="background:rgba(52,211,153,0.12);color:#34d399;"><i class="ri-file-excel-2-line"></i></div>
+                            <div class="org-hub-content">
+                                <h4>Xuất dữ liệu CSV</h4>
+                                <p>Tải xuống toàn bộ kịch bản tư vấn và lịch sử tin nhắn để phân tích hiệu quả bán hàng.</p>
+                                <span class="org-hub-action"><i class="ri-download-2-line"></i> Tải file CSV</span>
+                            </div>
+                        </div>
+                        <div class="org-hub-card" onclick="document.getElementById('export-jsonl-btn')?.click()">
+                            <div class="org-hub-icon" style="background:rgba(139,92,246,0.12);color:#a78bfa;"><i class="ri-braces-line"></i></div>
+                            <div class="org-hub-content">
+                                <h4>Xuất dữ liệu JSONL</h4>
+                                <p>Định dạng chuẩn để huấn luyện và tinh chỉnh mô hình Gemini AI.</p>
+                                <span class="org-hub-action"><i class="ri-download-2-line"></i> Tải file JSONL</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Bảng Phân Quyền (Tất cả vai trò) -->
+                <section class="org-pane hide" data-org-pane="permissions">
+                    <div class="org-section-desc">
+                        <i class="ri-shield-check-line"></i>
+                        <span>Bảng đối chiếu quyền hạn chi tiết theo vai trò tài khoản trong hệ thống Pastie AI Console &amp; QR Concierge.</span>
+                    </div>
+                    <div class="org-matrix-container">
+                        <table class="org-matrix-table">
+                            <thead>
+                                <tr>
+                                    <th>Tính năng / Quyền hạn</th>
+                                    <th>👑 Superadmin</th>
+                                    <th>👔 Agent Quản lý</th>
+                                    <th>💼 Sale Trực ca</th>
+                                    <th>🏢 Project Admin</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Đăng nhập không giới hạn giờ</strong></td>
+                                    <td><span class="matrix-check yes">✓</span> Luôn luôn</td>
+                                    <td><span class="matrix-check yes">✓</span> Luôn luôn</td>
+                                    <td><span class="matrix-check no">✗</span> Theo ca cài đặt</td>
+                                    <td><span class="matrix-check yes">✓</span> Luôn luôn</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Tạo &amp; Đặt hạn mức Agent</strong></td>
+                                    <td><span class="matrix-check yes">✓</span> Toàn quyền</td>
+                                    <td><span class="matrix-check no">✗</span></td>
+                                    <td><span class="matrix-check no">✗</span></td>
+                                    <td><span class="matrix-check no">✗</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Tạo &amp; Phân ca Đội ngũ Sale</strong></td>
+                                    <td><span class="matrix-check no">✗</span> (Do Agent tự quản)</td>
+                                    <td><span class="matrix-check yes">✓</span> Trong trần cho phép</td>
+                                    <td><span class="matrix-check no">✗</span></td>
+                                    <td><span class="matrix-check no">✗</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Quản lý Nhóm &amp; Mã QR Bàn/Phòng</strong></td>
+                                    <td><span class="matrix-check no">✗</span></td>
+                                    <td><span class="matrix-check yes">✓</span> Toàn quyền nhóm</td>
+                                    <td><span class="matrix-check no">✗</span></td>
+                                    <td><span class="matrix-check no">✗</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Tiếp nhận &amp; Xử lý Chat khách</strong></td>
+                                    <td><span class="matrix-check yes">✓</span> Xem &amp; Chat</td>
+                                    <td><span class="matrix-check yes">✓</span> Giám sát &amp; Điều phối</td>
+                                    <td><span class="matrix-check yes">✓</span> Claim theo ca</td>
+                                    <td><span class="matrix-check yes">✓</span> Xem &amp; Chat</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Cấu hình WhatsApp Cloud &amp; AI Tri Thức</strong></td>
+                                    <td><span class="matrix-check yes">✓</span> Toàn hệ thống</td>
+                                    <td><span class="matrix-check no">✗</span></td>
+                                    <td><span class="matrix-check no">✗</span></td>
+                                    <td><span class="matrix-check yes">✓</span> Theo dự án gán</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Quản lý Multi-projects &amp; Xuất Data</strong></td>
+                                    <td><span class="matrix-check yes">✓</span> Toàn quyền</td>
+                                    <td><span class="matrix-check no">✗</span></td>
+                                    <td><span class="matrix-check no">✗</span></td>
+                                    <td><span class="matrix-check no">✗</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </section>
             </div>
         </div>
