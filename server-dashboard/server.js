@@ -823,7 +823,7 @@ async function getAdminFromToken(req) {
   const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : req.query.token;
   if (!token) return null;
   const result = await db.query(
-    `SELECT a.id, a.full_name, a.role, a.project_id, a.is_active, s.expires_at
+    `SELECT a.id, a.username, a.full_name, a.role, a.project_id, a.is_active, a.sale_limit, a.avatar_url, s.expires_at
      FROM admin_sessions s JOIN admins a ON a.id = s.admin_id
      WHERE s.token = $1 AND s.expires_at > NOW()`,
     [token]
@@ -2728,7 +2728,8 @@ app.post('/api/admin/login', async (req, res) => {
         full_name: admin.full_name,
         avatar_url: admin.avatar_url,
         is_active: admin.is_active,
-        project_id: admin.project_id
+        project_id: admin.project_id,
+        sale_limit: admin.sale_limit
       }
     });
   } catch (error) {
@@ -2886,7 +2887,8 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }) {
       full_name: admin.full_name,
       role: admin.role,
       project_id: admin.project_id,
-      avatar_url: admin.avatar_url
+      avatar_url: admin.avatar_url,
+      sale_limit: admin.sale_limit
     }
   };
 }
@@ -6229,7 +6231,7 @@ app.get('/api/agent/groups', checkAdminAuth, async (req, res) => {
 
 app.post('/api/agent/groups', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
-  const { name, description } = req.body || {};
+  const { name, description, saleIds } = req.body || {};
   if (!name) return res.status(400).json({ error: 'Cần tên nhóm.' });
   const projectId = req.admin.project_id;
   if (!projectId) return res.status(400).json({ error: 'Nhóm phải thuộc một project cụ thể.' });
@@ -6238,7 +6240,22 @@ app.post('/api/agent/groups', checkAdminAuth, async (req, res) => {
       `INSERT INTO agent_groups (project_id, agent_id, name, description) VALUES ($1, $2, $3, $4) RETURNING *`,
       [projectId, req.admin.id, String(name).trim().slice(0, 150), String(description || '').trim() || null]
     );
-    res.status(201).json({ success: true, group: created.rows[0] });
+    const group = created.rows[0];
+
+    // Gán ngay các Sale vào nhóm nếu có
+    if (Array.isArray(saleIds) && saleIds.length > 0) {
+      for (const sId of saleIds) {
+        const sale = await loadOwnedSale(req, Number(sId));
+        if (sale) {
+          await db.query(
+            `INSERT INTO agent_group_sales (group_id, sale_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [group.id, sale.id]
+          );
+        }
+      }
+    }
+
+    res.status(201).json({ success: true, group });
   } catch (error) {
     console.error('Create group error:', error);
     res.status(500).json({ error: 'Không tạo được nhóm.' });

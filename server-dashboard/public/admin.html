@@ -117,21 +117,18 @@
                     <i class="ri-team-line"></i><span>Quản lý đội ngũ</span>
                 </button>
 
-                <!-- Nút riêng cho Agent: Quản lý Sale & Nhóm, Quản lý tài khoản, Mã QR, Thông báo -->
-                <button id="agent-account-btn" class="header-quick-btn hide" type="button" title="Quản lý tài khoản của bạn">
-                    <i class="ri-user-settings-line"></i><span>Quản lý tài khoản</span>
-                </button>
-                <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, nhóm và QR">
+                <!-- Nút riêng cho Agent: Quản lý Sale & Nhóm, Báo cáo, Tài khoản, Thông báo -->
+                <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, Nhóm tiếp nhận và Mã QR">
                     <i class="ri-organization-chart"></i><span>Sale &amp; Nhóm</span>
-                </button>
-                <button id="agent-qr-btn" class="header-quick-btn header-quick-btn-qr hide" type="button" title="Mã QR tiếp nhận chat">
-                    <i class="ri-qr-code-line"></i><span>Mã QR</span>
                 </button>
                 <button id="report-modal-btn" class="header-quick-btn" type="button" title="Báo cáo hiệu suất tư vấn &amp; Xuất Excel">
                     <i class="ri-file-chart-line"></i><span>Báo cáo</span>
                 </button>
-                <button id="agent-push-btn" class="header-quick-btn header-quick-btn-push hide" type="button" title="Thông báo">
-                    <i class="ri-notification-3-line" id="agent-push-icon"></i><span id="agent-push-label">Bật thông báo</span>
+                <button id="agent-account-btn" class="header-quick-btn hide" type="button" title="Quản lý tài khoản của bạn">
+                    <i class="ri-user-settings-line"></i><span>Tài khoản</span>
+                </button>
+                <button id="agent-push-btn" class="header-quick-btn header-quick-btn-push hide" type="button" title="Thông báo đẩy">
+                    <i class="ri-notification-3-line" id="agent-push-icon"></i><span id="agent-push-label">Thông báo</span>
                 </button>
 
                 <!-- Settings Dropdown (Superadmin & Project Admin) -->
@@ -217,8 +214,8 @@
 
                 <nav class="org-tabs" id="org-tabs">
                     <button type="button" class="org-tab hide" data-org-tab="agents"><i class="ri-user-star-line"></i> <span>Agent</span></button>
-                    <button type="button" class="org-tab is-active" data-org-tab="sales"><i class="ri-user-shared-line"></i> <span>Sale</span></button>
-                    <button type="button" class="org-tab" data-org-tab="groups"><i class="ri-team-line"></i> <span>Nhóm</span></button>
+                    <button type="button" class="org-tab is-active" data-org-tab="groups"><i class="ri-team-line"></i> <span>Nhóm</span></button>
+                    <button type="button" class="org-tab" data-org-tab="sales"><i class="ri-user-shared-line"></i> <span>Sale</span></button>
                     <button type="button" class="org-tab" data-org-tab="qr"><i class="ri-qr-code-line"></i> <span>Mã QR</span></button>
                 </nav>
 
@@ -244,8 +241,31 @@
                     <div class="org-list" id="org-agent-list"></div>
                 </section>
 
+                <!-- Nhóm (Groups) -->
+                <section class="org-pane" data-org-pane="groups">
+                    <form class="org-form" id="org-group-form">
+                        <div class="org-form-row">
+                            <label>Tên nhóm *<input type="text" id="org-group-name" required placeholder="Lễ tân, Nhà hàng, VIP..."></label>
+                            <label>Ghi chú<input type="text" id="org-group-desc" placeholder="Mô tả nhóm (tùy chọn)"></label>
+                        </div>
+                        <div class="org-form-row" id="org-group-sales-row" style="margin-top: 4px;">
+                            <label style="flex:1;">Chọn Sale vào nhóm ngay (Tùy chọn)
+                                <select id="org-group-sales-select" multiple size="2" style="width:100%; min-height: 52px; font-size:12px; border-radius:8px; padding:4px 8px; border:1px solid var(--panel-border); background:var(--panel-bg); color:var(--text-primary);">
+                                </select>
+                                <small style="color: var(--text-secondary); font-size: 11px;">Giữ phím Ctrl / Cmd để chọn nhiều Sale đã tạo</small>
+                            </label>
+                        </div>
+                        <button type="submit" class="org-submit"><i class="ri-add-circle-line"></i> Thêm nhóm</button>
+                    </form>
+                    <div class="org-list-header">
+                        <h4>Danh sách nhóm &amp; Thành viên</h4>
+                        <span id="org-group-count-badge" class="org-count-badge">0 Nhóm</span>
+                    </div>
+                    <div class="org-list" id="org-group-list"></div>
+                </section>
+
                 <!-- Sale -->
-                <section class="org-pane" data-org-pane="sales">
+                <section class="org-pane hide" data-org-pane="sales">
                     <div class="org-quota-banner" id="org-sale-quota-banner">
                         <div class="org-quota-info">
                             <i class="ri-team-line"></i>
@@ -259,7 +279,7 @@
                             <label>Email *<input type="email" id="org-sale-email" required placeholder="sale@vidu.com"></label>
                         </div>
                         <div class="org-form-row">
-                            <label>Nhóm tiếp nhận<select id="org-sale-group"><option value="">— Chọn nhóm —</option></select></label>
+                            <label>Nhóm tiếp nhận (Tùy chọn)<select id="org-sale-group"><option value="">— Chưa gán nhóm —</option></select></label>
                             <label>Khung giờ làm việc
                                 <span class="org-hour-pair">
                                     <input type="time" id="org-sale-start" value="08:00">
@@ -280,22 +300,6 @@
                     <div class="org-list" id="org-sale-list"></div>
                 </section>
 
-                <!-- Nhóm -->
-                <section class="org-pane hide" data-org-pane="groups">
-                    <form class="org-form" id="org-group-form">
-                        <div class="org-form-row">
-                            <label>Tên nhóm *<input type="text" id="org-group-name" required placeholder="Lễ tân, Nhà hàng, VIP..."></label>
-                            <label>Ghi chú<input type="text" id="org-group-desc" placeholder="Mô tả nhóm (tùy chọn)"></label>
-                        </div>
-                        <button type="submit" class="org-submit"><i class="ri-add-circle-line"></i> Thêm nhóm</button>
-                    </form>
-                    <div class="org-list-header">
-                        <h4>Danh sách nhóm</h4>
-                        <span id="org-group-count-badge" class="org-count-badge">0 Nhóm</span>
-                    </div>
-                    <div class="org-list" id="org-group-list"></div>
-                </section>
-
                 <!-- QR -->
                 <section class="org-pane hide" data-org-pane="qr">
                     <form class="org-form" id="org-qr-form">
@@ -305,9 +309,14 @@
                         </div>
                         <button type="submit" class="org-submit"><i class="ri-qr-code-line"></i> Tạo mã QR</button>
                     </form>
-                    <div class="org-list-header">
+                    <div class="org-list-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:14px; margin-bottom:8px;">
                         <h4>Mã QR hoạt động</h4>
-                        <span id="org-qr-count-badge" class="org-count-badge">0 QR</span>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <select id="org-qr-group-filter" style="font-size:11.5px; padding:3px 8px; border-radius:6px; border:1px solid var(--panel-border); background:var(--panel-bg); color:var(--text-primary);">
+                                <option value="">— Tất cả nhóm —</option>
+                            </select>
+                            <span id="org-qr-count-badge" class="org-count-badge">0 QR</span>
+                        </div>
                     </div>
                     <div class="org-list" id="org-qr-list"></div>
                 </section>

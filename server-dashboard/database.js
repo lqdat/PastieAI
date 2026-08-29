@@ -24,45 +24,16 @@ pool.on('error', (err) => {
 const query = (text, params) => pool.query(text, params);
 
 
-// Gom dữ liệu QR chưa có chủ về một Agent: tạo "Nhóm mặc định" nếu chưa có, đưa
-// mọi Sale chưa được Agent nào quản lý trong project vào nhóm, và gắn các QR còn
-// lơ lửng vào nhóm đó. Chạy lại nhiều lần đều an toàn.
-//
-// Gọi ở hai nơi: cuối migration (khi project đã sẵn có Agent) và ngay sau khi
-// superadmin tạo Agent đầu tiên cho project.
+// Gom Sale chưa có chủ về Agent quản lý (KHÔNG tự tạo nhóm mặc định)
 async function adoptOrphanQrDataForProject(projectId, agentId) {
   if (!projectId || !agentId) return null;
-  let group = await query(
-    `SELECT id FROM agent_groups WHERE project_id = $1 AND name = 'Nhóm mặc định' LIMIT 1`,
-    [projectId]
-  );
-  if (group.rows.length === 0) {
-    group = await query(
-      `INSERT INTO agent_groups (project_id, agent_id, name, description)
-       VALUES ($1, $2, 'Nhóm mặc định', 'Tạo tự động khi chuyển sang cấu trúc Agent - Sale')
-       RETURNING id`,
-      [projectId, agentId]
-    );
-  }
-  const groupId = group.rows[0].id;
-
   // Sale chưa có Agent quản lý thì về tay Agent này.
   await query(
     `UPDATE admins SET managed_by_admin_id = $2
       WHERE project_id = $1 AND role = 'sale' AND managed_by_admin_id IS NULL`,
     [projectId, agentId]
   );
-  await query(
-    `INSERT INTO agent_group_sales (group_id, sale_id)
-     SELECT $1, id FROM admins WHERE project_id = $2 AND role = 'sale'
-     ON CONFLICT (group_id, sale_id) DO NOTHING`,
-    [groupId, projectId]
-  );
-  await query(
-    `UPDATE qr_chat_accounts SET group_id = $1 WHERE project_id = $2 AND group_id IS NULL`,
-    [groupId, projectId]
-  );
-  return groupId;
+  return null;
 }
 
 
@@ -116,19 +87,12 @@ async function migrateQrAgentsToSales() {
       await adoptOrphanQrDataForProject(projectId, owner.rows[0].id);
     }
 
-    // 4. Giờ mặc định cả ngày cho Sale chưa cấu hình, tránh khóa nhầm.
-    //    CHỈ role 'sale' và CHỈ trong project QR Concierge:
-    //      - Agent quản lý KHÔNG bị ràng buộc giờ đăng nhập.
-    //      - DealPhuQuoc cũng cấp role 'agent' cho nhân viên của họ; cấp khung giờ
-    //        cho những tài khoản đó là kéo luật ca kíp sang dự án không liên quan.
-    await query(
-      `INSERT INTO account_access_hours (admin_id, start_time, end_time)
-       SELECT a.id, '00:00', '23:59' FROM admins a
-       WHERE a.role = 'sale'
-         AND a.project_id = ANY($1::varchar[])
-         AND NOT EXISTS (SELECT 1 FROM account_access_hours h WHERE h.admin_id = a.id)`,
-      [projectIds]
-    );
+    // 4. Dọn sạch Nhóm mặc định tự sinh trước đây theo yêu cầu
+    await query(`
+      DELETE FROM agent_group_sales WHERE group_id IN (SELECT id FROM agent_groups WHERE name = 'Nhóm mặc định');
+      UPDATE qr_chat_accounts SET group_id = NULL WHERE group_id IN (SELECT id FROM agent_groups WHERE name = 'Nhóm mặc định');
+      DELETE FROM agent_groups WHERE name = 'Nhóm mặc định';
+    `).catch(() => {});
   } catch (err) {
     console.error('[Migration] Chuyển agent QR sang sale thất bại:', err.message);
   }

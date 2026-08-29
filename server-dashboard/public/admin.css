@@ -411,49 +411,49 @@ button {
     flex-direction: column;
     justify-content: center;
     gap: 1px;
-    padding-left: 18px;
+    padding-left: 14px;
     border-left: 1px solid var(--panel-border);
     min-width: 0;
 }
 .agent-identity-label {
-    font-size: 10px;
-    font-weight: 700;
+    font-size: 9.5px;
+    font-weight: 800;
     letter-spacing: 1px;
     text-transform: uppercase;
     color: var(--accent-color);
     line-height: 1;
 }
 .agent-display-name {
-    font-size: 19px;
-    font-weight: 700;
-    line-height: 1.2;
+    font-size: 16px;
+    font-weight: 750;
+    line-height: 1.25;
     color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 260px;
+    max-width: 480px;
 }
 
-/* --- Nút tắt trên header (Agent: Tài khoản / Mã QR) --- */
+/* --- Nút tắt trên header (Agent: Tổ chức / Báo cáo / Tài khoản) --- */
 .header-quick-btn {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    padding: 9px 15px;
+    gap: 6px;
+    padding: 7px 12px;
     border-radius: var(--radius-md);
     background: #fff;
     border: 1px solid var(--panel-border);
     box-shadow: var(--shadow-sm);
     color: var(--text-primary);
     font-family: inherit;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.2s ease;
 }
 .header-quick-btn i {
-    font-size: 16px;
+    font-size: 15px;
     color: var(--accent-color);
 }
 .header-quick-btn:hover {
@@ -529,7 +529,7 @@ button {
 .header-right {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 8px;
 }
 .export-actions {
     display: flex;

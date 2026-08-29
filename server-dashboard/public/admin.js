@@ -4599,13 +4599,35 @@ async function loadOrgSales() {
     if (!box) return;
     box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
     try {
+        // Cập nhật lại thông tin CURRENT_ADMIN để lấy sale_limit mới nhất từ server
+        try {
+            const meRes = await authFetch(`${API_BASE}/api/admin/me`);
+            const meData = await meRes.json();
+            if (meData?.admin) {
+                CURRENT_ADMIN = { ...CURRENT_ADMIN, ...meData.admin };
+            }
+        } catch (e) {}
+
         ORG_SALES = await orgFetch('/api/agent/sales');
         const count = ORG_SALES.length;
         if (badge) badge.textContent = `${count} Sale`;
         if (quotaCount) {
             const limit = CURRENT_ADMIN?.sale_limit;
-            quotaCount.textContent = limit ? `${count}/${limit}` : `${count} (Không giới hạn)`;
+            if (limit !== null && limit !== undefined && limit !== '' && Number.isFinite(Number(limit))) {
+                quotaCount.textContent = `${count}/${limit} Sale (Đã dùng ${count}/${limit})`;
+            } else {
+                quotaCount.textContent = `${count} (Không giới hạn)`;
+            }
         }
+
+        // Cập nhật select Sale trong Form Tạo Nhóm
+        const groupSalesSelect = document.getElementById('org-group-sales-select');
+        if (groupSalesSelect) {
+            groupSalesSelect.innerHTML = ORG_SALES.length
+                ? ORG_SALES.map(s => `<option value="${s.id}">${escapeHtml(s.full_name || s.username)} (${escapeHtml(s.username)})</option>`).join('')
+                : '<option value="" disabled>Chưa có Sale nào</option>';
+        }
+
         box.innerHTML = ORG_SALES.length ? ORG_SALES.map((sale) => `
             <article class="org-item">
                 <div class="org-item-main">
@@ -4635,23 +4657,76 @@ async function loadOrgGroups(quiet) {
     const badge = document.getElementById('org-group-count-badge');
     if (!quiet && box) box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
     try {
+        if (ORG_SALES.length === 0) {
+            try { ORG_SALES = await orgFetch('/api/agent/sales'); } catch(e) {}
+        }
         ORG_GROUPS = await orgFetch('/api/agent/groups');
         if (badge) badge.textContent = `${ORG_GROUPS.length} Nhóm`;
-        if (box && !quiet) {
-            box.innerHTML = ORG_GROUPS.length ? ORG_GROUPS.map((group) => `
-                <article class="org-item">
-                    <div class="org-item-main">
-                        <strong>${escapeHtml(group.name)}</strong>
-                        <small>Sale: <strong>${(group.sales || []).map((s) => escapeHtml(s.full_name)).join(', ') || 'Chưa có'}</strong> · Chat: <strong>${group.waiting_count} chờ</strong> / <strong>${group.active_count} đang chat</strong></small>
-                    </div>
-                    <button type="button" class="org-remove" data-group-delete="${group.id}" title="Xóa nhóm"><i class="ri-delete-bin-line"></i></button>
-                </article>`).join('') : '<p class="org-empty">Chưa có nhóm nào.</p>';
+
+        // Cập nhật select Sale trong Form Tạo Nhóm
+        const groupSalesSelect = document.getElementById('org-group-sales-select');
+        if (groupSalesSelect) {
+            groupSalesSelect.innerHTML = ORG_SALES.length
+                ? ORG_SALES.map(s => `<option value="${s.id}">${escapeHtml(s.full_name || s.username)} (${escapeHtml(s.username)})</option>`).join('')
+                : '<option value="" disabled>Chưa có Sale nào</option>';
         }
+
+        if (box && !quiet) {
+            box.innerHTML = ORG_GROUPS.length ? ORG_GROUPS.map((group) => {
+                const groupSales = group.sales || [];
+                const groupSaleIds = new Set(groupSales.map(s => Number(s.sale_id)));
+                const notInGroupSales = ORG_SALES.filter(s => !groupSaleIds.has(Number(s.id)));
+
+                const chipsHtml = groupSales.length ? groupSales.map(s => `
+                    <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;color:var(--text-primary);">
+                        <span>${escapeHtml(s.full_name || 'Sale')}</span>
+                        <button type="button" data-remove-sale-group="${group.id}" data-sale-id="${s.sale_id}" style="border:none;background:none;cursor:pointer;color:#ef4444;font-size:13px;padding:0 2px;display:flex;align-items:center;" title="Xóa Sale khỏi nhóm">&times;</button>
+                    </span>
+                `).join('') : '<span style="font-size:11.5px;color:var(--text-secondary);font-style:italic;">Chưa có Sale trong nhóm này</span>';
+
+                const addSaleOptions = notInGroupSales.map(s => `<option value="${s.id}">+ ${escapeHtml(s.full_name || s.username)}</option>`).join('');
+
+                return `
+                <article class="org-item" style="flex-direction:column;align-items:stretch;gap:8px;padding:12px 14px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <strong style="font-size:13.5px;"><i class="ri-team-line" style="color:var(--accent-color);margin-right:4px;"></i>${escapeHtml(group.name)}</strong>
+                            <small style="margin-left:8px;color:var(--text-secondary);">${group.waiting_count} chờ / ${group.active_count} đang chat</small>
+                            ${group.description ? `<p style="margin:2px 0 0 0;font-size:11.5px;color:var(--text-secondary);">${escapeHtml(group.description)}</p>` : ''}
+                        </div>
+                        <button type="button" class="org-remove" data-group-delete="${group.id}" title="Xóa nhóm"><i class="ri-delete-bin-line"></i></button>
+                    </div>
+
+                    <!-- Quản lý thành viên Sale trong nhóm -->
+                    <div style="background:rgba(0,0,0,0.025);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                            <span style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;">Thành viên (${groupSales.length})</span>
+                            ${notInGroupSales.length ? `
+                                <select class="org-add-sale-to-group-select" data-group-id="${group.id}" style="font-size:11px;padding:2px 6px;border-radius:5px;background:var(--panel-bg);border:1px solid var(--panel-border);color:var(--text-primary);cursor:pointer;">
+                                    <option value="">+ Thêm Sale vào nhóm...</option>
+                                    ${addSaleOptions}
+                                </select>
+                            ` : '<span style="font-size:10.5px;color:var(--text-secondary);">(Đã đủ tất cả Sale)</span>'}
+                        </div>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                            ${chipsHtml}
+                        </div>
+                    </div>
+                </article>`;
+            }).join('') : '<p class="org-empty">Chưa có nhóm nào.</p>';
+        }
+
         const groupOptions = ORG_GROUPS.map((group) => `<option value="${group.id}">${escapeHtml(group.name)}</option>`).join('');
         const saleGroup = document.getElementById('org-sale-group');
-        if (saleGroup) saleGroup.innerHTML = '<option value="">— Chọn nhóm —</option>' + groupOptions;
+        if (saleGroup) saleGroup.innerHTML = '<option value="">— Chưa gán nhóm —</option>' + groupOptions;
         const qrGroup = document.getElementById('org-qr-group');
         if (qrGroup) qrGroup.innerHTML = groupOptions || '<option value="">Chưa có nhóm</option>';
+        const qrGroupFilter = document.getElementById('org-qr-group-filter');
+        if (qrGroupFilter) {
+            const currentFilterVal = qrGroupFilter.value;
+            qrGroupFilter.innerHTML = '<option value="">— Tất cả nhóm —</option>' + groupOptions;
+            if (currentFilterVal) qrGroupFilter.value = currentFilterVal;
+        }
     } catch (error) {
         if (badge) badge.textContent = '0 Nhóm';
         if (box && !quiet) box.innerHTML = `<p class="org-empty">${escapeHtml(error.message)}</p>`;
@@ -4660,6 +4735,8 @@ async function loadOrgGroups(quiet) {
 
 // --- QR ----------------------------------------------------------------------
 
+let CURRENT_QR_ACCOUNTS = [];
+
 async function loadOrgQr() {
     const box = document.getElementById('org-qr-list');
     const badge = document.getElementById('org-qr-count-badge');
@@ -4667,21 +4744,37 @@ async function loadOrgQr() {
     box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
     try {
         if (ORG_SALES.length === 0) await loadOrgSales();
-        const accounts = await orgFetch('/api/agent/qr-accounts');
-        if (badge) badge.textContent = `${accounts.length} QR`;
-        box.innerHTML = accounts.length ? accounts.map((account) => `
-            <article class="org-item">
-                <div class="org-item-main">
-                    <strong><i class="ri-qr-code-line" style="color:var(--accent-color);"></i> ${escapeHtml(account.label)}</strong>
-                    <small>Nhóm: <strong>${escapeHtml(account.group_name || 'Chưa gán')}</strong> · <a href="${escapeHtml(account.chat_url)}" target="_blank" rel="noopener" style="color:#6366f1;font-weight:600;">Mở Chat</a> · <a href="javascript:void(0)" onclick="openQrPreviewModal('${account.id}')" style="color:#ec4899;font-weight:600;">Xem Poster</a></small>
-                </div>
-                <button type="button" class="org-remove" data-qr-revoke="${account.id}" title="Thu hồi QR"><i class="ri-forbid-line"></i></button>
-            </article>`).join('') : '<p class="org-empty">Chưa có mã QR nào.</p>';
+        CURRENT_QR_ACCOUNTS = await orgFetch('/api/agent/qr-accounts');
+        renderOrgQrList();
     } catch (error) {
         if (badge) badge.textContent = '0 QR';
         box.innerHTML = `<p class="org-empty">${escapeHtml(error.message)}</p>`;
     }
 }
+
+function renderOrgQrList() {
+    const box = document.getElementById('org-qr-list');
+    const badge = document.getElementById('org-qr-count-badge');
+    const filterSelect = document.getElementById('org-qr-group-filter');
+    if (!box) return;
+
+    const selectedGroupId = filterSelect ? filterSelect.value : '';
+    const filtered = selectedGroupId
+        ? CURRENT_QR_ACCOUNTS.filter(a => Number(a.group_id) === Number(selectedGroupId))
+        : CURRENT_QR_ACCOUNTS;
+
+    if (badge) badge.textContent = `${filtered.length} QR`;
+    box.innerHTML = filtered.length ? filtered.map((account) => `
+        <article class="org-item">
+            <div class="org-item-main">
+                <strong><i class="ri-qr-code-line" style="color:var(--accent-color);"></i> ${escapeHtml(account.label)}</strong>
+                <small>Nhóm: <strong style="color:#818cf8;">${escapeHtml(account.group_name || 'Chưa gán')}</strong> · <a href="${escapeHtml(account.chat_url)}" target="_blank" rel="noopener" style="color:#6366f1;font-weight:600;">Mở Chat</a> · <a href="javascript:void(0)" onclick="openQrPreviewModal('${account.id}')" style="color:#ec4899;font-weight:600;">Xem Poster</a></small>
+            </div>
+            <button type="button" class="org-remove" data-qr-revoke="${account.id}" title="Thu hồi QR"><i class="ri-forbid-line"></i></button>
+        </article>`).join('') : '<p class="org-empty">Không có mã QR nào' + (selectedGroupId ? ' trong nhóm này.' : '.') + '</p>';
+}
+
+document.getElementById('org-qr-group-filter')?.addEventListener('change', renderOrgQrList);
 
 // --- Sự kiện -----------------------------------------------------------------
 
@@ -4748,6 +4841,8 @@ document.getElementById('org-sale-form')?.addEventListener('submit', async (even
 
 document.getElementById('org-group-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
+    const salesSelect = document.getElementById('org-group-sales-select');
+    const saleIds = salesSelect ? Array.from(salesSelect.selectedOptions).map(opt => Number(opt.value)).filter(Boolean) : [];
     try {
         await orgFetch('/api/agent/groups', {
             method: 'POST',
@@ -4755,11 +4850,13 @@ document.getElementById('org-group-form')?.addEventListener('submit', async (eve
             body: JSON.stringify({
                 name: document.getElementById('org-group-name').value.trim(),
                 description: document.getElementById('org-group-desc').value.trim(),
+                saleIds,
             }),
         });
         event.target.reset();
         setOrgStatus('Đã tạo nhóm tiếp nhận thành công.');
         await loadOrgGroups();
+        await loadOrgSales();
     } catch (error) { setOrgStatus(error.message, 'error'); }
 });
 
@@ -4810,6 +4907,7 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         }
         if (submitBtn) submitBtn.innerHTML = '<i class="ri-save-line"></i> Lưu thay đổi Sale';
         document.getElementById('org-sale-cancel-btn')?.classList.remove('hide');
+        switchOrgTab('sales');
         document.getElementById('org-sale-form')?.scrollIntoView({ behavior: 'smooth' });
         return;
     }
@@ -4856,6 +4954,19 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         return;
     }
 
+    const removeSaleGroup = event.target.closest('[data-remove-sale-group]');
+    if (removeSaleGroup) {
+        const groupId = removeSaleGroup.dataset.removeSaleGroup;
+        const saleId = removeSaleGroup.dataset.saleId;
+        try {
+            await orgFetch(`/api/agent/groups/${groupId}/sales/${saleId}`, { method: 'DELETE' });
+            setOrgStatus('Đã xóa Sale khỏi nhóm.');
+            await loadOrgGroups();
+            await loadOrgSales();
+        } catch (error) { setOrgStatus(error.message, 'error'); }
+        return;
+    }
+
     const groupDelete = event.target.closest('[data-group-delete]');
     if (groupDelete) {
         if (!confirm('Xóa nhóm này? Sale trong nhóm vẫn giữ tài khoản, chỉ mất phân công nhóm.')) return;
@@ -4863,6 +4974,7 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
             await orgFetch(`/api/agent/groups/${groupDelete.dataset.groupDelete}`, { method: 'DELETE' });
             setOrgStatus('Đã xóa nhóm thành công.');
             await loadOrgGroups();
+            await loadOrgSales();
         } catch (error) { setOrgStatus(error.message, 'error'); }
         return;
     }
@@ -4874,6 +4986,25 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
             await orgFetch(`/api/agent/qr-accounts/${qrRevoke.dataset.qrRevoke}/revoke`, { method: 'POST' });
             setOrgStatus('Đã thu hồi QR thành công.');
             await loadOrgQr();
+        } catch (error) { setOrgStatus(error.message, 'error'); }
+    }
+});
+
+// Bắt sự kiện chọn thêm Sale vào nhóm từ dropdown inline trên mỗi thẻ nhóm
+document.getElementById('org-modal')?.addEventListener('change', async (event) => {
+    const addSelect = event.target.closest('.org-add-sale-to-group-select');
+    if (addSelect && addSelect.value) {
+        const groupId = addSelect.dataset.groupId;
+        const saleId = addSelect.value;
+        try {
+            await orgFetch(`/api/agent/groups/${groupId}/sales`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ saleId }),
+            });
+            setOrgStatus('Đã thêm Sale vào nhóm thành công.');
+            await loadOrgGroups();
+            await loadOrgSales();
         } catch (error) { setOrgStatus(error.message, 'error'); }
     }
 });
