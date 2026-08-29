@@ -204,23 +204,18 @@
         </header>
 
 
-        <!-- Quản lý tổ chức: Agent (superadmin) / Sale / Nhóm / QR.
-             Mọi thao tác ở đây đều được backend kiểm tra quyền lại, form này chỉ
-             là lớp trình bày. -->
+        <!-- Quản lý tổ chức: Agent (superadmin) / Sale / Nhóm / QR -->
         <div id="org-modal" class="modal-overlay hide">
             <div class="org-card">
                 <header class="org-head">
-                    <div>
-                        <p class="org-kicker" id="org-kicker">PHÂN CẤP TỔ CHỨC</p>
-                        <h2 id="org-title">Quản lý Sale, nhóm và QR</h2>
-                    </div>
+                    <h2 id="org-title"><i class="ri-team-line" style="color:var(--accent-color);margin-right:6px;"></i>Quản lý Sale, nhóm và QR</h2>
                     <button type="button" class="icon-btn" id="org-close-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
                 </header>
 
                 <nav class="org-tabs" id="org-tabs">
                     <button type="button" class="org-tab hide" data-org-tab="agents"><i class="ri-user-star-line"></i> <span>Agent</span></button>
-                    <button type="button" class="org-tab is-active" data-org-tab="sales"><i class="ri-user-shared-line"></i> <span>Đội ngũ Sale</span></button>
-                    <button type="button" class="org-tab" data-org-tab="groups"><i class="ri-team-line"></i> <span>Nhóm tiếp nhận</span></button>
+                    <button type="button" class="org-tab is-active" data-org-tab="sales"><i class="ri-user-shared-line"></i> <span>Sale</span></button>
+                    <button type="button" class="org-tab" data-org-tab="groups"><i class="ri-team-line"></i> <span>Nhóm</span></button>
                     <button type="button" class="org-tab" data-org-tab="qr"><i class="ri-qr-code-line"></i> <span>Mã QR</span></button>
                 </nav>
 
@@ -228,24 +223,20 @@
 
                 <!-- Agent: chỉ superadmin -->
                 <section class="org-pane hide" data-org-pane="agents">
-                    <div class="org-section-desc">
-                        <i class="ri-information-line"></i>
-                        <span>Superadmin tạo Agent cho từng dự án QR Concierge và đặt trần số Sale tối đa. Agent không bị khóa theo giờ và tự quản trị đội ngũ của mình.</span>
-                    </div>
                     <form class="org-form" id="org-agent-form">
                         <div class="org-form-row">
-                            <label>Tên Agent *<input type="text" id="org-agent-name" required placeholder="Nguyễn Văn A"></label>
-                            <label>Email đăng nhập *<input type="email" id="org-agent-email" required placeholder="agent@vidu.com"></label>
+                            <label>Họ và tên *<input type="text" id="org-agent-name" required placeholder="Nguyễn Văn A"></label>
+                            <label>Email *<input type="email" id="org-agent-email" required placeholder="agent@vidu.com"></label>
                         </div>
                         <div class="org-form-row">
-                            <label>Dự án QR Concierge *<select id="org-agent-project"></select></label>
-                            <label>Giới hạn số Sale<input type="number" id="org-agent-sale-limit" min="0" step="1" placeholder="Để trống = không giới hạn"></label>
+                            <label>Dự án QR *<select id="org-agent-project"></select></label>
+                            <label>Giới hạn Sale<input type="number" id="org-agent-sale-limit" min="0" step="1" placeholder="Không giới hạn"></label>
                         </div>
-                        <button type="submit" class="org-submit"><i class="ri-user-add-line"></i> Tạo Agent mới</button>
+                        <button type="submit" class="org-submit"><i class="ri-user-add-line"></i> Thêm Agent</button>
                     </form>
                     <div class="org-list-header">
-                        <h4><i class="ri-list-check"></i> Danh sách Agent quản lý</h4>
-                        <span id="org-agent-count-badge" class="org-count-badge">Đang tải...</span>
+                        <h4>Danh sách Agent</h4>
+                        <span id="org-agent-count-badge" class="org-count-badge">0 Agent</span>
                     </div>
                     <div class="org-list" id="org-agent-list"></div>
                 </section>
@@ -255,32 +246,32 @@
                     <div class="org-quota-banner" id="org-sale-quota-banner">
                         <div class="org-quota-info">
                             <i class="ri-team-line"></i>
-                            <div>
-                                <strong>Hạn mức tài khoản Sale: <span id="org-quota-count">—</span></strong>
-                                <small>Số Sale trực tiếp tiếp nhận chat của khách hàng theo ca</small>
-                            </div>
+                            <strong>Hạn mức: <span id="org-quota-count">—</span></strong>
                         </div>
                     </div>
                     <form class="org-form" id="org-sale-form">
+                        <input type="hidden" id="org-sale-id" value="">
                         <div class="org-form-row">
-                            <label>Tên hiển thị với khách *<input type="text" id="org-sale-name" required placeholder="Sale An"></label>
-                            <label>Email đăng nhập (OTP / Google) *<input type="email" id="org-sale-email" required placeholder="sale@vidu.com"></label>
+                            <label>Họ tên *<input type="text" id="org-sale-name" required placeholder="Sale An"></label>
+                            <label>Email *<input type="email" id="org-sale-email" required placeholder="sale@vidu.com"></label>
                         </div>
                         <div class="org-form-row">
-                            <label>Nhóm tham gia tiếp nhận<select id="org-sale-group"><option value="">— Chưa gán nhóm —</option></select></label>
-                            <label>Khung giờ làm việc (Nhận chat &amp; Đăng nhập)
+                            <label>Nhóm tiếp nhận<select id="org-sale-group"><option value="">— Chọn nhóm —</option></select></label>
+                            <label>Khung giờ làm việc
                                 <span class="org-hour-pair">
                                     <input type="time" id="org-sale-start" value="08:00">
-                                    <em>đến</em>
+                                    <em>–</em>
                                     <input type="time" id="org-sale-end" value="17:00">
                                 </span>
                             </label>
                         </div>
-                        <button type="submit" class="org-submit"><i class="ri-user-add-line"></i> Tạo Sale mới</button>
-                        <p class="org-hint"><i class="ri-information-line"></i> Ca qua nửa đêm hợp lệ (ví dụ: 18:00 đến 02:00 sáng). Sale ngoài ca sẽ không nhận thông báo chat mới.</p>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <button type="submit" class="org-submit" id="org-sale-submit-btn"><i class="ri-user-add-line"></i> Thêm Sale</button>
+                            <button type="button" class="secondary-btn hide" id="org-sale-cancel-btn" style="width:auto;padding:8px 14px;font-size:12px;"><i class="ri-close-line"></i> Hủy</button>
+                        </div>
                     </form>
                     <div class="org-list-header">
-                        <h4><i class="ri-user-shared-line"></i> Danh sách nhân viên Sale</h4>
+                        <h4>Danh sách Sale</h4>
                         <span id="org-sale-count-badge" class="org-count-badge">0 Sale</span>
                     </div>
                     <div class="org-list" id="org-sale-list"></div>
@@ -288,19 +279,15 @@
 
                 <!-- Nhóm -->
                 <section class="org-pane hide" data-org-pane="groups">
-                    <div class="org-section-desc">
-                        <i class="ri-team-line"></i>
-                        <span>Mỗi nhóm đại diện cho một bộ phận (Lễ tân, Nhà hàng, Phòng VIP...). Khách quét QR sẽ vào hàng đợi chung của nhóm và Sale trong ca sẽ tiếp nhận.</span>
-                    </div>
                     <form class="org-form" id="org-group-form">
                         <div class="org-form-row">
-                            <label>Tên nhóm tiếp nhận *<input type="text" id="org-group-name" required placeholder="Ví dụ: Lễ tân, Nhà hàng, Phòng 101"></label>
-                            <label>Mô tả bộ phận<input type="text" id="org-group-desc" placeholder="Tùy chọn (ví dụ: Hỗ trợ khách ca sáng)"></label>
+                            <label>Tên nhóm *<input type="text" id="org-group-name" required placeholder="Lễ tân, Nhà hàng, VIP..."></label>
+                            <label>Ghi chú<input type="text" id="org-group-desc" placeholder="Mô tả nhóm (tùy chọn)"></label>
                         </div>
-                        <button type="submit" class="org-submit"><i class="ri-add-circle-line"></i> Tạo nhóm tiếp nhận</button>
+                        <button type="submit" class="org-submit"><i class="ri-add-circle-line"></i> Thêm nhóm</button>
                     </form>
                     <div class="org-list-header">
-                        <h4><i class="ri-organization-chart"></i> Danh sách nhóm đang hoạt động</h4>
+                        <h4>Danh sách nhóm</h4>
                         <span id="org-group-count-badge" class="org-count-badge">0 Nhóm</span>
                     </div>
                     <div class="org-list" id="org-group-list"></div>
@@ -308,23 +295,21 @@
 
                 <!-- QR -->
                 <section class="org-pane hide" data-org-pane="qr">
-                    <div class="org-section-desc">
-                        <i class="ri-qr-code-line"></i>
-                        <span>Một nhóm có thể có nhiều mã QR đặt tại các vị trí (Bàn 1, Bàn 2, Phòng VIP...). Bấm để sao chép link hoặc xem Poster in ấn chuẩn khổ.</span>
-                    </div>
                     <form class="org-form" id="org-qr-form">
                         <div class="org-form-row">
-                            <label>Tên định danh QR (Vị trí đặt) *<input type="text" id="org-qr-label" required placeholder="Ví dụ: Bàn 1, Phòng 102, Quầy Bar"></label>
-                            <label>Nhóm tiếp nhận chat *<select id="org-qr-group"></select></label>
+                            <label>Tên vị trí đặt QR *<input type="text" id="org-qr-label" required placeholder="Bàn 1, Phòng 101, Quầy Bar..."></label>
+                            <label>Nhóm tiếp nhận *<select id="org-qr-group"></select></label>
                         </div>
-                        <button type="submit" class="org-submit"><i class="ri-qr-code-line"></i> Tạo mã QR mới</button>
+                        <button type="submit" class="org-submit"><i class="ri-qr-code-line"></i> Tạo mã QR</button>
                     </form>
                     <div class="org-list-header">
-                        <h4><i class="ri-qr-scan-line"></i> Danh sách mã QR đang hoạt động</h4>
+                        <h4>Mã QR hoạt động</h4>
                         <span id="org-qr-count-badge" class="org-count-badge">0 QR</span>
                     </div>
                     <div class="org-list" id="org-qr-list"></div>
                 </section>
+            </div>
+        </div>
             </div>
         </div>
 
@@ -800,12 +785,9 @@
     <div id="admin-management-modal" class="modal-overlay hide">
         <div class="login-box glass-panel admin-management-box" style="display: flex; flex-direction: column; max-height: 92vh;">
             <div class="brand-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="display: flex; align-items: center; gap: 12px; text-align: left;">
+                <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
                     <div class="brand-logo admin-mgmt-brand-icon"><i class="ri-team-line"></i></div>
-                    <div>
-                        <h2 style="margin: 0 0 2px 0; text-align: left;">Quản lý nhân viên &amp; Phân quyền</h2>
-                        <p id="admin-mgmt-subtitle" style="margin: 0;">Quản lý danh sách nhân viên tư vấn (Agent) và phân quyền dự án.</p>
-                    </div>
+                    <h2 style="margin: 0; font-size: 16px; font-weight: 700;">Quản lý nhân viên</h2>
                 </div>
                 <button id="admin-mgmt-close-top-btn" class="icon-btn"><i class="ri-close-line"></i></button>
             </div>
@@ -814,9 +796,9 @@
                 <!-- Quản lý dự án (multi-project - chỉ Superadmin) -->
                 <div class="admin-mgmt-section admin-project-management">
                     <div class="admin-mgmt-section-head">
-                        <h3><i class="ri-folder-3-line"></i> Danh sách dự án hệ thống</h3>
+                        <h3><i class="ri-folder-3-line"></i> Danh sách dự án</h3>
                         <div class="project-create-controls">
-                            <input type="text" id="project-new-name" placeholder="Tên project mới...">
+                            <input type="text" id="project-new-name" placeholder="Tên project...">
                             <input type="url" id="project-new-link" placeholder="https://website.com">
                             <button id="project-add-btn" class="primary-btn" style="width: auto; padding: 8px 12px; font-size: 12px; white-space: nowrap;"><i class="ri-add-line"></i> Thêm</button>
                         </div>
@@ -826,22 +808,21 @@
 
                 <section id="account-project-context" class="admin-mgmt-section account-project-context" aria-label="Project đang quản lý">
                     <div>
-                        <span class="account-section-kicker">PHẠM VI QUẢN LÝ</span>
+                        <span class="account-section-kicker">PHẠM VI</span>
                         <h3><i class="ri-folder-user-line"></i> Tài khoản theo project</h3>
                     </div>
                     <select id="admin-mgmt-project-select" aria-label="Chọn project"></select>
                 </section>
 
-                <!-- Hồ sơ rút gọn của Agent: không lặp lại thẻ tài khoản bên dưới. -->
+                <!-- Hồ sơ tài khoản -->
                 <section id="self-profile-panel" class="admin-mgmt-section self-profile-panel hide" aria-label="Thông tin tài khoản của bạn">
                     <div class="self-profile-heading">
-                        <span class="account-section-kicker">TÀI KHOẢN CỦA BẠN</span>
-                        <h3><i class="ri-id-card-line"></i> Hồ sơ tài khoản</h3>
-                        <p>Thông tin dùng để định danh bạn trên console và trong cuộc trò chuyện với khách.</p>
+                        <span class="account-section-kicker">TÀI KHOẢN</span>
+                        <h3><i class="ri-id-card-line"></i> Hồ sơ của bạn</h3>
                     </div>
                     <div id="self-account-meta" class="self-account-meta" aria-label="Thông tin đăng nhập"></div>
                     <form id="self-profile-form" class="self-profile-form">
-                        <label for="self-display-name-input">Tên hiển thị với khách</label>
+                        <label for="self-display-name-input">Tên hiển thị</label>
                         <input type="text" id="self-display-name-input" maxlength="255" placeholder="Nhập tên hiển thị..." autocomplete="off" required>
                         <button type="submit" id="self-display-name-save" class="primary-btn"><i class="ri-save-line"></i> Lưu</button>
                     </form>
@@ -850,11 +831,7 @@
 
                 <section id="qr-concierge-panel" class="admin-mgmt-section qr-concierge-panel hide">
                     <div class="qr-panel-heading">
-                        <div>
-                            <span class="account-section-kicker">QR CONCIERGE</span>
-                            <h3><i class="ri-qr-code-line"></i> Mã QR tiếp nhận chat</h3>
-                            <p>Mỗi mã QR thuộc một Agent. Lần quét mới sẽ thay thế phiên chat trước sau 15 phút.</p>
-                        </div>
+                        <h3><i class="ri-qr-code-line"></i> Mã QR tiếp nhận chat</h3>
                         <div id="qr-create-controls" class="qr-create-controls">
                             <select id="qr-owner-select" aria-label="Chọn Agent"></select>
                             <button id="qr-create-btn" type="button" class="primary-btn"><i class="ri-add-line"></i> Tạo QR</button>
@@ -882,7 +859,7 @@
                     <div class="admin-user-form-panel" style="display: flex; flex-direction: column; padding: 16px 18px; overflow-y: auto; max-height: 460px;">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
                             <h3 id="admin-form-title" style="font-size: 13.5px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px;">
-                                <i class="ri-user-add-line" style="color: var(--accent-color);"></i> Thêm nhân viên mới
+                                <i class="ri-user-add-line" style="color: var(--accent-color);"></i> Thêm nhân viên
                             </h3>
                         </div>
                         <form id="admin-user-form" style="display: flex; flex-direction: column; gap: 12px;">
@@ -896,7 +873,6 @@
                             <div class="form-group" style="margin: 0;">
                                 <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Email đăng nhập *</label>
                                 <input type="email" id="admin-form-email" placeholder="agent@company.com" autocomplete="email" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
-                                <small style="display:block; margin-top:5px; color:var(--text-secondary); font-size:10.5px; line-height:1.4;">Nhân viên dùng Email OTP hoặc Google với email này để đăng nhập.</small>
                             </div>
 
                             <div class="form-group" id="admin-form-role-group" style="margin: 0;">
@@ -909,7 +885,7 @@
                             </div>
 
                             <div class="form-group" id="admin-form-project-group" style="margin: 0;">
-                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Dự án được phân quyền</label>
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Dự án phân quyền</label>
                                 <select id="admin-form-project" style="width:100%;">
                                     <option value="">— Tất cả dự án (toàn quyền) —</option>
                                 </select>

@@ -5875,7 +5875,7 @@ app.post('/api/agent/sales', checkAdminAuth, async (req, res) => {
 app.put('/api/agent/sales/:saleId', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
   const saleId = Number(req.params.saleId);
-  const { fullName, accessHours } = req.body || {};
+  const { fullName, accessHours, groupIds } = req.body || {};
   try {
     const sale = await loadOwnedSale(req, saleId);
     if (!sale) return res.status(404).json({ error: 'Không tìm thấy Sale trong phạm vi của bạn.' });
@@ -5885,10 +5885,49 @@ app.put('/api/agent/sales/:saleId', checkAdminAuth, async (req, res) => {
       [saleId, fullName ? String(fullName).trim().slice(0, 255) : null]
     );
     if (Array.isArray(accessHours)) await replaceAccessHours(saleId, accessHours);
+
+    if (Array.isArray(groupIds)) {
+      await db.query(
+        `DELETE FROM agent_group_sales 
+         WHERE sale_id = $1 
+           AND group_id IN (SELECT id FROM agent_groups WHERE agent_id = $2)`,
+        [saleId, req.admin.id]
+      );
+      for (const groupId of groupIds) {
+        const group = await loadOwnedGroup(req, Number(groupId));
+        if (!group) continue;
+        await db.query(
+          `INSERT INTO agent_group_sales (group_id, sale_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [group.id, saleId]
+        );
+      }
+    }
+
     res.json({ success: true, sale: updated.rows[0] });
   } catch (error) {
     console.error('Update sale error:', error);
     res.status(500).json({ error: 'Không cập nhật được Sale.' });
+  }
+});
+
+app.delete('/api/agent/sales/:saleId', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const saleId = Number(req.params.saleId);
+  try {
+    const sale = await loadOwnedSale(req, saleId);
+    if (!sale) return res.status(404).json({ error: 'Không tìm thấy Sale trong phạm vi của bạn.' });
+
+    // Xóa liên kết nhóm, khung giờ và phiên đăng nhập của Sale
+    await db.query('DELETE FROM agent_group_sales WHERE sale_id = $1', [saleId]);
+    await db.query('DELETE FROM account_access_hours WHERE admin_id = $1', [saleId]);
+    await db.query('DELETE FROM admin_sessions WHERE admin_id = $1', [saleId]);
+
+    // Xóa tài khoản Sale
+    await db.query('DELETE FROM admins WHERE id = $1 AND managed_by_admin_id = $2', [saleId, req.admin.id]);
+    res.json({ success: true, message: 'Đã xóa tài khoản Sale.' });
+  } catch (error) {
+    console.error('Delete sale error:', error);
+    res.status(500).json({ error: 'Không xóa được tài khoản Sale.' });
   }
 });
 

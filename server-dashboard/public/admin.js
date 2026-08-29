@@ -4077,16 +4077,21 @@ function applyAdminMgmtFocus() {
         }
         setSelfProfileStatus('');
 
-        // Agent chỉ được xem tên hiển thị của mình; việc đổi tên do quản trị viên làm.
-        const isAgentRole = isRestrictedConsole();
+        // Phân quyền đổi tên hiển thị:
+        // - Superadmin / Project Admin: Đổi được
+        // - Sale: ĐƯỢC PHÉP đổi tên hiển thị của chính mình
+        // - Agent: Không tự đổi tên hiển thị của mình (do Superadmin quản lý)
+        const isAgent = CURRENT_ADMIN?.role === 'agent';
+        const isSale = CURRENT_ADMIN?.role === 'sale';
+        const canEditName = !isAgent;
         const saveBtn = document.getElementById('self-display-name-save');
-        if (input) input.readOnly = isAgentRole;
-        if (saveBtn) saveBtn.classList.toggle('hide', isAgentRole);
-        selfPanel?.classList.toggle('is-readonly', isAgentRole);
+        if (input) input.readOnly = !canEditName;
+        if (saveBtn) saveBtn.classList.toggle('hide', !canEditName);
+        selfPanel?.classList.toggle('is-readonly', !canEditName);
         const hint = selfPanel?.querySelector('.self-profile-heading p');
         if (hint) {
-            hint.textContent = isAgentRole
-                ? 'Tên này hiện trên thanh tiêu đề và là tên khách nhìn thấy. Liên hệ quản trị viên nếu cần đổi.'
+            hint.textContent = isAgent
+                ? 'Tên này hiện trên thanh tiêu đề và là tên khách nhìn thấy. Tên Agent do Quản trị viên Superadmin quản lý.'
                 : 'Tên này hiện trên thanh tiêu đề và là tên khách nhìn thấy khi bạn trả lời chat.';
         }
     }
@@ -4122,8 +4127,8 @@ function setSelfProfileStatus(message, kind = '') {
 
 async function handleSelfDisplayNameSubmit(event) {
     event.preventDefault();
-    if (isRestrictedConsole()) {
-        setSelfProfileStatus('Bạn không có quyền đổi tên hiển thị.', 'error');
+    if (CURRENT_ADMIN?.role === 'agent') {
+        setSelfProfileStatus('Agent không có quyền tự đổi tên hiển thị. Vui lòng liên hệ Superadmin.', 'error');
         return;
     }
     const input = document.getElementById('self-display-name-input');
@@ -4344,6 +4349,11 @@ function resetAdminForm() {
     if (!adminUserForm) return;
     adminUserForm.reset();
     if (adminFormId) adminFormId.value = '';
+    if (adminFormEmail) {
+        adminFormEmail.readOnly = false;
+        adminFormEmail.style.opacity = '1';
+        adminFormEmail.title = '';
+    }
     if (adminFormTitle) adminFormTitle.innerHTML = '<i class="ri-user-add-line" style="color:var(--accent-color);"></i> Thêm nhân viên mới';
     if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-user-add-line"></i> Lưu nhân viên';
     if (adminFormCancelBtn) adminFormCancelBtn.style.display = 'none';
@@ -4367,7 +4377,12 @@ async function editAdminUser(id) {
         if (!u) return;
         if (adminFormId) adminFormId.value = u.id;
         if (adminFormFullname) adminFormFullname.value = u.full_name || '';
-        if (adminFormEmail) adminFormEmail.value = u.username || '';
+        if (adminFormEmail) {
+            adminFormEmail.value = u.username || '';
+            adminFormEmail.readOnly = true;
+            adminFormEmail.style.opacity = '0.75';
+            adminFormEmail.title = 'Email là định danh cố định không thể sửa';
+        }
         if (adminFormRole) {
             adminFormRole.value = u.role;
             if (CURRENT_ADMIN?.role === 'project_admin') adminFormRole.disabled = true;
@@ -4558,33 +4573,52 @@ async function loadOrgAgents() {
 
 // --- Sale --------------------------------------------------------------------
 
+function resetOrgSaleForm() {
+    const form = document.getElementById('org-sale-form');
+    if (!form) return;
+    form.reset();
+    const idEl = document.getElementById('org-sale-id');
+    if (idEl) idEl.value = '';
+    const emailEl = document.getElementById('org-sale-email');
+    if (emailEl) {
+        emailEl.readOnly = false;
+        emailEl.style.opacity = '1';
+        emailEl.title = '';
+    }
+    const submitBtn = document.getElementById('org-sale-submit-btn');
+    if (submitBtn) submitBtn.innerHTML = '<i class="ri-user-add-line"></i> Thêm Sale';
+    document.getElementById('org-sale-cancel-btn')?.classList.add('hide');
+}
+
 async function loadOrgSales() {
     const box = document.getElementById('org-sale-list');
     const badge = document.getElementById('org-sale-count-badge');
     const quotaCount = document.getElementById('org-quota-count');
     if (!box) return;
-    box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách Sale…</p>';
+    box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
     try {
         ORG_SALES = await orgFetch('/api/agent/sales');
         const count = ORG_SALES.length;
         if (badge) badge.textContent = `${count} Sale`;
         if (quotaCount) {
             const limit = CURRENT_ADMIN?.sale_limit;
-            quotaCount.textContent = limit ? `${count}/${limit} suất đã dùng` : `${count} Sale (Không giới hạn)`;
+            quotaCount.textContent = limit ? `${count}/${limit}` : `${count} (Không giới hạn)`;
         }
         box.innerHTML = ORG_SALES.length ? ORG_SALES.map((sale) => `
             <article class="org-item">
                 <div class="org-item-main">
                     <strong>${escapeHtml(sale.full_name || sale.username)}
-                        <span class="org-shift ${sale.on_shift ? 'is-on' : ''}">${sale.on_shift ? '🟢 Đang trong ca' : '⚪ Ngoài ca'}</span>
+                        <span class="org-shift ${sale.on_shift ? 'is-on' : ''}">${sale.on_shift ? '🟢 Trong ca' : '⚪ Ngoài ca'}</span>
                     </strong>
-                    <small>${escapeHtml(sale.username)}</small>
-                    <small><i class="ri-time-line"></i> Khung giờ: <strong>${escapeHtml(formatHourWindows(sale.access_hours))}</strong>
-                        · Nhóm: <strong>${(sale.groups || []).map((g) => escapeHtml(g.name)).join(', ') || 'Chưa gán nhóm'}</strong></small>
+                    <small>${escapeHtml(sale.username)} · <strong>${escapeHtml(formatHourWindows(sale.access_hours))}</strong> · <strong>${(sale.groups || []).map((g) => escapeHtml(g.name)).join(', ') || 'Chưa gán nhóm'}</strong></small>
                 </div>
-                <button type="button" class="org-toggle" data-sale-toggle="${sale.id}" data-active="${sale.is_active}">
-                    ${sale.is_active ? '✓ Đang hoạt động' : '✗ Đã khóa'}
-                </button>
+                <div class="org-item-actions" style="display:flex;gap:5px;align-items:center;">
+                    <button type="button" class="org-btn-edit" data-sale-edit="${sale.id}" title="Sửa" style="background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:4px 8px;font-size:11.5px;cursor:pointer;font-weight:600;"><i class="ri-edit-line"></i> Sửa</button>
+                    <button type="button" class="org-toggle" data-sale-toggle="${sale.id}" data-active="${sale.is_active}">
+                        ${sale.is_active ? '✓ Hoạt động' : '✗ Khóa'}
+                    </button>
+                    <button type="button" class="org-remove" data-sale-delete="${sale.id}" title="Xóa"><i class="ri-delete-bin-line"></i></button>
+                </div>
             </article>`).join('') : '<p class="org-empty">Chưa có tài khoản Sale nào.</p>';
     } catch (error) {
         if (badge) badge.textContent = '0 Sale';
@@ -4597,7 +4631,7 @@ async function loadOrgSales() {
 async function loadOrgGroups(quiet) {
     const box = document.getElementById('org-group-list');
     const badge = document.getElementById('org-group-count-badge');
-    if (!quiet && box) box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách nhóm…</p>';
+    if (!quiet && box) box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
     try {
         ORG_GROUPS = await orgFetch('/api/agent/groups');
         if (badge) badge.textContent = `${ORG_GROUPS.length} Nhóm`;
@@ -4606,15 +4640,14 @@ async function loadOrgGroups(quiet) {
                 <article class="org-item">
                     <div class="org-item-main">
                         <strong>${escapeHtml(group.name)}</strong>
-                        <small>Nhân viên phụ trách: <strong>${(group.sales || []).map((s) => escapeHtml(s.full_name)).join(', ') || 'Chưa có Sale'}</strong></small>
-                        <small><i class="ri-chat-3-line"></i> Hội thoại: <strong>${group.waiting_count} đang chờ</strong> · <strong>${group.active_count} đang xử lý</strong></small>
+                        <small>Sale: <strong>${(group.sales || []).map((s) => escapeHtml(s.full_name)).join(', ') || 'Chưa có'}</strong> · Chat: <strong>${group.waiting_count} chờ</strong> / <strong>${group.active_count} đang chat</strong></small>
                     </div>
                     <button type="button" class="org-remove" data-group-delete="${group.id}" title="Xóa nhóm"><i class="ri-delete-bin-line"></i></button>
-                </article>`).join('') : '<p class="org-empty">Chưa có nhóm tiếp nhận nào.</p>';
+                </article>`).join('') : '<p class="org-empty">Chưa có nhóm nào.</p>';
         }
         const groupOptions = ORG_GROUPS.map((group) => `<option value="${group.id}">${escapeHtml(group.name)}</option>`).join('');
         const saleGroup = document.getElementById('org-sale-group');
-        if (saleGroup) saleGroup.innerHTML = '<option value="">— Chưa gán nhóm —</option>' + groupOptions;
+        if (saleGroup) saleGroup.innerHTML = '<option value="">— Chọn nhóm —</option>' + groupOptions;
         const qrGroup = document.getElementById('org-qr-group');
         if (qrGroup) qrGroup.innerHTML = groupOptions || '<option value="">Chưa có nhóm</option>';
     } catch (error) {
@@ -4629,7 +4662,7 @@ async function loadOrgQr() {
     const box = document.getElementById('org-qr-list');
     const badge = document.getElementById('org-qr-count-badge');
     if (!box) return;
-    box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách QR…</p>';
+    box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
     try {
         if (ORG_SALES.length === 0) await loadOrgSales();
         const accounts = await orgFetch('/api/agent/qr-accounts');
@@ -4638,14 +4671,10 @@ async function loadOrgQr() {
             <article class="org-item">
                 <div class="org-item-main">
                     <strong><i class="ri-qr-code-line" style="color:var(--accent-color);"></i> ${escapeHtml(account.label)}</strong>
-                    <small><i class="ri-team-line"></i> Nhóm tiếp nhận: <strong>${escapeHtml(account.group_name || 'Chưa gán nhóm')}</strong></small>
-                    <small style="display:flex;gap:10px;align-items:center;">
-                        <a href="${escapeHtml(account.chat_url)}" target="_blank" rel="noopener" style="color:#6366f1;font-weight:700;"><i class="ri-external-link-line"></i> Mở thử Chat</a>
-                        <a href="javascript:void(0)" onclick="openQrPreviewModal('${account.id}')" style="color:#ec4899;font-weight:700;"><i class="ri-image-line"></i> Xem Poster QR</a>
-                    </small>
+                    <small>Nhóm: <strong>${escapeHtml(account.group_name || 'Chưa gán')}</strong> · <a href="${escapeHtml(account.chat_url)}" target="_blank" rel="noopener" style="color:#6366f1;font-weight:600;">Mở Chat</a> · <a href="javascript:void(0)" onclick="openQrPreviewModal('${account.id}')" style="color:#ec4899;font-weight:600;">Xem Poster</a></small>
                 </div>
                 <button type="button" class="org-remove" data-qr-revoke="${account.id}" title="Thu hồi QR"><i class="ri-forbid-line"></i></button>
-            </article>`).join('') : '<p class="org-empty">Chưa có mã QR nào được tạo.</p>';
+            </article>`).join('') : '<p class="org-empty">Chưa có mã QR nào.</p>';
     } catch (error) {
         if (badge) badge.textContent = '0 QR';
         box.innerHTML = `<p class="org-empty">${escapeHtml(error.message)}</p>`;
@@ -4656,6 +4685,7 @@ async function loadOrgQr() {
 
 document.getElementById('org-manage-btn')?.addEventListener('click', openOrgModal);
 document.getElementById('org-close-btn')?.addEventListener('click', closeOrgModal);
+document.getElementById('org-sale-cancel-btn')?.addEventListener('click', resetOrgSaleForm);
 document.getElementById('org-modal')?.addEventListener('click', (event) => {
     if (event.target === document.getElementById('org-modal')) closeOrgModal();
 });
@@ -4685,20 +4715,30 @@ document.getElementById('org-agent-form')?.addEventListener('submit', async (eve
 
 document.getElementById('org-sale-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
+    const saleId = document.getElementById('org-sale-id')?.value;
     const groupId = document.getElementById('org-sale-group').value;
+    const fullName = document.getElementById('org-sale-name').value.trim();
+    const email = document.getElementById('org-sale-email').value.trim();
+    const accessHours = orgHourWindows('org-sale-start', 'org-sale-end');
+    const groupIds = groupId ? [Number(groupId)] : [];
+
     try {
-        await orgFetch('/api/agent/sales', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                fullName: document.getElementById('org-sale-name').value.trim(),
-                email: document.getElementById('org-sale-email').value.trim(),
-                accessHours: orgHourWindows('org-sale-start', 'org-sale-end'),
-                groupIds: groupId ? [Number(groupId)] : [],
-            }),
-        });
-        event.target.reset();
-        setOrgStatus('Đã tạo Sale mới thành công.');
+        if (saleId) {
+            await orgFetch(`/api/agent/sales/${saleId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fullName, accessHours, groupIds }),
+            });
+            setOrgStatus('Đã cập nhật thông tin Sale thành công.');
+        } else {
+            await orgFetch('/api/agent/sales', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fullName, email, accessHours, groupIds }),
+            });
+            setOrgStatus('Đã tạo Sale mới thành công.');
+        }
+        resetOrgSaleForm();
         await loadOrgSales();
         await loadOrgGroups(true);
     } catch (error) { setOrgStatus(error.message, 'error'); }
@@ -4740,6 +4780,50 @@ document.getElementById('org-qr-form')?.addEventListener('submit', async (event)
 
 // Các nút trong danh sách được gắn bằng ủy quyền sự kiện
 document.getElementById('org-modal')?.addEventListener('click', async (event) => {
+    const saleEdit = event.target.closest('[data-sale-edit]');
+    if (saleEdit) {
+        const id = Number(saleEdit.dataset.saleEdit);
+        const sale = ORG_SALES.find((s) => s.id === id);
+        if (!sale) return;
+        const idEl = document.getElementById('org-sale-id');
+        const nameEl = document.getElementById('org-sale-name');
+        const emailEl = document.getElementById('org-sale-email');
+        const groupEl = document.getElementById('org-sale-group');
+        const startEl = document.getElementById('org-sale-start');
+        const endEl = document.getElementById('org-sale-end');
+        const submitBtn = document.getElementById('org-sale-submit-btn');
+
+        if (idEl) idEl.value = sale.id;
+        if (nameEl) nameEl.value = sale.full_name || '';
+        if (emailEl) {
+            emailEl.value = sale.username || '';
+            emailEl.readOnly = true;
+            emailEl.style.opacity = '0.75';
+            emailEl.title = 'Email đăng nhập là duy nhất không thể sửa';
+        }
+        if (groupEl) groupEl.value = sale.groups?.[0]?.id || '';
+        if (sale.access_hours?.[0]) {
+            if (startEl) startEl.value = String(sale.access_hours[0].start_time).slice(0, 5);
+            if (endEl) endEl.value = String(sale.access_hours[0].end_time).slice(0, 5);
+        }
+        if (submitBtn) submitBtn.innerHTML = '<i class="ri-save-line"></i> Lưu thay đổi Sale';
+        document.getElementById('org-sale-cancel-btn')?.classList.remove('hide');
+        document.getElementById('org-sale-form')?.scrollIntoView({ behavior: 'smooth' });
+        return;
+    }
+
+    const saleDelete = event.target.closest('[data-sale-delete]');
+    if (saleDelete) {
+        if (!confirm('Bạn có chắc chắn muốn xóa tài khoản Sale này?')) return;
+        try {
+            await orgFetch(`/api/agent/sales/${saleDelete.dataset.saleDelete}`, { method: 'DELETE' });
+            setOrgStatus('Đã xóa tài khoản Sale thành công.');
+            await loadOrgSales();
+            await loadOrgGroups(true);
+        } catch (error) { setOrgStatus(error.message, 'error'); }
+        return;
+    }
+
     const saleToggle = event.target.closest('[data-sale-toggle]');
     if (saleToggle) {
         const isActive = saleToggle.dataset.active === 'true';
