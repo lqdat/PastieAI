@@ -1312,6 +1312,13 @@ app.post('/api/chats/message', async (req, res) => {
         return res.status(403).json({ error: 'Bạn không có quyền trả lời chat của project này.' });
       }
 
+      // QUY ĐỊNH: Agent quản lý ở chế độ Giám sát (Chỉ xem) — KHÔNG tham gia chat trực tiếp với khách
+      if (sendingAdmin.role === 'agent') {
+        return res.status(403).json({
+          error: 'Tài khoản Agent quản lý ở chế độ Giám sát (Chỉ xem) và không tham gia chat trực tiếp. Việc trả lời khách hàng do nhân viên Sale phụ trách.'
+        });
+      }
+
       const claim = sessionRes.rows[0].claimed_by_admin_id;
       const assigned = sessionRes.rows[0].assigned_admin_id;
       const isSuper = isSuperAdmin(sendingAdmin);
@@ -3519,16 +3526,41 @@ app.get('/api/admin/assignees', checkAdminAuth, async (req, res) => {
 app.get('/api/admin/users', checkAdminAuth, async (req, res) => {
   try {
     const result = isSuperAdmin(req.admin)
-      ? await db.query('SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_by_admin_id, created_at FROM admins ORDER BY role DESC, username ASC')
+      ? await db.query(`
+        SELECT a.id, a.username, a.role, a.full_name, a.avatar_url, a.is_active, a.project_id, 
+               a.created_by_admin_id, a.managed_by_admin_id, a.sale_limit, a.created_at,
+               m.full_name AS manager_name, m.username AS manager_username,
+               (SELECT COUNT(*)::int FROM admins s WHERE s.managed_by_admin_id = a.id AND s.role = 'sale') AS used_sales_count
+        FROM admins a
+        LEFT JOIN admins m ON m.id = a.managed_by_admin_id
+        ORDER BY 
+          CASE WHEN a.role = 'superadmin' THEN 1
+               WHEN a.role = 'project_admin' THEN 2
+               WHEN a.role = 'agent' THEN 3
+               WHEN a.role = 'sale' THEN 4
+               ELSE 5 END,
+          COALESCE(a.managed_by_admin_id, a.id),
+          a.role = 'agent' DESC,
+          a.username ASC
+      `)
       : isProjectAdmin(req.admin) ? await db.query(
-        `SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_by_admin_id, created_at
-         FROM admins 
-         WHERE ((created_by_admin_id = $1 AND role = 'agent') OR id = $1) AND project_id = $2 
-         ORDER BY role DESC, username ASC`,
+        `SELECT a.id, a.username, a.role, a.full_name, a.avatar_url, a.is_active, a.project_id, 
+                a.created_by_admin_id, a.managed_by_admin_id, a.sale_limit, a.created_at,
+                m.full_name AS manager_name, m.username AS manager_username,
+                (SELECT COUNT(*)::int FROM admins s WHERE s.managed_by_admin_id = a.id AND s.role = 'sale') AS used_sales_count
+         FROM admins a
+         LEFT JOIN admins m ON m.id = a.managed_by_admin_id
+         WHERE ((a.created_by_admin_id = $1 AND a.role IN ('agent', 'sale')) OR a.id = $1) AND a.project_id = $2 
+         ORDER BY a.role DESC, a.username ASC`,
         [req.admin.id, req.admin.project_id]
       ) : await db.query(
-        `SELECT id, username, role, full_name, avatar_url, is_active, project_id, created_by_admin_id, created_at
-           FROM admins WHERE id = $1`, [req.admin.id]
+        `SELECT a.id, a.username, a.role, a.full_name, a.avatar_url, a.is_active, a.project_id, 
+                a.created_by_admin_id, a.managed_by_admin_id, a.sale_limit, a.created_at,
+                m.full_name AS manager_name, m.username AS manager_username,
+                (SELECT COUNT(*)::int FROM admins s WHERE s.managed_by_admin_id = a.id AND s.role = 'sale') AS used_sales_count
+         FROM admins a
+         LEFT JOIN admins m ON m.id = a.managed_by_admin_id
+         WHERE a.id = $1`, [req.admin.id]
       );
     res.json(result.rows);
   } catch (error) {
@@ -3543,7 +3575,7 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
     return res.status(403).json({ error: 'Bạn không có quyền tạo tài khoản.' });
   }
 
-  const { email, full_name, role, avatar_url, project_id } = req.body || {};
+  const { email, full_name, role, avatar_url, project_id, sale_limit } = req.body || {};
   const username = String(email || '').trim().toLowerCase();
   if (!username || !username.includes('@') || !full_name?.trim()) {
     return res.status(400).json({ error: 'Vui lòng cung cấp Họ tên và Email hợp lệ.' });
@@ -3566,8 +3598,6 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
       return res.status(400).json({ error: 'Email này đã tồn tại trong hệ thống.' });
     }
 
-    // Kept only because the legacy schema requires password_hash. It is random
-    // and never shown or used by staff created through this screen.
     const passwordHash = await hashPassword(randomUUID());
     const avatar = avatar_url || 'gradient-1';
     const scope = isSuperAdmin(req.admin)
@@ -3576,31 +3606,21 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
     if (effectiveRole !== 'superadmin' && !scope) return res.status(400).json({ error: 'Nhân viên phải thuộc một dự án cụ thể.' });
 
     const creatorId = isProjectAdmin(req.admin) ? req.admin.id : null;
+    const saleLimit = (effectiveRole === 'agent' && sale_limit !== undefined && sale_limit !== '' && sale_limit !== null)
+      ? Math.max(0, parseInt(sale_limit, 10))
+      : null;
 
     const insertRes = await db.query(
-      `INSERT INTO admins (username, password_hash, full_name, role, avatar_url, project_id, created_by_admin_id, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE) RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, created_at`,
-      [username, passwordHash, full_name, effectiveRole, avatar, scope, creatorId]
+      `INSERT INTO admins (username, password_hash, full_name, role, avatar_url, project_id, created_by_admin_id, is_active, sale_limit)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8) 
+       RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, created_at`,
+      [username, passwordHash, full_name.trim(), effectiveRole, avatar, scope, creatorId, saleLimit]
     );
-
-    let qrAccount = null;
-    if (scope) {
-      const qrProject = await db.query(`SELECT project_type FROM projects WHERE id = $1`, [scope]);
-      if (qrProject.rows[0]?.project_type === 'qr_concierge') {
-        const code = `qr_${randomUUID().replace(/-/g, '')}`;
-        qrAccount = (await db.query(
-          `INSERT INTO qr_chat_accounts (project_id, owner_admin_id, code, label)
-           VALUES ($1, $2, $3, $4) RETURNING id, code, label`,
-          [scope, insertRes.rows[0].id, code, `QR của ${full_name.trim()}`]
-        )).rows[0];
-      }
-    }
 
     res.status(201).json({
       success: true,
       message: 'Tạo tài khoản nhân viên thành công.',
-      user: insertRes.rows[0],
-      qr: qrAccount ? { ...qrAccount, chat_url: qrCustomerChatUrl(req, qrAccount.code) } : null
+      user: insertRes.rows[0]
     });
   } catch (error) {
     console.error('Create admin error:', error);
@@ -3615,7 +3635,7 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
   }
 
   const { id } = req.params;
-  const { email, full_name, role, avatar_url, is_active, project_id } = req.body || {};
+  const { email, full_name, role, avatar_url, is_active, project_id, sale_limit } = req.body || {};
   const username = email === undefined ? undefined : String(email || '').trim().toLowerCase();
 
   try {
@@ -3660,6 +3680,10 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
       ? null
       : (project_id !== undefined ? (project_id && project_id.trim() ? project_id.trim() : null) : currentAdmin.project_id);
 
+    const updatedSaleLimit = (updatedRole === 'agent' && sale_limit !== undefined)
+      ? (sale_limit === '' || sale_limit === null ? null : Math.max(0, parseInt(sale_limit, 10)))
+      : currentAdmin.sale_limit;
+
     // Do not allow deactivating themselves
     if (Number(id) === Number(req.admin.id) && !updatedIsActive) {
       return res.status(400).json({ error: 'Bạn không thể tự vô hiệu hóa tài khoản của chính mình.' });
@@ -3667,9 +3691,10 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
 
     const updateRes = await db.query(
       `UPDATE admins
-       SET username = $1, full_name = $2, role = $3, avatar_url = $4, is_active = $5, project_id = $6
-       WHERE id = $7 RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, created_at`,
-      [updatedUsername, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, updatedProject, id]
+       SET username = $1, full_name = $2, role = $3, avatar_url = $4, is_active = $5, project_id = $6, sale_limit = $7
+       WHERE id = $8 
+       RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, created_at`,
+      [updatedUsername, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, updatedProject, updatedSaleLimit, id]
     );
 
     res.json({
@@ -4009,21 +4034,44 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
 
   try {
     // Check if session has a locked admin_language
-    const sessionRes = await db.query('SELECT admin_language, project_id, assigned_admin_id FROM sessions WHERE id = $1', [sessionId]);
+    const sessionRes = await db.query('SELECT admin_language, project_id, assigned_admin_id, group_id, claimed_by_admin_id, qr_account_id FROM sessions WHERE id = $1', [sessionId]);
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy phiên chat.' });
+    }
+    const sess = sessionRes.rows[0];
+
     // Phân quyền: tài khoản gắn project không được xem hội thoại của project khác.
     if (
-      sessionRes.rows.length > 0 &&
       req.admin.role !== 'superadmin' && req.admin.project_id &&
-      sessionRes.rows[0].project_id !== req.admin.project_id
+      sess.project_id !== req.admin.project_id
     ) {
       return res.status(403).json({ error: 'Bạn không có quyền xem hội thoại thuộc project khác.' });
     }
-    if (sessionRes.rows[0]?.project_id === 'qr-concierge' && req.admin.role === 'agent' && Number(sessionRes.rows[0].assigned_admin_id) !== Number(req.admin.id)) {
-      return res.status(403).json({ error: 'Chat QR này thuộc Agent khác.' });
+
+    if (req.admin.role === 'agent' && sess.project_id === 'qr-concierge') {
+      const isDirectOwner = Number(sess.assigned_admin_id) === Number(req.admin.id);
+      let isMySale = false;
+      if (sess.claimed_by_admin_id) {
+        const saleCheck = await db.query('SELECT id FROM admins WHERE id = $1 AND managed_by_admin_id = $2', [sess.claimed_by_admin_id, req.admin.id]);
+        isMySale = saleCheck.rows.length > 0;
+      }
+      let isMyGroup = false;
+      if (sess.group_id) {
+        const groupCheck = await db.query('SELECT id FROM agent_groups WHERE id = $1 AND agent_id = $2', [sess.group_id, req.admin.id]);
+        isMyGroup = groupCheck.rows.length > 0;
+      }
+      let isMyQr = false;
+      if (sess.qr_account_id) {
+        const qrCheck = await db.query('SELECT id FROM qr_chat_accounts WHERE id = $1 AND owner_admin_id = $2', [sess.qr_account_id, req.admin.id]);
+        isMyQr = qrCheck.rows.length > 0;
+      }
+      if (!isDirectOwner && !isMySale && !isMyGroup && !isMyQr) {
+        return res.status(403).json({ error: 'Hội thoại này không thuộc phạm vi quản lý của bạn.' });
+      }
     }
     let targetLang = adminLang;
-    if (sessionRes.rows.length > 0 && sessionRes.rows[0].admin_language) {
-      targetLang = sessionRes.rows[0].admin_language;
+    if (sess.admin_language) {
+      targetLang = sess.admin_language;
     }
 
     const result = await db.query(
@@ -4239,6 +4287,210 @@ app.get('/api/admin/export', checkAdminAuth, async (req, res) => {
   } catch (error) {
     console.error('Export error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi xuất dữ liệu.' });
+  }
+});
+
+/**
+ * @openapi
+ * /api/admin/reports/data:
+ *   get:
+ *     summary: Tổng hợp & Xuất báo cáo hoạt động tư vấn Sale (Yêu cầu quyền Admin/Agent)
+ *     description: Trích xuất thống kê năng suất, số lượng hội thoại và xuất file CSV báo cáo chi tiết.
+ */
+app.get('/api/admin/reports/data', checkAdminAuth, async (req, res) => {
+  const { format = 'json', projectId, saleId, status, datePreset, fromDate, toDate } = req.query;
+
+  try {
+    const isSuper = isSuperAdmin(req.admin);
+    const isAgent = isAgentManager(req.admin);
+
+    let queryText = `
+      SELECT 
+        s.id AS session_id,
+        s.created_at,
+        s.updated_at,
+        s.status,
+        s.routing_status,
+        s.project_id,
+        s.visitor_name,
+        s.visitor_email,
+        s.visitor_phone,
+        s.detected_language,
+        s.ai_summary,
+        s.intent_tags,
+        s.claimed_at,
+        ca.id AS sale_id,
+        ca.full_name AS sale_name,
+        ca.username AS sale_email,
+        ag.full_name AS agent_name,
+        ag.username AS agent_email,
+        q.label AS qr_label,
+        q.code AS qr_code,
+        (SELECT COUNT(*)::int FROM messages WHERE session_id = s.id) AS total_messages,
+        (SELECT COUNT(*)::int FROM messages WHERE session_id = s.id AND sender = 'visitor') AS visitor_messages,
+        (SELECT COUNT(*)::int FROM messages WHERE session_id = s.id AND sender = 'agent') AS staff_messages,
+        (SELECT COUNT(*)::int FROM messages WHERE session_id = s.id AND sender = 'ai') AS ai_messages,
+        (SELECT MAX(created_at) FROM messages WHERE session_id = s.id) AS last_message_at
+      FROM sessions s
+      LEFT JOIN admins ca ON ca.id = s.claimed_by_admin_id
+      LEFT JOIN admins ag ON ag.id = COALESCE(s.assigned_admin_id, ca.managed_by_admin_id)
+      LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+    `;
+
+    const conditions = [];
+    const params = [];
+
+    // Project scope
+    const scopedProject = !isSuper && req.admin.project_id ? req.admin.project_id : (projectId || null);
+    if (scopedProject) {
+      conditions.push(`s.project_id = $${params.length + 1}`);
+      params.push(scopedProject);
+    }
+
+    // Role-based scope: Agent only gets sessions from their QR, groups, or managed sales
+    if (isAgent) {
+      conditions.push(`(
+        s.assigned_admin_id = $${params.length + 1}
+        OR ca.managed_by_admin_id = $${params.length + 1}
+        OR s.qr_account_id IN (SELECT id FROM qr_chat_accounts WHERE owner_admin_id = $${params.length + 1})
+        OR s.group_id IN (SELECT id FROM agent_groups WHERE agent_id = $${params.length + 1})
+      )`);
+      params.push(req.admin.id);
+    }
+
+    // Sale filter
+    if (saleId && Number(saleId)) {
+      conditions.push(`s.claimed_by_admin_id = $${params.length + 1}`);
+      params.push(Number(saleId));
+    }
+
+    // Status filter
+    if (status && status !== 'all') {
+      conditions.push(`s.status = $${params.length + 1}`);
+      params.push(status);
+    }
+
+    // Date range filter
+    if (fromDate) {
+      conditions.push(`s.created_at >= $${params.length + 1}::timestamptz`);
+      params.push(`${fromDate} 00:00:00`);
+    } else if (datePreset === 'today') {
+      conditions.push(`s.created_at >= CURRENT_DATE`);
+    } else if (datePreset === '7days') {
+      conditions.push(`s.created_at >= NOW() - INTERVAL '7 days'`);
+    } else if (datePreset === '30days') {
+      conditions.push(`s.created_at >= NOW() - INTERVAL '30 days'`);
+    }
+
+    if (toDate) {
+      conditions.push(`s.created_at <= $${params.length + 1}::timestamptz`);
+      params.push(`${toDate} 23:59:59`);
+    }
+
+    if (conditions.length > 0) {
+      queryText += ' WHERE ' + conditions.join(' AND ');
+    }
+    queryText += ' ORDER BY s.created_at DESC';
+
+    const result = await db.query(queryText, params);
+    const sessions = result.rows;
+
+    // Aggregate summary metrics
+    const totalSessions = sessions.length;
+    const totalVisitors = new Set(sessions.map(s => s.visitor_email || s.visitor_name || s.session_id)).size;
+    const totalMessages = sessions.reduce((sum, s) => sum + (Number(s.total_messages) || 0), 0);
+    const staffMessages = sessions.reduce((sum, s) => sum + (Number(s.staff_messages) || 0), 0);
+    const visitorMessages = sessions.reduce((sum, s) => sum + (Number(s.visitor_messages) || 0), 0);
+    const aiMessages = sessions.reduce((sum, s) => sum + (Number(s.ai_messages) || 0), 0);
+
+    // Sales breakdown
+    const salesMap = {};
+    for (const s of sessions) {
+      const sId = s.sale_id || 'unassigned';
+      const sName = s.sale_name || 'Chưa tiếp nhận';
+      const sEmail = s.sale_email || '—';
+      if (!salesMap[sId]) {
+        salesMap[sId] = {
+          sale_id: s.sale_id || null,
+          sale_name: sName,
+          sale_email: sEmail,
+          sessions_count: 0,
+          staff_messages_count: 0
+        };
+      }
+      salesMap[sId].sessions_count++;
+      salesMap[sId].staff_messages_count += Number(s.staff_messages) || 0;
+    }
+    const salesBreakdown = Object.values(salesMap).sort((a, b) => b.sessions_count - a.sessions_count);
+
+    if (format === 'csv') {
+      const BOM = '\uFEFF';
+      const headers = [
+        'Mã phiên chat',
+        'Thời gian tạo',
+        'Tin nhắn cuối lúc',
+        'Dự án',
+        'Mã QR',
+        'Tên khách',
+        'Email khách',
+        'Số điện thoại',
+        'Nhân viên Sale',
+        'Agent quản lý',
+        'Trạng thái',
+        'Tổng tin nhắn',
+        'Tin khách',
+        'Tin Sale',
+        'Tin AI',
+        'Tóm tắt nội dung AI'
+      ];
+
+      const escapeCSV = (val) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      };
+
+      const rows = sessions.map(s => [
+        escapeCSV(s.session_id),
+        escapeCSV(new Date(s.created_at).toLocaleString('vi-VN')),
+        escapeCSV(s.last_message_at ? new Date(s.last_message_at).toLocaleString('vi-VN') : '—'),
+        escapeCSV(s.project_id),
+        escapeCSV(s.qr_label || s.qr_code || '—'),
+        escapeCSV(s.visitor_name || 'Khách vãng lai'),
+        escapeCSV(s.visitor_email || '—'),
+        escapeCSV(s.visitor_phone || '—'),
+        escapeCSV(s.sale_name || 'Chưa tiếp nhận'),
+        escapeCSV(s.agent_name || '—'),
+        escapeCSV(s.status === 'active' ? 'Đang hoạt động' : 'Đã đóng'),
+        s.total_messages || 0,
+        s.visitor_messages || 0,
+        s.staff_messages || 0,
+        s.ai_messages || 0,
+        escapeCSV(s.ai_summary || '')
+      ].join(','));
+
+      const csvContent = BOM + [headers.join(','), ...rows].join('\r\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename=bao_cao_tu_van_${Date.now()}.csv`);
+      return res.send(csvContent);
+    }
+
+    res.json({
+      success: true,
+      summary: {
+        total_sessions: totalSessions,
+        total_visitors: totalVisitors,
+        total_messages: totalMessages,
+        staff_messages: staffMessages,
+        visitor_messages: visitorMessages,
+        ai_messages: aiMessages
+      },
+      sales_breakdown: salesBreakdown,
+      sessions: sessions.slice(0, 100)
+    });
+  } catch (error) {
+    console.error('Reports data error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi tải dữ liệu báo cáo.' });
   }
 });
 

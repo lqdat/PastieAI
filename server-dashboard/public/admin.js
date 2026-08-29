@@ -1710,21 +1710,30 @@ function applyDetailsPanelMode(session) {
 
 function applyChatPermissionUI(session) {
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
-    // Manage input visibility and claim status
     const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
-    const isQrOwnedAgentChat = isQrChatOwnedByCurrentAgent(session);
+    const isAgent = CURRENT_ADMIN && CURRENT_ADMIN.role === 'agent';
+    const isSale = CURRENT_ADMIN && CURRENT_ADMIN.role === 'sale';
     const isClaimedByMe = session.claimed_by_admin_id && Number(session.claimed_by_admin_id) === Number(CURRENT_ADMIN?.id);
     const isAssignedToMe = session.assigned_admin_id && Number(session.assigned_admin_id) === Number(CURRENT_ADMIN?.id);
     const isClaimedByOther = session.claimed_by_admin_id && Number(session.claimed_by_admin_id) !== Number(CURRENT_ADMIN?.id);
 
     const claimChatBtn = document.getElementById('claim-chat-btn');
 
-    // QR Concierge is one QR → one owner agent. There is nothing to claim,
-    // reassign or manually close; expiry is managed automatically by the QR
-    // session itself. Keep the reply composer available to its owner.
-    if (claimChatBtn) claimChatBtn.classList.toggle('hide', isQrOwnedAgentChat);
-    if (assigneeSelectorContainer) assigneeSelectorContainer.classList.toggle('hide', isQrOwnedAgentChat);
-    if (isQrOwnedAgentChat) closeSessionBtn.classList.add('hide');
+    // Chế độ giám sát cho Agent quản lý
+    let supervisorBar = document.getElementById('chat-supervisor-bar');
+    if (isAgent) {
+        if (!supervisorBar) {
+            supervisorBar = document.createElement('div');
+            supervisorBar.id = 'chat-supervisor-bar';
+            supervisorBar.className = 'chat-supervisor-bar';
+            supervisorBar.innerHTML = '<i class="ri-eye-line"></i> <span><strong>Chế độ Giám sát:</strong> Bạn đang theo dõi cuộc trò chuyện của Sale (Chỉ xem, không gửi tin nhắn).</span>';
+            chatInputContainer?.insertBefore(supervisorBar, chatForm);
+        } else {
+            supervisorBar.style.display = 'flex';
+        }
+    } else if (supervisorBar) {
+        supervisorBar.style.display = 'none';
+    }
 
     if (session.status === 'closed') {
         chatInputContainer.classList.add('hide');
@@ -1732,13 +1741,17 @@ function applyChatPermissionUI(session) {
         if (claimChatBtn) claimChatBtn.classList.add('hide');
     } else {
         chatInputContainer.classList.remove('hide');
-        if (!isQrOwnedAgentChat) closeSessionBtn.classList.remove('hide');
+        closeSessionBtn.classList.toggle('hide', isAgent);
 
-        // Check if user has permission to reply
-        const canReply = isQrOwnedAgentChat || isSuper || isClaimedByMe || isAssignedToMe;
+        // Check if user has permission to reply: Agent can NEVER reply directly (view-only)
+        const canReply = !isAgent && (isSuper || isClaimedByMe || isAssignedToMe);
         if (chatInput) {
             chatInput.disabled = !canReply;
-            if (!canReply) {
+            chatInput.classList.toggle('is-supervisor-mode', isAgent);
+            if (isAgent) {
+                chatInput.value = '';
+                chatInput.placeholder = 'Chế độ Giám sát: Bạn đang theo dõi cuộc trò chuyện của Sale (Chỉ xem)...';
+            } else if (!canReply) {
                 chatInput.value = '';
                 chatInput.placeholder = isClaimedByOther
                     ? '🔒 Cuộc trò chuyện đã được nhân viên khác tiếp nhận.'
@@ -1751,30 +1764,33 @@ function applyChatPermissionUI(session) {
         if (sendBtn) sendBtn.disabled = !canReply;
 
         // Update claim button UI
-        if (claimChatBtn && !isQrOwnedAgentChat) {
-            claimChatBtn.classList.remove('hide');
-            if (isClaimedByMe) {
-                claimChatBtn.disabled = true;
-                claimChatBtn.style.opacity = '0.9';
-                claimChatBtn.style.background = 'rgba(16, 185, 129, 0.25)';
-                claimChatBtn.style.borderColor = 'rgba(16, 185, 129, 0.6)';
-                claimChatBtn.innerHTML = '<i class="ri-checkbox-circle-fill"></i> <span>Đã tiếp nhận</span>';
-            } else if (isClaimedByOther) {
-                claimChatBtn.disabled = !isSuper;
-                claimChatBtn.style.opacity = '0.6';
-                claimChatBtn.style.background = 'rgba(255, 255, 255, 0.05)';
-                claimChatBtn.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-                claimChatBtn.innerHTML = '<i class="ri-user-follow-line"></i> <span>Đã có người nhận</span>';
+        if (claimChatBtn) {
+            if (isAgent) {
+                claimChatBtn.classList.add('hide');
             } else {
-                claimChatBtn.disabled = false;
-                claimChatBtn.style.opacity = '1';
-                claimChatBtn.style.background = 'rgba(16, 185, 129, 0.14)';
-                claimChatBtn.style.borderColor = 'rgba(16, 185, 129, 0.35)';
-                claimChatBtn.innerHTML = '<i class="ri-hand-heart-line"></i> <span>Tiếp nhận</span>';
+                claimChatBtn.classList.remove('hide');
+                if (isClaimedByMe) {
+                    claimChatBtn.disabled = true;
+                    claimChatBtn.style.opacity = '0.9';
+                    claimChatBtn.style.background = 'rgba(16, 185, 129, 0.25)';
+                    claimChatBtn.style.borderColor = 'rgba(16, 185, 129, 0.6)';
+                    claimChatBtn.innerHTML = '<i class="ri-checkbox-circle-fill"></i> <span>Đã tiếp nhận</span>';
+                } else if (isClaimedByOther) {
+                    claimChatBtn.disabled = !isSuper;
+                    claimChatBtn.style.opacity = '0.6';
+                    claimChatBtn.style.background = 'rgba(255, 255, 255, 0.05)';
+                    claimChatBtn.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                    claimChatBtn.innerHTML = '<i class="ri-user-follow-line"></i> <span>Đã có người nhận</span>';
+                } else {
+                    claimChatBtn.disabled = false;
+                    claimChatBtn.style.opacity = '1';
+                    claimChatBtn.style.background = 'rgba(16, 185, 129, 0.14)';
+                    claimChatBtn.style.borderColor = 'rgba(16, 185, 129, 0.35)';
+                    claimChatBtn.innerHTML = '<i class="ri-hand-heart-line"></i> <span>Tiếp nhận</span>';
+                }
             }
         }
     }
-
 }
 
 async function selectSession(sessionId) {
@@ -3970,21 +3986,6 @@ document.addEventListener('keydown', (event) => {
 adminMgmtProjectSelect?.addEventListener('change', () => {
     loadAdminUsers();
 });
-qrOwnerSelect?.addEventListener('change', refreshQrAccounts);
-qrCreateBtn?.addEventListener('click', async () => {
-    const projectId = getAdminMgmtProjectId();
-    const ownerAdminId = Number(qrOwnerSelect?.value || 0);
-    if (!projectId || !ownerAdminId) return alert('Hãy chọn Agent trước khi tạo QR.');
-    qrCreateBtn.disabled = true;
-    try {
-        const res = await authFetch(`${API_BASE}/api/admin/qr-accounts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, ownerAdminId, label: `QR chat · ${qrOwnerSelect.options[qrOwnerSelect.selectedIndex].text}` }) });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Không thể lấy QR.');
-        await refreshQrAccounts();
-        if (data.reused) alert('Agent này đã có một mã QR đang hoạt động. Đang hiển thị lại mã hiện có.');
-    } catch (error) { alert(error.message); }
-    finally { qrCreateBtn.disabled = false; }
-});
 
 // Superadmin: Nút Quản lý đội ngũ trên Header
 document.getElementById('superadmin-team-btn')?.addEventListener('click', (event) => {
@@ -3997,14 +3998,10 @@ if (manageAdminsBtn) manageAdminsBtn.addEventListener('click', (event) => {
     window.openAdminManagement();
 });
 
-// Agent: 2 nút riêng trên header thay cho mục trong menu Cài đặt.
+// Agent: Nút tài khoản trên header
 document.getElementById('agent-account-btn')?.addEventListener('click', (event) => {
     event.stopPropagation();
     window.openAdminManagement('account');
-});
-document.getElementById('agent-qr-btn')?.addEventListener('click', (event) => {
-    event.stopPropagation();
-    window.openAdminManagement('qr');
 });
 if (adminMgmtCloseTopBtn) adminMgmtCloseTopBtn.addEventListener('click', closeAdminMgmt);
 if (adminMgmtCloseBtn) adminMgmtCloseBtn.addEventListener('click', closeAdminMgmt);
@@ -4015,6 +4012,8 @@ const adminFormFullname = document.getElementById('admin-form-fullname');
 const adminFormEmail = document.getElementById('admin-form-email');
 const adminFormRole = document.getElementById('admin-form-role');
 const adminFormProject = document.getElementById('admin-form-project');
+const adminFormSaleLimit = document.getElementById('admin-form-sale-limit');
+const adminFormSaleLimitGroup = document.getElementById('admin-form-sale-limit-group');
 const adminFormActive = document.getElementById('admin-form-active');
 const adminFormAvatar = document.getElementById('admin-form-avatar');
 const adminAvatarPicker = document.getElementById('admin-avatar-picker');
@@ -4023,6 +4022,39 @@ const adminFormTitle = document.getElementById('admin-form-title');
 const adminFormSubmitBtn = document.getElementById('admin-form-submit-btn');
 const adminFormCancelBtn = document.getElementById('admin-form-cancel-btn');
 if (adminFormCancelBtn) adminFormCancelBtn.addEventListener('click', resetAdminForm);
+
+function updateAdminFormRoleVisibility() {
+    const projectId = adminFormProject ? adminFormProject.value : '';
+    const proj = (PROJECTS || []).find(p => p.id === projectId);
+    const isQrProject = proj?.project_type === 'qr_concierge' || projectId === 'qr-concierge';
+
+    if (isQrProject) {
+        if (adminFormRole) {
+            adminFormRole.innerHTML = '<option value="agent">Agent (Tư vấn viên trực chat / Quản lý Sale)</option>';
+            adminFormRole.value = 'agent';
+        }
+    } else if (CURRENT_ADMIN?.role === 'superadmin') {
+        const prevRole = adminFormRole ? adminFormRole.value : 'agent';
+        if (adminFormRole) {
+            adminFormRole.innerHTML = `
+                <option value="agent">Agent (Tư vấn viên trực chat / Quản lý Sale)</option>
+                <option value="project_admin">Project Admin (Quản trị dự án)</option>
+                <option value="superadmin">Quản trị viên tối cao (Super-Admin)</option>
+            `;
+            if (['agent', 'project_admin', 'superadmin'].includes(prevRole)) {
+                adminFormRole.value = prevRole;
+            }
+        }
+    }
+
+    const currentRole = adminFormRole ? adminFormRole.value : 'agent';
+    const isAgent = currentRole === 'agent';
+    if (adminFormSaleLimitGroup) {
+        adminFormSaleLimitGroup.style.display = isAgent ? 'block' : 'none';
+    }
+}
+adminFormProject?.addEventListener('change', updateAdminFormRoleVisibility);
+adminFormRole?.addEventListener('change', updateAdminFormRoleVisibility);
 
 const ADMIN_AVATARS = [
     { id: 'gradient-1', label: 'Tím', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' },
@@ -4048,8 +4080,7 @@ function renderAdminAvatarPicker(selectedId = 'gradient-1') {
     if (adminFormAvatar) adminFormAvatar.value = selectedId;
 }
 
-// 'account' | 'qr' | null. Agent mở modal từ 2 nút riêng nên chỉ xem đúng
-// phần mình bấm; các role khác vẫn thấy đầy đủ như cũ.
+// 'account' | 'qr' | null.
 let adminMgmtFocus = null;
 
 function applyAdminMgmtFocus() {
@@ -4058,7 +4089,6 @@ function applyAdminMgmtFocus() {
     const subtitleEl = document.getElementById('admin-mgmt-subtitle');
     const selfPanel = document.getElementById('self-profile-panel');
 
-    // Ô đổi tên hiển thị chỉ xuất hiện ở chế độ "Quản lý tài khoản".
     const showSelfProfile = adminMgmtFocus === 'account';
     selfPanel?.classList.toggle('hide', !showSelfProfile);
     if (showSelfProfile) {
@@ -4066,7 +4096,7 @@ function applyAdminMgmtFocus() {
         const meta = document.getElementById('self-account-meta');
         if (input) input.value = CURRENT_ADMIN?.full_name || CURRENT_ADMIN?.username || '';
         if (meta) {
-            const roleNames = { agent: 'Agent tư vấn', project_admin: 'Quản trị dự án', superadmin: 'Superadmin' };
+            const roleNames = { agent: 'Agent tư vấn', sale: 'Nhân viên Sale', project_admin: 'Quản trị dự án', superadmin: 'Superadmin' };
             const email = CURRENT_ADMIN?.username || '—';
             const project = CURRENT_ADMIN?.project_id || 'Toàn hệ thống';
             const role = roleNames[CURRENT_ADMIN?.role] || 'Tài khoản';
@@ -4077,12 +4107,7 @@ function applyAdminMgmtFocus() {
         }
         setSelfProfileStatus('');
 
-        // Phân quyền đổi tên hiển thị:
-        // - Superadmin / Project Admin: Đổi được
-        // - Sale: ĐƯỢC PHÉP đổi tên hiển thị của chính mình
-        // - Agent: Không tự đổi tên hiển thị của mình (do Superadmin quản lý)
         const isAgent = CURRENT_ADMIN?.role === 'agent';
-        const isSale = CURRENT_ADMIN?.role === 'sale';
         const canEditName = !isAgent;
         const saveBtn = document.getElementById('self-display-name-save');
         if (input) input.readOnly = !canEditName;
@@ -4096,22 +4121,14 @@ function applyAdminMgmtFocus() {
         }
     }
 
-    if (adminMgmtFocus === 'qr') {
-        grid?.classList.add('hide');
-        // qrConciergePanel do refreshQrAccounts điều khiển theo loại project — không ép hiện ở đây.
-        if (titleEl) titleEl.textContent = 'Mã QR tiếp nhận chat';
-        if (subtitleEl) subtitleEl.textContent = 'Quét mã QR này để khách bắt đầu cuộc trò chuyện với bạn.';
-    } else if (adminMgmtFocus === 'account') {
-        // Agent chỉ cần một hồ sơ; không lặp lại cùng thông tin ở danh sách tài khoản.
+    if (adminMgmtFocus === 'account') {
         grid?.classList.toggle('hide', isRestrictedConsole());
-        qrConciergePanel?.classList.add('hide');
         if (titleEl) titleEl.textContent = 'Quản lý tài khoản';
-        if (subtitleEl) subtitleEl.textContent = 'Thông tin và tên hiển thị của tài khoản bạn.';
         const listHeading = document.getElementById('admin-list-heading');
         if (listHeading) listHeading.textContent = 'Tài khoản của bạn';
     } else {
         grid?.classList.remove('hide');
-        if (titleEl) titleEl.textContent = 'Quản lý nhân viên & Phân quyền';
+        if (titleEl) titleEl.textContent = 'Quản lý nhân viên';
         const listHeading = document.getElementById('admin-list-heading');
         if (listHeading) listHeading.textContent = 'Danh sách nhân viên';
     }
@@ -4153,10 +4170,7 @@ async function handleSelfDisplayNameSubmit(event) {
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data.error || 'Không thể cập nhật tên hiển thị.');
 
-        // Cập nhật ngay mọi chỗ đang hiển thị tên: header, badge, danh sách.
-        if (CURRENT_ADMIN) CURRENT_ADMIN.full_name = data.admin?.full_name || fullName;
-        const profileNameEl = document.getElementById('admin-profile-name');
-        if (profileNameEl) profileNameEl.textContent = CURRENT_ADMIN.full_name;
+        if (CURRENT_ADMIN) CURRENT_ADMIN.full_name = fullName;
         updateAgentHeaderUI();
         loadAdminUsers();
         setSelfProfileStatus('Đã cập nhật tên hiển thị.', 'ok');
@@ -4178,10 +4192,7 @@ function openAdminMgmt() {
     const projectMgmtBox = document.querySelector('.admin-project-management');
     const projectFormGroup = document.getElementById('admin-form-project-group');
     const roleSelect = document.getElementById('admin-form-role');
-    const subtitleEl = document.getElementById('admin-mgmt-subtitle');
 
-    // Only Superadmin can switch the project context. Other roles are always
-    // locked to the project assigned to their account.
     if (accountProjectContext) accountProjectContext.classList.toggle('hide', !isSuper);
     if (isSuper && adminMgmtProjectSelect) {
         adminMgmtProjectSelect.innerHTML = (PROJECTS || []).map(p =>
@@ -4197,37 +4208,20 @@ function openAdminMgmt() {
         if (projectMgmtBox) projectMgmtBox.classList.add('hide');
         if (projectFormGroup) projectFormGroup.classList.add('hide');
         if (roleSelect) {
-            roleSelect.innerHTML = '<option value="agent">Agent (Tư vấn viên trực chat)</option>';
+            roleSelect.innerHTML = '<option value="agent">Agent (Tư vấn viên trực chat / Quản lý Sale)</option>';
             roleSelect.value = 'agent';
             roleSelect.disabled = true;
         }
-        if (subtitleEl) {
-            subtitleEl.textContent = `Quản lý danh sách Agent tư vấn của bạn [${CURRENT_ADMIN.project_id || 'Dự án'}].`;
-        }
         if (isAgent) {
             if (adminUserForm) adminUserForm.closest('.admin-user-form-panel')?.classList.add('hide');
-            if (subtitleEl) subtitleEl.textContent = `Tài khoản và mã QR của bạn [${CURRENT_ADMIN.project_id || 'Dự án'}].`;
         } else {
             adminUserForm?.closest('.admin-user-form-panel')?.classList.remove('hide');
         }
     } else {
         if (projectMgmtBox) projectMgmtBox.classList.remove('hide');
         if (projectFormGroup) projectFormGroup.classList.remove('hide');
-        if (roleSelect) {
-            roleSelect.innerHTML = `
-                <option value="agent">Agent (Tư vấn viên trực chat)</option>
-                <option value="project_admin">Project Admin (Quản trị dự án)</option>
-                <option value="superadmin">Quản trị viên tối cao (Super-Admin)</option>
-            `;
-            roleSelect.value = 'agent';
-            roleSelect.disabled = false;
-        }
-        if (subtitleEl) {
-            subtitleEl.textContent = 'Quản lý tài khoản, phân quyền và trạng thái hoạt động của nhân viên toàn hệ thống.';
-        }
         adminUserForm?.closest('.admin-user-form-panel')?.classList.remove('hide');
 
-        // Populate projects in form dropdown
         if (adminFormProject) {
             adminFormProject.innerHTML = '<option value="">— Tất cả dự án (toàn quyền) —</option>';
             (PROJECTS || []).forEach(p => {
@@ -4274,7 +4268,6 @@ async function loadAdminUsers() {
 
         if (visibleUsers.length === 0) {
             adminListContainer.innerHTML = '<p style="color:var(--text-secondary);font-size:12px;text-align:center;padding:24px 0;">Chưa có tài khoản nhân viên nào.</p>';
-            await refreshQrAccounts();
             return;
         }
 
@@ -4293,10 +4286,19 @@ async function loadAdminUsers() {
             const initial = (u.full_name || u.username || 'A').trim().charAt(0).toUpperCase();
 
             let roleLabel = 'Sale';
-            let roleClass = 'agent';
+            let roleClass = 'sale';
+            let extraBadges = '';
+
             if (u.role === 'agent') {
                 roleLabel = 'Agent quản lý';
                 roleClass = 'agent';
+                const limitStr = u.sale_limit ? `${u.used_sales_count || 0}/${u.sale_limit} Sale` : `${u.used_sales_count || 0} Sale (Không giới hạn)`;
+                extraBadges = `<span style="font-size:10px; color:#ec4899; background:rgba(236,72,153,0.1); border:1px solid rgba(236,72,153,0.25); padding:1px 6px; border-radius:4px; font-weight:600;"><i class="ri-team-line"></i> Cấp phép: <strong>${limitStr}</strong></span>`;
+            } else if (u.role === 'sale') {
+                roleLabel = 'Sale';
+                roleClass = 'sale';
+                const managerText = u.manager_name || u.manager_username || 'Chưa gán';
+                extraBadges = `<span style="font-size:10px; color:#6366f1; background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.22); padding:1px 6px; border-radius:4px; font-weight:600;"><i class="ri-user-star-line"></i> Thuộc Agent: <strong>${escapeHtml(managerText)}</strong></span>`;
             } else if (u.role === 'superadmin') {
                 roleLabel = 'Superadmin';
                 roleClass = 'superadmin';
@@ -4308,7 +4310,7 @@ async function loadAdminUsers() {
             const canDelete = !isSelf && (CURRENT_ADMIN.role === 'superadmin' || isCreatedByMe);
 
             return `
-                <div class="admin-user-card ${isSelf ? 'is-self' : ''}">
+                <div class="admin-user-card ${isSelf ? 'is-self' : ''} ${u.role === 'sale' ? 'is-sale-card' : ''}" style="${u.role === 'sale' ? 'margin-left: 12px; border-left: 3px solid #6366f1;' : ''}">
                     <div class="admin-user-info">
                         <div class="admin-user-avatar" style="background: ${bgGradient};">
                             ${initial}
@@ -4875,3 +4877,164 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         } catch (error) { setOrgStatus(error.message, 'error'); }
     }
 });
+
+// =====================================================================
+// BÁO CÁO THỐNG KÊ & XUẤT EXCEL / CSV
+// =====================================================================
+const reportModal = document.getElementById('report-modal');
+const reportModalBtn = document.getElementById('report-modal-btn');
+const reportDatePreset = document.getElementById('report-date-preset');
+const reportSaleFilter = document.getElementById('report-sale-filter');
+const reportStatusFilter = document.getElementById('report-status-filter');
+const reportRefreshBtn = document.getElementById('report-refresh-btn');
+const reportExportCsvBtn = document.getElementById('report-export-csv-btn');
+const reportModalCloseTop = document.getElementById('report-modal-close-top');
+const reportModalCloseBtn = document.getElementById('report-modal-close-btn');
+
+function openReportModal() {
+    if (!reportModal) return;
+    reportModal.classList.remove('hide');
+    loadReportSalesDropdown();
+    loadReportData();
+}
+
+function closeReportModal() {
+    if (reportModal) reportModal.classList.add('hide');
+}
+
+reportModalBtn?.addEventListener('click', openReportModal);
+reportModalCloseTop?.addEventListener('click', closeReportModal);
+reportModalCloseBtn?.addEventListener('click', closeReportModal);
+reportRefreshBtn?.addEventListener('click', loadReportData);
+reportDatePreset?.addEventListener('change', loadReportData);
+reportSaleFilter?.addEventListener('change', loadReportData);
+reportStatusFilter?.addEventListener('change', loadReportData);
+
+async function loadReportSalesDropdown() {
+    if (!reportSaleFilter) return;
+    try {
+        const isAgent = CURRENT_ADMIN?.role === 'agent';
+        const url = isAgent ? `${API_BASE}/api/agent/sales` : `${API_BASE}/api/admin/users`;
+        const res = await authFetch(url);
+        const data = await res.json();
+        const sales = Array.isArray(data) ? data.filter(u => isAgent || u.role === 'sale') : [];
+        reportSaleFilter.innerHTML = '<option value="">— Tất cả nhân viên Sale —</option>' +
+            sales.map(s => `<option value="${s.id}">${escapeHtml(s.full_name || s.fullName || s.username || s.email)}</option>`).join('');
+    } catch(e) {
+        console.error('Error loading sales for report filter:', e);
+    }
+}
+
+async function loadReportData() {
+    const totalSessionsEl = document.getElementById('metric-total-sessions');
+    const totalVisitorsEl = document.getElementById('metric-total-visitors');
+    const totalMessagesEl = document.getElementById('metric-total-messages');
+    const staffMessagesEl = document.getElementById('metric-staff-messages');
+    const salesTbody = document.getElementById('report-sales-tbody');
+    const sessionsTbody = document.getElementById('report-sessions-tbody');
+
+    if (salesTbody) salesTbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 16px; color: var(--text-secondary);"><i class="ri-loader-4-line ri-spin"></i> Đang tải dữ liệu...</td></tr>';
+    if (sessionsTbody) sessionsTbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 16px; color: var(--text-secondary);"><i class="ri-loader-4-line ri-spin"></i> Đang tải dữ liệu...</td></tr>';
+
+    try {
+        const preset = reportDatePreset ? reportDatePreset.value : '7days';
+        const saleId = reportSaleFilter ? reportSaleFilter.value : '';
+        const status = reportStatusFilter ? reportStatusFilter.value : '';
+        const currentTopProject = document.getElementById('project-filter')?.value || '';
+
+        const params = new URLSearchParams();
+        if (preset) params.append('datePreset', preset);
+        if (saleId) params.append('saleId', saleId);
+        if (status) params.append('status', status);
+        if (currentTopProject) params.append('projectId', currentTopProject);
+
+        const res = await authFetch(`${API_BASE}/api/admin/reports/data?${params.toString()}`);
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Lỗi khi tải báo cáo.');
+
+        const { summary, sales_breakdown, sessions } = data;
+
+        if (totalSessionsEl) totalSessionsEl.textContent = Number(summary.total_sessions || 0).toLocaleString();
+        if (totalVisitorsEl) totalVisitorsEl.textContent = Number(summary.total_visitors || 0).toLocaleString();
+        if (totalMessagesEl) totalMessagesEl.textContent = Number(summary.total_messages || 0).toLocaleString();
+        if (staffMessagesEl) staffMessagesEl.textContent = Number(summary.staff_messages || 0).toLocaleString();
+
+        // Render Sales Table
+        if (salesTbody) {
+            if (!sales_breakdown || sales_breakdown.length === 0) {
+                salesTbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 16px; color: var(--text-secondary);">Chưa có dữ liệu tư vấn của Sale trong khoảng thời gian này.</td></tr>';
+            } else {
+                salesTbody.innerHTML = sales_breakdown.map(s => `
+                    <tr style="border-bottom: 1px solid var(--panel-border);">
+                        <td style="padding: 8px 12px; font-weight: 600;">${escapeHtml(s.sale_name)}</td>
+                        <td style="padding: 8px 12px; color: var(--text-secondary);">${escapeHtml(s.sale_email)}</td>
+                        <td style="padding: 8px 12px; text-align: center; font-weight: 700; color: #818cf8;">${s.sessions_count}</td>
+                        <td style="padding: 8px 12px; text-align: center; font-weight: 700; color: #10b981;">${s.staff_messages_count}</td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        // Render Sessions Log Table
+        if (sessionsTbody) {
+            if (!sessions || sessions.length === 0) {
+                sessionsTbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 16px; color: var(--text-secondary);">Không có hội thoại nào.</td></tr>';
+            } else {
+                sessionsTbody.innerHTML = sessions.map(s => `
+                    <tr style="border-bottom: 1px solid var(--panel-border);">
+                        <td style="padding: 6px 10px; color: var(--text-secondary); white-space: nowrap;">${new Date(s.created_at).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                        <td style="padding: 6px 10px; font-weight: 600;">${escapeHtml(s.visitor_name || 'Khách')}</td>
+                        <td style="padding: 6px 10px; color: #a5b4fc;">${escapeHtml(s.sale_name || 'Chưa nhận')}</td>
+                        <td style="padding: 6px 10px; text-align: center;">${s.total_messages || 0}</td>
+                        <td style="padding: 6px 10px;"><span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; ${s.status === 'active' ? 'background: rgba(16,185,129,0.15); color:#10b981;' : 'background: rgba(255,255,255,0.06); color:var(--text-secondary);'}">${s.status === 'active' ? 'Đang chat' : 'Đã đóng'}</span></td>
+                    </tr>
+                `).join('');
+            }
+        }
+    } catch (e) {
+        console.error('Error loading report:', e);
+        if (salesTbody) salesTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 16px; color: #f87171;">${escapeHtml(e.message)}</td></tr>`;
+        if (sessionsTbody) sessionsTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 16px; color: #f87171;">${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+async function exportReportCSV() {
+    try {
+        const preset = reportDatePreset ? reportDatePreset.value : '7days';
+        const saleId = reportSaleFilter ? reportSaleFilter.value : '';
+        const status = reportStatusFilter ? reportStatusFilter.value : '';
+        const currentTopProject = document.getElementById('project-filter')?.value || '';
+
+        const params = new URLSearchParams();
+        params.append('format', 'csv');
+        if (preset) params.append('datePreset', preset);
+        if (saleId) params.append('saleId', saleId);
+        if (status) params.append('status', status);
+        if (currentTopProject) params.append('projectId', currentTopProject);
+
+        if (reportExportCsvBtn) {
+            reportExportCsvBtn.disabled = true;
+            reportExportCsvBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang xuất...';
+        }
+
+        const res = await authFetch(`${API_BASE}/api/admin/reports/data?${params.toString()}`);
+        if (!res.ok) throw new Error('Không thể xuất file CSV.');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Bao_cao_tu_van_Pastie_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch(e) {
+        alert('Lỗi xuất file: ' + e.message);
+    } finally {
+        if (reportExportCsvBtn) {
+            reportExportCsvBtn.disabled = false;
+            reportExportCsvBtn.innerHTML = '<i class="ri-file-excel-2-line"></i> Xuất Excel (CSV)';
+        }
+    }
+}
+reportExportCsvBtn?.addEventListener('click', exportReportCSV);
