@@ -1368,27 +1368,22 @@ function updateAgentHeaderUI() {
         detailLangEl.title = isAgentRole ? 'Chỉ quản trị viên mới đổi được ngôn ngữ' : '';
     }
     
-    // Nút mở Trung tâm Quản trị & Cài đặt (Unified Control Hub): hiển thị cho mọi vai trò với nhãn phù hợp
-    const orgBtn = document.getElementById('org-manage-btn');
-    const orgBtnLabel = document.getElementById('org-manage-btn-label');
-    if (orgBtn) {
-        orgBtn.classList.remove('hide');
-        if (orgBtnLabel) {
-            if (role === 'superadmin') orgBtnLabel.textContent = 'Quản trị & Cài đặt';
-            else if (role === 'agent') orgBtnLabel.textContent = 'Quản trị & Đội ngũ';
-            else if (role === 'sale') orgBtnLabel.textContent = 'Hồ sơ & Ca trực';
-            else orgBtnLabel.textContent = 'Cài đặt dự án';
-        }
-    }
+    // Nút quản lý đội ngũ riêng cho Superadmin (hiển thị trực tiếp ra header, phân theo project)
+    const isSuperadmin = CURRENT_ADMIN?.role === 'superadmin';
+    document.getElementById('superadmin-team-btn')?.classList.toggle('hide', !isSuperadmin);
 
-    // Nút hồ sơ tài khoản
-    document.getElementById('agent-account-btn')?.classList.toggle('hide', isAgentRole);
+    // Nút quản lý Sale, nhóm và QR (chỉ Agent quản lý của dự án QR)
+    const canManageOrg = isAgentManagerRole();
+    document.getElementById('org-manage-btn')?.classList.toggle('hide', !canManageOrg);
+
+    // Nút hồ sơ tài khoản: hiển thị cho Agent / Sale
+    document.getElementById('agent-account-btn')?.classList.toggle('hide', !isAgentRole);
 
     // Chỉ Agent quản lý mới tạo và xem QR. Sale không đụng tới QR.
     const hasQr = isAgentManagerRole() && isQrConciergeProject(CURRENT_ADMIN.project_id);
     document.getElementById('agent-qr-btn')?.classList.toggle('hide', !hasQr);
 
-    // Agent/Sale không dùng dropdown cũ, đã tích hợp vào Trung tâm Quản trị
+    // Agent không còn dùng dropdown Cài đặt cũ (mọi thứ đã tách thành các nút riêng)
     document.getElementById('settings-dropdown-wrapper')?.classList.toggle('hide', isAgentRole);
     document.getElementById('agent-push-btn')?.classList.toggle('hide', !isAgentRole || inIframe);
 
@@ -3991,6 +3986,12 @@ qrCreateBtn?.addEventListener('click', async () => {
     finally { qrCreateBtn.disabled = false; }
 });
 
+// Superadmin: Nút Quản lý đội ngũ trên Header
+document.getElementById('superadmin-team-btn')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    window.openAdminManagement();
+});
+
 if (manageAdminsBtn) manageAdminsBtn.addEventListener('click', (event) => {
     event.stopPropagation();
     window.openAdminManagement();
@@ -4181,6 +4182,10 @@ function openAdminMgmt() {
         adminMgmtProjectSelect.innerHTML = (PROJECTS || []).map(p =>
             `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name || p.id)} · ${escapeHtml(p.id)}</option>`
         ).join('');
+        const currentTopProject = document.getElementById('project-filter')?.value;
+        if (currentTopProject && [...adminMgmtProjectSelect.options].some(o => o.value === currentTopProject)) {
+            adminMgmtProjectSelect.value = currentTopProject;
+        }
     }
 
     if (isProjectAdmin || isAgent) {
@@ -4483,73 +4488,22 @@ function switchOrgTab(name) {
     if (name === 'sales') void loadOrgSales();
     if (name === 'groups') void loadOrgGroups();
     if (name === 'qr') void loadOrgQr();
-    if (name === 'profile') void loadOrgProfile();
 }
 
-function openOrgModal(initialTab = null) {
-    const role = CURRENT_ADMIN?.role || 'agent';
-    const isSuper = role === 'superadmin';
-    const isAgent = role === 'agent';
-    const isSale = role === 'sale';
-    const isProjAdmin = role === 'project_admin';
-
-    // Cập nhật thẻ định danh vai trò (Role Badge) & Thông tin dự án
-    const roleBadge = document.getElementById('org-role-badge');
-    if (roleBadge) {
-        roleBadge.className = `org-role-pill ${role}`;
-        if (isSuper) roleBadge.innerHTML = '<i class="ri-shield-user-line"></i> Quản Trị Tối Cao (Superadmin)';
-        else if (isAgent) roleBadge.innerHTML = '<i class="ri-user-star-line"></i> Agent Quản Lý (QR Concierge)';
-        else if (isSale) roleBadge.innerHTML = '<i class="ri-user-shared-line"></i> Sale Trực Ca';
-        else if (isProjAdmin) roleBadge.innerHTML = '<i class="ri-building-line"></i> Project Admin';
-        else roleBadge.innerHTML = '<i class="ri-user-line"></i> Nhân Viên';
-    }
-
-    const projNameEl = document.getElementById('org-project-name');
-    if (projNameEl) {
-        projNameEl.textContent = CURRENT_ADMIN?.project_id || (isSuper ? 'Tất cả dự án (Hệ thống)' : 'Chưa gắn dự án');
-    }
-
-    const statusPill = document.getElementById('org-status-pill');
-    if (statusPill) {
-        if (isSuper) statusPill.innerHTML = '<i class="ri-shield-check-line"></i> Toàn quyền hệ thống';
-        else if (isAgent) statusPill.innerHTML = '<i class="ri-time-line"></i> Quản trị không giới hạn giờ';
-        else if (isSale) {
-            statusPill.innerHTML = '<i class="ri-time-line"></i> Hoạt động theo ca trực';
-        } else {
-            statusPill.innerHTML = '<i class="ri-checkbox-circle-line"></i> Sẵn sàng';
-        }
-    }
-
-    const title = document.getElementById('org-title');
-    if (title) {
-        if (isSuper) title.textContent = 'Trung Tâm Quản Trị & Cài Đặt Hệ Thống';
-        else if (isAgent) title.textContent = 'Quản Lý Đội Ngũ, Nhóm & Mã QR';
-        else if (isSale) title.textContent = 'Hồ Sơ & Thông Tin Ca Trực';
-        else title.textContent = 'Cài Đặt Dự Án & Kênh Kết Nối';
-    }
-
-    // Phân quyền hiển thị từng Tab
-    // Tab Agent: Chỉ Superadmin
+function openOrgModal() {
+    // Hai màn hình tách bạch, không chồng lấn:
+    //   Superadmin -> chỉ thẻ Agent (tạo Agent + đặt trần số Sale).
+    //   Agent quản lý -> Sale / Nhóm / QR, tự sắp xếp tổ chức của mình.
+    // Superadmin cố tình KHÔNG thiết lập thay Agent; backend cũng trả 403.
+    const isSuper = CURRENT_ADMIN?.role === 'superadmin';
     document.querySelector('[data-org-tab="agents"]')?.classList.toggle('hide', !isSuper);
-    
-    // Tab Sale: Chỉ Agent quản lý (Superadmin xem qua Quản lý nhân viên)
-    document.querySelector('[data-org-tab="sales"]')?.classList.toggle('hide', !isAgent);
-    
-    // Tab Nhóm & QR: Agent quản lý và Superadmin
-    document.querySelector('[data-org-tab="groups"]')?.classList.toggle('hide', !isAgent && !isSuper);
-    document.querySelector('[data-org-tab="qr"]')?.classList.toggle('hide', !isAgent && !isSuper);
-    
-    // Tab Kênh & AI: Superadmin và Project Admin
-    document.querySelector('[data-org-tab="channels_ai"]')?.classList.toggle('hide', !isSuper && !isProjAdmin);
-    
-    // Tab Hồ sơ & Ca trực: Mọi vai trò
-    document.querySelector('[data-org-tab="profile"]')?.classList.remove('hide');
-    
-    // Tab Dự án & Dữ liệu: Chỉ Superadmin
-    document.querySelector('[data-org-tab="projects_data"]')?.classList.toggle('hide', !isSuper);
-    
-    // Tab Bảng phân quyền: Mọi vai trò
-    document.querySelector('[data-org-tab="permissions"]')?.classList.remove('hide');
+    ['sales', 'groups', 'qr'].forEach((name) => {
+        document.querySelector(`[data-org-tab="${name}"]`)?.classList.toggle('hide', isSuper);
+    });
+    const title = document.getElementById('org-title');
+    if (title) title.textContent = isSuper ? 'Quản lý Agent' : 'Quản lý Sale, nhóm và QR';
+    const kicker = document.getElementById('org-kicker');
+    if (kicker) kicker.textContent = 'PHÂN CẤP TỔ CHỨC';
 
     if (isSuper) {
         const select = document.getElementById('org-agent-project');
@@ -4562,150 +4516,14 @@ function openOrgModal(initialTab = null) {
     }
 
     document.getElementById('org-modal')?.classList.remove('hide');
-
-    // Xác định tab mặc định khi mở
-    let targetTab = initialTab;
-    if (!targetTab) {
-        if (isSuper) targetTab = 'agents';
-        else if (isAgent) targetTab = 'sales';
-        else if (isSale) targetTab = 'profile';
-        else if (isProjAdmin) targetTab = 'channels_ai';
-        else targetTab = 'profile';
-    }
-    switchOrgTab(targetTab);
-
-    // Tải trước danh sách nhóm nếu là Agent để form Sale và QR sẵn sàng
-    if (isAgent) void loadOrgGroups(true);
+    switchOrgTab(isSuper ? 'agents' : 'sales');
+    // Nhóm được tải sẵn vì hai form Sale và QR đều cần danh sách nhóm.
+    if (!isSuper) void loadOrgGroups(true);
 }
 
 function closeOrgModal() {
     document.getElementById('org-modal')?.classList.add('hide');
 }
-
-// Helpers mở nhanh các modal cấu hình từ thẻ Hub
-window.openChannelSettings = () => {
-    closeOrgModal();
-    const btn = document.getElementById('channel-settings-btn');
-    if (btn) btn.click();
-};
-
-window.openKnowledgeSettings = () => {
-    closeOrgModal();
-    const btn = document.getElementById('knowledge-settings-btn');
-    if (btn) btn.click();
-};
-
-window.openKeywordSettings = () => {
-    closeOrgModal();
-    const btn = document.getElementById('keyword-settings-btn');
-    if (btn) btn.click();
-};
-
-// --- Profile & Shift Tab -----------------------------------------------------
-
-let selectedOrgAvatar = 'gradient-1';
-
-function loadOrgProfile() {
-    if (!CURRENT_ADMIN) return;
-    const nameEl = document.getElementById('org-my-name');
-    const emailEl = document.getElementById('org-my-email');
-    const roleTextEl = document.getElementById('org-my-role-text');
-    const avatarEl = document.getElementById('org-my-avatar');
-    const nameInput = document.getElementById('org-profile-name-input');
-    const shiftTitle = document.getElementById('org-my-shift-title');
-    const shiftDesc = document.getElementById('org-my-shift-desc');
-
-    const fullName = CURRENT_ADMIN.full_name || CURRENT_ADMIN.username || 'Admin';
-    if (nameEl) nameEl.textContent = fullName;
-    if (emailEl) emailEl.textContent = CURRENT_ADMIN.username || 'admin@pastie.vn';
-    if (nameInput) nameInput.value = fullName;
-
-    const role = CURRENT_ADMIN.role || 'agent';
-    if (roleTextEl) {
-        if (role === 'superadmin') roleTextEl.textContent = 'Quản trị tối cao (Superadmin)';
-        else if (role === 'agent') roleTextEl.textContent = 'Agent Quản lý (QR Concierge)';
-        else if (role === 'sale') roleTextEl.textContent = 'Nhân viên Sale (Trực ca)';
-        else if (role === 'project_admin') roleTextEl.textContent = 'Quản trị dự án (Project Admin)';
-        else roleTextEl.textContent = 'Nhân viên tư vấn';
-    }
-
-    if (avatarEl) {
-        avatarEl.textContent = fullName.trim().charAt(0).toUpperCase();
-    }
-
-    if (shiftTitle && shiftDesc) {
-        if (role === 'superadmin' || role === 'agent' || role === 'project_admin') {
-            shiftTitle.textContent = 'Quyền quản trị toàn thời gian';
-            shiftDesc.textContent = 'Tài khoản không bị giới hạn khung giờ đăng nhập hay nhận chat.';
-        } else {
-            shiftTitle.textContent = 'Khung giờ phân ca trực';
-            shiftDesc.textContent = 'Bạn nhận chat và xử lý yêu cầu của khách hàng theo ca làm việc được Agent phân công.';
-        }
-    }
-
-    // Render bảng chọn màu Avatar
-    const palette = document.getElementById('org-avatar-palette');
-    if (palette) {
-        const avatarGradients = [
-            { id: 'gradient-1', bg: 'linear-gradient(135deg,#6366f1,#8b5cf6)' },
-            { id: 'gradient-2', bg: 'linear-gradient(135deg,#ec4899,#f43f5e)' },
-            { id: 'gradient-3', bg: 'linear-gradient(135deg,#10b981,#14b8a6)' },
-            { id: 'gradient-4', bg: 'linear-gradient(135deg,#f59e0b,#f97316)' },
-            { id: 'gradient-5', bg: 'linear-gradient(135deg,#0ea5e9,#2563eb)' },
-        ];
-        selectedOrgAvatar = CURRENT_ADMIN.avatar_url || 'gradient-1';
-        palette.innerHTML = avatarGradients.map((g) => `
-            <div class="org-avatar-option ${g.id === selectedOrgAvatar ? 'is-selected' : ''}" 
-                 data-avatar="${g.id}" style="background:${g.bg};" 
-                 onclick="selectOrgAvatar('${g.id}')"></div>
-        `).join('');
-    }
-
-    // Trạng thái nút Push notification
-    const pushBtn = document.getElementById('org-profile-push-btn');
-    if (pushBtn && typeof PUSH_STATE !== 'undefined') {
-        if (PUSH_STATE === 'granted') {
-            pushBtn.textContent = '✓ Đã bật thông báo';
-            pushBtn.disabled = true;
-            pushBtn.style.opacity = '0.7';
-        } else {
-            pushBtn.textContent = 'Bật thông báo ngay';
-            pushBtn.disabled = false;
-            pushBtn.onclick = () => enablePushNotifications();
-        }
-    }
-}
-
-window.selectOrgAvatar = (avatarId) => {
-    selectedOrgAvatar = avatarId;
-    document.querySelectorAll('.org-avatar-option').forEach((el) => {
-        el.classList.toggle('is-selected', el.dataset.avatar === avatarId);
-    });
-};
-
-document.getElementById('org-profile-form')?.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const newName = document.getElementById('org-profile-name-input')?.value.trim();
-    if (!newName) return;
-    try {
-        const res = await authFetch(`${API_BASE}/api/admin/profile`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fullName: newName, avatarUrl: selectedOrgAvatar }),
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || 'Không thể lưu hồ sơ.');
-        }
-        CURRENT_ADMIN.full_name = newName;
-        CURRENT_ADMIN.avatar_url = selectedOrgAvatar;
-        setOrgStatus('Đã cập nhật hồ sơ thành công.');
-        updateAgentHeaderUI();
-        loadOrgProfile();
-    } catch (error) {
-        setOrgStatus(error.message, 'error');
-    }
-});
 
 // --- Agent -------------------------------------------------------------------
 
@@ -4834,10 +4652,9 @@ async function loadOrgQr() {
     }
 }
 
-// --- Sự kiện Trung Tâm Quản Trị ----------------------------------------------
+// --- Sự kiện -----------------------------------------------------------------
 
-document.getElementById('org-manage-btn')?.addEventListener('click', () => openOrgModal());
-document.getElementById('agent-account-btn')?.addEventListener('click', () => openOrgModal('profile'));
+document.getElementById('org-manage-btn')?.addEventListener('click', openOrgModal);
 document.getElementById('org-close-btn')?.addEventListener('click', closeOrgModal);
 document.getElementById('org-modal')?.addEventListener('click', (event) => {
     if (event.target === document.getElementById('org-modal')) closeOrgModal();
