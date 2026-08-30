@@ -3116,6 +3116,7 @@ let voiceFinalText = '';
 let voiceLiveText = '';
 let voiceDraftBefore = '';
 let voiceSkipBatch = false;
+let voiceSendPending = false;
 
 const voiceSupported = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
 const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -3166,11 +3167,11 @@ function setVoiceUi(state) {
 
 // Chưa có chữ nào thì không cho bấm Gửi — tránh gửi tin rỗng.
 function updateVoiceSendState() {
-    const empty = !chatInput?.value.trim();
     const pulse = document.getElementById('voice-live-send');
     const sendAction = document.getElementById('voice-send-btn');
-    if (pulse) pulse.disabled = empty;
-    if (sendAction) sendAction.disabled = empty;
+    const disabled = voiceBusy || (!voiceRecorder || voiceRecorder.state !== 'recording') && !chatInput?.value.trim();
+    if (pulse) pulse.disabled = disabled;
+    if (sendAction) sendAction.disabled = disabled;
 }
 
 function stopVoiceTracks() {
@@ -3281,6 +3282,7 @@ function stopVoiceRecording() {
 // Xóa: bỏ cả phần chữ có sẵn trước khi ghi lẫn transcript vừa nhận, như portal.
 function cancelVoiceRecording() {
     voiceCancelled = true;
+    voiceSendPending = false;
     stopRealtimeRecognition(true);
     voiceDraftBefore = '';
     voiceFinalText = '';
@@ -3308,12 +3310,14 @@ async function finishVoiceRecording() {
 
     if (voiceCancelled || !chunks.length || voiceSkipBatch) {
         voiceSkipBatch = false;
+        voiceSendPending = false;
         setVoiceUi('idle');
         return;
     }
 
     const liveText = voiceLiveText.trim();
     const draftAtStop = [voiceDraftBefore.trim(), liveText].filter(Boolean).join(' ');
+    let returnToReady = false;
 
     // Đã có transcript realtime thì trả giao diện về ngay; Groq vẫn chạy nền để
     // sửa lại kết quả cuối, miễn là người dùng chưa tự gõ đè trong lúc chờ.
@@ -3334,29 +3338,51 @@ async function finishVoiceRecording() {
         if (!response.ok || !data.success) throw new Error(data.error || 'Không nhận diện được giọng nói.');
 
         const refined = [voiceDraftBefore.trim(), String(data.text || '').trim()].filter(Boolean).join(' ');
+        if (!refined.trim()) throw new Error('Không nghe thấy giọng nói để chuyển thành văn bản.');
         if (chatInput && (!liveText || chatInput.value.trim() === draftAtStop.trim())) {
             chatInput.value = refined;
             chatInput.focus();
             chatInput.setSelectionRange?.(chatInput.value.length, chatInput.value.length);
         }
+        if (voiceSendPending && chatInput?.value.trim()) {
+            voiceSendPending = false;
+            setVoiceUi('idle');
+            await sendMessage();
+            returnToReady = true;
+        }
     } catch (error) {
         // Có transcript realtime rồi thì lỗi bước hiệu chỉnh nền không được che
         // mất chữ hoặc làm gián đoạn người dùng.
-        if (!liveText) toastError(error.message || 'Không nhận diện được giọng nói.');
+        voiceSendPending = false;
+        if (!liveText) {
+            toastError(error.message || 'Không nghe thấy giọng nói để chuyển thành văn bản.');
+            returnToReady = true;
+        }
     } finally {
         voiceBusy = false;
-        setVoiceUi('idle');
+        setVoiceUi(returnToReady ? 'ready' : 'idle');
         resizeAgentChatInput();
     }
 }
 
 // Gửi: dừng ghi, bỏ luôn bước hiệu chỉnh nền rồi gửi ngay chữ đang có.
 function sendVoiceDraft() {
-    if (!chatInput?.value.trim()) return;
-    voiceSkipBatch = true;
+    if (voiceBusy) return;
+    const hasRealtimeText = !!chatInput?.value.trim();
+    if (hasRealtimeText) {
+        voiceSkipBatch = true;
+        voiceSendPending = false;
+        stopVoiceRecording();
+        setVoiceUi('working');
+        void sendMessage().finally(() => setVoiceUi('ready'));
+        return;
+    }
+    // Giống Zalo: người dùng được bấm Gửi ngay cả khi STT chưa kịp trả chữ.
+    // Dừng thu, nhận diện file ngắn vừa ghi rồi tự gửi ngay khi có kết quả.
+    voiceSkipBatch = false;
+    voiceSendPending = true;
     stopVoiceRecording();
-    setVoiceUi('idle');
-    void sendMessage();
+    setVoiceUi('working');
 }
 
 document.getElementById('chat-mic-btn')?.addEventListener('click', () => {
@@ -3374,7 +3400,6 @@ document.getElementById('voice-start-btn')?.addEventListener('click', () => { vo
 document.getElementById('voice-delete-btn')?.addEventListener('click', cancelVoiceRecording);
 document.getElementById('voice-edit-btn')?.addEventListener('click', editVoiceRecording);
 document.getElementById('voice-send-btn')?.addEventListener('click', sendVoiceDraft);
-document.getElementById('voice-live-send')?.addEventListener('click', sendVoiceDraft);
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !document.getElementById('voice-live-panel')?.classList.contains('hide')) cancelVoiceRecording();
 });

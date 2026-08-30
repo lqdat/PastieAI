@@ -4226,6 +4226,70 @@ button {
 .voice-live-actions .voice-action-send .voice-action-icon { color: #c90c6c; background: #fff; }
 .voice-live-actions .voice-action-delete .voice-action-icon { color: #dc3c5d; background: #fff0f2; }
 
+/* Trạng thái đang ghi theo Zalo: ba hành động độc lập, nút Gửi lớn ở giữa.
+   Nút gửi luôn khả dụng khi recorder đang chạy, kể cả STT chưa trả ký tự. */
+.chat-input-area .voice-live-panel:not(.is-ready) { min-height: 242px; }
+.chat-input-area .voice-live-panel:not(.is-ready) .voice-wave { display: none; }
+.chat-input-area .voice-live-actions {
+    align-items: end;
+    grid-template-columns: 1fr 1.25fr 1fr;
+    gap: 12px;
+    width: min(100%, 390px);
+    min-height: 132px;
+}
+.chat-input-area .voice-live-actions .voice-action {
+    display: grid;
+    justify-items: center;
+    align-content: end;
+    gap: 9px;
+    min-height: 112px;
+    padding: 4px;
+    border: 0;
+    border-radius: 0;
+    color: #443643;
+    background: transparent;
+    box-shadow: none;
+}
+.chat-input-area .voice-live-actions .voice-action:hover { border: 0; background: transparent; transform: translateY(-1px); }
+.chat-input-area .voice-live-actions .voice-action-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 0;
+    color: #443643;
+    background: transparent;
+}
+.chat-input-area .voice-live-actions .voice-action-icon svg {
+    width: 31px;
+    height: 31px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.chat-input-area .voice-live-actions .voice-action-label { color: inherit; font-size: 13px; font-weight: 700; }
+.chat-input-area .voice-live-actions .voice-action-send {
+    border: 0;
+    color: #443643;
+    background: transparent;
+    box-shadow: none;
+}
+.chat-input-area .voice-live-actions .voice-action-send:disabled { opacity: .5; }
+.voice-send-orbit {
+    display: grid;
+    place-items: center;
+    width: 82px;
+    height: 82px;
+    border-radius: 50%;
+    color: #fff;
+    background: linear-gradient(145deg, #f43aa0, #c90c6c);
+    box-shadow: 0 0 0 10px rgba(239,43,157,.13), 0 0 0 20px rgba(239,43,157,.065), 0 10px 24px rgba(201,12,108,.25);
+    animation: voiceSendBreathe 1.8s ease-in-out infinite;
+}
+.voice-send-orbit svg { width: 35px; height: 35px; fill: currentColor; stroke: none; }
+@keyframes voiceSendBreathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+.chat-input-area .voice-live-panel.is-working .voice-send-orbit { animation: none; }
+
 @media (max-width: 720px) {
     .chat-input-area {
         padding: 8px 10px max(9px, env(safe-area-inset-bottom));
@@ -4250,6 +4314,8 @@ button {
     .chat-input-area .voice-live-panel { min-height: 182px; border-radius: 21px; }
     .voice-live-actions { gap: 6px; }
     .voice-live-actions .voice-action { gap: 5px; padding-inline: 7px; }
+    .chat-input-area .voice-live-panel:not(.is-ready) { min-height: 232px; }
+    .voice-send-orbit { width: 76px; height: 76px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
