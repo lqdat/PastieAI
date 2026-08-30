@@ -1372,6 +1372,31 @@ function showNewMessageNotification(session, unread) {
     playAlertSound();
 }
 
+function updateAppBadge(totalUnread) {
+    const nav = window.navigator || navigator;
+    if (nav && 'setAppBadge' in nav) {
+        if (typeof totalUnread === 'number' && totalUnread > 0) {
+            nav.setAppBadge(totalUnread).catch(() => {});
+        } else if ('clearAppBadge' in nav) {
+            nav.clearAppBadge().catch(() => {});
+        }
+    }
+}
+
+function recalculateAppBadge() {
+    if (!Array.isArray(sessionsList) || sessionsList.length === 0) {
+        updateAppBadge(0);
+        return;
+    }
+    const unreadCount = sessionsList.filter(s => {
+        const seen = seenMessageCount[s.id];
+        const total = parseInt(s.message_count) || 0;
+        const unread = (seen === -1 || seen === undefined) ? Math.max(0, total - 1) : Math.max(0, total - seen);
+        return unread > 0;
+    }).length;
+    updateAppBadge(unreadCount);
+}
+
 // Âm thanh báo tin mới. Ưu tiên file tuỳ chỉnh public/sounds/notify.(mp3|wav);
 // nếu không có/không phát được thì fallback về beep tổng hợp. Có thể đổi qua localStorage 'notify_sound_url'.
 function beepFallback() {
@@ -1622,24 +1647,28 @@ async function fetchSessions() {
         }
 
         // Sync seen counts from DB + trigger notifications for new messages
+        let totalUnreadSessions = 0;
         data.forEach(s => {
             const dbSeen = parseInt(s.seen_message_count);
             if (dbSeen >= 0) seenMessageCount[s.id] = dbSeen;
             else if (!(s.id in seenMessageCount)) seenMessageCount[s.id] = -1;
 
-            // Notify if new messages arrived since last notification check
             const totalMsgs = parseInt(s.message_count) || 0;
+            const seen = seenMessageCount[s.id];
+            const unread = (seen === -1 || seen === undefined) ? totalMsgs - 1 : Math.max(0, totalMsgs - seen);
+            if (unread > 0) totalUnreadSessions++;
+
+            // Notify if new messages arrived since last notification check
             const lastNotified = notifiedMsgCount[s.id] ?? totalMsgs; // init = current, no spam on first load
             // CHỈ thông báo khi tin mới nhất là của KHÁCH (visitor) — bỏ qua tin AI/hệ thống/nhân viên.
             // Cho phép thông báo cả khi đang xem cuộc chat đó nhưng tab bị ẩn (minimize/chuyển tab):
             // showNewMessageNotification đã kiểm tra visibilityState + currentSessionId.
             if (totalMsgs > lastNotified && s.last_message_sender === 'visitor') {
-                const seen = seenMessageCount[s.id];
-                const unread = (seen === -1 || seen === undefined) ? totalMsgs - 1 : Math.max(0, totalMsgs - seen);
                 if (unread > 0) showNewMessageNotification(s, unread);
             }
             notifiedMsgCount[s.id] = totalMsgs;
         });
+        updateAppBadge(totalUnreadSessions);
 
         // Real-time synchronization of the visitor's selected language in the dropdown
         if (currentSessionId) {
@@ -2330,7 +2359,16 @@ async function selectSession(sessionId) {
         .catch(() => {});
     // Optimistically clear badge in UI immediately
     const sess = sessionsList.find(s => s.id === sessionId);
-    if (sess) seenMessageCount[sessionId] = parseInt(sess.message_count) || 0;
+    if (sess) {
+        seenMessageCount[sessionId] = parseInt(sess.message_count) || 0;
+        const remainingUnread = sessionsList.filter(s => {
+            const seen = seenMessageCount[s.id];
+            const total = parseInt(s.message_count) || 0;
+            const unread = (seen === -1 || seen === undefined) ? total - 1 : Math.max(0, total - seen);
+            return unread > 0;
+        }).length;
+        updateAppBadge(remainingUnread);
+    }
 
     // Reset pagination states for the newly selected session
     adminMessages = [];
@@ -2761,7 +2799,10 @@ async function loadMessages(sessionId, isLoadMore = false) {
             adminMessages = merged;
 
             // Keep local seen count in sync while admin is viewing
-            if (currentSessionId) seenMessageCount[currentSessionId] = adminMessages.length;
+            if (currentSessionId) {
+                seenMessageCount[currentSessionId] = adminMessages.length;
+                recalculateAppBadge();
+            }
 
             const orderChanged = await loadOrderForAdmin(sessionId);
 

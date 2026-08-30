@@ -3530,7 +3530,7 @@ app.get('/api/admin/push/public-key', checkAdminAuth, (_req, res) => {
   res.json({ enabled: vapidConfigured, publicKey: vapidConfigured ? VAPID_PUBLIC_KEY : null });
 });
 
-app.post('/api/admin/push/subscribe', checkAdminAuth, requireWorkingHours, async (req, res) => {
+app.post('/api/admin/push/subscribe', checkAdminAuth, async (req, res) => {
   const subscription = req.body?.subscription;
   const endpoint = subscription?.endpoint;
   const keys = subscription?.keys;
