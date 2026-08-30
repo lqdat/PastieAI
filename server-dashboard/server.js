@@ -157,10 +157,13 @@ const adminEventClients = new Set();
 
 function broadcastAdminEvent(event) {
   if (adminEventClients.size === 0) return;
-  const payload = `data: ${JSON.stringify(event)}\n\n`;
+  const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
   for (const client of adminEventClients) {
     try {
       const admin = client.admin;
+      if (event.adminId && admin && Number(admin.id) !== Number(event.adminId) && event.type === 'session_revoked') {
+        continue;
+      }
       if (admin && event.projectId && admin.role !== 'superadmin' && admin.project_id && admin.project_id !== event.projectId) {
         continue;
       }
@@ -512,6 +515,32 @@ const ADMIN_SESSION_HOURS = 8;
 const ADMIN_SESSION_MS = ADMIN_SESSION_HOURS * 3600000;
 const QR_CHAT_SESSION_MS = 15 * 60 * 1000;
 
+// --- LỚP 1 BẢO MẬT LICENSE: Single Active Session ----------------------------
+// Mỗi admin_id chỉ được phép có duy nhất 1 phiên (token) hoạt động tại một thời điểm.
+// Khi phát hành token mới -> thu hồi (xóa) toàn bộ token cũ và gửi thông báo SSE session_revoked.
+async function issueSingleActiveAdminSession(admin, req = null) {
+  const clientIp = req ? (req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '') : '';
+  const userAgent = req ? String(req.headers['user-agent'] || '').slice(0, 1000) : '';
+  const deviceId = req ? String(req.headers['x-device-id'] || '').slice(0, 64) : null;
+
+  // 1. Gửi thông báo đá phiên qua SSE đến các kết nối cũ của admin này
+  notifyAdminRealtime('session_revoked', { adminId: admin.id, reason: 'new_login' });
+
+  // 2. Thu hồi toàn bộ token cũ của tài khoản này
+  await db.query('DELETE FROM admin_sessions WHERE admin_id = $1', [admin.id]);
+
+  // 3. Tạo token phiên mới duy nhất
+  const sessionToken = randomUUID();
+  const expiresAt = new Date(Date.now() + ADMIN_SESSION_MS);
+  await db.query(
+    `INSERT INTO admin_sessions (token, admin_id, expires_at, device_id, user_agent, client_ip, last_seen_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [sessionToken, admin.id, expiresAt, deviceId, userAgent, clientIp]
+  );
+
+  return { token: sessionToken, expiresAt };
+}
+
 // Upgraded Multi-Admin Session-based Auth Middleware (hiệu lực 8 giờ + trượt 8 giờ)
 async function checkAdminAuth(req, res, next) {
   let token = '';
@@ -539,7 +568,10 @@ async function checkAdminAuth(req, res, next) {
     );
 
     if (sessionRes.rows.length === 0) {
-      return res.status(401).json({ error: 'Unauthorized. Invalid session token.' });
+      return res.status(401).json({
+        error: 'Phiên làm việc của bạn đã hết hạn hoặc tài khoản vừa được đăng nhập trên một thiết bị khác.',
+        code: 'SESSION_REVOKED'
+      });
     }
 
     const adminSession = sessionRes.rows[0];
@@ -547,14 +579,28 @@ async function checkAdminAuth(req, res, next) {
     // Check session token expiration
     if (new Date() > new Date(adminSession.expires_at)) {
       await db.query('DELETE FROM admin_sessions WHERE token = $1', [token]);
-      return res.status(401).json({ error: 'Session expired. Please log in again.' });
+      return res.status(401).json({ error: 'Session expired. Please log in again.', code: 'SESSION_EXPIRED' });
     }
 
-    // Gia hạn kiểu trượt: gia hạn thêm 8 giờ nếu còn hoạt động (cập nhật tối đa 1 lần/giờ)
+    // Gia hạn kiểu trượt: gia hạn thêm 8 giờ nếu còn hoạt động (cập nhật tối đa 1 lần/giờ) + lưu last_seen_at
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+    const userAgent = String(req.headers['user-agent'] || '').slice(0, 1000);
     const currentExpires = new Date(adminSession.expires_at).getTime();
     if (currentExpires - Date.now() < (ADMIN_SESSION_HOURS - 1) * 3600000) {
       const newExpiresAt = new Date(Date.now() + ADMIN_SESSION_MS);
-      db.query('UPDATE admin_sessions SET expires_at = $1 WHERE token = $2', [newExpiresAt, token]).catch(() => {});
+      db.query(
+        `UPDATE admin_sessions 
+            SET expires_at = $1, last_seen_at = NOW(), client_ip = COALESCE(NULLIF($2, ''), client_ip), user_agent = COALESCE(NULLIF($3, ''), user_agent) 
+          WHERE token = $4`,
+        [newExpiresAt, clientIp, userAgent, token]
+      ).catch(() => {});
+    } else {
+      db.query(
+        `UPDATE admin_sessions 
+            SET last_seen_at = NOW(), client_ip = COALESCE(NULLIF($1, ''), client_ip), user_agent = COALESCE(NULLIF($2, ''), user_agent) 
+          WHERE token = $3`,
+        [clientIp, userAgent, token]
+      ).catch(() => {});
     }
 
     // Check active status
@@ -985,7 +1031,9 @@ async function getAdminFromToken(req) {
   const currentExpires = new Date(admin.expires_at).getTime();
   if (currentExpires - Date.now() < (ADMIN_SESSION_HOURS - 1) * 3600000) {
     const newExpiresAt = new Date(Date.now() + ADMIN_SESSION_MS);
-    db.query('UPDATE admin_sessions SET expires_at = $1 WHERE token = $2', [newExpiresAt, token]).catch(() => {});
+    db.query('UPDATE admin_sessions SET expires_at = $1, last_seen_at = NOW() WHERE token = $2', [newExpiresAt, token]).catch(() => {});
+  } else {
+    db.query('UPDATE admin_sessions SET last_seen_at = NOW() WHERE token = $1', [token]).catch(() => {});
   }
   return admin;
 }
@@ -2913,14 +2961,8 @@ app.post('/api/admin/login', async (req, res) => {
     const hoursError = await checkWorkingHours(admin);
     if (hoursError) return res.status(403).json({ error: hoursError, code: 'OUT_OF_HOURS' });
 
-    // Create session token (8 hours)
-    const token = randomUUID();
-    const expiresAt = new Date(Date.now() + ADMIN_SESSION_MS);
-
-    await db.query(
-      'INSERT INTO admin_sessions (token, admin_id, expires_at) VALUES ($1, $2, $3)',
-      [token, admin.id, expiresAt]
-    );
+    // Create single active session token (8 hours)
+    const { token } = await issueSingleActiveAdminSession(admin, req);
 
     res.json({
       success: true,
@@ -2948,7 +2990,7 @@ app.post('/api/admin/login', async (req, res) => {
  * Shared helper to verify DealPhuQuoc user / local admin status,
  * provision/sync admin record and issue an 8-hour admin session.
  */
-async function resolveAdminUserAndLogin({ email, name, avatarUrl }) {
+async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null) {
   const cleanEmail = String(email || '').trim().toLowerCase();
   if (!cleanEmail || !cleanEmail.includes('@')) {
     const err = new Error('Email không hợp lệ.');
@@ -3078,9 +3120,8 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }) {
     throw err;
   }
 
-  const sessionToken = randomUUID();
-  const expiresAt = new Date(Date.now() + ADMIN_SESSION_MS); // 8 hours
-  await db.query('INSERT INTO admin_sessions (token, admin_id, expires_at) VALUES ($1, $2, $3)', [sessionToken, admin.id, expiresAt]);
+  // 4. Phát hành phiên đăng nhập duy nhất (Single Active Session)
+  const { token: sessionToken } = await issueSingleActiveAdminSession(admin, req);
 
   return {
     token: sessionToken,
@@ -3120,7 +3161,7 @@ app.post('/api/admin/auth/google', async (req, res) => {
       email: payload.email,
       name: payload.name,
       avatarUrl: payload.picture
-    });
+    }, req);
 
     console.log(`[GoogleAuth] Đăng nhập thành công: ${payload.email} (${result.admin.role})`);
     res.json({
@@ -3247,8 +3288,8 @@ app.post('/api/admin/auth/otp/verify', async (req, res) => {
     // Delete used OTP
     await db.query('DELETE FROM admin_otps WHERE email = $1', [cleanEmail]);
 
-    // Resolve user and log in
-    const result = await resolveAdminUserAndLogin({ email: cleanEmail });
+    // Resolve user and log in with Single Active Session
+    const result = await resolveAdminUserAndLogin({ email: cleanEmail }, req);
 
     console.log(`[AdminOTP] Đăng nhập thành công: ${cleanEmail} (${result.admin.role})`);
     res.json({
@@ -3389,9 +3430,8 @@ app.post('/api/admin/sso', async (req, res) => {
     const ssoHoursError = await checkWorkingHours(admin);
     if (ssoHoursError) return res.status(403).json({ error: ssoHoursError, code: 'OUT_OF_HOURS' });
 
-    const sessionToken = randomUUID();
-    const expiresAt = new Date(Date.now() + ADMIN_SESSION_MS); // 8 hours
-    await db.query('INSERT INTO admin_sessions (token, admin_id, expires_at) VALUES ($1, $2, $3)', [sessionToken, admin.id, expiresAt]);
+    // Create single active session token (8 hours)
+    const { token: sessionToken } = await issueSingleActiveAdminSession(admin, req);
 
     console.log(`[SSO] Đăng nhập thành công: ${username} (${ssoRole}) cho project ${project}`);
     res.json({
@@ -4201,15 +4241,7 @@ app.post('/api/admin/chats/:sessionId/handover', checkAdminAuth, async (req, res
 
 // SSE Stream endpoint cho Admin Dashboard
 app.get('/api/admin/events', async (req, res) => {
-  const authHeader = req.headers['authorization'];
-  const tokenFromHeader = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  const token = req.query.token || tokenFromHeader;
-
-  if (!token) {
-    return res.status(401).json({ error: 'Thiếu token xác thực.' });
-  }
-
-  const admin = await getAdminFromToken(token);
+  const admin = await getAdminFromToken(req);
   if (!admin) {
     return res.status(401).json({ error: 'Token không hợp lệ hoặc đã hết hạn.' });
   }

@@ -162,6 +162,10 @@ async function initializeDatabase() {
         token TEXT PRIMARY KEY,
         admin_id INT REFERENCES admins(id) ON DELETE CASCADE,
         expires_at TIMESTAMP NOT NULL,
+        device_id VARCHAR(64),
+        user_agent TEXT,
+        client_ip VARCHAR(45),
+        last_seen_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -499,6 +503,13 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     await query(`CREATE INDEX IF NOT EXISTS idx_sessions_claimed_admin ON sessions(claimed_by_admin_id, status);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_account_access_hours_admin_active ON account_access_hours(admin_id, is_active);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_agent_group_sales_composite ON agent_group_sales(group_id, sale_id, is_active);`);
+
+    // --- LỚP 1 BẢO MẬT LICENSE (Single Active Session) ---
+    await query(`ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS device_id VARCHAR(64);`);
+    await query(`ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS user_agent TEXT;`);
+    await query(`ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS client_ip VARCHAR(45);`);
+    await query(`ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP;`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_admin_sessions_admin ON admin_sessions(admin_id);`);
 
     // Bảng cờ cho các migration DỮ LIỆU chỉ được chạy đúng một lần. Khác với
     // CREATE TABLE IF NOT EXISTS (chạy lại vô hại), việc đổi role là thao tác

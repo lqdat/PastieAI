@@ -577,10 +577,54 @@ function pastieConfirm(message, options = {}) {
     });
 }
 
+function getDeviceId() {
+    let id = localStorage.getItem('pastie_device_id');
+    if (!id) {
+        id = 'dev_' + ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+            (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
+        );
+        localStorage.setItem('pastie_device_id', id);
+    }
+    return id;
+}
+
+function handleSessionRevoked(reason = 'new_login') {
+    if (adminEventSource) {
+        adminEventSource.close();
+        adminEventSource = null;
+    }
+    clearTimeout(adminEventReconnectTimer);
+    localStorage.removeItem('pastie_admin_token');
+
+    const modal = document.getElementById('session-revoked-modal');
+    if (modal) {
+        modal.classList.remove('hide');
+    } else {
+        alert('Tài khoản của bạn vừa được đăng nhập trên một thiết bị khác. Phiên làm việc trên thiết bị này đã kết thúc.');
+        showLogin();
+    }
+}
+
+document.getElementById('session-revoked-relogin-btn')?.addEventListener('click', () => {
+    document.getElementById('session-revoked-modal')?.classList.add('hide');
+    showLogin();
+});
+
 function authFetch(url, options = {}) {
     const token = getToken();
-    const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${token}` };
+    const headers = {
+        ...(options.headers || {}),
+        'Authorization': `Bearer ${token}`,
+        'X-Device-Id': getDeviceId()
+    };
     return fetch(url, { ...options, headers }).then(res => {
+        if (res.status === 401) {
+            res.clone().json().then(data => {
+                if (data && data.code === 'SESSION_REVOKED') {
+                    handleSessionRevoked('new_login');
+                }
+            }).catch(() => {});
+        }
         const isDraining = res.headers.get('x-shift-draining') === 'true';
         window.CURRENT_SHIFT_DRAINING = isDraining;
         const drainingBanner = document.getElementById('shift-draining-banner');
@@ -1404,10 +1448,40 @@ function connectAdminEvents() {
                 if (!event.data) return;
                 const data = JSON.parse(event.data);
                 handleAdminRealtimeEvent(data);
-            } catch (e) {
-                // Ignore parse errors or heartbeat comments
-            }
+            } catch (e) {}
         };
+
+        adminEventSource.addEventListener('session_revoked', (event) => {
+            try {
+                const data = JSON.parse(event.data || '{}');
+                if (!data.adminId || (CURRENT_ADMIN && Number(data.adminId) === Number(CURRENT_ADMIN.id))) {
+                    handleSessionRevoked('new_login');
+                }
+            } catch (e) {
+                handleSessionRevoked('new_login');
+            }
+        });
+
+        adminEventSource.addEventListener('new_message', (event) => {
+            try {
+                const data = JSON.parse(event.data || '{}');
+                handleAdminRealtimeEvent({ type: 'new_message', ...data });
+            } catch (e) {}
+        });
+
+        adminEventSource.addEventListener('session_update', (event) => {
+            try {
+                const data = JSON.parse(event.data || '{}');
+                handleAdminRealtimeEvent({ type: 'session_update', ...data });
+            } catch (e) {}
+        });
+
+        adminEventSource.addEventListener('order_update', (event) => {
+            try {
+                const data = JSON.parse(event.data || '{}');
+                handleAdminRealtimeEvent({ type: 'order_update', ...data });
+            } catch (e) {}
+        });
 
         adminEventSource.onerror = () => {
             if (adminEventSource) {
