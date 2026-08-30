@@ -3465,3 +3465,47 @@ button {
 @media (max-width: 380px) {
     .org-form-row { grid-template-columns: 1fr; }
 }
+
+/* --- File đính kèm trong bong bóng chat --------------------------------------
+   Video dùng nút play trong suốt thay cho thanh điều khiển mặc định: mỗi trình
+   duyệt vẽ thanh đó một kiểu và nó chiếm mất phần đáng kể của khung hình nhỏ.
+   Bấm vào mở trình xem lớn — nơi mới thật sự cần điều khiển. */
+.attachment-video {
+    position: relative;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    line-height: 0;
+    cursor: pointer;
+    overflow: hidden;
+}
+.attachment-video video {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: inherit;
+    pointer-events: none; /* mọi cú bấm đều thuộc về nút, không rơi vào <video> */
+}
+.attachment-play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    /* Không nền khối: chỉ viền trắng mờ + bóng đổ để nổi trên mọi khung hình,
+       kể cả cảnh sáng lẫn cảnh tối. */
+    border: 2px solid rgba(255, 255, 255, .92);
+    background: transparent;
+    color: #fff;
+    font-size: 27px;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, .55);
+    box-shadow: 0 2px 14px rgba(0, 0, 0, .3);
+    pointer-events: none;
+    transition: transform .18s ease;
+}
+.attachment-video:hover .attachment-play { transform: translate(-50%, -50%) scale(1.08); }

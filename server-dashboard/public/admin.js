@@ -1800,7 +1800,15 @@ function renderSessionsList(sessions) {
             </div>
             ${preview ? `<div class="session-card-preview">${escapeHtml(preview)}</div>` : ''}
             <div class="session-meta-footer">
-                <span class="session-project" title="${session.project_id}">${session.project_id}</span>
+                ${
+                    // Agent/Sale của dự án QR chỉ làm việc trong đúng một dự án, nên
+                    // in mã dự án lên từng thẻ hội thoại là thừa — mà lại là mã kỹ
+                    // thuật ("qr-concierge") chứ không phải tên người dùng hiểu.
+                    // Superadmin và các dự án khác vẫn cần vì họ xem nhiều dự án.
+                    isRestrictedConsole() && isQrConciergeProject(session.project_id)
+                        ? ''
+                        : `<span class="session-project" title="${escapeHtml(session.project_id)}">${escapeHtml(session.project_id)}</span>`
+                }
                 ${metaFooterRight}
             </div>
         `;
@@ -2041,7 +2049,10 @@ async function selectSession(sessionId) {
     const chatHeaderProjectBadge = document.getElementById('chat-header-project-badge');
     const chatHeaderProjectId = document.getElementById('chat-header-project-id');
     if (chatHeaderProjectBadge && chatHeaderProjectId) {
-        if (session.project_id) {
+        // Cùng lý do như thẻ hội thoại: Agent/Sale QR chỉ có một dự án, không cần
+        // nhắc mã dự án ở thanh tiêu đề cuộc chat.
+        const hideProject = isRestrictedConsole() && isQrConciergeProject(session.project_id);
+        if (session.project_id && !hideProject) {
             chatHeaderProjectId.textContent = session.project_id;
             chatHeaderProjectBadge.classList.remove('hide');
         } else {
@@ -2443,8 +2454,8 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
             innerHtml = `
                 <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
                     ${attachmentHtml}
-                    ${!attachmentHtml || msg.original_text ? `<div class="original-text">${escapeHtml(primaryText)}</div>` : ''}
-                    ${hasTranslation ? `<div class="translated-text-wrapper" data-label="${dict.labelOriginal} ">${escapeHtml(msg.original_text)}</div>` : ''}
+                    ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(primaryText)}</div>`}
+                    ${hasTranslation && !isAttachmentPlaceholder(msg.original_text) ? `<div class="translated-text-wrapper" data-label="${dict.labelOriginal} ">${escapeHtml(msg.original_text)}</div>` : ''}
                 </div>
                 <div class="message-time">${timeStr}</div>
             `;
@@ -2454,8 +2465,8 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
             innerHtml = `
                 <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
                     ${attachmentHtml}
-                    ${!attachmentHtml || msg.original_text ? `<div class="original-text">${escapeHtml(msg.original_text)}</div>` : ''}
-                    ${hasTranslation ? `<div class="translated-text-wrapper" data-label="${dict.labelAiTranslation} ">${escapeHtml(msg.translated_text)}</div>` : ''}
+                    ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(msg.original_text)}</div>`}
+                    ${hasTranslation && !isAttachmentPlaceholder(msg.original_text) ? `<div class="translated-text-wrapper" data-label="${dict.labelAiTranslation} ">${escapeHtml(msg.translated_text)}</div>` : ''}
                 </div>
                 <div class="message-time">${timeStr}</div>
             `;
@@ -3146,6 +3157,13 @@ function formatAttachmentSize(bytes) {
 
 // Renders the media/document card for a message that carries a file attachment.
 // Returns '' when the message has no attachment.
+// Server lưu một dòng mô tả ("📷 [Hình ảnh]") làm original_text của tin đính kèm.
+// Dòng đó CẦN cho notification đẩy và cho các kênh không hiển thị được file
+// (Messenger, WhatsApp…), nhưng trong khung chat thì thừa: ảnh đã hiện ra rồi.
+// Vì vậy giữ nguyên ở database, chỉ bỏ khi vẽ bong bóng chat.
+const ATTACHMENT_PLACEHOLDERS = new Set(['📷 [Hình ảnh]', '🎥 [Video]', '📎 [Tài liệu]']);
+const isAttachmentPlaceholder = (text) => ATTACHMENT_PLACEHOLDERS.has(String(text || '').trim());
+
 function renderAttachmentHtml(msg) {
     if (!msg.attachment_key || !msg.attachment_url) return '';
     const url = escapeHtml(msg.attachment_url);
@@ -3158,9 +3176,13 @@ function renderAttachmentHtml(msg) {
         </button>`;
     }
     if (msg.attachment_type === 'video') {
-        return `<div class="attachment-card attachment-video">
-            <video src="${url}" controls preload="metadata"></video>
-        </div>`;
+        // Không dùng thanh điều khiển mặc định trong bong bóng chat: mỗi trình
+        // duyệt vẽ một kiểu và chiếm mất phần đáng kể của khung hình nhỏ. Chỉ hiện
+        // khung hình đầu tiên kèm nút play trong suốt; bấm vào mở trình xem lớn.
+        return `<button type="button" class="attachment-card attachment-video attachment-preview-trigger" data-preview-url="${url}" data-preview-type="video" data-preview-title="${name}">
+            <video src="${url}" preload="metadata" muted playsinline></video>
+            <span class="attachment-play"><i class="ri-play-fill"></i></span>
+        </button>`;
     }
     return `<button type="button" class="attachment-card attachment-document attachment-preview-trigger" data-preview-url="${url}" data-preview-type="document" data-preview-title="${name}">
         <i class="ri-file-text-line"></i>

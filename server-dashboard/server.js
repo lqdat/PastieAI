@@ -2560,14 +2560,15 @@ app.post('/samplebill', checkAdminAuth, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [orderId, sessionId, session.project_id, req.admin.id, 20000, JSON.stringify(items), JSON.stringify(invoice)]
     );
-    const messageRes = await client.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id)
-       VALUES ($1, 'agent', $2, $2, 'vi', $3) RETURNING *`,
-      [sessionId, `Hóa đơn mẫu ${invoice.invoiceNo}: 2 chai nước suối — tổng thanh toán ${formatVnd(20000)}. Vui lòng chọn phương thức thanh toán.`, req.admin.id]
-    );
+    // KHÔNG chèn tin nhắn mô tả hóa đơn nữa.
+    //
+    // Khách đã thấy chính bản PDF hóa đơn ngay trong khung chat, kèm ba nút chọn
+    // phương thức thanh toán ngay dưới đó. Thêm một dòng chữ lặp lại số tiền chỉ
+    // gây trùng thông tin — mà lại là dòng tiếng Việt cứng, không dịch theo ngôn
+    // ngữ khách như phần còn lại của hóa đơn.
     const expiresAt = await extendQrSessionOnActivity(session, client);
     await client.query('COMMIT');
-    res.status(201).json({ success: true, order: orderRes.rows[0], chatMessage: messageRes.rows[0], expiresAt });
+    res.status(201).json({ success: true, order: orderRes.rows[0], chatMessage: null, expiresAt });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Create sample bill error:', error);
