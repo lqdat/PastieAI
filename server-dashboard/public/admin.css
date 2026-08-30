@@ -467,6 +467,45 @@ button {
     text-overflow: ellipsis;
     max-width: 480px;
 }
+.agent-identity.sale-identity {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+.agent-identity.sale-identity .agent-identity-label {
+    display: block;
+    max-width: min(520px, 38vw);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.2;
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.agent-identity.sale-identity .agent-display-name {
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+@media (max-width: 720px) {
+    .agent-identity.sale-identity {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 3px;
+    }
+    .agent-identity.sale-identity .agent-identity-label {
+        width: 100%;
+        max-width: none;
+        font-size: 10.5px;
+    }
+    .agent-identity.sale-identity .agent-display-name {
+        font-size: 15.5px;
+    }
+}
 
 /* --- Nút tắt trên header (Agent: Tổ chức / Báo cáo / Tài khoản) --- */
 .header-quick-btn {

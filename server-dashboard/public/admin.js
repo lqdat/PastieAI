@@ -1557,28 +1557,33 @@ function updateAgentHeaderUI() {
     const nameEl = document.getElementById('agent-display-name');
     const ownName = isAgentRole ? (CURRENT_ADMIN.full_name || CURRENT_ADMIN.username || '') : '';
 
-    // Sale trực chat dưới quyền một Agent, nên header ghi cả hai TÊN:
-    //     "Nguyễn Văn Boss · Sale An"
-    // để người trực luôn biết mình đang thuộc tổ chức nào — nhất là khi một người
-    // có thể làm Sale cho nhiều nơi. Chỉ tên, KHÔNG kèm chữ "Agent" hay "Sale".
-    // Agent quản lý thì chỉ hiện tên mình.
-    const managerName = role === 'sale' ? (CURRENT_ADMIN.manager_name || '') : '';
-    const agentName = managerName ? `${managerName} · ${ownName}` : ownName;
+    // Giao diện Sale luôn hiển thị thành hai hàng tên riêng, không ghi role:
+    //     [tên Agent quản lý]
+    //     [tên Sale đang đăng nhập]
+    // Giao diện Agent vẫn chỉ hiển thị tên của chính Agent.
+    const isSaleView = role === 'sale';
+    const managerName = isSaleView
+        ? (CURRENT_ADMIN.manager_name || CURRENT_ADMIN.manager_username || 'Chưa xác định')
+        : '';
+    const visibleName = ownName;
 
-    if (nameEl) {
-        nameEl.textContent = agentName;
-        // Tên rất dài vẫn có thể bị cắt ở dòng thứ hai — giữ tooltip để xem đủ.
-        nameEl.title = agentName;
+    if (identityEl) identityEl.classList.toggle('sale-identity', isSaleView);
+    if (labelEl) {
+        labelEl.textContent = isSaleView ? managerName : '';
+        labelEl.title = isSaleView ? managerName : '';
+        labelEl.classList.toggle('hide', !isSaleView);
     }
-    // Không ghi vai trò ở header: chỉ hiển thị tên. Vai trò đã có trong màn hình
-    // "Quản lý tài khoản", nhắc lại ở đây chỉ làm dài thêm thanh tiêu đề — nhất
-    // là khi tên đã gồm cả Agent quản lý lẫn Sale.
-    labelEl?.classList.add('hide');
-    if (identityEl) identityEl.classList.toggle('hide', !agentName);
+    if (nameEl) {
+        nameEl.textContent = visibleName;
+        nameEl.title = isSaleView
+            ? `${managerName}\n${visibleName}`
+            : visibleName;
+    }
+    if (identityEl) identityEl.classList.toggle('hide', !visibleName);
 
     // Tên đã hiện to ở header trái rồi thì badge tên bên phải là thừa.
     const profileBadge = document.getElementById('admin-profile-badge');
-    if (profileBadge) profileBadge.style.display = agentName ? 'none' : 'flex';
+    if (profileBadge) profileBadge.style.display = visibleName ? 'none' : 'flex';
 
     document.getElementById('project-selector-wrap')?.classList.toggle('hide', isAgentRole);
 
