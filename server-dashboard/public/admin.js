@@ -580,7 +580,15 @@ function pastieConfirm(message, options = {}) {
 function authFetch(url, options = {}) {
     const token = getToken();
     const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${token}` };
-    return fetch(url, { ...options, headers });
+    return fetch(url, { ...options, headers }).then(res => {
+        const isDraining = res.headers.get('x-shift-draining') === 'true';
+        window.CURRENT_SHIFT_DRAINING = isDraining;
+        const drainingBanner = document.getElementById('shift-draining-banner');
+        if (drainingBanner) {
+            drainingBanner.classList.toggle('hide', !isDraining || !currentSessionId);
+        }
+        return res;
+    });
 }
 
 // ----------------------------------------------------
@@ -2137,6 +2145,93 @@ function applyChatPermissionUI(session) {
             }
         }
     }
+}
+
+// Xử lý phân quyền giao diện Chat: Agent giám sát (chỉ xem), Sale trong ca, Sale hết ca (Draining Mode)
+function applyChatPermissionUI(session) {
+    if (!session) return;
+    const handoverBtn = document.getElementById('handover-session-btn');
+    const closeBtn = document.getElementById('close-session-btn');
+    const drainingBanner = document.getElementById('shift-draining-banner');
+    const chatInput = document.getElementById('chat-input');
+    const sendBtn = document.querySelector('#chat-form button[type="submit"]');
+    const attachBtn = document.getElementById('chat-attach-btn');
+    const micBtn = document.getElementById('chat-mic-btn');
+
+    const isClosed = session.status === 'closed';
+    const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
+    const isClaimedByMe = session.claimed_by_admin_id && CURRENT_ADMIN && Number(session.claimed_by_admin_id) === Number(CURRENT_ADMIN.id);
+    const isAgentManagerViewingSale = CURRENT_ADMIN && CURRENT_ADMIN.role === 'agent';
+
+    // 1. Nút Bàn giao ca: chỉ hiện khi cuộc chat đang active và chính Sale đó đang tiếp nhận (hoặc superadmin)
+    if (handoverBtn) {
+        handoverBtn.classList.toggle('hide', isClosed || (!isClaimedByMe && !isSuper));
+    }
+
+    // 2. Nút Đóng phiên
+    if (closeBtn) {
+        closeBtn.classList.toggle('hide', isClosed);
+    }
+
+    // 3. Banner Draining Grace Mode: hiện khi phiên chat đang active và tài khoản ở chế độ gia hạn hoàn tất ca
+    if (drainingBanner) {
+        const showDraining = !isClosed && isClaimedByMe && (window.CURRENT_SHIFT_DRAINING === true);
+        drainingBanner.classList.toggle('hide', !showDraining);
+    }
+
+    // 4. Nếu là Agent quản lý đang xem chat của Sale (chế độ giám sát chỉ xem)
+    if (isAgentManagerViewingSale && !isSuper) {
+        if (chatInput) {
+            chatInput.disabled = true;
+            chatInput.placeholder = 'Chế độ Giám sát: Bạn đang theo dõi cuộc trò chuyện của Sale (Chỉ xem)';
+        }
+        if (sendBtn) sendBtn.disabled = true;
+        if (attachBtn) attachBtn.disabled = true;
+        if (micBtn) micBtn.disabled = true;
+        if (handoverBtn) handoverBtn.classList.add('hide');
+        if (closeBtn) closeBtn.classList.add('hide');
+    } else {
+        if (chatInput) {
+            chatInput.disabled = isClosed;
+            chatInput.placeholder = isClosed ? 'Cuộc trò chuyện đã kết thúc' : (TRANSLATIONS[currentLang]?.chatInputPlaceholder || 'Gõ câu trả lời bằng tiếng Việt tại đây...');
+        }
+        if (sendBtn) sendBtn.disabled = isClosed;
+        if (attachBtn) attachBtn.disabled = isClosed;
+        if (micBtn) micBtn.disabled = isClosed;
+    }
+}
+
+// Gắn sự kiện Bàn giao ca
+const handoverSessionBtn = document.getElementById('handover-session-btn');
+if (handoverSessionBtn) {
+    handoverSessionBtn.addEventListener('click', async () => {
+        if (!currentSessionId) return;
+        const confirmed = await pastieConfirm('Bạn có chắc chắn muốn bàn giao cuộc trò chuyện này cho nhân viên ca tiếp theo tiếp nhận không?', {
+            title: 'Bàn giao ca',
+            confirmText: 'Bàn giao',
+            cancelText: 'Hủy',
+            danger: false
+        });
+        if (!confirmed) return;
+
+        try {
+            handoverSessionBtn.disabled = true;
+            const res = await authFetch(`${API_BASE}/api/admin/chats/${currentSessionId}/handover`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Không thể bàn giao ca.');
+            toastSuccess('Đã bàn giao ca thành công.');
+            await fetchSessions();
+            if (currentSessionId) await selectSession(currentSessionId);
+        } catch (err) {
+            toastError(err.message || 'Lỗi khi bàn giao ca.');
+        } finally {
+            handoverSessionBtn.disabled = false;
+        }
+    });
 }
 
 async function selectSession(sessionId) {
@@ -4897,6 +4992,9 @@ function setOrgStatus(message, kind) {
     el.textContent = message || '';
     el.classList.toggle('hide', !message);
     el.classList.toggle('is-error', kind === 'error');
+    if (kind === 'error' && message) {
+        toastError(message);
+    }
 }
 
 async function orgFetch(path, options) {

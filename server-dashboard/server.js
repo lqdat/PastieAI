@@ -652,6 +652,90 @@ function describeWindows(rows) {
     .join(' hoặc ');
 }
 
+// Chuẩn hóa một khung giờ người dùng gửi lên. Trả về null nếu không hợp lệ.
+function normalizeHourWindow(entry) {
+  if (!entry) return null;
+  const clean = (value) => {
+    const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(value || '').trim());
+    return match ? `${match[1].padStart(2, '0')}:${match[2]}` : null;
+  };
+  const start = clean(entry.start_time ?? entry.start);
+  const end = clean(entry.end_time ?? entry.end);
+  if (!start || !end) return null;
+  return { start, end, timezone: String(entry.timezone || DEFAULT_WORK_TIMEZONE).slice(0, 60) };
+}
+
+// Chuyển một khung giờ (start_time, end_time) thành danh sách các khoảng phút [startMin, endMin) trong ngày [0, 1440).
+// Hỗ trợ đầy đủ ca qua đêm (start > end) bằng cách phân rã thành 2 khoảng con: [start, 1440) và [0, end).
+function windowToMinuteIntervals(startTimeStr, endTimeStr) {
+  const start = parseTimeToMinutes(startTimeStr);
+  const end = parseTimeToMinutes(endTimeStr);
+  if (start === end) {
+    return [[0, 1440]];
+  }
+  if (start < end) {
+    return [[start, end]];
+  }
+  return [[start, 1440], [0, end]];
+}
+
+// Kiểm tra xem hai khung giờ có bị chồng lấn (overlap) không.
+// Các ca nối tiếp nhau (ví dụ 08:00-16:00 và 16:00-23:00) KHÔNG bị coi là trùng.
+function doTimeWindowsOverlap(w1Start, w1End, w2Start, w2End) {
+  const intervals1 = windowToMinuteIntervals(w1Start, w1End);
+  const intervals2 = windowToMinuteIntervals(w2Start, w2End);
+  for (const [s1, e1] of intervals1) {
+    for (const [s2, e2] of intervals2) {
+      if (Math.max(s1, s2) < Math.min(e1, e2)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Kiểm tra xung đột khung giờ giữa Sale mới/sửa với các Sale khác trong cùng nhóm
+async function findConflictingSaleShift(saleId, candidateWindows, groupIds, queryRunner = db) {
+  const cleanWindows = (Array.isArray(candidateWindows) ? candidateWindows : [])
+    .map(normalizeHourWindow)
+    .filter(Boolean);
+  if (cleanWindows.length === 0) return null;
+
+  const validGroupIds = (Array.isArray(groupIds) ? groupIds : [])
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0);
+  if (validGroupIds.length === 0) return null;
+
+  const existingSales = await queryRunner.query(
+    `SELECT gs.group_id, g.name AS group_name, gs.sale_id, a.full_name AS sale_name, a.username AS sale_username,
+            h.start_time, h.end_time, h.timezone
+       FROM agent_group_sales gs
+       JOIN agent_groups g ON g.id = gs.group_id
+       JOIN admins a ON a.id = gs.sale_id
+       JOIN account_access_hours h ON h.admin_id = gs.sale_id
+      WHERE gs.group_id = ANY($1::int[])
+        AND gs.is_active = TRUE
+        AND a.is_active = TRUE
+        AND h.is_active = TRUE
+        AND ($2::int IS NULL OR gs.sale_id <> $2)`,
+    [validGroupIds, saleId || null]
+  );
+
+  for (const myWindow of cleanWindows) {
+    for (const other of existingSales.rows) {
+      if (doTimeWindowsOverlap(myWindow.start, myWindow.end, other.start_time, other.end_time)) {
+        return {
+          groupName: other.group_name,
+          saleName: other.sale_name || other.sale_username,
+          conflictingWindow: `${String(other.start_time).slice(0, 5)} - ${String(other.end_time).slice(0, 5)}`,
+          myWindow: `${myWindow.start} - ${myWindow.end}`
+        };
+      }
+    }
+  }
+  return null;
+}
+
 async function getAccessHours(adminId, queryRunner = db) {
   const result = await queryRunner.query(
     `SELECT start_time, end_time, timezone, is_active FROM account_access_hours
@@ -682,9 +766,6 @@ async function getQrProjectIds() {
 // Agent quản lý KHÔNG có giờ đăng nhập: họ phải vào được bất cứ lúc nào để sắp
 // ca, thêm Sale hay xử lý chat tồn — khóa Agent theo giờ là tự khóa luôn người
 // duy nhất có thể mở khóa.
-//
-// Xét thêm project_id là bắt buộc: role 'sale' hiện chỉ sinh ra trong QR, nhưng
-// ràng buộc này giữ cho luật ca kíp không bao giờ lan sang dự án khác.
 async function isHourRestrictedAdmin(admin) {
   if (admin?.role !== 'sale') return false;
   if (!admin?.project_id) return false;
@@ -702,12 +783,42 @@ async function checkWorkingHours(admin, graceMinutes = 0) {
     : 'Tài khoản của bạn hiện không nằm trong khung giờ làm việc.';
 }
 
-// Chặn mọi thao tác ngoài giờ và thu hồi luôn token, để dashboard tự đăng xuất
-// ở lần gọi API kế tiếp thay vì tiếp tục hiển thị dữ liệu cũ.
+// Thời gian gia hạn hoàn tất phiên dở dang khi hết ca (mặc định 25 phút)
+const DRAIN_GRACE_MINUTES = Number(process.env.DRAIN_GRACE_MINUTES || 25);
+
+// Chặn nhận mới ngoài giờ nhưng cho phép hoàn tất phiên chat dở dang (Draining Mode)
 async function requireWorkingHours(req, res, next) {
   try {
-    const message = await checkWorkingHours(req.admin, SHIFT_GRACE_MINUTES);
-    if (!message) return next();
+    const isRestricted = await isHourRestrictedAdmin(req.admin);
+    if (!isRestricted) return next();
+
+    // 1. Kiểm tra xem đang trong ca chuẩn không
+    const onShiftMsg = await checkWorkingHours(req.admin, 0);
+    if (!onShiftMsg) {
+      req.isOnShift = true;
+      req.isDrainingGraceMode = false;
+      return next();
+    }
+
+    // 2. Nếu đã hết ca, kiểm tra xem có đang trong thời gian gia hạn hoàn tất (Draining Grace) không
+    const drainMsg = await checkWorkingHours(req.admin, DRAIN_GRACE_MINUTES);
+    if (!drainMsg) {
+      // Đang trong thời gian gia hạn hoàn tất ca:
+      // Kiểm tra xem Sale có phiên chat nào ĐANG TIẾP NHẬN (claimed) không
+      const activeClaimed = await db.query(
+        `SELECT COUNT(*)::int AS count FROM sessions WHERE claimed_by_admin_id = $1 AND status = 'active'`,
+        [req.admin.id]
+      );
+      if (activeClaimed.rows[0].count > 0) {
+        req.isDrainingGraceMode = true;
+        req.isOnShift = false;
+        res.setHeader('X-Shift-Draining', 'true');
+        return next();
+      }
+    }
+
+    // 3. Ngoài ca và không có phiên chat dở trong thời gian gia hạn -> Đăng xuất an toàn
+    const message = onShiftMsg;
     if (req.admin?.token) {
       await db.query('DELETE FROM admin_sessions WHERE token = $1', [req.admin.token]).catch(() => {});
     }
@@ -1290,7 +1401,7 @@ app.post('/api/otp/verify', async (req, res) => {
 // nên không gắn checkAdminAuth được. Dashboard vẫn gửi kèm Bearer token, nên khi
 // sender là nhân viên ta soi token đó để chặn thao tác ngoài ca (mục 8 kế hoạch).
 // Khách không có token thì bỏ qua, không ảnh hưởng gì.
-async function blockStaffOutOfHours(req, res, sender) {
+async function blockStaffOutOfHours(req, res, sender, sessionId = null) {
   if (sender !== 'agent' && sender !== 'admin') return false;
   const header = req.headers['authorization'] || '';
   if (!header.startsWith('Bearer ')) return false;
@@ -1301,10 +1412,28 @@ async function blockStaffOutOfHours(req, res, sender) {
       [token]
     );
     if (result.rows.length === 0) return false;
-    const message = await checkWorkingHours(result.rows[0], SHIFT_GRACE_MINUTES);
-    if (!message) return false;
+    const admin = result.rows[0];
+    const isRestricted = await isHourRestrictedAdmin(admin);
+    if (!isRestricted) return false;
+
+    const onShiftMsg = await checkWorkingHours(admin, 0);
+    if (!onShiftMsg) return false;
+
+    // Nếu đã hết ca nhưng trong thời gian gia hạn Draining Grace (25 phút):
+    // Cho phép trả lời nốt phiên mà chính Sale này đang tiếp nhận (claimed)
+    const drainMsg = await checkWorkingHours(admin, DRAIN_GRACE_MINUTES);
+    if (!drainMsg && sessionId) {
+      const claimCheck = await db.query(
+        `SELECT id FROM sessions WHERE id = $1 AND claimed_by_admin_id = $2 AND status = 'active'`,
+        [sessionId, admin.id]
+      );
+      if (claimCheck.rows.length > 0) {
+        return false; // Cho phép hoàn tất nốt phiên dở
+      }
+    }
+
     await db.query('DELETE FROM admin_sessions WHERE token = $1', [token]).catch(() => {});
-    res.status(403).json({ error: message, code: 'OUT_OF_HOURS' });
+    res.status(403).json({ error: onShiftMsg, code: 'OUT_OF_HOURS' });
     return true;
   } catch (error) {
     console.error('Staff out-of-hours check error:', error);
@@ -1318,7 +1447,7 @@ app.post('/api/chats/message', async (req, res) => {
   if (!sessionId || !sender || !text || !targetLang) {
     return res.status(400).json({ error: 'Thiếu thông số đầu vào bắt buộc.' });
   }
-  if (await blockStaffOutOfHours(req, res, sender)) return;
+  if (await blockStaffOutOfHours(req, res, sender, sessionId)) return;
 
   try {
     // Verify session is active
@@ -1395,6 +1524,30 @@ app.post('/api/chats/message', async (req, res) => {
     );
     const sessionExpiresAt = await extendQrSessionOnActivity(sessionRes.rows[0]);
     notifyAdminRealtime('new_message', { sessionId, projectId: sessionRes.rows[0].project_id, sender, messageId: msgRes.rows[0]?.id });
+
+    // THÔNG BÁO NGOÀI GIỜ LÀM VIỆC (Dự án QR Concierge):
+    // Khi khách nhắn tin mà trong nhóm không có bất kỳ Sale nào đang trong ca trực,
+    // và phiên chat chưa có ai tiếp nhận -> gửi 1 thông báo hệ thống lịch sự (tối đa 1 lần / 6 giờ).
+    if (sender === 'visitor' && sessionRes.rows[0].group_id && !sessionRes.rows[0].claimed_by_admin_id) {
+      const isQr = (await getQrProjectIds()).has(sessionRes.rows[0].project_id);
+      if (isQr) {
+        const availableSales = await listAvailableSales(sessionRes.rows[0].group_id);
+        if (availableSales.length === 0) {
+          const recentOffHours = await db.query(
+            `SELECT id FROM messages WHERE session_id = $1 AND sender = 'system' AND original_text LIKE '%khung giờ làm việc%' AND created_at > NOW() - INTERVAL '6 hours' LIMIT 1`,
+            [sessionId]
+          );
+          if (recentOffHours.rows.length === 0) {
+            const offHoursMsg = `Cảm ơn bạn đã liên hệ! Hiện tại đã hết khung giờ làm việc của nhân viên tư vấn. Tin nhắn của bạn đã được lưu lại và nhân viên ca trực tiếp theo sẽ phản hồi ngay khi vào ca.`;
+            const sysMsgRes = await db.query(
+              `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, 'vi') RETURNING *`,
+              [sessionId, offHoursMsg]
+            );
+            notifyAdminRealtime('new_message', { sessionId, projectId: sessionRes.rows[0].project_id, sender: 'system', messageId: sysMsgRes.rows[0]?.id });
+          }
+        }
+      }
+    }
 
     // Update session detected language — prioritize the language actually detected from the message text
     // over the widget's static UI language (visitorLang), so the AI replies in the language the visitor is typing in.
@@ -3892,6 +4045,14 @@ app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, requireWorkingHour
 app.post('/api/admin/chats/:sessionId/claim', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const { sessionId } = req.params;
   if (!isChatStaff(req.admin)) return res.status(403).json({ error: 'Bạn không có quyền tiếp nhận chat.' });
+
+  if (req.isDrainingGraceMode) {
+    return res.status(403).json({
+      error: 'Ca làm việc của bạn đã kết thúc. Bạn đang trong thời gian gia hạn để hoàn tất các cuộc trò chuyện dở dang và không thể tiếp nhận thêm cuộc trò chuyện mới.',
+      code: 'SHIFT_DRAINING'
+    });
+  }
+
   try {
     const sessionResult = await db.query('SELECT project_id, claimed_by_admin_id, operator_no, detected_language FROM sessions WHERE id = $1', [sessionId]);
     if (sessionResult.rows.length === 0) return res.status(404).json({ error: 'Không tìm thấy cuộc trò chuyện.' });
@@ -3945,6 +4106,55 @@ app.post('/api/admin/chats/:sessionId/claim', checkAdminAuth, requireWorkingHour
   } catch (error) {
     console.error('Claim chat error:', error);
     res.status(500).json({ error: 'Không thể tiếp nhận chat.' });
+  }
+});
+
+// Bàn giao cuộc trò chuyện cho Sale ca tiếp theo (hoặc nhả quyền tiếp nhận)
+app.post('/api/admin/chats/:sessionId/handover', checkAdminAuth, async (req, res) => {
+  const { sessionId } = req.params;
+  const { note } = req.body || {};
+
+  try {
+    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy cuộc trò chuyện.' });
+    }
+    const session = sessionRes.rows[0];
+
+    if (!isSuperAdmin(req.admin)) {
+      if (!session.claimed_by_admin_id || Number(session.claimed_by_admin_id) !== Number(req.admin.id)) {
+        return res.status(403).json({ error: 'Chỉ nhân viên đang tiếp nhận cuộc trò chuyện này mới có quyền bàn giao.' });
+      }
+    }
+
+    // Nhả claim, đưa về waiting
+    await db.query(
+      `UPDATE sessions
+          SET claimed_by_admin_id = NULL,
+              claimed_at = NULL,
+              routing_status = 'waiting'
+        WHERE id = $1`,
+      [sessionId]
+    );
+
+    // Chèn tin nhắn hệ thống thông báo cho khách và ghi log bàn giao
+    const handoverText = note
+      ? `[Bàn giao ca] Nhân viên ${req.admin.full_name || req.admin.username} đã bàn giao ca: "${note}". Đang chờ nhân viên ca tiếp theo tiếp nhận ⏳`
+      : `[Bàn giao ca] Nhân viên ${req.admin.full_name || req.admin.username} đã bàn giao ca cho đồng nghiệp tiếp tục hỗ trợ bạn ⏳`;
+
+    await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+       VALUES ($1, 'system', $2, $2, 'vi')`,
+      [sessionId, handoverText]
+    );
+
+    notifyAdminRealtime('session_update', { sessionId, projectId: session.project_id, action: 'handover' });
+    notifyAdminRealtime('new_message', { sessionId, projectId: session.project_id, sender: 'system' });
+
+    res.json({ success: true, message: 'Đã bàn giao ca thành công.' });
+  } catch (error) {
+    console.error('Handover session error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi bàn giao ca.' });
   }
 });
 
@@ -6233,6 +6443,14 @@ app.post('/api/agent/sales', checkAdminAuth, async (req, res) => {
       }
     }
 
+    // Kiểm tra xung đột khung giờ làm việc với các Sale khác trong cùng nhóm
+    const conflict = await findConflictingSaleShift(null, accessHours, groupIds);
+    if (conflict) {
+      return res.status(400).json({
+        error: `Khung giờ ${conflict.myWindow} bị trùng với ca của Sale "${conflict.saleName}" (${conflict.conflictingWindow}) trong nhóm "${conflict.groupName}". Mỗi khung giờ chỉ được phân công cho 1 Sale trực để tránh tranh chấp tin nhắn.`
+      });
+    }
+
     const passwordHash = await hashPassword(randomUUID());
     const created = await db.query(
       `INSERT INTO admins (username, password_hash, full_name, role, project_id, managed_by_admin_id, created_by_admin_id, is_active)
@@ -6266,6 +6484,19 @@ app.put('/api/agent/sales/:saleId', checkAdminAuth, async (req, res) => {
   try {
     const sale = await loadOwnedSale(req, saleId);
     if (!sale) return res.status(404).json({ error: 'Không tìm thấy Sale trong phạm vi của bạn.' });
+
+    // Kiểm tra xung đột khung giờ làm việc khi cập nhật
+    const currentGroups = (await db.query('SELECT group_id FROM agent_group_sales WHERE sale_id = $1 AND is_active = TRUE', [saleId])).rows.map(r => r.group_id);
+    const targetGroups = Array.isArray(groupIds) ? groupIds : currentGroups;
+    const currentHours = await getAccessHours(saleId);
+    const targetHours = Array.isArray(accessHours) ? accessHours : currentHours;
+    const conflict = await findConflictingSaleShift(saleId, targetHours, targetGroups);
+    if (conflict) {
+      return res.status(400).json({
+        error: `Khung giờ ${conflict.myWindow} bị trùng với ca của Sale "${conflict.saleName}" (${conflict.conflictingWindow}) trong nhóm "${conflict.groupName}". Mỗi khung giờ chỉ được phân công cho 1 Sale trực để tránh tranh chấp tin nhắn.`
+      });
+    }
+
     const updated = await db.query(
       `UPDATE admins SET full_name = COALESCE($2, full_name) WHERE id = $1
        RETURNING id, username, full_name, is_active`,
@@ -6443,6 +6674,16 @@ app.post('/api/agent/groups/:groupId/sales', checkAdminAuth, async (req, res) =>
     if (!group) return res.status(404).json({ error: 'Không tìm thấy nhóm trong phạm vi của bạn.' });
     const sale = await loadOwnedSale(req, Number(saleId));
     if (!sale) return res.status(404).json({ error: 'Không tìm thấy Sale trong phạm vi của bạn.' });
+
+    // Kiểm tra xem Sale này có bị trùng khung giờ với Sale nào đang có trong nhóm không
+    const saleHours = await getAccessHours(sale.id);
+    const conflict = await findConflictingSaleShift(sale.id, saleHours, [group.id]);
+    if (conflict) {
+      return res.status(400).json({
+        error: `Không thể thêm Sale "${sale.full_name}" vào nhóm "${group.name}" vì ca trực (${conflict.myWindow}) bị trùng với ca của Sale "${conflict.saleName}" (${conflict.conflictingWindow}). Mỗi khung giờ chỉ được phân công cho 1 Sale trực.`
+      });
+    }
+
     await db.query(
       `INSERT INTO agent_group_sales (group_id, sale_id) VALUES ($1, $2)
        ON CONFLICT (group_id, sale_id) DO UPDATE SET is_active = TRUE`,

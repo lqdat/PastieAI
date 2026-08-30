@@ -403,6 +403,11 @@
                                 <option value="">Chưa chỉ định</option>
                             </select>
                         </div>
+
+                        <button id="handover-session-btn" class="header-action-btn handover-btn hide" title="Bàn giao ca cho nhân viên ca sau">
+                            <i class="ri-user-shared-2-line"></i>
+                            <span>Bàn giao ca</span>
+                        </button>
                         
                         <button id="close-session-btn" class="header-action-btn close-btn" title="Đóng cuộc chat và tóm tắt AI">
                             <i class="ri-checkbox-circle-line"></i>
@@ -413,6 +418,12 @@
                             <i class="ri-delete-bin-line"></i>
                         </button>
                     </div>
+                </div>
+
+                <!-- Draining Grace Mode Banner -->
+                <div id="shift-draining-banner" class="shift-draining-banner hide">
+                    <i class="ri-alarm-warning-line"></i>
+                    <span>Ca làm việc của bạn đã kết thúc. Bạn đang trong thời gian gia hạn để hoàn tất cuộc trò chuyện dở dang hoặc bấm <strong>"Bàn giao ca"</strong> trước khi rời đi.</span>
                 </div>
 
                 <!-- Chat History Messages -->

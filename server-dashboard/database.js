@@ -492,6 +492,14 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS routing_status VARCHAR(20);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_sessions_routing ON sessions(group_id, routing_status);`);
 
+    // --- HIGH SCALE COMPOSITE INDEXES (Tối ưu cho hàng triệu tin nhắn & người dùng) ---
+    await query(`CREATE INDEX IF NOT EXISTS idx_messages_session_created ON messages(session_id, created_at DESC);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_messages_created_sender ON messages(created_at DESC, sender);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_sessions_project_status_created ON sessions(project_id, status, created_at DESC);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_sessions_claimed_admin ON sessions(claimed_by_admin_id, status);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_account_access_hours_admin_active ON account_access_hours(admin_id, is_active);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_agent_group_sales_composite ON agent_group_sales(group_id, sale_id, is_active);`);
+
     // Bảng cờ cho các migration DỮ LIỆU chỉ được chạy đúng một lần. Khác với
     // CREATE TABLE IF NOT EXISTS (chạy lại vô hại), việc đổi role là thao tác
     // một chiều nên phải có cờ, nếu không mỗi lần khởi động lại sẽ hạ cấp luôn
