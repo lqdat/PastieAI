@@ -378,21 +378,28 @@
                     <div class="chat-header-user-info" style="display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 auto;">
                         <button id="mobile-back-btn" class="icon-btn mobile-only" title="Quay lại" style="margin-right:2px;"><i class="ri-arrow-left-line"></i></button>
                         <div id="chat-header-avatar" style="display:none; flex-shrink:0;"></div>
-                        <div style="min-width:0; display:grid; gap:2px;">
+                        <div style="min-width:0; display:grid; gap:3px;">
                             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                 <h3 id="chat-title-name" data-i18n="noChatSelected" style="font-size:16px; margin:0; font-weight:700; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Chưa chọn phòng chat</h3>
+                                <span id="chat-header-group-badge" class="session-status-badge hide" style="background:rgba(236,72,153,0.12); color:#ec4899; border:1px solid rgba(236,72,153,0.28); font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700; display:inline-flex; align-items:center; gap:4px; flex-shrink:0;">
+                                    <i class="ri-team-line"></i>
+                                    <span id="chat-header-group-name"></span>
+                                </span>
                                 <span id="chat-header-project-badge" class="session-status-badge active hide" style="background:rgba(99,102,241,0.12); color:var(--accent-color); border:1px solid rgba(99,102,241,0.25); font-size:10px; padding:2px 7px; border-radius:12px; font-weight:700; display:inline-flex; align-items:center; gap:3px; flex-shrink:0;">
                                     <i class="ri-global-line"></i>
                                     <span id="chat-header-project-id"></span>
                                 </span>
                             </div>
-                            <p id="chat-title-email" style="margin:0; font-size:11.5px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" data-i18n="selectChatPrompt">Vui lòng chọn cuộc hội thoại từ danh sách bên trái</p>
+                            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0;">
+                                <p id="chat-title-email" style="margin:0; font-size:11.5px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" data-i18n="selectChatPrompt">Vui lòng chọn cuộc hội thoại từ danh sách bên trái</p>
+                                <span id="chat-header-qr-info" class="hide" style="font-size:11px; color:#ec4899; font-weight:600; background:rgba(236,72,153,0.08); padding:1px 6px; border-radius:6px;"></span>
+                            </div>
                         </div>
                     </div>
                     <div id="chat-header-actions" class="chat-header-actions hide">
                         <button id="details-toggle-btn" class="icon-btn tablet-only" title="Thông tin chi tiết"><i class="ri-information-line"></i></button>
                         
-                        <button id="claim-chat-btn" class="header-action-btn claim-btn" title="Tiếp nhận cuộc trò chuyện này">
+                        <button id="claim-chat-btn" class="header-action-btn claim-btn hide" title="Tiếp nhận cuộc trò chuyện này">
                             <i class="ri-hand-heart-line"></i><span>Tiếp nhận</span>
                         </button>
                         
@@ -409,7 +416,7 @@
                             <span>Bàn giao ca</span>
                         </button>
                         
-                        <button id="close-session-btn" class="header-action-btn close-btn" title="Đóng cuộc chat và tóm tắt AI">
+                        <button id="close-session-btn" class="header-action-btn close-btn hide" title="Đóng cuộc chat và tóm tắt AI">
                             <i class="ri-checkbox-circle-line"></i>
                             <span data-i18n="closeChat">Đóng chat</span>
                         </button>
@@ -508,6 +515,14 @@
                             <div id="detail-channel-sender-row" style="display: flex; justify-content: space-between; align-items: center;">
                                 <span style="color: var(--text-secondary);">Sender ID:</span>
                                 <code id="detail-channel-sender-id" style="color: #60a5fa; font-size: 12px; user-select: all;">-</code>
+                            </div>
+                            <div id="detail-channel-group-row" style="display: none; justify-content: space-between; align-items: center;">
+                                <span style="color: var(--text-secondary);">Nhóm QR:</span>
+                                <span id="detail-channel-group-name" style="color: #ec4899; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">-</span>
+                            </div>
+                            <div id="detail-channel-qr-row" style="display: none; justify-content: space-between; align-items: center;">
+                                <span style="color: var(--text-secondary);">Mã QR:</span>
+                                <span id="detail-channel-qr-label" style="color: var(--text-primary); font-weight: 600;">-</span>
                             </div>
                             <div id="detail-channel-hotline-row" style="display: flex; justify-content: space-between; align-items: center;">
                                 <span style="color: var(--text-secondary);">Hotline tiếp nhận:</span>
@@ -810,6 +825,21 @@
                     <button id="qr-preview-copy-btn" type="button" class="secondary-btn"><i class="ri-file-copy-line"></i> Sao chép link</button>
                     <button id="qr-preview-download-btn" type="button" class="primary-btn"><i class="ri-download-2-line"></i> Tải poster QR</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Media Preview Modal (Images, Videos, PDF Documents) -->
+    <div id="media-preview-modal" class="modal-overlay hide" style="z-index: 9999;">
+        <div class="login-box glass-panel media-preview-modal-box" style="max-width: 900px; width: 92vw; max-height: 90vh; height: auto; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 18px;">
+            <div class="brand-header" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--panel-border); background: rgba(255, 255, 255, 0.02); flex-shrink: 0;">
+                <h3 id="media-preview-title" style="margin: 0; font-size: 15px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Tệp đính kèm</h3>
+                <button id="media-preview-close-btn" class="icon-btn" type="button" title="Đóng"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="media-preview-body" style="flex: 1 1 0%; min-height: 0; min-width: 0; display: flex; align-items: center; justify-content: center; background: #000; overflow: hidden; position: relative;">
+                <img id="media-preview-image" class="hide" style="max-width: 100%; max-height: 100%; object-fit: contain; display: block;" alt="Ảnh đính kèm">
+                <video id="media-preview-video" class="hide" controls autoplay playsinline style="max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; display: block;"></video>
+                <iframe id="media-preview-frame" class="hide" style="width: 100%; height: 80vh; border: none; background: #fff;" title="Tài liệu đính kèm"></iframe>
             </div>
         </div>
     </div>

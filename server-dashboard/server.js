@@ -944,36 +944,80 @@ async function resolveQrChatAccount(projectId, qrCode, queryRunner = db) {
   return result.rows[0] || null;
 }
 
+// Tự động phân tích và tóm tắt cuộc hội thoại bằng AI khi đóng phiên chat
+async function autoSummarizeClosedSession(sessionId) {
+  if (!sessionId) return;
+  try {
+    const sessionRes = await db.query('SELECT id, project_id, ai_summary, intent_tags FROM sessions WHERE id = $1', [sessionId]);
+    const session = sessionRes.rows[0];
+    if (!session) return;
+    if (session.ai_summary && session.ai_summary.trim() && session.ai_summary !== 'Không có dữ liệu phân tích.') {
+      return; // Đã có tóm tắt trước đó
+    }
+
+    const msgRes = await db.query(
+      'SELECT sender, original_text as text FROM messages WHERE session_id = $1 ORDER BY created_at ASC',
+      [sessionId]
+    );
+    if (msgRes.rows.length === 0) return;
+
+    const analysis = await gemini.analyzeSession(msgRes.rows);
+    const summary = analysis?.summary || null;
+    const tags = analysis?.tags || null;
+
+    if (summary) {
+      await db.query(
+        `UPDATE sessions
+            SET ai_summary = $1, intent_tags = $2
+          WHERE id = $3`,
+        [summary, tags, sessionId]
+      );
+      notifyAdminRealtime('session_update', {
+        sessionId,
+        projectId: session.project_id,
+        action: 'summarized',
+        summary,
+        tags
+      });
+      console.log(`[AI Auto-Summary] Đã tự động tóm tắt phiên chat ${sessionId}: "${summary}"`);
+    }
+  } catch (error) {
+    console.error(`[AI Auto-Summary] Lỗi khi tự động tóm tắt phiên ${sessionId}:`, error.message);
+  }
+}
+
 async function closeActiveQrSession(qrAccountId, queryRunner = db) {
-  // One QR represents one reception slot. A new scan immediately releases the
-  // previous customer so the assigned agent only has the latest conversation.
-  // Chỉ ĐÓNG cuộc chat cũ, không xóa — lịch sử vẫn tra cứu được sau này.
-  await queryRunner.query(
+  const oldSessions = await queryRunner.query(
     `UPDATE sessions SET status = 'closed',
             routing_status = CASE WHEN routing_status IS NULL THEN NULL ELSE 'closed' END
-      WHERE qr_account_id = $1 AND status = 'active'`,
+      WHERE qr_account_id = $1 AND status = 'active'
+      RETURNING id`,
     [qrAccountId]
   );
+  for (const row of oldSessions.rows) {
+    void autoSummarizeClosedSession(row.id);
+  }
 }
 
 async function closeActiveQrSessionsForVisitor(projectId, email, queryRunner = db) {
   if (!projectId || !email) return;
-  // Một khách chỉ có một phiên QR đang mở trong project. Khi khách đăng nhập từ
-  // QR khác, đóng phiên QR cũ nhưng vẫn giữ lịch sử cho Agent tra cứu.
-  await queryRunner.query(
+  const oldSessions = await queryRunner.query(
     `UPDATE sessions SET status = 'closed',
             routing_status = CASE WHEN routing_status IS NULL THEN NULL ELSE 'closed' END
       WHERE project_id = $1
         AND LOWER(visitor_email) = LOWER($2)
         AND qr_account_id IS NOT NULL
-        AND status = 'active'`,
+        AND status = 'active'
+      RETURNING id`,
     [projectId, String(email).trim()]
   );
+  for (const row of oldSessions.rows) {
+    void autoSummarizeClosedSession(row.id);
+  }
 }
 
 async function expireQrSessionIfNeeded(session, queryRunner = db) {
   if (session?.status === 'active' && session.qr_account_id && session.expires_at && new Date(session.expires_at) <= new Date()) {
-    // Hết giờ phiên QR => chỉ đóng cuộc chat, giữ nguyên lịch sử và file đính kèm.
     await queryRunner.query(
       `UPDATE sessions SET status = 'closed',
               routing_status = CASE WHEN routing_status IS NULL THEN NULL ELSE 'closed' END
@@ -981,6 +1025,7 @@ async function expireQrSessionIfNeeded(session, queryRunner = db) {
       [session.id]
     );
     session.status = 'closed';
+    void autoSummarizeClosedSession(session.id);
   }
   return session;
 }
@@ -1544,9 +1589,9 @@ app.post('/api/chats/message', async (req, res) => {
       const claim = sessionRes.rows[0].claimed_by_admin_id;
       const assigned = sessionRes.rows[0].assigned_admin_id;
       const isSuper = isSuperAdmin(sendingAdmin);
+      const isSale = sendingAdmin.role === 'sale';
 
-      // RÀNG BUỘC: Nếu không phải Superadmin, nhân viên BẮT BUỘC phải nhấn "Tiếp nhận" hoặc được Superadmin phân công trước khi trả lời khách
-      if (!isSuper) {
+      if (!isSuper && !isSale) {
         const isClaimedByMe = claim && Number(claim) === Number(sendingAdmin.id);
         const isAssignedToMe = assigned && Number(assigned) === Number(sendingAdmin.id);
 
@@ -1554,11 +1599,12 @@ app.post('/api/chats/message', async (req, res) => {
           if (claim && Number(claim) !== Number(sendingAdmin.id)) {
             return res.status(409).json({ error: 'Cuộc trò chuyện này đã được nhân viên khác tiếp nhận.', claimedByAdminId: claim });
           }
-          return res.status(403).json({ error: 'Bạn cần nhấn "Tiếp nhận" cuộc trò chuyện hoặc được Super Admin phân công trước khi trả lời khách hàng.' });
+          return res.status(403).json({ error: 'Bạn không có quyền trả lời cuộc trò chuyện này.' });
         }
       }
 
-      if (isSuper && !claim) {
+      // Tự động claim cho Sale hoặc Superadmin khi gửi tin nhắn đầu tiên
+      if (!claim) {
         await db.query(
           `UPDATE sessions SET claimed_by_admin_id = $1, claimed_at = NOW()
            WHERE id = $2 AND claimed_by_admin_id IS NULL`,
@@ -1898,12 +1944,20 @@ app.post('/api/chats/:sessionId/attachments', uploadAttachmentMiddleware, async 
       }
       const claim = session.claimed_by_admin_id;
       const assigned = session.assigned_admin_id;
-      if (!isSuperAdmin(sendingAdmin)) {
+      const isSale = sendingAdmin.role === 'sale';
+      if (!isSuperAdmin(sendingAdmin) && !isSale) {
         const isClaimedByMe = claim && Number(claim) === Number(sendingAdmin.id);
         const isAssignedToMe = assigned && Number(assigned) === Number(sendingAdmin.id);
         if (!isClaimedByMe && !isAssignedToMe) {
-          return res.status(403).json({ error: 'Bạn cần nhấn "Tiếp nhận" cuộc trò chuyện trước khi gửi file.' });
+          return res.status(403).json({ error: 'Bạn không có quyền gửi file trong cuộc trò chuyện này.' });
         }
+      }
+      if (!claim) {
+        await db.query(
+          `UPDATE sessions SET claimed_by_admin_id = $1, claimed_at = NOW()
+           WHERE id = $2 AND claimed_by_admin_id IS NULL`,
+          [sendingAdmin.id, sessionId]
+        );
       }
       senderAdminId = sendingAdmin.id;
     }
@@ -2092,14 +2146,15 @@ app.post('/api/chats/session/close', async (req, res) => {
       summary = r?.summary ?? null; tags = r?.tags ?? null;
     } catch (e) { console.warn('[Close] analyzeSession failed:', e.message); }
 
-    // ĐÓNG = TRẢ VỀ AI (không kết thúc phiên): giữ status active, bỏ claim + requested_agent + operator_no,
-    // để khách tiếp tục trò chuyện với trợ lý AI.
+    const isQrSession = !!session.qr_account_id;
+    const nextStatus = isQrSession ? 'closed' : 'active';
     await db.query(
       `UPDATE sessions
-       SET status = 'active', ai_summary = $1, intent_tags = $2,
-           claimed_by_admin_id = NULL, requested_agent = FALSE
-       WHERE id = $3`,
-      [summary, tags, sessionId]
+       SET status = $1, ai_summary = $2, intent_tags = $3,
+           claimed_by_admin_id = NULL, requested_agent = FALSE,
+           routing_status = CASE WHEN $1 = 'closed' THEN 'closed' ELSE routing_status END
+       WHERE id = $4`,
+      [nextStatus, summary, tags, sessionId]
     );
     // Reset số tổng đài viên (best-effort; cột operator_no có thể chưa migrate -> bỏ qua lỗi)
     await db.query('UPDATE sessions SET operator_no = NULL WHERE id = $1', [sessionId]).catch(() => {});
@@ -2930,6 +2985,7 @@ app.post('/api/chats/:sessionId/order/finish', async (req, res) => {
         WHERE id = $1`,
       [req.params.sessionId]
     );
+    void autoSummarizeClosedSession(req.params.sessionId);
     res.json({ success: true, action: 'logout_and_close_chat' });
   } catch (error) {
     console.error('Finish order error:', error);
@@ -4288,6 +4344,8 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
     let queryText = `
       SELECT s.*, a.full_name as assigned_admin_name, a.avatar_url as assigned_admin_avatar,
         ca.full_name as claimed_by_admin_name,
+        g.name as group_name,
+        q.label as qr_label,
         (SELECT COUNT(*) FROM messages WHERE session_id = s.id) as message_count,
         (SELECT MAX(created_at) FROM messages WHERE session_id = s.id) as last_message_at,
         (SELECT original_text FROM messages WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1) as last_message_preview,
@@ -4298,6 +4356,8 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
       FROM sessions s
       LEFT JOIN admins a ON s.assigned_admin_id = a.id
       LEFT JOIN admins ca ON s.claimed_by_admin_id = ca.id
+      LEFT JOIN agent_groups g ON s.group_id = g.id
+      LEFT JOIN qr_chat_accounts q ON s.qr_account_id = q.id
       LEFT JOIN session_read_receipts rr ON rr.session_id = s.id AND rr.admin_id = $1
     `;
 
@@ -6917,6 +6977,34 @@ async function startServer() {
   // sau khi mã đã đúng.
   await db.initPromise;
   await ensureReadReceiptsTable();
+
+  // Quét nền định kỳ mỗi 45s: tự động đóng các phiên hết hạn và gọi AI tóm tắt
+  setInterval(async () => {
+    try {
+      const expiredRes = await db.query(
+        `UPDATE sessions SET status = 'closed',
+                routing_status = CASE WHEN routing_status IS NULL THEN NULL ELSE 'closed' END
+          WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= NOW()
+          RETURNING id`
+      );
+      for (const row of expiredRes.rows) {
+        void autoSummarizeClosedSession(row.id);
+      }
+
+      // Tự động tóm tắt các phiên đã đóng nhưng chưa có tóm tắt
+      const unsummarized = await db.query(
+        `SELECT id FROM sessions
+          WHERE status = 'closed' AND (ai_summary IS NULL OR ai_summary = '')
+          ORDER BY created_at DESC LIMIT 5`
+      );
+      for (const row of unsummarized.rows) {
+        void autoSummarizeClosedSession(row.id);
+      }
+    } catch (err) {
+      // background sweep error
+    }
+  }, 45000);
+
   app.listen(PORT, '0.0.0.0', () => {
   console.log(`-----------------------------------------------------`);
   console.log(`Pastie AI Chat Server is running on port ${PORT}`);

@@ -1419,6 +1419,14 @@ function handleAdminRealtimeEvent(data) {
     if (currentSessionId && String(data.sessionId) === String(currentSessionId)) {
         if (data.type === 'new_message' || data.type === 'session_update') {
             loadMessages(currentSessionId);
+            if (data.summary && detailSummary) {
+                detailSummary.textContent = data.summary;
+                detailSummary.style.color = 'var(--text-primary)';
+                detailSummary.style.fontStyle = 'normal';
+            }
+            if (data.tags) {
+                renderTags(data.tags);
+            }
         }
         if (data.type === 'order_update') {
             loadOrderForAdmin(currentSessionId);
@@ -2032,6 +2040,11 @@ function renderSessionsList(sessions) {
             ${preview ? `<div class="session-card-preview">${escapeHtml(preview)}</div>` : ''}
             <div class="session-meta-footer">
                 ${
+                    session.group_name
+                        ? `<span class="session-group-tag" style="background:rgba(236,72,153,0.12);color:#ec4899;border:1px solid rgba(236,72,153,0.25);font-size:10.5px;padding:2px 7px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:4px;"><i class="ri-team-line"></i> ${escapeHtml(session.group_name)}${session.qr_label ? ` · ${escapeHtml(session.qr_label)}` : ''}</span>`
+                        : ''
+                }
+                ${
                     // Agent/Sale của dự án QR chỉ làm việc trong đúng một dự án, nên
                     // in mã dự án lên từng thẻ hội thoại là thừa — mà lại là mã kỹ
                     // thuật ("qr-concierge") chứ không phải tên người dùng hiểu.
@@ -2137,19 +2150,26 @@ function applyDetailsPanelMode(session) {
 }
 
 function applyChatPermissionUI(session) {
+    if (!session) return;
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
     const isAgent = CURRENT_ADMIN && CURRENT_ADMIN.role === 'agent';
     const isSale = CURRENT_ADMIN && CURRENT_ADMIN.role === 'sale';
-    const isClaimedByMe = session.claimed_by_admin_id && Number(session.claimed_by_admin_id) === Number(CURRENT_ADMIN?.id);
-    const isAssignedToMe = session.assigned_admin_id && Number(session.assigned_admin_id) === Number(CURRENT_ADMIN?.id);
-    const isClaimedByOther = session.claimed_by_admin_id && Number(session.claimed_by_admin_id) !== Number(CURRENT_ADMIN?.id);
+    const isClosed = session.status === 'closed';
+    const isClaimedByMe = session.claimed_by_admin_id && CURRENT_ADMIN && Number(session.claimed_by_admin_id) === Number(CURRENT_ADMIN.id);
 
     const claimChatBtn = document.getElementById('claim-chat-btn');
+    const closeBtn = document.getElementById('close-session-btn');
+    const handoverBtn = document.getElementById('handover-session-btn');
+    const drainingBanner = document.getElementById('shift-draining-banner');
+    const chatInput = document.getElementById('chat-input');
+    const sendBtn = document.querySelector('#chat-form button[type="submit"]');
+    const attachBtn = document.getElementById('chat-attach-btn');
+    const micBtn = document.getElementById('chat-mic-btn');
 
     // Chế độ giám sát cho Agent quản lý
     let supervisorBar = document.getElementById('chat-supervisor-bar');
-    if (isAgent) {
+    if (isAgent && !isSuper) {
         if (!supervisorBar) {
             supervisorBar = document.createElement('div');
             supervisorBar.id = 'chat-supervisor-bar';
@@ -2163,115 +2183,81 @@ function applyChatPermissionUI(session) {
         supervisorBar.style.display = 'none';
     }
 
-    if (session.status === 'closed') {
-        chatInputContainer.classList.add('hide');
-        closeSessionBtn.classList.add('hide');
-        if (claimChatBtn) claimChatBtn.classList.add('hide');
-    } else {
-        chatInputContainer.classList.remove('hide');
-        closeSessionBtn.classList.toggle('hide', isAgent);
+    const isQrProject = isRestrictedConsole() || isQrConciergeProject(session?.project_id);
 
-        // Check if user has permission to reply: Agent can NEVER reply directly (view-only)
-        const canReply = !isAgent && (isSuper || isClaimedByMe || isAssignedToMe);
-        if (chatInput) {
-            chatInput.disabled = !canReply;
-            chatInput.classList.toggle('is-supervisor-mode', isAgent);
-            if (isAgent) {
-                chatInput.value = '';
-                chatInput.placeholder = 'Chế độ Giám sát: Bạn đang theo dõi cuộc trò chuyện của Sale (Chỉ xem)...';
-            } else if (!canReply) {
-                chatInput.value = '';
-                chatInput.placeholder = isClaimedByOther
-                    ? '🔒 Cuộc trò chuyện đã được nhân viên khác tiếp nhận.'
-                    : '🔒 Vui lòng nhấn "Tiếp nhận" ở trên để bắt đầu trả lời tin nhắn...';
+    // 1. Nút "Tiếp nhận": Bỏ hoàn toàn ở Sale, Agent và toàn bộ dự án QR Chat
+    if (claimChatBtn) {
+        if (isSale || isAgent || isQrProject || isClosed) {
+            claimChatBtn.classList.add('hide');
+        } else if (isSuper) {
+            claimChatBtn.classList.remove('hide');
+            if (isClaimedByMe) {
+                claimChatBtn.disabled = true;
+                claimChatBtn.innerHTML = '<i class="ri-checkbox-circle-fill"></i> <span>Đã tiếp nhận</span>';
             } else {
-                chatInput.placeholder = dict.replyPlaceholder || 'Nhập tin nhắn trả lời khách hàng...';
+                claimChatBtn.disabled = false;
+                claimChatBtn.innerHTML = '<i class="ri-hand-heart-line"></i> <span>Tiếp nhận</span>';
             }
-        }
-        const sendBtn = chatForm ? chatForm.querySelector('button[type="submit"]') : null;
-        if (sendBtn) sendBtn.disabled = !canReply;
-
-        // Update claim button UI
-        if (claimChatBtn) {
-            if (isAgent) {
-                claimChatBtn.classList.add('hide');
-            } else {
-                claimChatBtn.classList.remove('hide');
-                if (isClaimedByMe) {
-                    claimChatBtn.disabled = true;
-                    claimChatBtn.style.opacity = '0.9';
-                    claimChatBtn.style.background = 'rgba(16, 185, 129, 0.25)';
-                    claimChatBtn.style.borderColor = 'rgba(16, 185, 129, 0.6)';
-                    claimChatBtn.innerHTML = '<i class="ri-checkbox-circle-fill"></i> <span>Đã tiếp nhận</span>';
-                } else if (isClaimedByOther) {
-                    claimChatBtn.disabled = !isSuper;
-                    claimChatBtn.style.opacity = '0.6';
-                    claimChatBtn.style.background = 'rgba(255, 255, 255, 0.05)';
-                    claimChatBtn.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-                    claimChatBtn.innerHTML = '<i class="ri-user-follow-line"></i> <span>Đã có người nhận</span>';
-                } else {
-                    claimChatBtn.disabled = false;
-                    claimChatBtn.style.opacity = '1';
-                    claimChatBtn.style.background = 'rgba(16, 185, 129, 0.14)';
-                    claimChatBtn.style.borderColor = 'rgba(16, 185, 129, 0.35)';
-                    claimChatBtn.innerHTML = '<i class="ri-hand-heart-line"></i> <span>Tiếp nhận</span>';
-                }
-            }
+        } else {
+            claimChatBtn.classList.add('hide');
         }
     }
-}
 
-// Xử lý phân quyền giao diện Chat: Agent giám sát (chỉ xem), Sale trong ca, Sale hết ca (Draining Mode)
-function applyChatPermissionUI(session) {
-    if (!session) return;
-    const handoverBtn = document.getElementById('handover-session-btn');
-    const closeBtn = document.getElementById('close-session-btn');
-    const drainingBanner = document.getElementById('shift-draining-banner');
-    const chatInput = document.getElementById('chat-input');
-    const sendBtn = document.querySelector('#chat-form button[type="submit"]');
-    const attachBtn = document.getElementById('chat-attach-btn');
-    const micBtn = document.getElementById('chat-mic-btn');
-
-    const isClosed = session.status === 'closed';
-    const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
-    const isClaimedByMe = session.claimed_by_admin_id && CURRENT_ADMIN && Number(session.claimed_by_admin_id) === Number(CURRENT_ADMIN.id);
-    const isAgentManagerViewingSale = CURRENT_ADMIN && CURRENT_ADMIN.role === 'agent';
-
-    // 1. Nút Bàn giao ca: chỉ hiện khi cuộc chat đang active và chính Sale đó đang tiếp nhận (hoặc superadmin)
-    if (handoverBtn) {
-        handoverBtn.classList.toggle('hide', isClosed || (!isClaimedByMe && !isSuper));
-    }
-
-    // 2. Nút Đóng phiên
+    // 2. Nút "Đóng cuộc chat": Bỏ hoàn toàn ở Sale và Agent
     if (closeBtn) {
-        closeBtn.classList.toggle('hide', isClosed);
+        if (isSale || isAgent || isClosed) {
+            closeBtn.classList.add('hide');
+        } else if (isSuper) {
+            closeBtn.classList.remove('hide');
+        } else {
+            closeBtn.classList.add('hide');
+        }
     }
 
-    // 3. Banner Draining Grace Mode: hiện khi phiên chat đang active và tài khoản ở chế độ gia hạn hoàn tất ca
+    // 3. Nút Bàn giao ca: chỉ hiện khi cuộc chat đang active và là Sale hoặc Superadmin
+    if (handoverBtn) {
+        handoverBtn.classList.toggle('hide', isClosed || isAgent || (!isClaimedByMe && !isSuper && !isSale));
+    }
+
+    // 4. Banner Draining Grace Mode: hiện khi phiên chat đang active và tài khoản ở chế độ gia hạn hoàn tất ca
     if (drainingBanner) {
         const showDraining = !isClosed && isClaimedByMe && (window.CURRENT_SHIFT_DRAINING === true);
         drainingBanner.classList.toggle('hide', !showDraining);
     }
 
-    // 4. Nếu là Agent quản lý đang xem chat của Sale (chế độ giám sát chỉ xem)
-    if (isAgentManagerViewingSale && !isSuper) {
+    // 5. Trạng thái ô nhập và các nút gửi tin
+    if (isClosed) {
+        chatInputContainer?.classList.add('hide');
         if (chatInput) {
             chatInput.disabled = true;
-            chatInput.placeholder = 'Chế độ Giám sát: Bạn đang theo dõi cuộc trò chuyện của Sale (Chỉ xem)';
+            chatInput.placeholder = 'Cuộc trò chuyện đã kết thúc';
         }
         if (sendBtn) sendBtn.disabled = true;
         if (attachBtn) attachBtn.disabled = true;
         if (micBtn) micBtn.disabled = true;
-        if (handoverBtn) handoverBtn.classList.add('hide');
-        if (closeBtn) closeBtn.classList.add('hide');
     } else {
-        if (chatInput) {
-            chatInput.disabled = isClosed;
-            chatInput.placeholder = isClosed ? 'Cuộc trò chuyện đã kết thúc' : (TRANSLATIONS[currentLang]?.chatInputPlaceholder || 'Gõ câu trả lời bằng tiếng Việt tại đây...');
+        chatInputContainer?.classList.remove('hide');
+        if (isAgent && !isSuper) {
+            if (chatInput) {
+                chatInput.disabled = true;
+                chatInput.classList.add('is-supervisor-mode');
+                chatInput.value = '';
+                chatInput.placeholder = 'Chế độ Giám sát: Bạn đang theo dõi cuộc trò chuyện của Sale (Chỉ xem)';
+            }
+            if (sendBtn) sendBtn.disabled = true;
+            if (attachBtn) attachBtn.disabled = true;
+            if (micBtn) micBtn.disabled = true;
+        } else {
+            // Sale và Superadmin: chat trực tiếp mượt mà
+            if (chatInput) {
+                chatInput.disabled = false;
+                chatInput.classList.remove('is-supervisor-mode');
+                chatInput.placeholder = dict.replyPlaceholder || 'Nhập tin nhắn trả lời khách hàng...';
+            }
+            if (sendBtn) sendBtn.disabled = false;
+            if (attachBtn) attachBtn.disabled = false;
+            if (micBtn) micBtn.disabled = false;
         }
-        if (sendBtn) sendBtn.disabled = isClosed;
-        if (attachBtn) attachBtn.disabled = isClosed;
-        if (micBtn) micBtn.disabled = isClosed;
     }
 }
 
@@ -2341,8 +2327,34 @@ async function selectSession(sessionId) {
     applyDetailsPanelMode(session);
 
     // Show header details
-    chatTitleName.textContent = session.visitor_name;
-    chatTitleEmail.textContent = session.visitor_email;
+    chatTitleName.textContent = session.visitor_name || 'Khách hàng';
+    chatTitleEmail.textContent = session.visitor_email || 'Chưa có email';
+
+    // Show QR Group and QR Label info in header
+    const groupBadge = document.getElementById('chat-header-group-badge');
+    const groupNameEl = document.getElementById('chat-header-group-name');
+    const qrInfoEl = document.getElementById('chat-header-qr-info');
+    const groupName = session.group_name || '';
+    const qrLabel = session.qr_label || '';
+
+    if (groupBadge && groupNameEl) {
+        if (groupName || qrLabel) {
+            const labelText = groupName ? `Nhóm: ${groupName}${qrLabel ? ` · ${qrLabel}` : ''}` : `QR: ${qrLabel}`;
+            groupNameEl.textContent = labelText;
+            groupBadge.classList.remove('hide');
+        } else {
+            groupBadge.classList.add('hide');
+        }
+    }
+    if (qrInfoEl) {
+        if (groupName || qrLabel) {
+            const qrText = `Quét từ QR nhóm: ${groupName || 'Chưa phân nhóm'}${qrLabel ? ` (${qrLabel})` : ''}`;
+            qrInfoEl.textContent = qrText;
+            qrInfoEl.classList.remove('hide');
+        } else {
+            qrInfoEl.classList.add('hide');
+        }
+    }
 
     // Show visitor avatar in chat header
     const chatHeaderAvatar = document.getElementById('chat-header-avatar');
@@ -2502,6 +2514,28 @@ async function selectSession(sessionId) {
         detailChannelSenderId.textContent = sid;
     }
 
+    const detailChannelGroupRow = document.getElementById('detail-channel-group-row');
+    const detailChannelGroupName = document.getElementById('detail-channel-group-name');
+    const detailChannelQrRow = document.getElementById('detail-channel-qr-row');
+    const detailChannelQrLabel = document.getElementById('detail-channel-qr-label');
+
+    if (detailChannelGroupRow && detailChannelGroupName) {
+        if (session.group_name) {
+            detailChannelGroupName.innerHTML = `<i class="ri-team-line"></i> ${escapeHtml(session.group_name)}`;
+            detailChannelGroupRow.style.display = 'flex';
+        } else {
+            detailChannelGroupRow.style.display = 'none';
+        }
+    }
+    if (detailChannelQrRow && detailChannelQrLabel) {
+        if (session.qr_label) {
+            detailChannelQrLabel.textContent = session.qr_label;
+            detailChannelQrRow.style.display = 'flex';
+        } else {
+            detailChannelQrRow.style.display = 'none';
+        }
+    }
+
     if (detailChannelHotlineRow) {
         detailChannelHotlineRow.style.display = (session.platform === 'whatsapp') ? 'flex' : 'none';
     }
@@ -2569,6 +2603,21 @@ async function selectSession(sessionId) {
     }
     
     renderTags(session.intent_tags);
+    if (detailSummary) {
+        if (session.ai_summary && session.ai_summary.trim() && session.ai_summary !== 'Không có dữ liệu phân tích.') {
+            detailSummary.textContent = session.ai_summary;
+            detailSummary.style.color = 'var(--text-primary)';
+            detailSummary.style.fontStyle = 'normal';
+        } else if (session.status === 'closed') {
+            detailSummary.textContent = 'Đang phân tích và tóm tắt cuộc trò chuyện...';
+            detailSummary.style.color = 'var(--text-muted)';
+            detailSummary.style.fontStyle = 'italic';
+        } else {
+            detailSummary.textContent = 'Cuộc trò chuyện đang diễn ra. Khi kết thúc, AI sẽ tự động phân tích và tóm tắt.';
+            detailSummary.style.color = 'var(--text-secondary)';
+            detailSummary.style.fontStyle = 'italic';
+        }
+    }
     applyChatPermissionUI(session);
 
     // Show premium loading spinner inside messages container
