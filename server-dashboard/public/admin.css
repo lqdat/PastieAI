@@ -3574,3 +3574,64 @@ button {
         max-width: min(520px, 38vw);
     }
 }
+
+/* --- Hộp "Quản lý nhân viên" -------------------------------------------------
+   Trước đây chiều cao đặt inline `max-height: 92vh` ngay trên thẻ. Style inline
+   luôn thắng stylesheet (trừ khi có !important), nên quy tắc 92dvh dành cho
+   mobile không bao giờ có tác dụng. Trên iOS, 92vh tính cả phần bị thanh công cụ
+   trình duyệt che, nên đáy hộp — chỗ đặt nút Đóng — nằm ngoài vùng nhìn thấy.
+   Nay chiều cao do CSS quyết định hoàn toàn. */
+.admin-management-box {
+    display: flex;
+    flex-direction: column;
+    max-height: 92dvh;
+}
+
+@media (max-width: 720px) {
+    /* dvh: chiều cao thật sự nhìn thấy được, đã trừ thanh công cụ trình duyệt. */
+    #admin-management-modal .admin-management-box {
+        max-height: 92dvh;
+        /* Bản thân hộp KHÔNG cuộn — phần thân bên trong mới cuộn. Để cả hộp cuộn
+           thì hàng nút Đóng trôi theo và có thể nằm dưới vạch home của iPhone. */
+        overflow: hidden;
+        padding-bottom: 0;
+    }
+    /* Hàng nút Đóng: dính đáy, tự chừa chỗ cho vạch home. */
+    #admin-management-modal .admin-management-box > div:last-child {
+        flex: none;
+        margin-top: 0 !important;
+        padding: 12px 0 calc(12px + env(safe-area-inset-bottom)) !important;
+        background: #fff;
+    }
+    #admin-management-modal .admin-management-box > div:last-child .secondary-btn {
+        width: 100% !important;
+        padding: 12px !important;
+        font-size: 14px !important;
+    }
+}
+
+/* Hai modal còn lại cũng từng đặt max-height inline bằng vh — cùng một lỗi:
+   trên iOS, vh tính cả phần bị thanh công cụ che nên đáy modal nằm ngoài vùng
+   nhìn thấy. Chuyển sang dvh và đặt trong CSS để mobile ghi đè được. */
+.modal-scroll-box {
+    max-height: 90dvh;
+    overflow-y: auto;
+}
+.report-modal-box {
+    display: flex;
+    flex-direction: column;
+    max-height: 90dvh;
+}
+@media (max-width: 720px) {
+    .modal-scroll-box, .report-modal-box {
+        max-height: 92dvh;
+        padding-bottom: calc(14px + env(safe-area-inset-bottom)) !important;
+    }
+}
+
+/* Dòng trạng thái thông báo trong "Quản lý tài khoản". Thay cho cái chuông đứng
+   một mình trên header — vốn bị hiểu nhầm là danh sách thông báo. */
+.self-push-status.is-on i { color: #10b981; }
+.self-push-status.is-on strong { color: #0f7a52; }
+.self-push-status.is-off i { color: var(--text-muted); }
+.self-push-status.is-off strong { color: var(--text-secondary); }

@@ -1021,6 +1021,27 @@ if (inIframe) {
     setTimeout(hidePushUI, 1500);
 }
 
+// Nút thông báo trên header có đang bị ẩn vì đã bật hay không. updateAgentHeaderUI()
+// đọc cờ này để không vô tình hiện lại nút.
+let pushHeaderHidden = false;
+let lastPushState = 'off';
+
+// Trạng thái thông báo hiển thị trong màn hình "Quản lý tài khoản", cạnh Email và
+// Vai trò — nơi người dùng tìm khi muốn kiểm tra, thay vì một cái chuông mơ hồ.
+function renderPushStatusRow(state) {
+    lastPushState = state || 'off';
+    const row = document.getElementById('self-push-status');
+    if (!row) return;
+    const map = {
+        enabled:     { icon: 'ri-notification-3-fill', text: 'Đang bật', cls: 'is-on' },
+        blocked:     { icon: 'ri-notification-off-line', text: 'Bị chặn trong cài đặt trình duyệt', cls: 'is-off' },
+        unavailable: { icon: 'ri-notification-off-line', text: 'Máy chủ chưa cấu hình', cls: 'is-off' },
+    };
+    const cfg = map[lastPushState] || { icon: 'ri-notification-3-line', text: 'Chưa bật', cls: 'is-off' };
+    row.className = `self-account-meta-item self-push-status ${cfg.cls}`;
+    row.innerHTML = `<i class="${cfg.icon}"></i><span>Thông báo</span><strong>${escapeHtml(cfg.text)}</strong>`;
+}
+
 function setPushButtonState(state) {
     // Nút riêng trên header (Agent) — trạng thái luôn khớp với mục trong menu Cài đặt.
     const headerLabel = document.getElementById('agent-push-label');
@@ -1035,14 +1056,22 @@ function setPushButtonState(state) {
         const cfg = headerStates[state] || { text: 'Bật thông báo', icon: 'ri-notification-3-line', title: 'Nhận chat mới ngay cả khi đã đóng app', cls: '' };
         headerLabel.textContent = cfg.text;
         headerIcon.className = cfg.icon;
-        // Đã bật rồi thì chỉ còn là trạng thái, không phải việc cần làm — thu về
-        // đúng cái chuông cho đỡ chiếm chỗ trên header. Ba trạng thái còn lại đều
-        // cần người dùng bấm nên vẫn giữ nguyên chữ.
-        headerBtn.title = state === 'enabled' ? `${cfg.text} · ${cfg.title}` : cfg.title;
+        headerBtn.title = cfg.title;
         headerBtn.setAttribute('aria-label', cfg.text);
-        headerBtn.classList.toggle('is-icon-only', state === 'enabled');
-        headerBtn.classList.remove('is-enabled', 'is-blocked');
+        headerBtn.classList.remove('is-enabled', 'is-blocked', 'is-icon-only');
         if (cfg.cls) headerBtn.classList.add(cfg.cls);
+
+        // Đã bật rồi thì ẨN HẲN nút khỏi header.
+        //
+        // Một cái chuông đứng một mình trên thanh tiêu đề đọc như "danh sách thông
+        // báo" — người dùng bấm vào mong thấy các thông báo đã nhận, nhưng nó chỉ
+        // là nút bật/tắt. Khi quyền đã được cấp thì cũng chẳng còn việc gì để làm.
+        // Nút chỉ xuất hiện khi THẬT SỰ cần thao tác: chưa bật, bị chặn, hoặc máy
+        // chủ chưa cấu hình. Trạng thái "đang bật" chuyển vào màn hình Quản lý
+        // tài khoản — xem renderPushStatusRow().
+        pushHeaderHidden = state === 'enabled';
+        headerBtn.classList.toggle('hide', pushHeaderHidden);
+        renderPushStatusRow(state);
     }
 
     const label = document.getElementById('enable-push-label');
@@ -1578,7 +1607,9 @@ function updateAgentHeaderUI() {
 
     // Agent không còn dùng dropdown Cài đặt cũ (mọi thứ đã tách thành các nút riêng)
     document.getElementById('settings-dropdown-wrapper')?.classList.toggle('hide', isAgentRole);
-    document.getElementById('agent-push-btn')?.classList.toggle('hide', !isAgentRole || inIframe);
+    // Ẩn nếu không phải Agent/Sale, đang trong iframe, HOẶC thông báo đã bật (khi
+    // đó không còn thao tác nào để làm — xem setPushButtonState).
+    document.getElementById('agent-push-btn')?.classList.toggle('hide', !isAgentRole || inIframe || pushHeaderHidden);
 
     if (isAgentRole) document.getElementById('manage-admins-btn')?.classList.add('hide');
 }
@@ -4327,7 +4358,11 @@ function applyAdminMgmtFocus() {
             // dòng này không cho thêm thông tin gì, mà lại lộ mã kỹ thuật ra giao diện.
             meta.innerHTML = `
                 <div class="self-account-meta-item"><i class="ri-mail-line"></i><span>Email đăng nhập</span><strong>${escapeHtml(email)}</strong></div>
-                <div class="self-account-meta-item"><i class="ri-shield-user-line"></i><span>Vai trò</span><strong>${escapeHtml(role)}</strong></div>`;
+                <div class="self-account-meta-item"><i class="ri-shield-user-line"></i><span>Vai trò</span><strong>${escapeHtml(role)}</strong></div>
+                <div class="self-account-meta-item self-push-status" id="self-push-status"></div>`;
+            // Vẽ lại theo trạng thái quyền hiện tại (dòng này được tạo mới mỗi lần
+            // mở màn hình nên phải gọi lại, không thể dựa vào lần set trước đó).
+            renderPushStatusRow(lastPushState);
         }
         setSelfProfileStatus('');
 
