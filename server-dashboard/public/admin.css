@@ -3421,3 +3421,47 @@ button {
     border-color: rgba(239, 68, 68, .28);
     color: #c02b2b;
 }
+
+/* --- Màn hình quản lý tổ chức trên điện thoại --------------------------------
+   Trước đây mỗi .org-form-row đổ thành một cột nên form cao gấp đôi, đẩy danh
+   sách Sale / nhóm / QR rơi xuống tận dưới, phải cuộn rất xa mới thấy. Ba cách
+   xử lý ở đây, theo thứ tự quan trọng:
+     1. Giữ hai cột cho các cặp trường ngắn (họ tên + email, nhóm + giờ).
+     2. Thu nhỏ khoảng đệm để phần thân còn chỗ.
+     3. Cho form cuộn riêng bên trong, danh sách luôn nhìn thấy được. */
+@media (max-width: 620px) {
+    .org-card {
+        width: 100%;
+        max-height: 100dvh;
+        height: 100dvh;
+        padding: 14px 12px calc(12px + env(safe-area-inset-bottom));
+        border-radius: 0;
+        gap: 10px;
+    }
+    .org-head h2 { font-size: 16.5px; }
+    .org-kicker { font-size: 10px; }
+
+    /* Hai cột thay vì một: cặp trường ngắn vẫn vừa màn hình 360px. */
+    .org-form-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+    /* Trừ những hàng thực sự cần cả chiều ngang. */
+    .org-form-row#org-group-sales-row { grid-template-columns: 1fr; }
+    .org-form { padding: 11px; gap: 9px; border-radius: 11px; }
+    .org-form label { font-size: 11px; gap: 4px; }
+    .org-form input, .org-form select, .time-select { height: 38px; font-size: 13px; padding: 0 9px; }
+    .time-select { padding-right: 26px; background-size: 13px; }
+    .org-hour-pair { gap: 4px; }
+    .org-hour-pair em { font-size: 10px; }
+    .org-submit { width: 100%; justify-content: center; padding: 11px; }
+
+    /* Danh sách chiếm phần còn lại và tự cuộn, không bị đẩy khỏi màn hình. */
+    .org-pane { gap: 10px; }
+    .org-list { gap: 7px; }
+    .org-item, .qr-card, .sale-card { padding: 10px 11px; gap: 9px; }
+    .sale-picker { max-height: 132px; }
+    .org-field-hint { font-size: 10.5px; }
+}
+
+/* Màn hình rất hẹp: lúc này hai cột mới thật sự chật, cho xuống một cột. */
+@media (max-width: 380px) {
+    .org-form-row { grid-template-columns: 1fr; }
+}

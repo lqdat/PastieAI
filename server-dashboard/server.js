@@ -497,9 +497,11 @@ async function checkAdminAuth(req, res, next) {
   try {
     // 1. Check if token exists in admin_sessions and joins admins
     const sessionRes = await db.query(
-      `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.role, a.avatar_url, a.is_active, a.project_id, a.sale_limit
+      `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.role, a.avatar_url, a.is_active, a.project_id, a.sale_limit,
+              m.full_name AS manager_name, m.username AS manager_username
        FROM admin_sessions s
        JOIN admins a ON s.admin_id = a.id
+       LEFT JOIN admins m ON m.id = a.managed_by_admin_id
        WHERE s.token = $1`,
       [token]
     );
@@ -540,6 +542,9 @@ async function checkAdminAuth(req, res, next) {
       // ở vài chỗ khác nhưng không gắn vào req.admin, nên /api/admin/me không trả
       // về và giao diện luôn hiển thị "Không giới hạn" dù đã đặt hạn mức.
       sale_limit: adminSession.sale_limit,
+      // Tên Agent quản lý — header của Sale hiển thị "Agent · Sale" để người trực
+      // chat luôn biết mình đang trực dưới quyền ai.
+      manager_name: adminSession.manager_name || adminSession.manager_username || null,
       token: token
     };
 
@@ -2948,6 +2953,23 @@ app.post('/api/admin/auth/otp/send', async (req, res) => {
     let userName = cleanEmail.split('@')[0];
     const localCheck = (await db.query('SELECT * FROM admins WHERE LOWER(username) = LOWER($1)', [cleanEmail])).rows[0];
     const isLocalProjectAccount = Boolean(localCheck?.project_id && localCheck.project_id !== 'dealphuquoc');
+
+    // Kiểm tra khung giờ NGAY Ở BƯỚC NHẬP EMAIL, trước khi gửi OTP.
+    //
+    // Trước đây việc này chỉ xảy ra lúc xác thực OTP, nên Sale ngoài ca vẫn nhận
+    // được mã, gõ đủ 6 số rồi mới bị từ chối — vừa tốn một email, vừa khiến người
+    // dùng tưởng mình nhập sai mã. Chặn sớm cũng tránh gửi email vô ích.
+    //
+    // Chỉ chặn khi CHẮC CHẮN tài khoản ngoài ca; tài khoản chưa tồn tại hoặc lỗi
+    // tra cứu thì để luồng cũ xử lý, không tiết lộ thêm gì về sự tồn tại của email.
+    if (localCheck) {
+      const hoursError = await checkWorkingHours(localCheck);
+      if (hoursError) return res.status(403).json({ error: hoursError, code: 'OUT_OF_HOURS' });
+      if (!localCheck.is_active) {
+        return res.status(403).json({ error: 'Tài khoản của bạn đã bị khóa. Liên hệ quản trị viên.' });
+      }
+    }
+
     if (isLocalProjectAccount) {
       userName = localCheck.full_name || userName;
     } else if (process.env.DEALPHUQUOC_DATABASE_URL) {
@@ -4305,6 +4327,12 @@ app.get('/api/admin/export', checkAdminAuth, async (req, res) => {
  */
 app.get('/api/admin/reports/data', checkAdminAuth, async (req, res) => {
   const { format = 'json', projectId, saleId, status, datePreset, fromDate, toDate } = req.query;
+
+  // Báo cáo là công cụ quản lý. Sale chỉ trả lời chat, không được xem năng suất
+  // của cả đội — kể cả khi tự gọi thẳng endpoint. Ẩn nút ở frontend là chưa đủ.
+  if (isSale(req.admin)) {
+    return res.status(403).json({ error: 'Tài khoản Sale không có quyền xem báo cáo.' });
+  }
 
   try {
     const isSuper = isSuperAdmin(req.admin);

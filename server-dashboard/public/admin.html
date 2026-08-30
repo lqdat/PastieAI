@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r63">
+    <link rel="stylesheet" href="admin.css?v=r66">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -233,7 +233,10 @@
                             <label>Email *<input type="email" id="org-agent-email" required placeholder="agent@vidu.com"></label>
                         </div>
                         <div class="org-form-row">
-                            <label>Dự án QR *<select id="org-agent-project"></select></label>
+                            <!-- Ô dự án chỉ hiện khi có TỪ HAI dự án QR trở lên. Hầu hết
+                                 trường hợp chỉ có một, khi đó tự chọn sẵn và ẩn đi cho gọn
+                                 — xem openOrgModal(). -->
+                            <label id="org-agent-project-field" class="hide">Dự án QR *<select id="org-agent-project"></select></label>
                             <label>Giới hạn Sale<input type="number" id="org-agent-sale-limit" min="0" step="1" placeholder="Không giới hạn"></label>
                         </div>
                         <button type="submit" class="org-submit"><i class="ri-user-add-line"></i> Thêm Agent</button>
@@ -1033,6 +1036,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r63"></script>
+    <script src="admin.js?v=r66"></script>
 </body>
 </html>

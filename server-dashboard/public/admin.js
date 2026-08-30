@@ -1145,6 +1145,15 @@ function setPushModalMode(issue = null) {
     renderPushSteps(issue);
 }
 
+// True khi sắp tự xin quyền — dùng để setupPushNotifications() không mở hộp thoại
+// chồng lên hộp thoại của trình duyệt.
+function willAutoRequestPermission() {
+    return !inIframe
+        && typeof Notification !== 'undefined'
+        && Notification.permission === 'default'
+        && !getPushSupportIssue();
+}
+
 async function setupPushNotifications() {
     // Nhúng trong iframe: quyền do trang cha quản lý, chỉ hỏi trạng thái.
     if (inIframe) { postToParent({ type: 'pastie-request-state' }); return false; }
@@ -1171,7 +1180,7 @@ async function setupPushNotifications() {
         setPushButtonState(Notification.permission === 'denied' ? 'blocked' : subscription ? 'enabled' : 'off');
         setPushModalMode();
         if (Notification.permission === 'granted' && subscription) return true;
-        pushPermissionModal?.classList.remove('hide');
+        if (!willAutoRequestPermission()) pushPermissionModal?.classList.remove('hide');
         return false;
     } catch (error) {
         console.warn('Không thể khởi tạo Web Push:', error);
@@ -1209,9 +1218,33 @@ async function enablePushNotifications() {
     return true;
 }
 
-function requestNotificationPermission() {
+// Xin quyền thông báo ngay khi mở dashboard, không bắt người dùng đi tìm nút.
+//
+// Ràng buộc của trình duyệt: Chrome/Edge/Firefox trên máy tính cho gọi
+// Notification.requestPermission() không cần thao tác chạm; Safari (macOS và iOS)
+// thì BẮT BUỘC phải có cử chỉ người dùng và sẽ từ chối lời gọi tự động.
+// Vì vậy: thử tự động trước, thất bại thì rơi về hộp thoại có nút — bấm nút
+// chính là cử chỉ mà Safari đòi hỏi. Không có đường nào bỏ hẳn được nút đó.
+async function requestNotificationPermission() {
     if (!('Notification' in window)) return;
-    // Quyền phải được yêu cầu từ thao tác bấm nút, đặc biệt với iPhone/iPad.
+    if (inIframe) return;                       // trong iframe thì trang cha xin quyền
+    if (Notification.permission !== 'default') return;  // đã cho phép hoặc đã chặn
+    if (getPushSupportIssue()) return;           // iOS chưa thêm vào Màn hình chính…
+
+    try {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+            // Bị từ chối hoặc bỏ qua: cập nhật nút, đừng làm phiền thêm.
+            setPushButtonState(permission === 'denied' ? 'blocked' : 'off');
+            return;
+        }
+        await enablePushNotifications();
+        closePushPermissionModal();
+    } catch (error) {
+        // Safari ném lỗi khi gọi mà không có cử chỉ người dùng — đây là đường đi
+        // bình thường trên iPhone, không phải sự cố, nên chỉ ghi log.
+        console.info('Không xin được quyền thông báo tự động, chờ người dùng bấm nút:', error?.message || error);
+    }
 }
 
 function showNewMessageNotification(session, unread) {
@@ -1279,8 +1312,10 @@ let CURRENT_ADMIN = null;
 async function initDashboard() {
     await loadAdminProfile();   // biết role + project_id trước khi dựng filter
     await loadProjects();        // tải registry dự án
-    requestNotificationPermission();
-    setupPushNotifications();
+    await setupPushNotifications();
+    // Không await: hộp thoại quyền của trình duyệt không được chặn phần còn lại
+    // của dashboard khởi động.
+    void requestNotificationPermission();
     fetchSessions();
     if (pollInterval) clearInterval(pollInterval);
     pollInterval = setInterval(fetchSessions, 7000);
@@ -1481,12 +1516,21 @@ function updateAgentHeaderUI() {
     const identityEl = document.getElementById('agent-identity');
     const labelEl = document.getElementById('agent-identity-label');
     const nameEl = document.getElementById('agent-display-name');
-    const agentName = isAgentRole ? (CURRENT_ADMIN.full_name || CURRENT_ADMIN.username || '') : '';
-    
+    const ownName = isAgentRole ? (CURRENT_ADMIN.full_name || CURRENT_ADMIN.username || '') : '';
+
+    // Sale trực chat dưới quyền một Agent, nên header ghi cả hai TÊN:
+    //     "Nguyễn Văn Boss · Sale An"
+    // để người trực luôn biết mình đang thuộc tổ chức nào — nhất là khi một người
+    // có thể làm Sale cho nhiều nơi. Chỉ tên, KHÔNG kèm chữ "Agent" hay "Sale".
+    // Agent quản lý thì chỉ hiện tên mình.
+    const managerName = role === 'sale' ? (CURRENT_ADMIN.manager_name || '') : '';
+    const agentName = managerName ? `${managerName} · ${ownName}` : ownName;
+
     if (nameEl) nameEl.textContent = agentName;
-    if (labelEl) {
-        labelEl.textContent = role === 'sale' ? 'Sale' : (role === 'agent' ? 'Agent' : 'Admin');
-    }
+    // Không ghi vai trò ở header: chỉ hiển thị tên. Vai trò đã có trong màn hình
+    // "Quản lý tài khoản", nhắc lại ở đây chỉ làm dài thêm thanh tiêu đề — nhất
+    // là khi tên đã gồm cả Agent quản lý lẫn Sale.
+    labelEl?.classList.add('hide');
     if (identityEl) identityEl.classList.toggle('hide', !agentName);
 
     // Tên đã hiện to ở header trái rồi thì badge tên bên phải là thừa.
@@ -1512,6 +1556,10 @@ function updateAgentHeaderUI() {
     // Chỉ áp cho dự án QR; DealPhuQuoc và Pastie Landing giữ nguyên.
     const hideLangPicker = isRestrictedConsole() && isQrConciergeProject(CURRENT_ADMIN?.project_id);
     document.getElementById('admin-lang-selector-wrap')?.classList.toggle('hide', hideLangPicker);
+
+    // Báo cáo là công cụ quản lý: Sale chỉ trả lời chat, không xem số liệu của cả
+    // đội. Ẩn với role 'sale'; Agent quản lý và các role khác vẫn thấy bình thường.
+    document.getElementById('report-modal-btn')?.classList.toggle('hide', isSaleRole());
 
     // Nút quản lý Sale, nhóm và QR (chỉ Agent quản lý của dự án QR)
     const canManageOrg = isAgentManagerRole();
@@ -4705,6 +4753,9 @@ function openOrgModal() {
         const select = document.getElementById('org-agent-project');
         if (select) {
             const qrProjects = (PROJECTS || []).filter((project) => project.project_type === 'qr_concierge');
+            // Một dự án QR duy nhất là trường hợp thường gặp: chọn sẵn rồi ẩn ô đi,
+            // đỡ một dòng vô nghĩa trong form (và một hàng nữa trên màn hình hẹp).
+            document.getElementById('org-agent-project-field')?.classList.toggle('hide', qrProjects.length <= 1);
             select.innerHTML = qrProjects.length
                 ? qrProjects.map((project) => `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name || project.id)}</option>`).join('')
                 : '<option value="">Chưa có dự án QR Concierge</option>';
