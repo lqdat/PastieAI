@@ -3688,12 +3688,26 @@ button {
 }
 
 @media (max-width: 720px) {
-    #admin-management-modal .admin-management-box { padding-bottom: 0; overflow: hidden; }
+    /* Chừa sẵn chỗ cho vạch home ở CẤP LỚP PHỦ, không phải ở hộp con.
+       Làm ở đây thì dù hộp cao tới đâu, đáy nó cũng không bao giờ chạm mép dưới
+       màn hình — không phụ thuộc vào việc phần tử nào bên trong đặt padding. */
+    #admin-management-modal {
+        padding-bottom: 16px;                                   /* dự phòng */
+        padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    }
+    #admin-management-modal .admin-management-box {
+        max-height: 88dvh;
+        padding-bottom: 0;
+        overflow: hidden;
+        border-radius: 24px 24px 18px 18px;
+    }
     .modal-sticky-footer {
-        position: sticky;
-        bottom: 0;
         margin-top: 0;
-        padding: 12px 0 max(env(safe-area-inset-bottom), 14px);
+        /* Hai dòng, KHÔNG gộp vào shorthand: `max()` lồng trong shorthand từng bị
+           một số bản Safari coi là không hợp lệ và bỏ nguyên cả dòng khai báo,
+           khiến chỗ chừa biến mất. Viết riêng thì dòng dự phòng vẫn còn tác dụng. */
+        padding: 12px 0 14px;
+        padding-bottom: max(14px, env(safe-area-inset-bottom));
         background: #fff;
     }
     .modal-sticky-footer .secondary-btn {
