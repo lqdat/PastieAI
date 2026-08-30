@@ -3261,11 +3261,12 @@ function startRealtimeRecognition() {
         for (let index = event.resultIndex; index < event.results.length; index += 1) {
             const result = event.results[index];
             const text = result[0]?.transcript?.trim() || '';
-            if (!text) continue;
+            if (!text || /^[.\s,。!?…·\-_:;'"“”‘’`~]+$/.test(text)) continue;
             if (result.isFinal) voiceFinalText = [voiceFinalText, text].filter(Boolean).join(' ');
             else interim = [interim, text].filter(Boolean).join(' ');
         }
-        voiceLiveText = [voiceFinalText, interim].filter(Boolean).join(' ').trim();
+        const spoken = [voiceFinalText, interim].filter(Boolean).join(' ').trim();
+        voiceLiveText = /^[.\s,。!?…·\-_:;'"“”‘’`~]+$/.test(spoken) ? '' : spoken;
         applyVoiceDraft(voiceLiveText);
     };
     // Web Speech lỗi hay không hỗ trợ thì im lặng — Groq vẫn là đường dự phòng.
@@ -3390,7 +3391,11 @@ async function finishVoiceRecording() {
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Không nhận diện được giọng nói.');
 
-        const refined = [voiceDraftBefore.trim(), String(data.text || '').trim()].filter(Boolean).join(' ');
+        const rawText = String(data.text || '').trim();
+        const cleanText = /^[.\s,。!?…·\-_:;'"“”‘’`~]+$/.test(rawText) ? '' : rawText;
+        if (!cleanText) throw new Error('Không nghe thấy giọng nói để chuyển thành văn bản.');
+
+        const refined = [voiceDraftBefore.trim(), cleanText].filter(Boolean).join(' ');
         if (!refined.trim()) throw new Error('Không nghe thấy giọng nói để chuyển thành văn bản.');
         if (chatInput && (!liveText || chatInput.value.trim() === draftAtStop.trim())) {
             chatInput.value = refined;

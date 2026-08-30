@@ -72,7 +72,9 @@ async function transcribeAudio(buffer, fileName, mimeType, language) {
       throw new Error(message);
     }
 
-    return { text: String(data.text || '').trim() };
+    const rawText = String(data.text || '').trim();
+    const cleanText = sanitizeTranscribedText(rawText);
+    return { text: cleanText };
   } catch (error) {
     if (error.name === 'AbortError') throw new Error('Nhận diện giọng nói quá lâu, vui lòng thử lại.');
     throw error;
@@ -81,4 +83,20 @@ async function transcribeAudio(buffer, fileName, mimeType, language) {
   }
 }
 
-module.exports = { isConfigured, transcribeAudio, normalizeLanguageHint };
+function sanitizeTranscribedText(rawText) {
+  let text = String(rawText || '').trim();
+  if (!text) return '';
+
+  // Khi không có tiếng nói (im lặng hoặc tiếng ồn nhỏ), Whisper thường xuất hiện dấu ".", "...", "。", "!" hoặc ký tự vô nghĩa
+  const stripped = text.replace(/^[.\s,。!?…·\-_:;'"“”‘’`~]+|[.\s,。!?…·\-_:;'"“”‘’`~]+$/g, '').trim();
+  if (!stripped) return '';
+
+  // Lọc các hallucination phổ biến của mô hình khi im lặng
+  const isHallucination = /^(\(|\[|\{).+(\)|\]|\})$/.test(text) ||
+    /^(am nhac|âm nhạc|tiếng thở|im lặng|music|silence|applause|laughter|whispering|cough|thank you for watching|thanks for watching|bye|subtitles by|chúc các bạn|hẹn gặp lại|you)$/i.test(stripped);
+  if (isHallucination) return '';
+
+  return text;
+}
+
+module.exports = { isConfigured, transcribeAudio, normalizeLanguageHint, sanitizeTranscribedText };

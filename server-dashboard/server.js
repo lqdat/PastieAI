@@ -1881,8 +1881,8 @@ app.post('/api/chats/:sessionId/transcribe', uploadVoiceMiddleware, async (req, 
       language
     );
 
-    if (!text) {
-      return res.status(422).json({ error: 'Không nghe rõ, vui lòng thử lại.' });
+    if (!text || !text.trim() || /^[.\s,。!?…·\-_:;'"“”‘’`~]+$/.test(text.trim())) {
+      return res.status(422).json({ error: 'Không nghe thấy giọng nói, vui lòng thử lại.' });
     }
     res.json({ success: true, text });
   } catch (error) {
