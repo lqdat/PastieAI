@@ -1526,7 +1526,11 @@ function updateAgentHeaderUI() {
     const managerName = role === 'sale' ? (CURRENT_ADMIN.manager_name || '') : '';
     const agentName = managerName ? `${managerName} · ${ownName}` : ownName;
 
-    if (nameEl) nameEl.textContent = agentName;
+    if (nameEl) {
+        nameEl.textContent = agentName;
+        // Tên rất dài vẫn có thể bị cắt ở dòng thứ hai — giữ tooltip để xem đủ.
+        nameEl.title = agentName;
+    }
     // Không ghi vai trò ở header: chỉ hiển thị tên. Vai trò đã có trong màn hình
     // "Quản lý tài khoản", nhắc lại ở đây chỉ làm dài thêm thanh tiêu đề — nhất
     // là khi tên đã gồm cả Agent quản lý lẫn Sale.

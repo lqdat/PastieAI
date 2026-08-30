@@ -3509,3 +3509,68 @@ button {
     transition: transform .18s ease;
 }
 .attachment-video:hover .attachment-play { transform: translate(-50%, -50%) scale(1.08); }
+
+/* --- Header trên điện thoại --------------------------------------------------
+   1) Ba nút bên phải trước đây mỗi cái một hình dạng: nút tài khoản là hình chữ
+      nhật bo góc (.header-quick-btn, radius-md), nút thông báo thành viên thuốc
+      dài vì có nền màu, nút đăng xuất là hình tròn 38px (.icon-btn). Đặt cạnh
+      nhau trông như ba thành phần của ba giao diện khác nhau.
+      Nay thống nhất: cùng hình tròn 38px, cùng cỡ icon.
+
+   2) Tên hiển thị bị cắt vì bị giới hạn `calc(100vw - 150px)` — phần 150px đó
+      dành chỗ cho các nút. Nhưng .header-right đang `position: absolute` ở HÀNG
+      TRÊN, nên hàng chứa tên thật ra còn trống gần hết chiều ngang. Bỏ khoảng
+      dành thừa đó và cho tên xuống tối đa hai dòng: hầu hết tên dài đều hiện đủ
+      mà header vẫn không cao thêm bao nhiêu. */
+@media (max-width: 720px) {
+    .header-right .header-quick-btn,
+    .header-right .settings-trigger-btn,
+    .header-right .icon-btn {
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
+        padding: 0;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        flex: none;
+    }
+    .header-right .header-quick-btn i,
+    .header-right .settings-trigger-btn i,
+    .header-right .icon-btn i { font-size: 17px; }
+    .header-right .header-quick-btn span,
+    .header-right .settings-trigger-btn span { display: none; }
+    /* Nút thông báo đã bật: chỉ đổi màu icon và viền, KHÔNG phình rộng ra. */
+    .header-right .header-quick-btn-push.is-icon-only { width: 38px; min-width: 38px; }
+
+    /* Tên hiển thị: dùng hết chiều ngang, tối đa hai dòng rồi mới cắt. */
+    .agent-identity { min-width: 0; width: 100%; }
+    .agent-display-name {
+        max-width: none;
+        width: 100%;
+        font-size: 15.5px;
+        line-height: 1.28;
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-word;
+    }
+}
+
+/* Trên màn hình rộng cũng cho tên xuống dòng thứ hai thay vì cắt cụt — chỗ trống
+   ở header vẫn còn nhiều. */
+@media (min-width: 721px) {
+    .agent-display-name {
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        max-width: min(520px, 38vw);
+    }
+}
