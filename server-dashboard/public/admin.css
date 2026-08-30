@@ -4051,9 +4051,24 @@ button {
     background: #ffe4f2;
 }
 .chat-input-area .attach-btn img,
-.chat-input-area .mic-btn img {
+.chat-input-area .mic-btn img,
+.chat-input-area .attach-btn svg,
+.chat-input-area .mic-btn svg {
     width: 23px;
     height: 23px;
+}
+.chat-input-area .attach-btn svg,
+.chat-input-area .mic-btn svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.chat-input-area .mic-btn.is-active {
+    color: #c90c6c;
+    background: #ffe2f1;
+    box-shadow: inset 0 0 0 1px rgba(201, 12, 108, .12);
 }
 .chat-input-area .send-btn {
     border: 0;
@@ -4083,6 +4098,54 @@ button {
     border-radius: 24px;
     background: radial-gradient(circle at 50% 20%, rgba(255, 220, 240, .72), transparent 48%), linear-gradient(180deg, #fff 0%, #fff8fc 100%);
     box-shadow: 0 10px 28px rgba(104, 49, 82, .09);
+}
+.voice-ready-stage {
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 4px 10px 7px;
+    text-align: center;
+}
+.voice-ready-stage p {
+    margin: 0;
+    color: #4b3a48;
+    font-size: 14px;
+    font-weight: 700;
+}
+.voice-ready-stage small {
+    color: #9a8995;
+    font-size: 10.5px;
+}
+.voice-ready-mic {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 72px;
+    height: 72px;
+    padding: 19px;
+    border: 0;
+    border-radius: 50%;
+    color: #fff;
+    background: linear-gradient(145deg, #f94aa7, #c90c6c);
+    box-shadow: 0 0 0 9px rgba(239, 43, 157, .09), 0 11px 24px rgba(201, 12, 108, .24);
+    transition: transform .18s ease, box-shadow .18s ease;
+}
+.voice-ready-mic:hover { transform: translateY(-2px) scale(1.03); box-shadow: 0 0 0 12px rgba(239, 43, 157, .08), 0 14px 28px rgba(201, 12, 108, .28); }
+.voice-ready-mic:active { transform: scale(.96); }
+.voice-ready-mic svg { width: 32px; height: 32px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.voice-ready-mic span {
+    position: absolute;
+    right: 17px;
+    bottom: 17px;
+    min-width: 14px;
+    padding: 1px 3px;
+    border-radius: 4px;
+    color: #c90c6c;
+    background: #fff;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 1.1;
 }
 .voice-live-title {
     min-height: 22px;

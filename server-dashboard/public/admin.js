@@ -3140,12 +3140,21 @@ function setVoiceUi(state) {
     const panel = document.getElementById('voice-live-panel');
     const label = document.getElementById('voice-live-label');
     const micBtn = document.getElementById('chat-mic-btn');
+    const readyStage = document.getElementById('voice-ready-stage');
+    const title = panel?.querySelector('.voice-live-title');
+    const wave = panel?.querySelector('.voice-wave');
 
     panel?.classList.toggle('hide', state === 'idle');
+    panel?.classList.toggle('is-ready', state === 'ready');
     panel?.classList.toggle('is-working', state === 'working');
     chatInputContainer?.classList.toggle('voice-active', state !== 'idle');
-    micBtn?.classList.toggle('is-recording', state === 'recording');
+    micBtn?.classList.toggle('is-active', state === 'ready');
+    micBtn?.classList.toggle('is-recording', state === 'recording' || state === 'working');
     if (label) label.textContent = state === 'working' ? 'Đang nhận diện…' : 'Đang lắng nghe…';
+
+    readyStage?.classList.toggle('hide', state !== 'ready');
+    title?.classList.toggle('hide', state === 'ready');
+    wave?.classList.toggle('hide', state === 'ready');
 
     // Khi đang nhận diện nền thì chỉ còn dòng trạng thái, ba thao tác mất nghĩa.
     const hasActions = state === 'recording';
@@ -3353,9 +3362,15 @@ function sendVoiceDraft() {
 document.getElementById('chat-mic-btn')?.addEventListener('click', () => {
     if (!voiceSupported) return toastError('Trình duyệt này chưa hỗ trợ ghi âm.');
     if (!currentSessionId) return;
+    if (voiceBusy) return;
     if (voiceRecorder?.state === 'recording') stopVoiceRecording();
-    else void startVoiceRecording();
+    else {
+        const panel = document.getElementById('voice-live-panel');
+        setVoiceUi(panel?.classList.contains('is-ready') ? 'idle' : 'ready');
+        chatInput?.blur();
+    }
 });
+document.getElementById('voice-start-btn')?.addEventListener('click', () => { void startVoiceRecording(); });
 document.getElementById('voice-delete-btn')?.addEventListener('click', cancelVoiceRecording);
 document.getElementById('voice-edit-btn')?.addEventListener('click', editVoiceRecording);
 document.getElementById('voice-send-btn')?.addEventListener('click', sendVoiceDraft);
