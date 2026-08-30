@@ -1525,23 +1525,21 @@ function updateConsoleBrand() {
     const el = document.getElementById('console-brand-name');
     if (!el) return;
 
-    // Agent/Sale: giữ biểu tượng P riêng bên trái và thay toàn bộ chữ
-    // "Pastie Chat" bằng wordmark thương hiệu, không dùng text thường.
-    if (isRestrictedConsole()) {
-        el.classList.add('pastie-chat-wordmark');
-        el.setAttribute('aria-label', 'Pastie Chat');
-        el.innerHTML = [
-            '<span class="pastie-wordmark-part pastie-wordmark-pastie" aria-hidden="true">Pastie</span>',
-            '<span class="pastie-wordmark-part pastie-wordmark-chat" aria-hidden="true">Chat</span>',
-        ].join('');
-        return;
-    }
-
+    // Không bao giờ hiện tên thương hiệu bằng CHỮ cạnh logo: ảnh logo đã là
+    // wordmark "Pastie Chat", viết lại bằng text là lặp đúng một nội dung hai
+    // lần — mà bản vẽ bằng font hệ thống thì không thể giống logo thật.
+    //
+    // Ô chữ này chỉ còn một nhiệm vụ: hiện TÊN DỰ ÁN cho tài khoản quản lý nhiều
+    // dự án. Agent/Sale chỉ có một dự án nên bỏ trống.
     el.classList.remove('pastie-chat-wordmark');
     el.removeAttribute('aria-label');
-    if (!CURRENT_ADMIN?.project_id) return;
-    const project = (PROJECTS || []).find(p => p.id === CURRENT_ADMIN.project_id);
-    el.textContent = project?.display_name || project?.name || CURRENT_ADMIN.project_id;
+
+    const project = isRestrictedConsole()
+        ? null
+        : (PROJECTS || []).find(item => item.id === CURRENT_ADMIN?.project_id);
+    const label = project ? (project.display_name || project.name || project.id) : '';
+    el.textContent = label;
+    el.classList.toggle('hide', !label);
 }
 
 // Header dành riêng cho Agent: thương hiệu "Pastie Chat" + tên Agent hiển thị to,

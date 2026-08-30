@@ -2212,7 +2212,7 @@ button {
   height: 64px;
   width: auto;
   max-width: 180px;
-  object-contain: contain;
+  object-fit: contain;
   margin: 0 auto 14px;
   display: block;
 }
@@ -3704,3 +3704,20 @@ button {
         justify-content: center;
     }
 }
+
+/* --- Logo thương hiệu ở header ----------------------------------------------
+   logoApp.png nay là wordmark "Pastie Chat" nằm ngang (tỉ lệ ~3,1:1), không còn
+   là biểu tượng vuông. Ép vào khung 30x30 thì chữ nhỏ tới mức không đọc được —
+   phải cố định CHIỀU CAO và để chiều rộng tự co theo tỉ lệ. */
+.logo-img {
+    width: auto;
+    height: 30px;
+    max-width: 190px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+@media (max-width: 720px) {
+    .logo-img { width: auto; height: 27px; max-width: 150px; }
+}
+/* Wordmark vẽ bằng CSS không còn dùng: đã thay bằng chính file logo. */
+.logo .pastie-chat-wordmark { display: none; }
