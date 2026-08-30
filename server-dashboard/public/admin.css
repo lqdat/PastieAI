@@ -3975,3 +3975,220 @@ button {
     color: #fff;
 }
 
+/* --- Composer tin nhắn 2026 -------------------------------------------------
+   Một thanh liền khối: nút media/micro gọn, textarea tự cao tối đa 5 dòng và
+   nút gửi thay hai nút công cụ khi có nội dung. Logic chuyển trạng thái nằm ở
+   resizeAgentChatInput(), phần này chỉ chịu trách nhiệm trình bày. */
+.chat-input-area {
+    padding: 11px 16px max(12px, env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, .96);
+    box-shadow: 0 -10px 30px rgba(91, 46, 75, .055);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+.chat-input-area .chat-form {
+    display: flex;
+    align-items: flex-end;
+    gap: 7px;
+    width: 100%;
+    padding: 5px;
+    border: 1px solid rgba(221, 170, 199, .5);
+    border-radius: 27px;
+    background: #fff;
+    box-shadow: 0 5px 18px rgba(103, 53, 83, .07);
+    transition: border-color .2s ease, box-shadow .2s ease;
+}
+.chat-input-area .chat-form:focus-within {
+    border-color: rgba(239, 43, 157, .45);
+    box-shadow: 0 0 0 3px rgba(239, 43, 157, .075), 0 7px 22px rgba(103, 53, 83, .08);
+}
+.chat-input-area .chat-form textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    max-height: 134px;
+    margin: 0;
+    padding: 10px 8px 9px;
+    border: 0;
+    border-radius: 18px;
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-primary);
+    font-size: 15px;
+    line-height: 22px;
+    resize: none;
+}
+.chat-input-area .chat-form textarea:focus {
+    border: 0;
+    box-shadow: none;
+}
+.chat-input-area .chat-form textarea::placeholder { color: #a99da8; }
+.chat-input-area .attach-btn,
+.chat-input-area .mic-btn,
+.chat-input-area .send-btn {
+    flex: 0 0 42px;
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
+    margin: 0;
+    padding: 0;
+    border-radius: 50%;
+    box-shadow: none;
+    transition: transform .16s ease, background .16s ease, box-shadow .16s ease;
+}
+.chat-input-area .attach-btn,
+.chat-input-area .mic-btn {
+    border: 0;
+    background: #fff1f8;
+}
+.chat-input-area .attach-btn:hover,
+.chat-input-area .mic-btn:hover {
+    transform: translateY(-1px);
+    border: 0;
+    background: #ffe4f2;
+}
+.chat-input-area .attach-btn img,
+.chat-input-area .mic-btn img {
+    width: 23px;
+    height: 23px;
+}
+.chat-input-area .send-btn {
+    border: 0;
+    color: #fff;
+    background: linear-gradient(135deg, #f43aa0 0%, #cd0b70 100%);
+    box-shadow: 0 6px 15px rgba(201, 12, 108, .24);
+}
+.chat-input-area .send-btn:hover {
+    transform: translateY(-1px) scale(1.02);
+    background: linear-gradient(135deg, #ff4bab 0%, #bd075f 100%);
+}
+.chat-input-area .send-btn svg { width: 19px; height: 19px; }
+.chat-input-area .chat-form button:active { transform: scale(.94); }
+.chat-input-area .chat-form button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Ghi âm mở ngay trong vùng nhập, sau khi bàn phím mobile đã đóng. */
+.chat-input-area.voice-active { padding-top: 8px; }
+.chat-input-area.voice-active .chat-form { margin-bottom: 9px; }
+.chat-input-area .voice-live-panel {
+    position: relative;
+    min-height: 188px;
+    margin: 0;
+    padding: 16px 16px 13px;
+    gap: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(230, 174, 205, .55);
+    border-radius: 24px;
+    background: radial-gradient(circle at 50% 20%, rgba(255, 220, 240, .72), transparent 48%), linear-gradient(180deg, #fff 0%, #fff8fc 100%);
+    box-shadow: 0 10px 28px rgba(104, 49, 82, .09);
+}
+.voice-live-title {
+    min-height: 22px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .76);
+    color: #785e70;
+}
+.voice-wave {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 21px;
+}
+.voice-wave span {
+    width: 3px;
+    height: 7px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #f43aa0, #c90c6c);
+    animation: voiceWave 1s ease-in-out infinite;
+}
+.voice-wave span:nth-child(2), .voice-wave span:nth-child(6) { animation-delay: -.2s; }
+.voice-wave span:nth-child(3), .voice-wave span:nth-child(5) { animation-delay: -.4s; }
+.voice-wave span:nth-child(4) { animation-delay: -.6s; }
+@keyframes voiceWave {
+    0%, 100% { height: 6px; opacity: .45; }
+    50% { height: 20px; opacity: 1; }
+}
+.voice-live-panel.is-working .voice-wave span { animation-play-state: paused; opacity: .4; }
+.chat-input-area .voice-live-pulse {
+    width: 58px;
+    height: 58px;
+    padding: 16px;
+    background: linear-gradient(135deg, #f43aa0, #c90c6c);
+    box-shadow: 0 0 0 8px rgba(239, 43, 157, .10), 0 8px 20px rgba(201, 12, 108, .22);
+}
+.voice-live-actions {
+    grid-template-columns: repeat(3, minmax(74px, 1fr));
+    gap: 9px;
+    width: min(100%, 360px);
+}
+.voice-live-actions .voice-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 42px;
+    padding: 6px 10px;
+    border: 1px solid rgba(224, 182, 205, .62);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, .82);
+    color: #6f5d6d;
+    font-size: 11px;
+}
+.voice-live-actions .voice-action-icon {
+    display: grid;
+    place-items: center;
+    width: 25px;
+    height: 25px;
+    border-radius: 9px;
+    background: #fff0f7;
+    color: var(--accent-color);
+    font-size: 15px;
+}
+.voice-live-actions .voice-action-label {
+    color: inherit;
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+.voice-live-actions .voice-action-send {
+    border-color: transparent;
+    background: linear-gradient(135deg, #f43aa0, #c90c6c);
+    color: #fff;
+    box-shadow: 0 6px 15px rgba(201, 12, 108, .18);
+}
+.voice-live-actions .voice-action-send .voice-action-icon { color: #c90c6c; background: #fff; }
+.voice-live-actions .voice-action-delete .voice-action-icon { color: #dc3c5d; background: #fff0f2; }
+
+@media (max-width: 720px) {
+    .chat-input-area {
+        padding: 8px 10px max(9px, env(safe-area-inset-bottom));
+    }
+    .chat-input-area .chat-form { gap: 5px; padding: 4px; border-radius: 25px; }
+    .chat-input-area .attach-btn,
+    .chat-input-area .mic-btn,
+    .chat-input-area .send-btn {
+        flex-basis: 40px;
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        min-height: 40px;
+    }
+    .chat-input-area .chat-form textarea {
+        min-height: 40px;
+        max-height: 132px;
+        padding: 9px 7px 8px;
+        font-size: 16px;
+        line-height: 22px;
+    }
+    .chat-input-area .voice-live-panel { min-height: 182px; border-radius: 21px; }
+    .voice-live-actions { gap: 6px; }
+    .voice-live-actions .voice-action { gap: 5px; padding-inline: 7px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .voice-wave span { animation: none; height: 10px; }
+}

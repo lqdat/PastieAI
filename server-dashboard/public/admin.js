@@ -3143,6 +3143,7 @@ function setVoiceUi(state) {
 
     panel?.classList.toggle('hide', state === 'idle');
     panel?.classList.toggle('is-working', state === 'working');
+    chatInputContainer?.classList.toggle('voice-active', state !== 'idle');
     micBtn?.classList.toggle('is-recording', state === 'recording');
     if (label) label.textContent = state === 'working' ? 'Đang nhận diện…' : 'Đang lắng nghe…';
 
@@ -3225,6 +3226,8 @@ function stopRealtimeRecognition(abort) {
 
 async function startVoiceRecording() {
     if (!currentSessionId || voiceBusy || !voiceSupported) return;
+    // Đóng bàn phím mobile trước khi mở panel ghi âm ở chính vùng composer.
+    chatInput?.blur();
     voiceCancelled = false;
     voiceSkipBatch = false;
     voiceChunks = [];
