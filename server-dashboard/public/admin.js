@@ -418,6 +418,10 @@ function applyTranslations(lang) {
     if (sessionsList && sessionsList.length > 0) {
         renderSessionsList(sessionsList);
     }
+
+    // data-i18n dùng textContent nên có thể ghi đè wordmark trong header.
+    // Dựng lại logo thương hiệu sau mỗi lần đổi ngôn ngữ.
+    updateConsoleBrand();
 }
 
 // Base URL helper
@@ -1521,12 +1525,20 @@ function updateConsoleBrand() {
     const el = document.getElementById('console-brand-name');
     if (!el) return;
 
-    // Agent: giữ nguyên tên thương hiệu "Pastie Chat" (không thay bằng tên dự án).
+    // Agent/Sale: giữ biểu tượng P riêng bên trái và thay toàn bộ chữ
+    // "Pastie Chat" bằng wordmark thương hiệu, không dùng text thường.
     if (isRestrictedConsole()) {
-        el.textContent = 'Pastie Chat';
+        el.classList.add('pastie-chat-wordmark');
+        el.setAttribute('aria-label', 'Pastie Chat');
+        el.innerHTML = [
+            '<span class="pastie-wordmark-part pastie-wordmark-pastie" aria-hidden="true">Pastie</span>',
+            '<span class="pastie-wordmark-part pastie-wordmark-chat" aria-hidden="true">Chat</span>',
+        ].join('');
         return;
     }
 
+    el.classList.remove('pastie-chat-wordmark');
+    el.removeAttribute('aria-label');
     if (!CURRENT_ADMIN?.project_id) return;
     const project = (PROJECTS || []).find(p => p.id === CURRENT_ADMIN.project_id);
     el.textContent = project?.display_name || project?.name || CURRENT_ADMIN.project_id;

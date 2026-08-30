@@ -405,6 +405,40 @@ button {
     object-fit: contain;
     flex-shrink: 0;
 }
+.logo .pastie-chat-wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 3px;
+    white-space: nowrap;
+    font-family: 'Lobster', 'Segoe Script', cursive;
+    font-size: 26px;
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: 0;
+    filter: drop-shadow(0 2px 1px rgba(99, 32, 22, .12));
+}
+.logo .pastie-chat-wordmark .pastie-wordmark-part {
+    display: inline-block;
+    font: inherit;
+    line-height: inherit;
+    letter-spacing: inherit;
+    -webkit-text-stroke: 1.25px #6f1f16;
+    paint-order: stroke fill;
+}
+.logo .pastie-chat-wordmark .pastie-wordmark-pastie {
+    color: #f6a623;
+    background: linear-gradient(180deg, #ffe34e 0%, #ffb52a 52%, #ef7c20 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.logo .pastie-chat-wordmark .pastie-wordmark-chat {
+    color: #149cc5;
+    background: linear-gradient(180deg, #51d7ed 0%, #169fc8 52%, #0877a8 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
 /* --- Agent identity (tên hiển thị của Agent, cạnh thương hiệu) --- */
 .agent-identity {
     display: flex;
