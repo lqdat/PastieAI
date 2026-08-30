@@ -1387,11 +1387,24 @@ function beepFallback() {
     } catch {}
 }
 function playAlertSound() {
-    const url = (localStorage.getItem('notify_sound_url') || '/sounds/notify.mp3');
+    // Chống phát âm chồng chéo khi nhiều tin nhắn đến liên tiếp (debounce 800ms)
+    if (playAlertSound._last && Date.now() - playAlertSound._last < 800) return;
+    playAlertSound._last = Date.now();
+
+    const url = localStorage.getItem('notify_sound_url') || '/sounds/notify.wav';
     try {
         const a = new Audio(url);
         a.volume = 0.6;
-        a.play().catch(() => beepFallback());
+        a.play().catch(() => {
+            // Fallback: thử mp3 nếu wav thất bại
+            if (url.endsWith('.wav')) {
+                const mp3 = new Audio(url.replace('.wav', '.mp3'));
+                mp3.volume = 0.6;
+                mp3.play().catch(() => beepFallback());
+            } else {
+                beepFallback();
+            }
+        });
     } catch { beepFallback(); }
 }
 
@@ -1413,6 +1426,18 @@ function handleAdminRealtimeEvent(data) {
         realtimeRefreshTimer = setTimeout(() => {
             fetchSessions();
         }, 150);
+    }
+
+    // 1b. Phát âm thanh NGAY khi nhận tin từ khách — không chờ fetchSessions trả về.
+    // fetchSessions vẫn gọi showNewMessageNotification (hiện browser Notification + âm thanh)
+    // nhưng phải đợi API: trên mạng chậm có thể mất vài giây. Phát âm ngay ở đây
+    // đảm bảo Sale/Agent nghe thấy tín hiệu tức thì.
+    if (data.type === 'new_message' && data.sender === 'visitor') {
+        // Chỉ phát âm khi: (a) cuộc chat khác đang mở, hoặc (b) tab đang ẩn
+        const isViewingThisChat = document.visibilityState === 'visible' && String(data.sessionId) === String(currentSessionId);
+        if (!isViewingThisChat) {
+            playAlertSound();
+        }
     }
 
     // 2. Cập nhật nội dung phiên chat đang mở (nếu trùng sessionId)
@@ -1606,7 +1631,9 @@ async function fetchSessions() {
             const totalMsgs = parseInt(s.message_count) || 0;
             const lastNotified = notifiedMsgCount[s.id] ?? totalMsgs; // init = current, no spam on first load
             // CHỈ thông báo khi tin mới nhất là của KHÁCH (visitor) — bỏ qua tin AI/hệ thống/nhân viên.
-            if (totalMsgs > lastNotified && s.id !== currentSessionId && s.last_message_sender === 'visitor') {
+            // Cho phép thông báo cả khi đang xem cuộc chat đó nhưng tab bị ẩn (minimize/chuyển tab):
+            // showNewMessageNotification đã kiểm tra visibilityState + currentSessionId.
+            if (totalMsgs > lastNotified && s.last_message_sender === 'visitor') {
                 const seen = seenMessageCount[s.id];
                 const unread = (seen === -1 || seen === undefined) ? totalMsgs - 1 : Math.max(0, totalMsgs - seen);
                 if (unread > 0) showNewMessageNotification(s, unread);
