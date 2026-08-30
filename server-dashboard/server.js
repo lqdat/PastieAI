@@ -82,23 +82,19 @@ async function notifyChatRecipients(session, { title, preview = '', tag }) {
   try {
     let subscriptions;
     if (session.group_id) {
-      // Chat đi theo nhóm: báo cho MỌI Sale đang đủ điều kiện nhận chat của nhóm
-      // đó ngay lúc này, cộng Agent quản lý nhóm và superadmin. QR không chỉ định
-      // Sale nào cả — ai trong nhóm đang trong ca thì cùng nhận, ai bấm trước thì
-      // được (claim nguyên tử lo phần tranh chấp). Sale ngoài ca không bị làm
-      // phiền, và Agent luôn biết khi không có ai trực (mục 13).
-      const eligible = await listAvailableSales(session.group_id);
-      const targets = session.claimed_by_admin_id ? [session.claimed_by_admin_id] : eligible;
+      // Chat đi theo nhóm: báo cho Sale đang phụ trách (nếu có), hoặc TẤT CẢ Sale trong nhóm đó,
+      // cộng Agent quản lý nhóm và Superadmin.
       subscriptions = await db.query(
         `SELECT ps.id, ps.endpoint, ps.p256dh, ps.auth
          FROM push_subscriptions ps JOIN admins a ON a.id = ps.admin_id
          WHERE a.is_active = TRUE
            AND (
-             a.id = ANY($2::int[])
+             ($1::integer IS NOT NULL AND a.id = $1)
+             OR ($1::integer IS NULL AND a.id IN (SELECT sale_id FROM agent_group_sales WHERE group_id = $2 AND is_active = TRUE))
              OR a.role = 'superadmin'
-             OR a.id = (SELECT agent_id FROM agent_groups WHERE id = $3)
+             OR a.id = (SELECT agent_id FROM agent_groups WHERE id = $2)
            )`,
-        [session.project_id, targets, session.group_id]
+        [session.claimed_by_admin_id || null, session.group_id]
       );
     } else {
       subscriptions = await db.query(
@@ -122,7 +118,11 @@ async function notifyChatRecipients(session, { title, preview = '', tag }) {
     });
     await Promise.all(subscriptions.rows.map(async (sub) => {
       try {
-        await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload, { TTL: 120 });
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload,
+          { TTL: 86400, urgency: 'high' }
+        );
       } catch (error) {
         if ([404, 410].includes(error.statusCode)) await db.query('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
         else console.warn('[Push] Gửi notification thất bại:', error.statusCode || error.message);
