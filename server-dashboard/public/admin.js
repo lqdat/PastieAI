@@ -1299,7 +1299,7 @@ function showNewMessageNotification(session, unread) {
 
     const n = new Notification(`💬 ${name}`, {
         body: preview,
-        icon: '/favicon.ico',
+        icon: '/icon-192.png',
         tag: `pastie-chat-${session.id}`,
         renotify: true,
         silent: false,

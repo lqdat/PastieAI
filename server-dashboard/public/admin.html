@@ -5,15 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>Pastie AI - Admin Chat Console</title>
     <!-- Favicon -->
-    <link rel="icon" href="/favicon.ico" sizes="any">
-    <link rel="icon" type="image/png" href="/logoApp.png">
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <!-- Icon tab dùng chữ P, KHÔNG dùng logoApp.png: đó là logo chữ dài
+         "Pastie Chat", ép xuống 16px thì không đọc được gì.
+         ?v= là để phá cache — favicon bị trình duyệt giữ rất dai, đổi file không
+         thôi thường không thấy hiệu lực; tăng số này mỗi lần đổi icon. -->
+    <link rel="icon" href="/favicon.ico?v=2" sizes="any">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=2">
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png?v=2">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
     <!-- Be Vietnam Pro — hỗ trợ tiếng Việt đầy đủ -->
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
     <link rel="stylesheet" href="admin.css?v=r73">
-    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -32,7 +37,7 @@
         <div class="dpq-login-card">
             <!-- Brand Logo -->
             <div class="dpq-brand-header">
-                <img src="/logoApp.png" alt="Pastie AI" class="dpq-brand-logo">
+                <img src="/logoApp.png?v=2" alt="Pastie AI" class="dpq-brand-logo">
                 <h2 id="dpq-login-title" class="dpq-title" data-i18n="loginTitle">Pastie AI Console</h2>
                 <p id="dpq-login-subtitle" class="dpq-subtitle" data-i18n="loginSubtitle">Hệ thống quản trị & CSKH đa kênh AI</p>
             </div>
@@ -95,7 +100,7 @@
         <header class="dashboard-header glass-panel">
             <div class="header-left">
                 <div class="logo">
-                    <img src="/logoApp.png" alt="Pastie" class="logo-img">
+                    <img src="/logoApp.png?v=2" alt="Pastie" class="logo-img">
                     <span id="console-brand-name" data-i18n="headerTitle">Pastie AI Console</span>
                 </div>
                 <!-- Tên hiển thị của Agent / Sale -->
