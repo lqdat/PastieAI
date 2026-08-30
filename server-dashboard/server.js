@@ -2126,10 +2126,14 @@ app.post('/api/chats/session/close', async (req, res) => {
     if (!admin?.is_active || !isChatStaff(admin)) {
       return res.status(401).json({ error: 'Cần đăng nhập bằng tài khoản nhân viên để kết thúc phiên.' });
     }
+    // SALE KHÔNG ĐƯỢC ĐÓNG CUỘC TRÒ CHUYỆN (chỉ Agent/Superadmin mới có quyền đóng hoặc hệ thống tự đóng khi hết hạn)
+    if (admin.role === 'sale') {
+      return res.status(403).json({ error: 'Nhân viên Sale không có quyền đóng cuộc trò chuyện.' });
+    }
     const claim = session.claimed_by_admin_id;
     const isClaimer = claim && Number(claim) === Number(admin.id);
-    if (!isClaimer && !isSuperAdmin(admin)) {
-      return res.status(403).json({ error: 'Chỉ nhân viên đang tiếp nhận cuộc trò chuyện hoặc Super Admin mới được kết thúc.' });
+    if (!isClaimer && !isSuperAdmin(admin) && admin.role !== 'agent') {
+      return res.status(403).json({ error: 'Bạn không có quyền kết thúc cuộc trò chuyện này.' });
     }
 
     // Get all messages in this session
@@ -4344,7 +4348,8 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
     let queryText = `
       SELECT s.*, a.full_name as assigned_admin_name, a.avatar_url as assigned_admin_avatar,
         ca.full_name as claimed_by_admin_name,
-        g.name as group_name,
+        COALESCE(g.name, g2.name) as group_name,
+        COALESCE(s.group_id, q.group_id) as group_id,
         q.label as qr_label,
         (SELECT COUNT(*) FROM messages WHERE session_id = s.id) as message_count,
         (SELECT MAX(created_at) FROM messages WHERE session_id = s.id) as last_message_at,
@@ -4358,6 +4363,7 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
       LEFT JOIN admins ca ON s.claimed_by_admin_id = ca.id
       LEFT JOIN agent_groups g ON s.group_id = g.id
       LEFT JOIN qr_chat_accounts q ON s.qr_account_id = q.id
+      LEFT JOIN agent_groups g2 ON q.group_id = g2.id
       LEFT JOIN session_read_receipts rr ON rr.session_id = s.id AND rr.admin_id = $1
     `;
 

@@ -2096,8 +2096,8 @@ function renderSessionsList(sessions) {
             ${preview ? `<div class="session-card-preview">${escapeHtml(preview)}</div>` : ''}
             <div class="session-meta-footer">
                 ${
-                    session.group_name
-                        ? `<span class="session-group-tag" style="background:rgba(236,72,153,0.12);color:#ec4899;border:1px solid rgba(236,72,153,0.25);font-size:10.5px;padding:2px 7px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:4px;"><i class="ri-team-line"></i> ${escapeHtml(session.group_name)}${session.qr_label ? ` · ${escapeHtml(session.qr_label)}` : ''}</span>`
+                    (session.qr_label || session.group_name)
+                        ? `<span class="session-group-tag" style="background:rgba(236,72,153,0.12);color:#ec4899;border:1px solid rgba(236,72,153,0.25);font-size:10.5px;padding:2px 7px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:4px;"><i class="ri-qr-code-line"></i> QR: ${escapeHtml(session.qr_label || session.group_name)}</span>`
                         : ''
                 }
                 ${
@@ -2395,30 +2395,23 @@ async function selectSession(sessionId) {
     chatTitleName.textContent = session.visitor_name || 'Khách hàng';
     chatTitleEmail.textContent = session.visitor_email || 'Chưa có email';
 
-    // Show QR Group and QR Label info in header
+    // Show QR info in header (chỉ hiện QR: [tên QR])
     const groupBadge = document.getElementById('chat-header-group-badge');
     const groupNameEl = document.getElementById('chat-header-group-name');
     const qrInfoEl = document.getElementById('chat-header-qr-info');
-    const groupName = session.group_name || '';
-    const qrLabel = session.qr_label || '';
+    const qrText = session.qr_label || session.group_name || '';
 
     if (groupBadge && groupNameEl) {
-        if (groupName || qrLabel) {
-            const labelText = groupName ? `Nhóm: ${groupName}${qrLabel ? ` · ${qrLabel}` : ''}` : `QR: ${qrLabel}`;
-            groupNameEl.textContent = labelText;
+        if (qrText) {
+            groupNameEl.textContent = `QR: ${qrText}`;
             groupBadge.classList.remove('hide');
         } else {
             groupBadge.classList.add('hide');
         }
     }
     if (qrInfoEl) {
-        if (groupName || qrLabel) {
-            const qrText = `Quét từ QR nhóm: ${groupName || 'Chưa phân nhóm'}${qrLabel ? ` (${qrLabel})` : ''}`;
-            qrInfoEl.textContent = qrText;
-            qrInfoEl.classList.remove('hide');
-        } else {
-            qrInfoEl.classList.add('hide');
-        }
+        qrInfoEl.textContent = '';
+        qrInfoEl.classList.add('hide');
     }
 
     // Show visitor avatar in chat header
@@ -3510,6 +3503,10 @@ function resetActiveChatUI() {
     if (chatHeaderProjectBadge) {
         chatHeaderProjectBadge.classList.add('hide');
     }
+    const groupBadge = document.getElementById('chat-header-group-badge');
+    if (groupBadge) groupBadge.classList.add('hide');
+    const qrInfoEl = document.getElementById('chat-header-qr-info');
+    if (qrInfoEl) qrInfoEl.classList.add('hide');
     
     chatMessagesContainer.innerHTML = `
         <div class="chat-welcome-state">
