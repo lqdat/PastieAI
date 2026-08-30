@@ -2096,8 +2096,8 @@ function renderSessionsList(sessions) {
             ${preview ? `<div class="session-card-preview">${escapeHtml(preview)}</div>` : ''}
             <div class="session-meta-footer">
                 ${
-                    (session.qr_label || session.group_name)
-                        ? `<span class="session-group-tag" style="background:rgba(236,72,153,0.12);color:#ec4899;border:1px solid rgba(236,72,153,0.25);font-size:10.5px;padding:2px 7px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:4px;"><i class="ri-qr-code-line"></i> QR: ${escapeHtml(session.qr_label || session.group_name)}</span>`
+                    (session.group_name || session.qr_label)
+                        ? `<span class="session-group-tag" style="background:rgba(236,72,153,0.12);color:#ec4899;border:1px solid rgba(236,72,153,0.25);font-size:10.5px;padding:2px 7px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:4px;"><i class="ri-team-line"></i> ${escapeHtml(session.group_name && session.qr_label ? `${session.group_name} · ${session.qr_label}` : (session.group_name || session.qr_label))}</span>`
                         : ''
                 }
                 ${
@@ -2395,15 +2395,17 @@ async function selectSession(sessionId) {
     chatTitleName.textContent = session.visitor_name || 'Khách hàng';
     chatTitleEmail.textContent = session.visitor_email || 'Chưa có email';
 
-    // Show QR info in header (chỉ hiện QR: [tên QR])
+    // Show Group Name + QR Name in header
     const groupBadge = document.getElementById('chat-header-group-badge');
     const groupNameEl = document.getElementById('chat-header-group-name');
     const qrInfoEl = document.getElementById('chat-header-qr-info');
-    const qrText = session.qr_label || session.group_name || '';
+    const groupName = session.group_name || '';
+    const qrLabel = session.qr_label || '';
+    const groupQrText = groupName && qrLabel ? `${groupName} · ${qrLabel}` : (groupName || qrLabel || '');
 
     if (groupBadge && groupNameEl) {
-        if (qrText) {
-            groupNameEl.textContent = `QR: ${qrText}`;
+        if (groupQrText) {
+            groupNameEl.textContent = groupQrText;
             groupBadge.classList.remove('hide');
         } else {
             groupBadge.classList.add('hide');
@@ -4613,7 +4615,7 @@ window.openQrPreview = async (encodedImageUrl, encodedLabel, encodedOwner, encod
     const chatUrl = decodeURIComponent(encodedChatUrl);
     if (!qrPreviewModal) return;
     qrPreviewTitle.textContent = 'Poster QR dành cho khách hàng';
-    qrPreviewAgent.textContent = owner || label || '';
+    qrPreviewAgent.textContent = label || owner || '';
     qrPreviewImage.src = imageUrl;
     qrPreviewLink.textContent = chatUrl;
     qrPreviewDownloadBtn.disabled = true;
@@ -4621,13 +4623,13 @@ window.openQrPreview = async (encodedImageUrl, encodedLabel, encodedOwner, encod
     qrPreviewCopyBtn.onclick = () => window.copyQrChatLink(chatUrl);
     qrPreviewModal.classList.remove('hide');
     try {
-        const posterBlob = await createBrandedQrPoster(imageUrl, owner || label);
+        const posterBlob = await createBrandedQrPoster(imageUrl, label || owner);
         if (qrPreviewPosterUrl) URL.revokeObjectURL(qrPreviewPosterUrl);
         qrPreviewPosterUrl = URL.createObjectURL(posterBlob);
         qrPreviewImage.src = qrPreviewPosterUrl;
         qrPreviewDownloadBtn.disabled = false;
         qrPreviewDownloadBtn.innerHTML = '<i class="ri-download-2-line"></i> Tải poster QR';
-        qrPreviewDownloadBtn.onclick = () => downloadPosterBlob(posterBlob, owner || label || 'pastie-qr');
+        qrPreviewDownloadBtn.onclick = () => downloadPosterBlob(posterBlob, label || owner || 'pastie-qr');
     } catch (error) {
         console.error('QR poster error:', error);
         qrPreviewDownloadBtn.disabled = false;
