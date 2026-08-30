@@ -497,7 +497,7 @@ async function checkAdminAuth(req, res, next) {
   try {
     // 1. Check if token exists in admin_sessions and joins admins
     const sessionRes = await db.query(
-      `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.role, a.avatar_url, a.is_active, a.project_id
+      `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.role, a.avatar_url, a.is_active, a.project_id, a.sale_limit
        FROM admin_sessions s
        JOIN admins a ON s.admin_id = a.id
        WHERE s.token = $1`,
@@ -536,6 +536,10 @@ async function checkAdminAuth(req, res, next) {
       role: adminSession.role,
       avatar_url: adminSession.avatar_url,
       project_id: adminSession.project_id, // null = xem mọi project
+      // Trần số Sale (chỉ có nghĩa với role 'agent'). Cột này vốn đã được truy vấn
+      // ở vài chỗ khác nhưng không gắn vào req.admin, nên /api/admin/me không trả
+      // về và giao diện luôn hiển thị "Không giới hạn" dù đã đặt hạn mức.
+      sale_limit: adminSession.sale_limit,
       token: token
     };
 

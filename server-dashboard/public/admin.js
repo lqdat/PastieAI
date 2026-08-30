@@ -1035,7 +1035,12 @@ function setPushButtonState(state) {
         const cfg = headerStates[state] || { text: 'Bật thông báo', icon: 'ri-notification-3-line', title: 'Nhận chat mới ngay cả khi đã đóng app', cls: '' };
         headerLabel.textContent = cfg.text;
         headerIcon.className = cfg.icon;
-        headerBtn.title = cfg.title;
+        // Đã bật rồi thì chỉ còn là trạng thái, không phải việc cần làm — thu về
+        // đúng cái chuông cho đỡ chiếm chỗ trên header. Ba trạng thái còn lại đều
+        // cần người dùng bấm nên vẫn giữ nguyên chữ.
+        headerBtn.title = state === 'enabled' ? `${cfg.text} · ${cfg.title}` : cfg.title;
+        headerBtn.setAttribute('aria-label', cfg.text);
+        headerBtn.classList.toggle('is-icon-only', state === 'enabled');
         headerBtn.classList.remove('is-enabled', 'is-blocked');
         if (cfg.cls) headerBtn.classList.add(cfg.cls);
     }
@@ -1500,6 +1505,13 @@ function updateAgentHeaderUI() {
     // Nút quản lý đội ngũ riêng cho Superadmin (hiển thị trực tiếp ra header, phân theo project)
     const isSuperadmin = CURRENT_ADMIN?.role === 'superadmin';
     document.getElementById('superadmin-team-btn')?.classList.toggle('hide', !isSuperadmin);
+
+    // Ẩn ô chọn ngôn ngữ giao diện với Agent/Sale của dự án QR. Console của họ
+    // chỉ dùng tiếng Việt, còn ngôn ngữ hội thoại đã tự nhận diện theo khách —
+    // để ô này lại chỉ khiến người dùng tưởng nó đổi ngôn ngữ chat.
+    // Chỉ áp cho dự án QR; DealPhuQuoc và Pastie Landing giữ nguyên.
+    const hideLangPicker = isRestrictedConsole() && isQrConciergeProject(CURRENT_ADMIN?.project_id);
+    document.getElementById('admin-lang-selector-wrap')?.classList.toggle('hide', hideLangPicker);
 
     // Nút quản lý Sale, nhóm và QR (chỉ Agent quản lý của dự án QR)
     const canManageOrg = isAgentManagerRole();
@@ -4225,13 +4237,22 @@ function applyAdminMgmtFocus() {
         const meta = document.getElementById('self-account-meta');
         if (input) input.value = CURRENT_ADMIN?.full_name || CURRENT_ADMIN?.username || '';
         if (meta) {
-            const roleNames = { agent: 'Agent tư vấn', sale: 'Nhân viên Sale', project_admin: 'Quản trị dự án', superadmin: 'Superadmin' };
+            // Tên vai trò khác nhau giữa QR và các dự án còn lại: trong QR, 'agent'
+            // là cấp QUẢN LÝ Sale nên gọi "Admin Agent"; ở dự án khác 'agent' vẫn là
+            // người trực tiếp tư vấn nên giữ "Agent tư vấn".
+            const isQr = isQrConciergeProject(CURRENT_ADMIN?.project_id);
+            const roleNames = {
+                agent: isQr ? 'Admin Agent' : 'Agent tư vấn',
+                sale: 'Nhân viên Sale',
+                project_admin: 'Quản trị dự án',
+                superadmin: 'Superadmin',
+            };
             const email = CURRENT_ADMIN?.username || '—';
-            const project = CURRENT_ADMIN?.project_id || 'Toàn hệ thống';
             const role = roleNames[CURRENT_ADMIN?.role] || 'Tài khoản';
+            // Không hiện mã dự án: người dùng trong QR chỉ thuộc đúng một dự án nên
+            // dòng này không cho thêm thông tin gì, mà lại lộ mã kỹ thuật ra giao diện.
             meta.innerHTML = `
                 <div class="self-account-meta-item"><i class="ri-mail-line"></i><span>Email đăng nhập</span><strong>${escapeHtml(email)}</strong></div>
-                <div class="self-account-meta-item"><i class="ri-folder-3-line"></i><span>Dự án</span><strong>${escapeHtml(project)}</strong></div>
                 <div class="self-account-meta-item"><i class="ri-shield-user-line"></i><span>Vai trò</span><strong>${escapeHtml(role)}</strong></div>`;
         }
         setSelfProfileStatus('');
@@ -4419,7 +4440,7 @@ async function loadAdminUsers() {
             let extraBadges = '';
 
             if (u.role === 'agent') {
-                roleLabel = 'Agent quản lý';
+                roleLabel = 'Admin Agent';
                 roleClass = 'agent';
                 const limitStr = u.sale_limit ? `${u.used_sales_count || 0}/${u.sale_limit} Sale` : `${u.used_sales_count || 0} Sale (Không giới hạn)`;
                 extraBadges = `<span style="font-size:10px; color:#ec4899; background:rgba(236,72,153,0.1); border:1px solid rgba(236,72,153,0.25); padding:1px 6px; border-radius:4px; font-weight:600;"><i class="ri-team-line"></i> Cấp phép: <strong>${limitStr}</strong></span>`;
@@ -4518,7 +4539,15 @@ async function editAdminUser(id) {
             adminFormRole.value = u.role;
             if (CURRENT_ADMIN?.role === 'project_admin') adminFormRole.disabled = true;
         }
+        if (adminFormSaleLimitGroup) adminFormSaleLimitGroup.style.display = u.role === 'agent' ? 'block' : 'none';
         if (adminFormProject) adminFormProject.value = u.project_id || '';
+        // Đổ lại hạn mức Sale đang có. Bỏ bước này thì ô luôn trống, và lần bấm
+        // "Cập nhật" kế tiếp sẽ âm thầm xoá hạn mức thành "không giới hạn".
+        // Chú ý: 0 là giá trị hợp lệ (không được tạo Sale nào) nên không dùng
+        // `u.sale_limit || ''` — số 0 sẽ bị nuốt mất.
+        if (adminFormSaleLimit) {
+            adminFormSaleLimit.value = (u.sale_limit === null || u.sale_limit === undefined) ? '' : String(u.sale_limit);
+        }
         if (adminFormActive) adminFormActive.checked = u.is_active;
         renderAdminAvatarPicker(u.avatar_url || 'gradient-1');
         if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'flex';
@@ -4557,6 +4586,17 @@ async function handleAdminUserSubmit(e) {
         project_id: effectiveProject,
         is_active: adminFormActive ? adminFormActive.checked : true
     };
+
+    // Hạn mức Sale chỉ có nghĩa với role 'agent'. Backend đã nhận trường sale_limit
+    // từ trước nhưng form này chưa bao giờ gửi lên, nên ô nhập trông như lưu được
+    // mà thực ra giá trị bị bỏ rơi ngay tại trình duyệt.
+    //
+    // Ô để trống -> gửi chuỗi rỗng, backend hiểu là KHÔNG giới hạn (NULL).
+    // Nhập 0     -> Agent không được tạo Sale nào. Hai ý nghĩa này khác nhau nên
+    //               không được gộp thành cùng một giá trị.
+    if (effectiveRole === 'agent') {
+        payload.sale_limit = (adminFormSaleLimit?.value ?? '').trim();
+    }
     try {
         const url = id ? `${API_BASE}/api/admin/users/${id}` : `${API_BASE}/api/admin/users`;
         const method = id ? 'PUT' : 'POST';
@@ -4751,11 +4791,20 @@ async function loadOrgSales() {
         const count = ORG_SALES.length;
         if (badge) badge.textContent = `${count} Sale`;
         if (quotaCount) {
+            // Trước đây khi không có trần thì hiện "Hạn mức: 2 (Không giới hạn)" —
+            // đọc như thể trần là 2, trong khi 2 là SỐ ĐÃ TẠO. Luôn nói rõ con số
+            // nào là gì.
             const limit = CURRENT_ADMIN?.sale_limit;
-            if (limit !== null && limit !== undefined && limit !== '' && Number.isFinite(Number(limit))) {
-                quotaCount.textContent = `${count}/${limit} Sale (Đã dùng ${count}/${limit})`;
+            const hasLimit = limit !== null && limit !== undefined && limit !== '' && Number.isFinite(Number(limit));
+            if (hasLimit) {
+                const left = Math.max(0, Number(limit) - count);
+                quotaCount.textContent = left > 0
+                    ? `Đã tạo ${count}/${limit} Sale · còn ${left} suất`
+                    : `Đã tạo ${count}/${limit} Sale · đã hết suất`;
+                quotaCount.classList.toggle('is-full', left <= 0);
             } else {
-                quotaCount.textContent = `${count} (Không giới hạn)`;
+                quotaCount.textContent = `Đã tạo ${count} Sale · không giới hạn`;
+                quotaCount.classList.remove('is-full');
             }
         }
 
@@ -4763,12 +4812,16 @@ async function loadOrgSales() {
         renderSalePicker(ORG_SALES);
 
         box.innerHTML = ORG_SALES.length ? ORG_SALES.map((sale) => `
-            <article class="org-item">
+            <article class="org-item sale-card">
                 <div class="org-item-main">
-                    <strong>${escapeHtml(sale.full_name || sale.username)}
-                        <span class="org-shift ${sale.on_shift ? 'is-on' : ''}">${sale.on_shift ? '🟢 Trong ca' : '⚪ Ngoài ca'}</span>
+                    <strong class="sale-card-name">${escapeHtml(sale.full_name || sale.username)}
+                        <span class="org-shift ${sale.on_shift ? 'is-on' : ''}">${sale.on_shift ? 'Trong ca' : 'Ngoài ca'}</span>
                     </strong>
-                    <small>${escapeHtml(sale.username)} · <strong>${escapeHtml(formatHourWindows(sale.access_hours))}</strong> · <strong>${(sale.groups || []).map((g) => escapeHtml(g.name)).join(', ') || 'Chưa gán nhóm'}</strong></small>
+                    <span class="sale-card-mail">${escapeHtml(sale.username)}</span>
+                    <span class="sale-card-facts">
+                        <span class="sale-fact"><i class="ri-time-line"></i> ${escapeHtml(formatHourWindows(sale.access_hours))}</span>
+                        <span class="sale-fact"><i class="ri-team-line"></i> ${(sale.groups || []).map((g) => escapeHtml(g.name)).join(', ') || 'Chưa gán nhóm'}</span>
+                    </span>
                 </div>
                 <div class="org-item-actions" style="display:flex;gap:5px;align-items:center;">
                     <button type="button" class="org-btn-edit" data-sale-edit="${sale.id}" title="Sửa" style="background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:4px 8px;font-size:11.5px;cursor:pointer;font-weight:600;"><i class="ri-edit-line"></i> Sửa</button>
@@ -4893,17 +4946,56 @@ function renderOrgQrList() {
         : CURRENT_QR_ACCOUNTS;
 
     if (badge) badge.textContent = `${filtered.length} QR`;
+    // Bỏ liên kết "Mở Chat": đó là link dành cho KHÁCH, Agent bấm vào sẽ tự mở một
+    // phiên chat khách và làm bẩn dữ liệu. Muốn kiểm tra thì quét mã trong poster.
     box.innerHTML = filtered.length ? filtered.map((account) => `
-        <article class="org-item">
-            <div class="org-item-main">
-                <strong><i class="ri-qr-code-line" style="color:var(--accent-color);"></i> ${escapeHtml(account.label)}</strong>
-                <small>Nhóm: <strong style="color:#818cf8;">${escapeHtml(account.group_name || 'Chưa gán')}</strong> · <a href="${escapeHtml(account.chat_url)}" target="_blank" rel="noopener" style="color:#6366f1;font-weight:600;">Mở Chat</a> · <a href="javascript:void(0)" onclick="openQrPreviewModal('${account.id}')" style="color:#ec4899;font-weight:600;">Xem Poster</a></small>
+        <article class="qr-card">
+            <span class="qr-card-icon"><i class="ri-qr-code-line"></i></span>
+            <div class="qr-card-main">
+                <strong class="qr-card-title">${escapeHtml(account.label)}</strong>
+                <span class="qr-card-group"><i class="ri-team-line"></i> ${escapeHtml(account.group_name || 'Chưa gán nhóm')}</span>
             </div>
-            <button type="button" class="org-remove" data-qr-revoke="${account.id}" title="Thu hồi QR"><i class="ri-forbid-line"></i></button>
-        </article>`).join('') : '<p class="org-empty">Không có mã QR nào' + (selectedGroupId ? ' trong nhóm này.' : '.') + '</p>';
+            <div class="qr-card-actions">
+                <button type="button" class="qr-card-poster" data-qr-poster="${account.id}">
+                    <i class="ri-image-line"></i> Xem poster
+                </button>
+                <button type="button" class="org-remove" data-qr-revoke="${account.id}" title="Thu hồi mã QR" aria-label="Thu hồi mã QR">
+                    <i class="ri-forbid-line"></i>
+                </button>
+            </div>
+        </article>`).join('') : tableEmptyBlock(selectedGroupId);
+}
+
+// Trạng thái rỗng nói rõ bước tiếp theo, thay vì chỉ báo "không có gì".
+function tableEmptyBlock(selectedGroupId) {
+    return selectedGroupId
+        ? `<div class="empty-state">
+               <span class="empty-state-icon"><i class="ri-qr-scan-2-line"></i></span>
+               <h5>Nhóm này chưa có mã QR</h5>
+               <p>Chọn “— Tất cả nhóm —” để xem toàn bộ, hoặc tạo mã QR mới cho nhóm này ở form phía trên.</p>
+           </div>`
+        : `<div class="empty-state">
+               <span class="empty-state-icon"><i class="ri-qr-scan-2-line"></i></span>
+               <h5>Chưa có mã QR nào</h5>
+               <p>Tạo mã QR đầu tiên ở form phía trên. Mỗi vị trí một mã — Bàn 1, Phòng 101, Quầy Bar — khách quét mã nào thì chat vào đúng nhóm tiếp nhận của mã đó.</p>
+           </div>`;
 }
 
 document.getElementById('org-qr-group-filter')?.addEventListener('change', renderOrgQrList);
+
+// Nút "Xem poster". Trước đây khối này gọi openQrPreviewModal(id) — một hàm KHÔNG
+// tồn tại, nên bấm vào chỉ ném ReferenceError trong console và không mở gì cả.
+// Hàm thật là window.openQrPreview(imageUrl, label, owner, chatUrl), dùng chung với
+// màn hình QR cũ; ảnh QR sinh từ quickchart.io đúng như bên đó.
+document.getElementById('org-qr-list')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-qr-poster]');
+    if (!button) return;
+    const account = CURRENT_QR_ACCOUNTS.find((item) => String(item.id) === button.dataset.qrPoster);
+    if (!account) return;
+    const imageUrl = `https://quickchart.io/qr?size=360&text=${encodeURIComponent(account.chat_url)}`;
+    const enc = (value) => encodeURIComponent(value ?? '').replace(/'/g, '%27');
+    window.openQrPreview(enc(imageUrl), enc(account.label), enc(account.group_name || account.label), enc(account.chat_url));
+});
 
 // --- Sự kiện -----------------------------------------------------------------
 
@@ -5029,7 +5121,9 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
             emailEl.style.opacity = '0.75';
             emailEl.title = 'Email đăng nhập là duy nhất không thể sửa';
         }
-        if (groupEl) groupEl.value = sale.groups?.[0]?.id || '';
+        // API trả về mỗi nhóm dưới dạng { group_id, name } — KHÔNG phải { id }.
+        // Đọc nhầm .id nên giá trị luôn undefined và ô nhóm luôn hiện "Chưa gán".
+        if (groupEl) groupEl.value = sale.groups?.[0]?.group_id ?? '';
         if (sale.access_hours?.[0]) {
             setTimeSelect(startEl, sale.access_hours[0].start_time);
             setTimeSelect(endEl, sale.access_hours[0].end_time);

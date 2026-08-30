@@ -3307,3 +3307,117 @@ button {
     cursor: pointer;
 }
 .empty-state-retry:hover { border-color: var(--accent-color); color: var(--text-primary); }
+
+/* Nút thông báo khi đã bật: chỉ còn cái chuông. Đây là trạng thái chứ không phải
+   việc cần làm, nên không đáng chiếm cả một khối chữ trên header. Tên đầy đủ vẫn
+   còn ở tooltip và aria-label cho trình đọc màn hình. */
+.header-quick-btn-push.is-icon-only {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+}
+.header-quick-btn-push.is-icon-only span { display: none; }
+.header-quick-btn-push.is-icon-only i { font-size: 17px; }
+
+/* --- Thẻ mã QR trong màn hình quản lý ----------------------------------------
+   Trước đây tên nhóm và các liên kết bị nhồi chung một dòng <small>, xuống dòng
+   thành ra dính dấu chấm giữa treo lơ lửng. Nay tách thành ba vùng rõ ràng:
+   biểu tượng, thông tin, thao tác. */
+.qr-card {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 13px 14px;
+    border: 1px solid var(--panel-border);
+    border-radius: 13px;
+    background: var(--panel-bg, #fff);
+    transition: border-color .18s, box-shadow .18s;
+}
+.qr-card:hover { border-color: var(--accent-color); box-shadow: 0 4px 14px rgba(45, 35, 53, .07); }
+.qr-card-icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 42px;
+    height: 42px;
+    border-radius: 11px;
+    background: var(--accent-soft, rgba(239, 63, 151, .1));
+    color: var(--accent-color);
+    font-size: 21px;
+}
+.qr-card-main { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.qr-card-title {
+    font-size: 14.5px;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.qr-card-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--text-secondary);
+    font-size: 11.5px;
+    font-weight: 600;
+}
+.qr-card-group i { color: var(--text-muted); font-size: 13px; }
+.qr-card-actions { display: flex; align-items: center; gap: 7px; flex: none; }
+.qr-card-poster {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 13px;
+    border: 1px solid var(--panel-border);
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: border-color .18s, color .18s, background .18s;
+}
+.qr-card-poster:hover { border-color: var(--accent-color); color: var(--accent-color); background: var(--accent-soft, rgba(239, 63, 151, .08)); }
+@media (max-width: 560px) {
+    .qr-card { flex-wrap: wrap; }
+    .qr-card-main { flex-basis: calc(100% - 55px); }
+    .qr-card-actions { width: 100%; justify-content: flex-end; }
+}
+
+/* --- Thẻ Sale trong màn hình quản lý -----------------------------------------
+   Trước đây email, khung giờ và tên nhóm nằm chung một dòng <small> nối bằng dấu
+   chấm giữa; hẹp một chút là xuống dòng và để lại dấu chấm treo lơ lửng. */
+.sale-card .org-item-main { gap: 5px; }
+.sale-card-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14.5px; }
+.sale-card-mail {
+    color: var(--text-muted);
+    font-size: 11.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sale-card-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.sale-fact {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, .05);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.sale-fact i { color: var(--text-muted); font-size: 12px; }
+
+/* Dòng hạn mức: đỏ lên khi đã dùng hết suất, để Agent thấy ngay vì sao nút tạo
+   Sale báo lỗi. */
+#org-quota-count.is-full {
+    background: rgba(239, 68, 68, .1);
+    border-color: rgba(239, 68, 68, .28);
+    color: #c02b2b;
+}

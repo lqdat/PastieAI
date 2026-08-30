@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r57">
+    <link rel="stylesheet" href="admin.css?v=r63">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -181,8 +181,12 @@
                     </div>
                 </div>
 
-                <!-- Language selector -->
-                <div class="lang-selector">
+                <!-- Chọn ngôn ngữ giao diện dashboard.
+                     Ẩn với Agent/Sale của dự án QR Concierge: console của họ chỉ dùng
+                     tiếng Việt, còn ngôn ngữ hội thoại thì đã tự nhận diện theo khách
+                     nên ô này chỉ gây nhầm là "đổi ngôn ngữ chat".
+                     Các dự án khác vẫn giữ nguyên — xem updateAgentHeaderUI(). -->
+                <div class="lang-selector" id="admin-lang-selector-wrap">
                     <i class="ri-translate-2"></i>
                     <select id="admin-lang-select">
                         <option value="vi">Tiếng Việt</option>
@@ -1029,6 +1033,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r57"></script>
+    <script src="admin.js?v=r63"></script>
 </body>
 </html>
