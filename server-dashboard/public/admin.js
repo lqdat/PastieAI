@@ -2293,12 +2293,15 @@ function applyChatPermissionUI(session) {
         if (micBtn) micBtn.disabled = true;
     } else {
         chatInputContainer?.classList.remove('hide');
+        // Banner giám sát nằm cùng container với form. Chỉ ẩn form soạn tin để
+        // Agent không thấy lặp lại cùng thông báo trong placeholder; banner vẫn hiện.
+        chatForm?.classList.toggle('hide', isAgent && !isSuper);
         if (isAgent && !isSuper) {
             if (chatInput) {
                 chatInput.disabled = true;
                 chatInput.classList.add('is-supervisor-mode');
                 chatInput.value = '';
-                chatInput.placeholder = 'Chế độ Giám sát: Bạn đang theo dõi cuộc trò chuyện của Sale (Chỉ xem)';
+                chatInput.placeholder = '';
             }
             if (sendBtn) sendBtn.disabled = true;
             if (attachBtn) attachBtn.disabled = true;
