@@ -17,7 +17,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r85">
+    <link rel="stylesheet" href="admin.css?v=r86">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -61,17 +61,28 @@
 
                 <!-- Step 2: Input 6-Digit OTP (Initially Hidden) -->
                 <form id="otp-step-verify" class="dpq-form-step hide" onsubmit="handleVerifyAdminOtp(event); return false;">
-                    <p class="dpq-verify-notice">Mã đã gửi đến <b id="otp-target-email-display"></b></p>
-                    <div class="dpq-input-wrap">
-                        <input type="text" id="admin-otp-code-input" class="dpq-input dpq-otp-input" placeholder="––––––" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" required>
-                    </div>
-                    <button type="submit" id="verify-admin-otp-btn" class="dpq-primary-btn">
-                        <span>Xác nhận</span>
-                    </button>
-                    <div class="dpq-actions-row">
-                        <span id="admin-otp-countdown" class="dpq-countdown-text">Mã có hiệu lực trong 5:00</span>
-                        <button type="button" id="resend-admin-otp-btn" class="dpq-link-btn" onclick="handleSendAdminOtp(event)" disabled>Gửi lại mã</button>
-                        <button type="button" id="change-otp-email-btn" class="dpq-link-btn" onclick="handleChangeOtpEmail()">Dùng email khác</button>
+                    <div class="dpq-otp-panel">
+                        <span class="dpq-otp-panel-mark"></span>
+                        <p class="dpq-otp-eyebrow">XÁC THỰC · OTP</p>
+                        <h3>Xác minh email</h3>
+                        <p class="dpq-verify-notice">Nhập mã gồm 6 số chúng tôi đã gửi đến<br><b id="otp-target-email-display"></b></p>
+                        <input type="hidden" id="admin-otp-code-input" value="">
+                        <div class="dpq-otp-digits" id="admin-otp-digits">
+                            <input type="text" class="dpq-otp-digit" data-otp-index="0" aria-label="Chữ số 1" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code">
+                            <input type="text" class="dpq-otp-digit" data-otp-index="1" aria-label="Chữ số 2" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+                            <input type="text" class="dpq-otp-digit" data-otp-index="2" aria-label="Chữ số 3" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+                            <input type="text" class="dpq-otp-digit" data-otp-index="3" aria-label="Chữ số 4" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+                            <input type="text" class="dpq-otp-digit" data-otp-index="4" aria-label="Chữ số 5" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+                            <input type="text" class="dpq-otp-digit" data-otp-index="5" aria-label="Chữ số 6" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+                        </div>
+                        <button type="submit" id="verify-admin-otp-btn" class="dpq-primary-btn" disabled>
+                            <span>Xác nhận và đăng nhập</span>
+                        </button>
+                        <div class="dpq-actions-row dpq-otp-actions">
+                            <span id="admin-otp-countdown" class="dpq-countdown-text">Gửi lại sau 5:00</span>
+                            <button type="button" id="resend-admin-otp-btn" class="dpq-link-btn" onclick="handleSendAdminOtp(event)" disabled>Gửi lại mã</button>
+                            <button type="button" id="change-otp-email-btn" class="dpq-link-btn" onclick="handleChangeOtpEmail()">Đổi email</button>
+                        </div>
                     </div>
                 </form>
 
@@ -1094,6 +1105,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r85"></script>
+    <script src="admin.js?v=r86"></script>
 </body>
 </html>

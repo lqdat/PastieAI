@@ -779,7 +779,7 @@ function startOtpCountdown(seconds = 300) {
         const m = Math.floor(remaining / 60);
         const s = remaining % 60;
         if (countdownEl) {
-            countdownEl.textContent = `Mã có hiệu lực trong ${m}:${s < 10 ? '0' : ''}${s}`;
+            countdownEl.textContent = `Gửi lại sau ${m}:${s < 10 ? '0' : ''}${s}`;
         }
         if (remaining <= 0) {
             clearInterval(adminOtpCountdownInterval);
@@ -790,6 +790,63 @@ function startOtpCountdown(seconds = 300) {
     }
     update();
     adminOtpCountdownInterval = setInterval(update, 1000);
+}
+
+function getAdminOtpDigits() {
+    return Array.from(document.querySelectorAll('.dpq-otp-digit'));
+}
+
+function syncAdminOtpCode() {
+    const digits = getAdminOtpDigits();
+    const code = digits.map((input) => input.value.replace(/\D/g, '').slice(-1)).join('');
+    const hidden = document.getElementById('admin-otp-code-input');
+    const verifyBtn = document.getElementById('verify-admin-otp-btn');
+    if (hidden) hidden.value = code;
+    if (verifyBtn) verifyBtn.disabled = code.length !== 6;
+    digits.forEach((input) => input.classList.toggle('is-filled', !!input.value));
+    return code;
+}
+
+function fillAdminOtpDigits(value) {
+    const numbers = String(value || '').replace(/\D/g, '').slice(0, 6);
+    const digits = getAdminOtpDigits();
+    digits.forEach((input, index) => { input.value = numbers[index] || ''; });
+    syncAdminOtpCode();
+    (digits[Math.min(numbers.length, 5)] || digits[0])?.focus();
+}
+
+function clearAdminOtpDigits() {
+    fillAdminOtpDigits('');
+}
+
+function setupAdminOtpDigits() {
+    const digits = getAdminOtpDigits();
+    digits.forEach((input, index) => {
+        input.addEventListener('input', (event) => {
+            const raw = event.target.value.replace(/\D/g, '');
+            if (raw.length > 1) return fillAdminOtpDigits(raw);
+            event.target.value = raw.slice(-1);
+            syncAdminOtpCode();
+            if (event.target.value && index < digits.length - 1) digits[index + 1].focus();
+        });
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'Backspace' && !input.value && index > 0) {
+                digits[index - 1].value = '';
+                digits[index - 1].focus();
+                syncAdminOtpCode();
+            }
+            if (event.key === 'ArrowLeft' && index > 0) digits[index - 1].focus();
+            if (event.key === 'ArrowRight' && index < digits.length - 1) digits[index + 1].focus();
+        });
+        input.addEventListener('focus', () => input.select());
+    });
+    document.getElementById('admin-otp-digits')?.addEventListener('paste', (event) => {
+        const pasted = event.clipboardData?.getData('text') || '';
+        if (!/\d/.test(pasted)) return;
+        event.preventDefault();
+        fillAdminOtpDigits(pasted);
+    });
+    syncAdminOtpCode();
 }
 
 // Xử lý gửi mã OTP Email
@@ -828,11 +885,7 @@ async function handleSendAdminOtp(e) {
             if (titleEl) titleEl.textContent = 'Nhập mã xác nhận';
 
             startOtpCountdown(300);
-            const codeInput = document.getElementById('admin-otp-code-input');
-            if (codeInput) {
-                codeInput.value = '';
-                codeInput.focus();
-            }
+            clearAdminOtpDigits();
         } else {
             setLoginError(data.error || 'Không thể gửi mã OTP.');
         }
@@ -849,8 +902,7 @@ async function handleSendAdminOtp(e) {
 // Xử lý xác thực mã OTP
 async function handleVerifyAdminOtp(e) {
     if (e && e.preventDefault) e.preventDefault();
-    const codeInput = document.getElementById('admin-otp-code-input');
-    const otpCode = codeInput ? codeInput.value.trim() : '';
+    const otpCode = syncAdminOtpCode();
     if (!otpCode || otpCode.length < 6) {
         setLoginError('Vui lòng nhập đủ 6 chữ số mã OTP.');
         return;
@@ -880,7 +932,7 @@ async function handleVerifyAdminOtp(e) {
             }, 400);
         } else {
             setLoginError(data.error || 'Mã OTP không hợp lệ hoặc đã hết hạn.');
-            if (codeInput) codeInput.select();
+            getAdminOtpDigits()[0]?.focus();
         }
     } catch (e) {
         setLoginError('Lỗi kết nối khi xác thực OTP: ' + e.message);
@@ -900,6 +952,7 @@ function handleChangeOtpEmail() {
     if (titleEl) titleEl.textContent = 'Pastie AI Console';
     setLoginError('');
     setLoginSuccess('');
+    clearAdminOtpDigits();
     document.getElementById('admin-otp-email-input')?.focus();
 }
 
@@ -911,7 +964,7 @@ window.handleGoogleAuthTrigger = handleGoogleAuthTrigger;
 
 // Gắn sự kiện tương tác Form đăng nhập OTP & Google
 function setupAuthEvents() {
-    document.getElementById('change-otp-email-btn')?.addEventListener('click', handleChangeOtpEmail);
+    setupAdminOtpDigits();
 }
 
 // Đổi token SSO (?sso=) lấy phiên đăng nhập (Hỗ trợ tương thích ngược)
