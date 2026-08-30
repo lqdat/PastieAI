@@ -840,17 +840,84 @@ button {
     align-items: center;
     gap: 12px;
     flex-shrink: 0;
-    min-height: 60px;
-    flex-wrap: wrap; /* cụm nút hành động tự xuống hàng khi hẹp -> không tràn/cắt */
+    min-height: 64px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 1px 3px rgba(45, 26, 48, 0.03);
 }
-.visitor-details-header h3 {
-    font-size: 18px;
-    font-weight: 600;
+.chat-header-user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 auto;
 }
-.visitor-details-header p {
+.chat-header-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+.chat-header-title-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+.chat-header-title-line h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.chat-header-sub-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+.chat-header-sub-line p {
+    margin: 0;
+    font-size: 12px;
     color: var(--text-secondary);
-    font-size: 13px;
-    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.chat-header-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.chat-header-badge.group-badge {
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.12), rgba(236, 72, 153, 0.12));
+    color: #db2777;
+    border: 1px solid rgba(236, 72, 153, 0.28);
+}
+.chat-header-badge.project-badge {
+    background: rgba(99, 102, 241, 0.12);
+    color: #6366f1;
+    border: 1px solid rgba(99, 102, 241, 0.25);
+}
+.chat-header-qr-info {
+    font-size: 11px;
+    color: #db2777;
+    font-weight: 600;
+    background: rgba(236, 72, 153, 0.08);
+    padding: 1px 7px;
+    border-radius: 6px;
+    white-space: nowrap;
 }
 
 .chat-messages {
@@ -2147,40 +2214,133 @@ button {
   .client-badge { width: 100%; padding: 10px 12px !important; color: #796c82 !important; }
   .detail-select { min-height: 48px; border-color: rgba(239,43,157,.2); background: #fff8fc; font-size: 15px; }
 
-  .chat-header { min-height: 62px; padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
-  .chat-header-actions {
-    position: relative;
-    z-index: 5;
-    width: 100%;
-    min-height: 48px;
-    justify-content: flex-start;
+  .chat-header {
+    min-height: 60px;
+    padding: 8px 12px;
     flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x;
+    gap: 8px;
+    background: #ffffff;
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
-  .visitor-details-header { gap: 8px !important; min-width: 0; flex: 1; }
-  .visitor-details-header h3 { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .visitor-details-header p { max-width: 140px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #chat-header-avatar > * { width: 38px !important; height: 38px !important; font-size: 16px !important; }
-  #chat-header-actions { gap: 5px !important; }
+  .chat-header-user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+  .chat-header-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+  .chat-header-title-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+  .chat-header-title-line h3 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  .chat-header-badge.group-badge {
+    font-size: 10.5px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .chat-header-sub-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .chat-header-sub-line p {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  .chat-header-qr-info {
+    font-size: 10.5px;
+    padding: 1px 5px;
+    flex-shrink: 0;
+  }
+  .chat-header-actions {
+    position: static;
+    width: auto;
+    min-height: auto;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    gap: 6px !important;
+    flex-shrink: 0;
+    overflow: visible;
+  }
+  .chat-back-btn,
+  .chat-details-btn,
+  #mobile-back-btn,
+  #details-toggle-btn {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: #ffffff !important;
+    border: 1px solid rgba(239, 43, 157, 0.22) !important;
+    color: var(--text-primary) !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
+    flex: 0 0 36px !important;
+    font-size: 16px !important;
+  }
+  .chat-back-btn:active,
+  .chat-details-btn:active,
+  #mobile-back-btn:active,
+  #details-toggle-btn:active {
+    background: #fff0f8 !important;
+    border-color: var(--accent-color) !important;
+    transform: scale(0.94);
+  }
+  #chat-header-avatar > * { width: 36px !important; height: 36px !important; font-size: 15px !important; }
   /* Ẩn CHỮ trên nút (icon-only) cho gọn, nhưng VẪN hiện phần "Phân công" trên mobile */
   #close-session-btn span, #claim-chat-btn span { display: none; }
-  #assignee-selector-container { display: inline-flex; flex: 1 0 190px; min-width: 190px; }
+  #assignee-selector-container { display: inline-flex; flex: 1 0 160px; min-width: 160px; }
   #close-session-btn, #claim-chat-btn, #delete-session-btn {
-    position: relative;
-    z-index: 6;
-    width: 44px;
-    min-width: 44px;
-    height: 44px;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
     padding: 0;
     justify-content: center;
-    flex: 0 0 44px;
-    pointer-events: auto;
-    touch-action: manipulation;
+    flex: 0 0 36px;
+    border-radius: 50%;
   }
-  #close-session-btn i, #claim-chat-btn i, #delete-session-btn i { font-size: 18px; }
+  #close-session-btn i, #claim-chat-btn i, #delete-session-btn i { font-size: 16px; }
   .chat-messages { padding: 18px 14px; gap: 16px; }
   .message-wrapper { max-width: 88%; }
   .message-bubble { font-size: 16px; padding: 15px 17px; }
