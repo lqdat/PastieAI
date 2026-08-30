@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r50">
+    <link rel="stylesheet" href="admin.css?v=r57">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -250,9 +250,8 @@
                         </div>
                         <div class="org-form-row" id="org-group-sales-row" style="margin-top: 4px;">
                             <label style="flex:1;">Chọn Sale vào nhóm ngay (Tùy chọn)
-                                <select id="org-group-sales-select" multiple size="2" style="width:100%; min-height: 52px; font-size:12px; border-radius:8px; padding:4px 8px; border:1px solid var(--panel-border); background:var(--panel-bg); color:var(--text-primary);">
-                                </select>
-                                <small style="color: var(--text-secondary); font-size: 11px;">Giữ phím Ctrl / Cmd để chọn nhiều Sale đã tạo</small>
+                                <div class="sale-picker" id="org-group-sales-select" role="group" aria-label="Chọn Sale vào nhóm"></div>
+                                <small class="org-field-hint">Bấm để chọn, bấm lại để bỏ. Có thể chọn nhiều Sale.</small>
                             </label>
                         </div>
                         <button type="submit" class="org-submit"><i class="ri-add-circle-line"></i> Thêm nhóm</button>
@@ -282,10 +281,11 @@
                             <label>Nhóm tiếp nhận (Tùy chọn)<select id="org-sale-group"><option value="">— Chưa gán nhóm —</option></select></label>
                             <label>Khung giờ làm việc
                                 <span class="org-hour-pair">
-                                    <input type="time" id="org-sale-start" value="08:00">
+                                    <select id="org-sale-start" class="time-select"></select>
                                     <em>–</em>
-                                    <input type="time" id="org-sale-end" value="17:00">
+                                    <select id="org-sale-end" class="time-select"></select>
                                 </span>
+                                <small class="org-field-hint" id="org-sale-shift-hint"></small>
                             </label>
                         </div>
                         <div style="display:flex;gap:8px;align-items:center;">
@@ -1029,6 +1029,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r56"></script>
+    <script src="admin.js?v=r57"></script>
 </body>
 </html>

@@ -10,3 +10,7 @@ CREDENTIALS.md
 # System files
 .DS_Store
 Thumbs.db
+
+#md file
+*.md
+PLAN_AGENT_SALE_QR.md

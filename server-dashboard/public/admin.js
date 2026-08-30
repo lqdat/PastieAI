@@ -444,6 +444,135 @@ function beginNewAdminSession(token) {
     resetActiveChatUI();
 }
 
+// =====================================================================
+// Thông báo và hộp xác nhận trong ứng dụng
+//
+// Thay cho alert() / confirm() của trình duyệt, vốn hiện tên miền
+// "dashboard.pastie.vn says", không theo được giao diện, và quan trọng hơn:
+// alert() KHÓA hẳn luồng JS — trong lúc hộp thoại mở thì polling chat, ghi âm và
+// mọi timer đều đứng.
+//
+// pastieConfirm() trả về Promise<boolean> nên chỗ gọi vẫn đọc tuần tự như confirm().
+// =====================================================================
+
+function ensureToastHost() {
+    let host = document.getElementById('app-toast-host');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'app-toast-host';
+        host.className = 'toast-host';
+        host.setAttribute('role', 'status');
+        host.setAttribute('aria-live', 'polite');
+        document.body.appendChild(host);
+    }
+    return host;
+}
+
+const TOAST_ICONS = {
+    success: 'ri-checkbox-circle-fill',
+    error: 'ri-error-warning-fill',
+    info: 'ri-information-fill',
+};
+
+/**
+ * @param {string} message  Nội dung hiển thị
+ * @param {'success'|'error'|'info'} [kind]
+ * @param {number} [duration]  ms; lỗi để lâu hơn vì người dùng cần đọc kỹ
+ */
+function showToast(message, kind = 'info', duration) {
+    const text = String(message || '').trim();
+    if (!text) return;
+    const host = ensureToastHost();
+
+    // Cùng một lỗi lặp lại (ví dụ mỗi vòng poll) thì không xếp chồng, chỉ đếm số lần.
+    const existing = [...host.children].find((node) => node.dataset.message === text);
+    if (existing) {
+        const badge = existing.querySelector('.toast-count');
+        const next = Number(badge?.dataset.count || 1) + 1;
+        if (badge) { badge.dataset.count = String(next); badge.textContent = `×${next}`; badge.classList.remove('hide'); }
+        clearTimeout(Number(existing.dataset.timer));
+        existing.dataset.timer = String(setTimeout(() => dismissToast(existing), duration || (kind === 'error' ? 6000 : 3500)));
+        return;
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${kind}`;
+    toast.dataset.message = text;
+    toast.innerHTML = `
+        <i class="${TOAST_ICONS[kind] || TOAST_ICONS.info}"></i>
+        <span class="toast-text"></span>
+        <span class="toast-count hide" data-count="1"></span>
+        <button type="button" class="toast-close" aria-label="Đóng"><i class="ri-close-line"></i></button>`;
+    toast.querySelector('.toast-text').textContent = text;
+    toast.querySelector('.toast-close').addEventListener('click', () => dismissToast(toast));
+    host.appendChild(toast);
+    toast.dataset.timer = String(setTimeout(() => dismissToast(toast), duration || (kind === 'error' ? 6000 : 3500)));
+}
+
+function dismissToast(toast) {
+    if (!toast || toast.classList.contains('is-leaving')) return;
+    clearTimeout(Number(toast.dataset.timer));
+    toast.classList.add('is-leaving');
+    setTimeout(() => toast.remove(), 200);
+}
+
+const toastSuccess = (message) => showToast(message, 'success');
+const toastError = (message) => showToast(message, 'error');
+const toastInfo = (message) => showToast(message, 'info');
+
+/**
+ * Hộp xác nhận thay cho confirm().
+ * @returns {Promise<boolean>}
+ */
+function pastieConfirm(message, options = {}) {
+    const {
+        title = 'Xác nhận',
+        confirmText = 'Đồng ý',
+        cancelText = 'Hủy',
+        danger = false,
+    } = options;
+
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.innerHTML = `
+            <div class="confirm-card" role="alertdialog" aria-modal="true">
+                <div class="confirm-icon ${danger ? 'is-danger' : ''}">
+                    <i class="${danger ? 'ri-alert-line' : 'ri-question-line'}"></i>
+                </div>
+                <h3 class="confirm-title"></h3>
+                <p class="confirm-message"></p>
+                <div class="confirm-actions">
+                    <button type="button" class="confirm-cancel"></button>
+                    <button type="button" class="confirm-ok ${danger ? 'is-danger' : ''}"></button>
+                </div>
+            </div>`;
+        overlay.querySelector('.confirm-title').textContent = title;
+        overlay.querySelector('.confirm-message').textContent = message;
+        overlay.querySelector('.confirm-cancel').textContent = cancelText;
+        overlay.querySelector('.confirm-ok').textContent = confirmText;
+        document.body.appendChild(overlay);
+
+        const close = (result) => {
+            document.removeEventListener('keydown', onKey);
+            overlay.classList.add('is-leaving');
+            setTimeout(() => overlay.remove(), 180);
+            resolve(result);
+        };
+        const onKey = (event) => {
+            if (event.key === 'Escape') close(false);
+            if (event.key === 'Enter') close(true);
+        };
+
+        overlay.querySelector('.confirm-ok').addEventListener('click', () => close(true));
+        overlay.querySelector('.confirm-cancel').addEventListener('click', () => close(false));
+        overlay.addEventListener('click', (event) => { if (event.target === overlay) close(false); });
+        document.addEventListener('keydown', onKey);
+        // Mặc định đặt con trỏ ở nút Hủy: thao tác nguy hiểm không nên chỉ cần Enter.
+        setTimeout(() => overlay.querySelector(danger ? '.confirm-cancel' : '.confirm-ok')?.focus(), 30);
+    });
+}
+
 function authFetch(url, options = {}) {
     const token = getToken();
     const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${token}` };
@@ -1436,7 +1565,7 @@ window.saveProjectSettings = async (projectId) => {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || 'Không thể lưu project.');
         await loadProjects();
-    } catch (error) { alert(error.message); }
+    } catch (error) { toastError(error.message); }
 };
 
 async function addProject() {
@@ -1451,16 +1580,16 @@ async function addProject() {
         });
         const d = await r.json().catch(() => ({}));
         if (r.ok) { if (inp) inp.value = ''; if (linkInput) linkInput.value = ''; await loadProjects(); }
-        else alert('Lỗi: ' + (d.error || 'Không tạo được dự án.'));
-    } catch (e) { alert('Lỗi kết nối.'); }
+        else toastError(d.error || 'Không tạo được dự án.');
+    } catch (e) { toastError('Lỗi kết nối.'); }
 }
 
 async function deleteProject(id) {
-    if (!confirm(`Xoá dự án "${id}" khỏi danh sách? (không xoá chat/KB đã có)`)) return;
+    if (!await pastieConfirm(`Xoá dự án "${id}" khỏi danh sách? Chat và cơ sở tri thức đã có vẫn được giữ lại.`, { title: 'Xoá dự án', confirmText: 'Xoá dự án', danger: true })) return;
     try {
         const r = await authFetch(`${API_BASE}/api/admin/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
-        if (r.ok) await loadProjects(); else alert('Lỗi xoá dự án.');
-    } catch (e) { alert('Lỗi kết nối.'); }
+        if (r.ok) { await loadProjects(); toastSuccess('Đã xoá dự án.'); } else toastError('Lỗi xoá dự án.');
+    } catch (e) { toastError('Lỗi kết nối.'); }
 }
 
 function getBrowserIcon(browser) {
@@ -2402,7 +2531,7 @@ async function sendMessage(e) {
         } else {
             adminMessages = adminMessages.filter(m => m.id !== newMsgObj.id);
             renderAdminMessages(false);
-            alert(dict.sendError + (data.error || ''));
+            toastError(dict.sendError + (data.error || ''));
         }
     } catch (e) {
         console.error('Send error:', e);
@@ -2452,7 +2581,7 @@ async function sendAttachment(file) {
             if (idx !== -1) adminMessages[idx] = data.message;
         } else {
             if (idx !== -1) adminMessages.splice(idx, 1);
-            alert(dict.sendError ? dict.sendError + (data.error || '') : (data.error || 'Không thể gửi file.'));
+            toastError(dict.sendError ? dict.sendError + (data.error || '') : (data.error || 'Không thể gửi file.'));
         }
         renderAdminMessages(false, true);
     } catch (e) {
@@ -2607,8 +2736,8 @@ async function startVoiceRecording() {
         voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (error) {
         const denied = error?.name === 'NotAllowedError' || error?.name === 'SecurityError';
-        alert(denied
-            ? 'Trình duyệt đang chặn micro. Hãy bấm biểu tượng khóa cạnh thanh địa chỉ và cho phép Micro, rồi thử lại.'
+        toastError(denied
+            ? 'Trình duyệt đang chặn micro. Bấm biểu tượng khóa cạnh thanh địa chỉ và cho phép Micro, rồi thử lại.'
             : 'Không truy cập được micro trên thiết bị này.');
         return;
     }
@@ -2702,7 +2831,7 @@ async function finishVoiceRecording() {
     } catch (error) {
         // Có transcript realtime rồi thì lỗi bước hiệu chỉnh nền không được che
         // mất chữ hoặc làm gián đoạn người dùng.
-        if (!liveText) alert(error.message || 'Không nhận diện được giọng nói.');
+        if (!liveText) toastError(error.message || 'Không nhận diện được giọng nói.');
     } finally {
         voiceBusy = false;
         setVoiceUi('idle');
@@ -2720,7 +2849,7 @@ function sendVoiceDraft() {
 }
 
 document.getElementById('chat-mic-btn')?.addEventListener('click', () => {
-    if (!voiceSupported) return alert('Trình duyệt này chưa hỗ trợ ghi âm.');
+    if (!voiceSupported) return toastError('Trình duyệt này chưa hỗ trợ ghi âm.');
     if (!currentSessionId) return;
     if (voiceRecorder?.state === 'recording') stopVoiceRecording();
     else void startVoiceRecording();
@@ -2748,7 +2877,7 @@ async function claimCurrentChat() {
     if (!currentSessionId) return;
     const response = await authFetch(`${API_BASE}/api/admin/chats/${currentSessionId}/claim`, { method: 'POST' });
     const data = await response.json();
-    if (!response.ok) return alert(data.error || 'Không thể tiếp nhận chat.');
+    if (!response.ok) return toastError(data.error || 'Không thể tiếp nhận chat.');
 
     // Chỉ cập nhật quyền tại chỗ. Trước đây gọi selectSession() nên khung chat
     // bị xoá trắng, tải lại toàn bộ tin nhắn, mất vị trí cuộn và nội dung đang soạn.
@@ -2822,10 +2951,10 @@ if (chatAssigneeSelect) {
                 }
                 fetchSessions().catch(() => {});
             } else {
-                alert(data.error || 'Không thể phân công cuộc trò chuyện.');
+                toastError(data.error || 'Không thể phân công cuộc trò chuyện.');
             }
         } catch (err) {
-            alert('Lỗi kết nối khi phân công: ' + err.message);
+            toastError('Lỗi kết nối khi phân công: ' + err.message);
         }
     });
 }
@@ -2833,7 +2962,7 @@ if (chatAssigneeSelect) {
 async function closeActiveSession() {
     if (!currentSessionId) return;
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
-    if (!confirm(dict.closeConfirm)) return;
+    if (!await pastieConfirm(dict.closeConfirm, { title: 'Đóng cuộc trò chuyện', confirmText: 'Đóng' })) return;
 
     closeSessionBtn.disabled = true;
     closeSessionBtn.innerHTML = `<i class="ri-loader-4-line"></i> ${dict.closingStatus}`;
@@ -2853,7 +2982,7 @@ async function closeActiveSession() {
             await selectSession(currentSessionId);
         }
     } catch (e) {
-        alert(dict.closeError);
+        toastError(dict.closeError);
     } finally {
         closeSessionBtn.disabled = false;
         closeSessionBtn.innerHTML = `<i class="ri-close-circle-line"></i> ${dict.closeChat}`;
@@ -2897,7 +3026,7 @@ function resetActiveChatUI() {
 async function deleteActiveSession() {
     if (!currentSessionId) return;
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
-    if (!confirm(dict.deleteConfirm)) return;
+    if (!await pastieConfirm(dict.deleteConfirm, { title: 'Xoá cuộc trò chuyện', confirmText: 'Xoá', danger: true })) return;
 
     // Nút này bị khóa cứng 32x30px (icon-only theo thiết kế) — nhét thêm chữ vào
     // sẽ tràn ra ngoài đè lên nút bên cạnh, nên luôn chỉ đổi icon, không thêm text.
@@ -2914,13 +3043,13 @@ async function deleteActiveSession() {
         if (data.success) {
             resetActiveChatUI();
             await fetchSessions();
-            alert(dict.deleteSuccess);
+            toastSuccess(dict.deleteSuccess);
         } else {
-            alert(dict.deleteError + (data.error ? ': ' + data.error : ''));
+            toastError(dict.deleteError + (data.error ? ': ' + data.error : ''));
         }
     } catch (e) {
         console.error('Delete chat error:', e);
-        alert(dict.deleteError);
+        toastError(dict.deleteError);
     } finally {
         deleteSessionBtn.disabled = false;
         deleteSessionBtn.innerHTML = `<i class="ri-delete-bin-line"></i>`;
@@ -3045,7 +3174,7 @@ document.getElementById('push-modal-confirm')?.addEventListener('click', () => {
     }).catch((error) => {
         console.error('Không thể bật Web Push:', error);
         setPushButtonState('off');
-        alert(error.message || 'Không thể bật thông báo trên thiết bị này.');
+        toastError(error.message || 'Không thể bật thông báo trên thiết bị này.');
     }).finally(() => {
         if (button) { button.disabled = false; button.innerHTML = '<i class="ri-notification-3-fill"></i> Bật thông báo ngay'; }
     });
@@ -3359,16 +3488,16 @@ async function syncKnowledgeFromDealDb() {
         });
         const data = await response.json();
         if (response.ok) {
-            alert(data.message || 'Đồng bộ Database DealPhuQuoc thành công!');
+            toastSuccess(data.message || 'Đồng bộ Database DealPhuQuoc thành công.');
             await loadKnowledgeForProject(activeProjectId);
         } else {
-            alert('Lỗi: ' + (data.error || 'Không thể đồng bộ database.'));
+            toastError(data.error || 'Không thể đồng bộ database.');
             if (kbDealDbStatus) {
                 kbDealDbStatus.innerHTML = `<i class="ri-error-warning-line" style="color: var(--danger-color);"></i> <span>Lỗi: ${data.error}</span>`;
             }
         }
     } catch (err) {
-        alert('Lỗi kết nối: ' + err.message);
+        toastError('Lỗi kết nối: ' + err.message);
         if (kbDealDbStatus) {
             kbDealDbStatus.innerHTML = `<i class="ri-error-warning-line" style="color: var(--danger-color);"></i> <span>Lỗi kết nối: ${err.message}</span>`;
         }
@@ -3381,7 +3510,7 @@ async function syncKnowledgeFromDealDb() {
 async function syncKnowledgeFromUrl() {
     const url = kbUrlInput.value.trim();
     if (!url) {
-        alert('Vui lòng nhập URL!');
+        toastError('Vui lòng nhập URL.');
         return;
     }
 
@@ -3400,14 +3529,14 @@ async function syncKnowledgeFromUrl() {
         
         const data = await response.json();
         if (response.ok) {
-            alert(data.message || 'Đồng bộ tri thức từ Landing Page thành công!');
+            toastSuccess(data.message || 'Đồng bộ tri thức từ Landing Page thành công.');
             await loadKnowledgeForProject(activeProjectId);
         } else {
-            alert('Lỗi: ' + (data.error || 'Không thể đồng bộ.'));
+            toastError(data.error || 'Không thể đồng bộ.');
             kbSyncStatus.innerHTML = `<i class="ri-error-warning-line" style="color: var(--danger-color);"></i> <span>Đồng bộ thất bại: ${data.error || 'Lỗi HTTP'}</span>`;
         }
     } catch (err) {
-        alert('Lỗi kết nối mạng: ' + err.message);
+        toastError('Lỗi kết nối mạng: ' + err.message);
         kbSyncStatus.innerHTML = `<i class="ri-error-warning-line" style="color: var(--danger-color);"></i> <span>Lỗi kết nối: ${err.message}</span>`;
     } finally {
         kbSyncBtn.disabled = false;
@@ -3418,7 +3547,7 @@ async function syncKnowledgeFromUrl() {
 async function saveKnowledgeManual() {
     const text = kbTextArea.value.trim();
     if (!text) {
-        alert('Vui lòng điền nội dung tri thức!');
+        toastError('Vui lòng điền nội dung tri thức.');
         return;
     }
 
@@ -3436,13 +3565,13 @@ async function saveKnowledgeManual() {
         
         const data = await response.json();
         if (response.ok) {
-            alert(data.message || 'Lưu tri thức thủ công thành công!');
+            toastSuccess(data.message || 'Đã lưu tri thức.');
             await loadKnowledgeForProject(activeProjectId);
         } else {
-            alert('Lỗi: ' + (data.error || 'Không thể lưu.'));
+            toastError(data.error || 'Không thể lưu.');
         }
     } catch (err) {
-        alert('Lỗi kết nối mạng: ' + err.message);
+        toastError('Lỗi kết nối mạng: ' + err.message);
     } finally {
         kbSaveManualBtn.disabled = false;
         kbSaveManualBtn.innerHTML = `<i class="ri-save-line"></i> Lưu nội dung`;
@@ -3591,7 +3720,7 @@ if (channelDirectLinkCopyBtn) {
         const val = channelDirectLinkInput?.value;
         if (!val) return;
         navigator.clipboard.writeText(val);
-        alert('Đã sao chép Direct Link WhatsApp!');
+        toastSuccess('Đã sao chép Direct Link WhatsApp.');
     });
 }
 if (channelForm) {
@@ -3765,7 +3894,7 @@ async function refreshQrAccounts() {
 
 window.copyQrChatLink = async (url, isEncoded = false) => {
     const link = isEncoded ? decodeURIComponent(url) : url;
-    try { await navigator.clipboard.writeText(link); alert('Đã sao chép link QR.'); }
+    try { await navigator.clipboard.writeText(link); toastSuccess('Đã sao chép link QR.'); }
     catch { window.prompt('Sao chép link QR:', link); }
 };
 
@@ -4400,16 +4529,16 @@ async function editAdminUser(id) {
 }
 
 async function deleteAdminUser(id) {
-    if (!confirm('Bạn có chắc chắn muốn xóa tài khoản nhân viên này?')) return;
+    if (!await pastieConfirm('Bạn có chắc chắn muốn xóa tài khoản nhân viên này?')) return;
     try {
         const res = await authFetch(`${API_BASE}/api/admin/users/${id}`, { method: 'DELETE' });
         const data = await res.json();
         if (res.ok) { 
             await loadAdminUsers(); 
         } else { 
-            alert('Lỗi: ' + (data.error || 'Không thể xóa.')); 
+            toastError(data.error || 'Không thể xóa.'); 
         }
-    } catch(e) { alert('Lỗi kết nối máy chủ.'); }
+    } catch(e) { toastError('Lỗi kết nối máy chủ.'); }
 }
 
 async function handleAdminUserSubmit(e) {
@@ -4441,14 +4570,23 @@ async function handleAdminUserSubmit(e) {
             resetAdminForm(); 
             await loadAdminUsers(); 
             if (!id && data.qr?.chat_url) {
-                alert(`Đã tạo Agent và QR chat.\n\nLink để tạo/in QR:\n${data.qr.chat_url}\n\nKhách quét QR này sẽ được chuyển đến Agent vừa tạo.`);
+                // Link QR cần đọc và sao chép được nên dùng hộp thoại có nút, không
+                // dùng toast tự tắt sau vài giây.
+                const copy = await pastieConfirm(
+                    `Khách quét mã này sẽ được chuyển tới Agent vừa tạo.\n\n${data.qr.chat_url}`,
+                    { title: 'Đã tạo Agent và mã QR', confirmText: 'Sao chép link', cancelText: 'Để sau' }
+                );
+                if (copy) {
+                    try { await navigator.clipboard.writeText(data.qr.chat_url); toastSuccess('Đã sao chép link QR.'); }
+                    catch { toastError('Trình duyệt không cho sao chép. Hãy chọn và copy thủ công.'); }
+                }
             } else {
-                alert(id ? 'Cập nhật tài khoản thành công!' : 'Tạo tài khoản nhân viên thành công!');
+                toastSuccess(id ? 'Đã cập nhật tài khoản.' : 'Đã tạo tài khoản nhân viên.');
             }
         } else { 
-            alert('Lỗi: ' + (data.error || 'Không thể lưu.')); 
+            toastError(data.error || 'Không thể lưu.'); 
         }
-    } catch(e) { alert('Lỗi kết nối máy chủ: ' + e.message); }
+    } catch(e) { toastError('Lỗi kết nối máy chủ: ' + e.message); }
 }
 
 verifyAuthAndInit();
@@ -4508,6 +4646,7 @@ function switchOrgTab(name) {
 }
 
 function openOrgModal() {
+    initShiftSelects(); // dựng danh sách giờ 24h ở lần mở đầu tiên
     // Hai màn hình tách bạch, không chồng lấn:
     //   Superadmin -> chỉ thẻ Agent (tạo Agent + đặt trần số Sale).
     //   Agent quản lý -> Sale / Nhóm / QR, tự sắp xếp tổ chức của mình.
@@ -4621,12 +4760,7 @@ async function loadOrgSales() {
         }
 
         // Cập nhật select Sale trong Form Tạo Nhóm
-        const groupSalesSelect = document.getElementById('org-group-sales-select');
-        if (groupSalesSelect) {
-            groupSalesSelect.innerHTML = ORG_SALES.length
-                ? ORG_SALES.map(s => `<option value="${s.id}">${escapeHtml(s.full_name || s.username)} (${escapeHtml(s.username)})</option>`).join('')
-                : '<option value="" disabled>Chưa có Sale nào</option>';
-        }
+        renderSalePicker(ORG_SALES);
 
         box.innerHTML = ORG_SALES.length ? ORG_SALES.map((sale) => `
             <article class="org-item">
@@ -4664,12 +4798,7 @@ async function loadOrgGroups(quiet) {
         if (badge) badge.textContent = `${ORG_GROUPS.length} Nhóm`;
 
         // Cập nhật select Sale trong Form Tạo Nhóm
-        const groupSalesSelect = document.getElementById('org-group-sales-select');
-        if (groupSalesSelect) {
-            groupSalesSelect.innerHTML = ORG_SALES.length
-                ? ORG_SALES.map(s => `<option value="${s.id}">${escapeHtml(s.full_name || s.username)} (${escapeHtml(s.username)})</option>`).join('')
-                : '<option value="" disabled>Chưa có Sale nào</option>';
-        }
+        renderSalePicker(ORG_SALES);
 
         if (box && !quiet) {
             box.innerHTML = ORG_GROUPS.length ? ORG_GROUPS.map((group) => {
@@ -4841,8 +4970,7 @@ document.getElementById('org-sale-form')?.addEventListener('submit', async (even
 
 document.getElementById('org-group-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const salesSelect = document.getElementById('org-group-sales-select');
-    const saleIds = salesSelect ? Array.from(salesSelect.selectedOptions).map(opt => Number(opt.value)).filter(Boolean) : [];
+    const saleIds = salePickerValue();
     try {
         await orgFetch('/api/agent/groups', {
             method: 'POST',
@@ -4854,6 +4982,7 @@ document.getElementById('org-group-form')?.addEventListener('submit', async (eve
             }),
         });
         event.target.reset();
+        clearSalePicker(); // form.reset() không đụng tới ô chọn Sale vì nó không phải input
         setOrgStatus('Đã tạo nhóm tiếp nhận thành công.');
         await loadOrgGroups();
         await loadOrgSales();
@@ -4902,9 +5031,10 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         }
         if (groupEl) groupEl.value = sale.groups?.[0]?.id || '';
         if (sale.access_hours?.[0]) {
-            if (startEl) startEl.value = String(sale.access_hours[0].start_time).slice(0, 5);
-            if (endEl) endEl.value = String(sale.access_hours[0].end_time).slice(0, 5);
+            setTimeSelect(startEl, sale.access_hours[0].start_time);
+            setTimeSelect(endEl, sale.access_hours[0].end_time);
         }
+        describeShift('org-sale-start', 'org-sale-end', 'org-sale-shift-hint');
         if (submitBtn) submitBtn.innerHTML = '<i class="ri-save-line"></i> Lưu thay đổi Sale';
         document.getElementById('org-sale-cancel-btn')?.classList.remove('hide');
         switchOrgTab('sales');
@@ -4914,7 +5044,7 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
 
     const saleDelete = event.target.closest('[data-sale-delete]');
     if (saleDelete) {
-        if (!confirm('Bạn có chắc chắn muốn xóa tài khoản Sale này?')) return;
+        if (!await pastieConfirm('Tài khoản này sẽ bị xoá khỏi mọi nhóm. Lịch sử chat đã xử lý vẫn được giữ lại.', { title: 'Xoá tài khoản Sale?', confirmText: 'Xoá Sale', danger: true })) return;
         try {
             await orgFetch(`/api/agent/sales/${saleDelete.dataset.saleDelete}`, { method: 'DELETE' });
             setOrgStatus('Đã xóa tài khoản Sale thành công.');
@@ -4969,7 +5099,7 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
 
     const groupDelete = event.target.closest('[data-group-delete]');
     if (groupDelete) {
-        if (!confirm('Xóa nhóm này? Sale trong nhóm vẫn giữ tài khoản, chỉ mất phân công nhóm.')) return;
+        if (!await pastieConfirm('Sale trong nhóm vẫn giữ tài khoản, chỉ mất phân công nhóm.', { title: 'Xoá nhóm này?', confirmText: 'Xoá nhóm', danger: true })) return;
         try {
             await orgFetch(`/api/agent/groups/${groupDelete.dataset.groupDelete}`, { method: 'DELETE' });
             setOrgStatus('Đã xóa nhóm thành công.');
@@ -4981,7 +5111,7 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
 
     const qrRevoke = event.target.closest('[data-qr-revoke]');
     if (qrRevoke) {
-        if (!confirm('Thu hồi QR này? Khách quét mã cũ sẽ không vào được nữa.')) return;
+        if (!await pastieConfirm('Khách quét mã cũ sẽ không vào được nữa. Mã đã in cần thay lại.', { title: 'Thu hồi mã QR?', confirmText: 'Thu hồi', danger: true })) return;
         try {
             await orgFetch(`/api/agent/qr-accounts/${qrRevoke.dataset.qrRevoke}/revoke`, { method: 'POST' });
             setOrgStatus('Đã thu hồi QR thành công.');
@@ -5064,8 +5194,12 @@ async function loadReportData() {
     const salesTbody = document.getElementById('report-sales-tbody');
     const sessionsTbody = document.getElementById('report-sessions-tbody');
 
-    if (salesTbody) salesTbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 16px; color: var(--text-secondary);"><i class="ri-loader-4-line ri-spin"></i> Đang tải dữ liệu...</td></tr>';
-    if (sessionsTbody) sessionsTbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 16px; color: var(--text-secondary);"><i class="ri-loader-4-line ri-spin"></i> Đang tải dữ liệu...</td></tr>';
+    // Ba trạng thái phải trông khác nhau: đang tải / chưa có dữ liệu / hỏng.
+    const loadingRow = (colspan) => tableStateRow(colspan, {
+        icon: 'ri-loader-4-line ri-spin', title: 'Đang tải dữ liệu…', message: 'Chờ một chút.',
+    });
+    if (salesTbody) salesTbody.innerHTML = loadingRow(4);
+    if (sessionsTbody) sessionsTbody.innerHTML = loadingRow(5);
 
     try {
         const preset = reportDatePreset ? reportDatePreset.value : '7days';
@@ -5093,7 +5227,11 @@ async function loadReportData() {
         // Render Sales Table
         if (salesTbody) {
             if (!sales_breakdown || sales_breakdown.length === 0) {
-                salesTbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 16px; color: var(--text-secondary);">Chưa có dữ liệu tư vấn của Sale trong khoảng thời gian này.</td></tr>';
+                salesTbody.innerHTML = tableStateRow(4, {
+                    icon: 'ri-user-search-line',
+                    title: 'Chưa có Sale nào tư vấn',
+                    message: 'Trong khoảng thời gian đang chọn chưa có Sale nào tiếp nhận hội thoại. Thử mở rộng khoảng thời gian hoặc bỏ bớt bộ lọc.',
+                });
             } else {
                 salesTbody.innerHTML = sales_breakdown.map(s => `
                     <tr style="border-bottom: 1px solid var(--panel-border);">
@@ -5109,7 +5247,11 @@ async function loadReportData() {
         // Render Sessions Log Table
         if (sessionsTbody) {
             if (!sessions || sessions.length === 0) {
-                sessionsTbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 16px; color: var(--text-secondary);">Không có hội thoại nào.</td></tr>';
+                sessionsTbody.innerHTML = tableStateRow(5, {
+                    icon: 'ri-chat-off-line',
+                    title: 'Chưa có hội thoại nào',
+                    message: 'Khi khách quét mã QR và bắt đầu nhắn tin, hội thoại sẽ xuất hiện ở đây.',
+                });
             } else {
                 sessionsTbody.innerHTML = sessions.map(s => `
                     <tr style="border-bottom: 1px solid var(--panel-border);">
@@ -5124,9 +5266,31 @@ async function loadReportData() {
         }
     } catch (e) {
         console.error('Error loading report:', e);
-        if (salesTbody) salesTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 16px; color: #f87171;">${escapeHtml(e.message)}</td></tr>`;
-        if (sessionsTbody) sessionsTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 16px; color: #f87171;">${escapeHtml(e.message)}</td></tr>`;
+        const errorRow = (colspan) => tableStateRow(colspan, {
+            kind: 'error', retry: true,
+            icon: 'ri-error-warning-line',
+            title: 'Không tải được báo cáo',
+            message: e.message || 'Máy chủ không phản hồi. Kiểm tra kết nối rồi thử lại.',
+        });
+        if (salesTbody) salesTbody.innerHTML = errorRow(4);
+        if (sessionsTbody) sessionsTbody.innerHTML = errorRow(5);
+        // Số liệu phía trên cũng phải xoá, không để lại con số của lần tải trước.
+        [totalSessionsEl, totalVisitorsEl, totalMessagesEl, staffMessagesEl].forEach((el) => { if (el) el.textContent = '—'; });
     }
+}
+
+// Ba trạng thái của một bảng phải trông khác nhau: đang tải, chưa có dữ liệu, và
+// hỏng. Trước đây "chưa có dữ liệu" hiện cùng một dòng chữ đỏ như lỗi hệ thống,
+// nên người dùng tưởng hệ thống hỏng trong khi chỉ là chưa phát sinh hội thoại.
+function tableStateRow(colspan, { icon, title, message, kind = 'empty', retry = false }) {
+    return `<tr><td colspan="${colspan}" style="padding:0;">
+        <div class="empty-state ${kind === 'error' ? 'is-error' : ''}">
+            <span class="empty-state-icon"><i class="${icon}"></i></span>
+            <h5>${escapeHtml(title)}</h5>
+            <p>${escapeHtml(message)}</p>
+            ${retry ? '<button type="button" class="empty-state-retry" onclick="loadReportData()"><i class="ri-refresh-line"></i> Thử lại</button>' : ''}
+        </div>
+    </td></tr>`;
 }
 
 async function exportReportCSV() {
@@ -5160,7 +5324,7 @@ async function exportReportCSV() {
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch(e) {
-        alert('Lỗi xuất file: ' + e.message);
+        toastError('Lỗi xuất file: ' + e.message);
     } finally {
         if (reportExportCsvBtn) {
             reportExportCsvBtn.disabled = false;
@@ -5169,3 +5333,120 @@ async function exportReportCSV() {
     }
 }
 reportExportCsvBtn?.addEventListener('click', exportReportCSV);
+
+// =====================================================================
+// Ô chọn giờ và ô chọn Sale
+//
+// Giờ: <input type="time"> để trình duyệt tự quyết 12h hay 24h theo locale của
+// MÁY người dùng, nên máy đặt tiếng Anh sẽ hiện AM/PM dù giao diện là tiếng Việt.
+// Không có thuộc tính HTML nào ép được 24 giờ. Vì vậy dùng <select> tự dựng:
+// giá trị luôn là "HH:MM" 24 giờ, nhãn kèm buổi cho dễ đọc.
+//
+// Sale: <select multiple> bắt giữ Ctrl/Cmd để chọn nhiều, trên điện thoại gần như
+// không dùng được. Thay bằng danh sách bấm-để-chọn.
+// =====================================================================
+
+// 00:00-10:59 sáng · 11:00-12:59 trưa · 13:00-17:59 chiều · 18:00-23:59 tối
+function periodOfDay(hour) {
+    if (hour < 11) return 'sáng';
+    if (hour < 13) return 'trưa';
+    if (hour < 18) return 'chiều';
+    return 'tối';
+}
+
+function setTimeSelect(select, value) {
+    if (!select || !value) return;
+    const clean = String(value).slice(0, 5);
+    if (![...select.options].some((option) => option.value === clean)) {
+        const option = document.createElement('option');
+        option.value = clean;
+        option.textContent = `${clean} · ${periodOfDay(Number(clean.slice(0, 2)))}`;
+        select.appendChild(option);
+        // Giữ danh sách đúng thứ tự thời gian sau khi chèn thêm.
+        const sorted = [...select.options].sort((a, b) => a.value.localeCompare(b.value));
+        select.append(...sorted);
+    }
+    select.value = clean;
+}
+
+function fillTimeSelect(select, selected, stepMinutes = 30) {
+    if (!select) return;
+    const options = [];
+    for (let minutes = 0; minutes < 24 * 60; minutes += stepMinutes) {
+        const hour = Math.floor(minutes / 60);
+        const minute = minutes % 60;
+        const value = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+        options.push(`<option value="${value}">${value} · ${periodOfDay(hour)}</option>`);
+    }
+    // 23:59 là mốc hay dùng cho ca "cả ngày", mà bước 30 phút không chạm tới.
+    options.push('<option value="23:59">23:59 · tối</option>');
+    select.innerHTML = options.join('');
+    select.value = selected;
+    if (!select.value) select.value = options.length ? '00:00' : '';
+}
+
+// Ca qua nửa đêm là hợp lệ, nhưng người dùng cần được nói rõ chứ không phải đoán.
+function describeShift(startId, endId, hintId) {
+    const start = document.getElementById(startId)?.value;
+    const end = document.getElementById(endId)?.value;
+    const hint = document.getElementById(hintId);
+    if (!hint || !start || !end) return;
+    const toMinutes = (value) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
+    if (start === end) {
+        hint.textContent = 'Giờ bắt đầu trùng giờ kết thúc — được hiểu là làm cả ngày.';
+    } else if (toMinutes(start) > toMinutes(end)) {
+        hint.textContent = `Ca qua đêm: từ ${start} hôm nay đến ${end} sáng hôm sau.`;
+    } else {
+        const hours = Math.round((toMinutes(end) - toMinutes(start)) / 6) / 10;
+        hint.textContent = `Ca trong ngày, dài khoảng ${hours} giờ.`;
+    }
+}
+
+function initShiftSelects() {
+    const start = document.getElementById('org-sale-start');
+    const end = document.getElementById('org-sale-end');
+    if (!start || start.options.length) return;
+    fillTimeSelect(start, '08:00');
+    fillTimeSelect(end, '17:00');
+    const update = () => describeShift('org-sale-start', 'org-sale-end', 'org-sale-shift-hint');
+    start.addEventListener('change', update);
+    end.addEventListener('change', update);
+    update();
+}
+
+// --- Ô chọn Sale -------------------------------------------------------------
+
+function renderSalePicker(sales) {
+    const host = document.getElementById('org-group-sales-select');
+    if (!host) return;
+    const chosen = new Set(salePickerValue());
+    if (!sales.length) {
+        host.innerHTML = '<p class="sale-picker-empty">Chưa có Sale nào. Hãy tạo Sale ở thẻ “Sale” trước.</p>';
+        return;
+    }
+    host.innerHTML = sales.map((sale) => `
+        <button type="button" class="sale-chip${chosen.has(Number(sale.id)) ? ' is-on' : ''}" data-sale-id="${sale.id}">
+            <span class="sale-chip-tick"><i class="ri-check-line"></i></span>
+            <span class="sale-chip-text">
+                <strong>${escapeHtml(sale.full_name || sale.username)}</strong>
+                <small>${escapeHtml(sale.username)}</small>
+            </span>
+        </button>`).join('');
+}
+
+function salePickerValue() {
+    const host = document.getElementById('org-group-sales-select');
+    if (!host) return [];
+    return [...host.querySelectorAll('.sale-chip.is-on')].map((chip) => Number(chip.dataset.saleId)).filter(Boolean);
+}
+
+function clearSalePicker() {
+    document.getElementById('org-group-sales-select')
+        ?.querySelectorAll('.sale-chip.is-on')
+        .forEach((chip) => chip.classList.remove('is-on'));
+}
+
+document.addEventListener('click', (event) => {
+    const chip = event.target.closest('#org-group-sales-select .sale-chip');
+    if (chip) chip.classList.toggle('is-on');
+});

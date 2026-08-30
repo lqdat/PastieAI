@@ -4310,7 +4310,10 @@ app.get('/api/admin/reports/data', checkAdminAuth, async (req, res) => {
       SELECT 
         s.id AS session_id,
         s.created_at,
-        s.updated_at,
+        -- LƯU Ý: bảng sessions KHÔNG có cột updated_at. Trước đây câu truy vấn này
+        -- chọn s.updated_at nên toàn bộ báo cáo văng lỗi 500 và giao diện chỉ hiện
+        -- "Lỗi hệ thống khi tải dữ liệu báo cáo". Mốc thời gian gần nhất lấy từ
+        -- last_message_at ở dưới, hoặc claimed_at.
         s.status,
         s.routing_status,
         s.project_id,
@@ -5984,14 +5987,18 @@ app.post('/api/superadmin/agents', checkAdminAuth, async (req, res) => {
     // Schema cũ bắt buộc password_hash; Agent đăng nhập bằng OTP/Google nên mật
     // khẩu chỉ là chuỗi ngẫu nhiên không bao giờ được dùng.
     // Agent KHÔNG có khung giờ đăng nhập — chỉ Sale mới bị ràng buộc ca.
-    const limit = Number.parseInt(saleLimit, 10);
+    // Để trống / không gửi = không giới hạn (NULL). Số 0 = KHÔNG được tạo Sale nào.
+    // Hai ý nghĩa này phải khác nhau, và phải giống với form nhân viên cũ.
+    const limit = saleLimit === undefined || saleLimit === null || saleLimit === ''
+      ? null
+      : Math.max(0, Number.parseInt(saleLimit, 10));
     const passwordHash = await hashPassword(randomUUID());
     const created = await db.query(
       `INSERT INTO admins (username, password_hash, full_name, role, project_id, managed_by_admin_id, sale_limit, is_active)
        VALUES ($1, $2, $3, 'agent', $4, $5, $6, TRUE)
        RETURNING id, username, full_name, role, project_id, sale_limit, is_active, created_at`,
       [username, passwordHash, String(fullName).trim().slice(0, 255), projectId, req.admin.id,
-       Number.isFinite(limit) && limit > 0 ? limit : null]
+       Number.isFinite(limit) ? limit : null]
     );
 
     // Bàn giao dữ liệu QR cũ chưa có chủ (Sale và QR còn lơ lửng sau migration)
@@ -6016,9 +6023,9 @@ app.put('/api/superadmin/agents/:agentId', checkAdminAuth, async (req, res) => {
 
     // saleLimit = 0 nghĩa là bỏ giới hạn (lưu NULL), khác với "không gửi trường
     // này lên" — trường hợp sau giữ nguyên giá trị cũ.
-    const rawLimit = saleLimit === undefined ? undefined : Number.parseInt(saleLimit, 10);
-    const nextLimit = rawLimit === undefined ? undefined
-      : (Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : null);
+    const nextLimit = saleLimit === undefined ? undefined
+      : (saleLimit === null || saleLimit === '' ? null
+        : (Number.isFinite(Number.parseInt(saleLimit, 10)) ? Math.max(0, Number.parseInt(saleLimit, 10)) : null));
 
     const updated = await db.query(
       `UPDATE admins
@@ -6095,7 +6102,9 @@ app.post('/api/agent/sales', checkAdminAuth, async (req, res) => {
       );
       if (used.rows[0].total >= saleLimit) {
         return res.status(400).json({
-          error: `Bạn đã dùng hết ${saleLimit} tài khoản Sale được cấp. Liên hệ quản trị viên để tăng giới hạn.`,
+          error: saleLimit === 0
+            ? 'Tài khoản của bạn chưa được cấp quyền tạo Sale. Liên hệ quản trị viên để được cấp.'
+            : `Bạn đã dùng hết ${saleLimit} tài khoản Sale được cấp. Liên hệ quản trị viên để tăng giới hạn.`,
         });
       }
     }
