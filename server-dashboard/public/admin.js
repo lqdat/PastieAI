@@ -930,6 +930,12 @@ async function verifyAuthAndInit() {
 function showLogin() {
     loginModal.classList.remove('hide');
     mainDashboard.classList.add('hide');
+    if (adminEventSource) {
+        adminEventSource.close();
+        adminEventSource = null;
+    }
+    clearTimeout(adminEventReconnectTimer);
+    clearTimeout(realtimeRefreshTimer);
     if (pollInterval) clearInterval(pollInterval);
     if (messagePollInterval) clearInterval(messagePollInterval);
     setLoginError('');
@@ -1338,20 +1344,113 @@ function playAlertSound() {
 }
 
 // ----------------------------------------------------
-// DASHBOARD INITIALIZATION & POLLING
+// REALTIME SSE EVENT STREAM & DASHBOARD INITIALIZATION
 // ----------------------------------------------------
 
 let CURRENT_ADMIN = null;
+let adminEventSource = null;
+let adminEventReconnectTimer = null;
+let realtimeRefreshTimer = null;
+
+function handleAdminRealtimeEvent(data) {
+    if (!data || !data.type) return;
+
+    // 1. Cập nhật danh sách phiên chat ở sidebar khi có tin nhắn mới / cập nhật
+    if (['new_message', 'session_update', 'order_update', 'reload_sessions'].includes(data.type)) {
+        clearTimeout(realtimeRefreshTimer);
+        realtimeRefreshTimer = setTimeout(() => {
+            fetchSessions();
+        }, 150);
+    }
+
+    // 2. Cập nhật nội dung phiên chat đang mở (nếu trùng sessionId)
+    if (currentSessionId && String(data.sessionId) === String(currentSessionId)) {
+        if (data.type === 'new_message' || data.type === 'session_update') {
+            loadMessages(currentSessionId);
+        }
+        if (data.type === 'order_update') {
+            loadOrderForAdmin(currentSessionId);
+        }
+    }
+}
+
+function connectAdminEvents() {
+    if (adminEventSource) {
+        adminEventSource.close();
+        adminEventSource = null;
+    }
+    clearTimeout(adminEventReconnectTimer);
+
+    const token = getToken();
+    if (!token) return;
+
+    try {
+        adminEventSource = new EventSource(`${API_BASE}/api/admin/events?token=${encodeURIComponent(token)}`);
+        
+        adminEventSource.onopen = () => {
+            console.log('[Realtime] SSE stream connected.');
+        };
+
+        adminEventSource.onmessage = (event) => {
+            try {
+                if (!event.data) return;
+                const data = JSON.parse(event.data);
+                handleAdminRealtimeEvent(data);
+            } catch (e) {
+                // Ignore parse errors or heartbeat comments
+            }
+        };
+
+        adminEventSource.onerror = () => {
+            if (adminEventSource) {
+                adminEventSource.close();
+                adminEventSource = null;
+            }
+            clearTimeout(adminEventReconnectTimer);
+            adminEventReconnectTimer = setTimeout(() => {
+                if (getToken()) connectAdminEvents();
+            }, 5000);
+        };
+    } catch (err) {
+        console.warn('[Realtime] Cannot connect SSE:', err);
+    }
+}
+
+let isVisibilitySyncSetup = false;
 async function initDashboard() {
     await loadAdminProfile();   // biết role + project_id trước khi dựng filter
     await loadProjects();        // tải registry dự án
     await setupPushNotifications();
-    // Không await: hộp thoại quyền của trình duyệt không được chặn phần còn lại
-    // của dashboard khởi động.
+    // Không await: hộp thoại quyền của trình duyệt không được chặn phần còn lại của dashboard khởi động.
     void requestNotificationPermission();
+
+    // Kết nối Realtime SSE Stream: chỉ nhận sự kiện khi có tin nhắn mới hoặc cập nhật
+    connectAdminEvents();
+
+    // Tải danh sách ban đầu
     fetchSessions();
+
+    // Đồng bộ khi người dùng quay lại tab trình duyệt
+    if (!isVisibilitySyncSetup) {
+        isVisibilitySyncSetup = true;
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                fetchSessions();
+                if (currentSessionId) {
+                    loadMessages(currentSessionId);
+                    loadOrderForAdmin(currentSessionId);
+                }
+            }
+        });
+    }
+
+    // Safety fallback: chỉ kiểm tra 60s/lần nếu tab đang mở và SSE bị gián đoạn
     if (pollInterval) clearInterval(pollInterval);
-    pollInterval = setInterval(fetchSessions, 7000);
+    pollInterval = setInterval(() => {
+        if (!document.hidden && (!adminEventSource || adminEventSource.readyState !== EventSource.OPEN)) {
+            fetchSessions();
+        }
+    }, 60000);
 }
 
 async function loadAdminProfile() {
@@ -2311,18 +2410,13 @@ async function selectSession(sessionId) {
         </div>
     `;
 
-    // Load messages
+    // Load messages & orders
     await loadMessages(sessionId);
+    await loadOrderForAdmin(sessionId);
 
-    // Setup real-time message polling
+    // Không còn cần polling 2s/lần: tin nhắn mới được server đẩy tức thì qua SSE Event Stream
     if (messagePollInterval) clearInterval(messagePollInterval);
-    if (session.status === 'active') {
-        messagePollInterval = setInterval(async () => {
-            if (currentSessionId === sessionId) {
-                await loadMessages(sessionId);
-            }
-        }, 2000);
-    }
+    messagePollInterval = null;
 }
 
 // Hóa đơn dùng chung endpoint công khai với khách. Chỉ báo "có thay đổi" khi

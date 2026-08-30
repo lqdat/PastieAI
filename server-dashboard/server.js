@@ -147,6 +147,38 @@ function notifyAgentMessage(session, preview = '') {
   });
 }
 
+// -----------------------------------------------------------------------------
+// SSE Realtime Event Bus cho Admin Dashboard
+// Thay vì để Client liên tục poll GET /api/admin/chats 7s/lần và GET messages 2s/lần
+// gây quá tải CPU & Database, Server sẽ chủ động đẩy sự kiện Realtime qua SSE.
+// Client chỉ tải lại dữ liệu khi THẬT SỰ có tin nhắn mới hoặc có thay đổi trạng thái.
+// -----------------------------------------------------------------------------
+const adminEventClients = new Set();
+
+function broadcastAdminEvent(event) {
+  if (adminEventClients.size === 0) return;
+  const payload = `data: ${JSON.stringify(event)}\n\n`;
+  for (const client of adminEventClients) {
+    try {
+      const admin = client.admin;
+      if (admin && event.projectId && admin.role !== 'superadmin' && admin.project_id && admin.project_id !== event.projectId) {
+        continue;
+      }
+      client.res.write(payload);
+    } catch (e) {
+      adminEventClients.delete(client);
+    }
+  }
+}
+
+function notifyAdminRealtime(type, data = {}) {
+  broadcastAdminEvent({
+    type,
+    timestamp: Date.now(),
+    ...data
+  });
+}
+
 function isAiRateLimited(sessionId) {
   const now = Date.now();
   const entry = aiRateLimit.get(sessionId) || { count: 0, windowStart: now };
@@ -1362,6 +1394,7 @@ app.post('/api/chats/message', async (req, res) => {
       [sessionId, sender, text, translatedText, detectedLang, senderAdminId]
     );
     const sessionExpiresAt = await extendQrSessionOnActivity(sessionRes.rows[0]);
+    notifyAdminRealtime('new_message', { sessionId, projectId: sessionRes.rows[0].project_id, sender, messageId: msgRes.rows[0]?.id });
 
     // Update session detected language — prioritize the language actually detected from the message text
     // over the widget's static UI language (visitorLang), so the AI replies in the language the visitor is typing in.
@@ -1535,10 +1568,15 @@ app.post('/api/chats/message', async (req, res) => {
             [sessionId, finalAiReply, visitorLang]
           );
           aiReplyMsg = aiMsgRes.rows[0];
+          notifyAdminRealtime('new_message', { sessionId, projectId: sessionRes.rows[0].project_id, sender: 'ai', messageId: aiReplyMsg.id });
         } else {
           console.log(`[LiveChat] Session ${sessionId}: human agent active, skipping AI.`);
         }
       }
+    }
+
+    if (aiReplyMsg && !res.headersSent) {
+      notifyAdminRealtime('new_message', { sessionId, projectId: sessionRes.rows[0].project_id, sender: aiReplyMsg.sender || 'system', messageId: aiReplyMsg.id });
     }
 
     res.json({
@@ -1681,6 +1719,7 @@ app.post('/api/chats/:sessionId/attachments', uploadAttachmentMiddleware, async 
     );
 
     const sessionExpiresAt = await extendQrSessionOnActivity(session);
+    notifyAdminRealtime('new_message', { sessionId, projectId: session.project_id, sender, messageId: msgRes.rows[0]?.id });
 
     if (sender === 'visitor') void notifyAgentMessage(session, placeholderText);
     if (sender === 'agent' && session.platform && session.platform !== 'widget') {
@@ -1875,6 +1914,8 @@ app.post('/api/chats/session/close', async (req, res) => {
        VALUES ($1, 'system', $2, $2, $3)`,
       [sessionId, backMsg, lang]
     ).catch((e) => console.error('Insert handback message failed:', e.message));
+
+    notifyAdminRealtime('session_update', { sessionId, projectId: session.project_id, action: 'close' });
 
     res.json({ success: true, summary, tags, mode: 'ai' });
   } catch (error) {
@@ -3835,6 +3876,8 @@ app.put('/api/admin/chats/:sessionId/assign', checkAdminAuth, requireWorkingHour
       [sessionId, logText]
     );
 
+    notifyAdminRealtime('session_update', { sessionId, projectId: sessionCheck.rows[0].project_id, action: 'assign' });
+
     res.json({
       success: true,
       message: `Đã chuyển cuộc hội thoại cho: ${adminName}.`
@@ -3895,6 +3938,9 @@ app.post('/api/admin/chats/:sessionId/claim', checkAdminAuth, requireWorkingHour
         [sessionId, msg, lang]
       ).catch((e) => console.error('Insert operator-claim message failed:', e.message));
     }
+
+    notifyAdminRealtime('session_update', { sessionId, projectId: session.project_id, action: 'claim', claimedByAdminId: req.admin.id });
+
     res.json({ success: true, claimedByAdminId: req.admin.id, operatorNo });
   } catch (error) {
     console.error('Claim chat error:', error);
@@ -3942,6 +3988,49 @@ app.post('/api/admin/chats/:sessionId/claim', checkAdminAuth, requireWorkingHour
  *       500:
  *         description: Lỗi hệ thống
  */
+
+// SSE Stream endpoint cho Admin Dashboard
+app.get('/api/admin/events', async (req, res) => {
+  const authHeader = req.headers['authorization'];
+  const tokenFromHeader = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const token = req.query.token || tokenFromHeader;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Thiếu token xác thực.' });
+  }
+
+  const admin = await getAdminFromToken(token);
+  if (!admin) {
+    return res.status(401).json({ error: 'Token không hợp lệ hoặc đã hết hạn.' });
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+    'Access-Control-Allow-Origin': '*'
+  });
+  res.write(':connected\n\n');
+
+  const client = { req, res, admin };
+  adminEventClients.add(client);
+
+  const keepAliveInterval = setInterval(() => {
+    try {
+      res.write(':keepalive\n\n');
+    } catch (e) {
+      clearInterval(keepAliveInterval);
+      adminEventClients.delete(client);
+    }
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(keepAliveInterval);
+    adminEventClients.delete(client);
+  });
+});
+
 // 1. Get all sessions (grouped by email + projectId to avoid duplicates in sidebar)
 app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const { projectId } = req.query;
@@ -4184,6 +4273,8 @@ app.delete('/api/admin/chats/:sessionId', checkAdminAuth, async (req, res) => {
     if (sessionRes.rows[0].qr_account_id) {
       void s3.deleteSessionAttachments(sessionRes.rows[0].project_id, sessionId);
     }
+
+    notifyAdminRealtime('session_update', { sessionId, projectId: sessionRes.rows[0].project_id, action: 'delete' });
 
     res.json({ success: true, message: 'Đã xóa cuộc trò chuyện thành công.' });
   } catch (error) {
