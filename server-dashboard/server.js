@@ -503,7 +503,11 @@ app.get('/api/qr-chat/:code', async (req, res) => {
   try {
     const account = await resolveQrChatAccount('qr-concierge', String(req.params.code || ''));
     if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
-    res.json({ agentName: account.owner_name || account.label || 'Tư vấn viên hỗ trợ', label: account.label });
+    res.json({
+      agentName: account.group_name || account.label || account.owner_name || 'Tư vấn viên hỗ trợ',
+      groupName: account.group_name || '',
+      label: account.label || ''
+    });
   } catch (error) {
     console.error('[QR Concierge] Cannot read public QR metadata:', error.message);
     res.status(500).json({ error: 'Không thể tải thông tin hỗ trợ.' });
