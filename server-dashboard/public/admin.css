@@ -3596,18 +3596,7 @@ button {
         overflow: hidden;
         padding-bottom: 0;
     }
-    /* Hàng nút Đóng: dính đáy, tự chừa chỗ cho vạch home. */
-    #admin-management-modal .admin-management-box > div:last-child {
-        flex: none;
-        margin-top: 0 !important;
-        padding: 12px 0 calc(12px + env(safe-area-inset-bottom)) !important;
-        background: #fff;
-    }
-    #admin-management-modal .admin-management-box > div:last-child .secondary-btn {
-        width: 100% !important;
-        padding: 12px !important;
-        font-size: 14px !important;
-    }
+
 }
 
 /* Hai modal còn lại cũng từng đặt max-height inline bằng vh — cùng một lỗi:
@@ -3635,3 +3624,49 @@ button {
 .self-push-status.is-on strong { color: #0f7a52; }
 .self-push-status.is-off i { color: var(--text-muted); }
 .self-push-status.is-off strong { color: var(--text-secondary); }
+
+/* --- Hàng nút dính đáy của modal --------------------------------------------
+   Trước đây chọn bằng `> div:last-child` — cách chọn theo vị trí, rất dễ trượt
+   khi cấu trúc đổi. Nay footer có class riêng.
+
+   Chỗ chừa dưới dùng max(env(safe-area-inset-bottom), 14px): trên một số chế độ
+   của Safari inset trả về 0 dù màn hình vẫn có vạch home, khi đó 14px cứng vẫn
+   đủ để nút không bị vạch home đè lên. */
+.modal-sticky-footer {
+    flex: none;
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--panel-border);
+}
+.modal-sticky-footer .secondary-btn {
+    /* .secondary-btn không đặt display, nên phải khai báo ở đây thì icon và chữ
+       mới căn giữa được với nhau. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    width: auto;
+    min-width: 110px;
+    padding: 9px 16px;
+    font-size: 13px;
+}
+
+@media (max-width: 720px) {
+    #admin-management-modal .admin-management-box { padding-bottom: 0; overflow: hidden; }
+    .modal-sticky-footer {
+        position: sticky;
+        bottom: 0;
+        margin-top: 0;
+        padding: 12px 0 max(env(safe-area-inset-bottom), 14px);
+        background: #fff;
+    }
+    .modal-sticky-footer .secondary-btn {
+        width: 100%;
+        min-width: 0;
+        padding: 13px;
+        font-size: 14px;
+        justify-content: center;
+    }
+}

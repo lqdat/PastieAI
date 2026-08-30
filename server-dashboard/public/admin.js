@@ -4074,6 +4074,7 @@ async function createBrandedQrPoster(imageUrl, businessName) {
             document.fonts.load('500 20px "Be Vietnam Pro"'),
             document.fonts.load('700 32px "Be Vietnam Pro"'),
             document.fonts.load('800 50px "Be Vietnam Pro"'),
+            document.fonts.load('400 66px "Lobster"'),
         ]);
     }
     const [qrImage, logoImage] = await Promise.all([
@@ -4105,13 +4106,44 @@ async function createBrandedQrPoster(imageUrl, businessName) {
     ctx.fillRect(0, 0, canvas.width, 22);
 
     ctx.drawImage(logoImage, 90, 58, 104, 104);
+    // Giữ biểu tượng P nguyên bản và dùng wordmark Pastie Chat hai màu giống
+    // nhận diện thương hiệu. Phần chữ Việt bên dưới vẫn dùng Be Vietnam Pro.
+    ctx.save();
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#33243c';
-    ctx.font = `800 46px ${posterFont}`;
-    ctx.fillText('PASTIE CHAT', 222, 121);
+    ctx.textBaseline = 'alphabetic';
+    ctx.lineJoin = 'round';
+    ctx.miterLimit = 2;
+    ctx.font = '400 66px "Lobster", "Segoe Script", cursive';
+    const brandX = 222;
+    const brandY = 130;
+    const pastieText = 'Pastie';
+    const pastieWidth = ctx.measureText(pastieText).width;
+
+    const pastieGradient = ctx.createLinearGradient(brandX, 72, brandX, 138);
+    pastieGradient.addColorStop(0, '#ffe24a');
+    pastieGradient.addColorStop(.55, '#ffb629');
+    pastieGradient.addColorStop(1, '#f07b1f');
+    ctx.strokeStyle = '#6f1f16';
+    ctx.lineWidth = 9;
+    ctx.strokeText(pastieText, brandX, brandY);
+    ctx.fillStyle = pastieGradient;
+    ctx.fillText(pastieText, brandX, brandY);
+
+    const chatX = brandX + pastieWidth + 8;
+    const chatGradient = ctx.createLinearGradient(chatX, 72, chatX, 138);
+    chatGradient.addColorStop(0, '#4bd4ed');
+    chatGradient.addColorStop(.55, '#159ec7');
+    chatGradient.addColorStop(1, '#0877a8');
+    ctx.strokeStyle = '#6f1f16';
+    ctx.strokeText('Chat', chatX, brandY);
+    ctx.fillStyle = chatGradient;
+    ctx.fillText('Chat', chatX, brandY);
+    ctx.restore();
+
+    ctx.textAlign = 'left';
     ctx.fillStyle = '#c52d77';
     ctx.font = `700 18px ${posterFont}`;
-    ctx.fillText('KẾT NỐI TƯ VẤN • LIVE SUPPORT', 225, 155);
+    ctx.fillText('KẾT NỐI TƯ VẤN • LIVE SUPPORT', 225, 166);
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#a12d68';
