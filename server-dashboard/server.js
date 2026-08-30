@@ -504,8 +504,8 @@ app.get('/api/qr-chat/:code', async (req, res) => {
     const account = await resolveQrChatAccount('qr-concierge', String(req.params.code || ''));
     if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
     res.json({
-      agentName: account.group_name || account.label || account.owner_name || 'Tư vấn viên hỗ trợ',
-      groupName: account.group_name || '',
+      agentName: account.owner_name || 'Agent',
+      groupName: account.group_name || account.label || 'Tư vấn viên',
       label: account.label || ''
     });
   } catch (error) {
