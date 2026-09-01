@@ -588,6 +588,30 @@ function getDeviceId() {
     return id;
 }
 
+// Vân tay thiết bị nhẹ. Chỉ để đối chiếu: device_id trùng nhưng vân tay lệch hẳn
+// là dấu hiệu ai đó copy device_id sang máy khác. KHÔNG dùng thay device_id vì
+// vân tay quá dễ trùng giữa các máy cùng đời, cùng hệ điều hành.
+function getDeviceFingerprint() {
+    try {
+        const parts = [
+            navigator.userAgent || '',
+            navigator.platform || '',
+            `${screen.width}x${screen.height}x${screen.colorDepth || ''}`,
+            Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+            String(navigator.hardwareConcurrency || ''),
+        ].join('|');
+        // Hash 32-bit (FNV-1a) — đủ để so sánh, không cần thư viện ngoài.
+        let hash = 0x811c9dc5;
+        for (let i = 0; i < parts.length; i += 1) {
+            hash ^= parts.charCodeAt(i);
+            hash = Math.imul(hash, 0x01000193) >>> 0;
+        }
+        return hash.toString(16).padStart(8, '0');
+    } catch {
+        return '';
+    }
+}
+
 function handleSessionRevoked(reason = 'new_login') {
     if (adminEventSource) {
         adminEventSource.close();
@@ -610,12 +634,26 @@ document.getElementById('session-revoked-relogin-btn')?.addEventListener('click'
     showLogin();
 });
 
+// Header nhận diện thiết bị cho CÁC REQUEST ĐĂNG NHẬP.
+//
+// Quan trọng: đăng nhập dùng fetch thuần chứ không qua authFetch (lúc đó chưa có
+// token), nên nếu không thêm ở đây thì server không nhận được device_id và lớp 2
+// license sẽ không bao giờ kích hoạt — kiểm tra luôn cho qua vì tưởng client cũ.
+function deviceHeaders(extra = {}) {
+    return {
+        ...extra,
+        'X-Device-Id': getDeviceId(),
+        'X-Device-Fp': getDeviceFingerprint(),
+    };
+}
+
 function authFetch(url, options = {}) {
     const token = getToken();
     const headers = {
         ...(options.headers || {}),
         'Authorization': `Bearer ${token}`,
-        'X-Device-Id': getDeviceId()
+        'X-Device-Id': getDeviceId(),
+        'X-Device-Fp': getDeviceFingerprint()
     };
     return fetch(url, { ...options, headers }).then(res => {
         if (res.status === 401) {
@@ -683,7 +721,7 @@ window.handleGoogleCredentialResponse = async function(response) {
     try {
         const res = await fetch(`${API_BASE}/api/admin/auth/google`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: deviceHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ credential: response.credential })
         });
         const data = await res.json();
@@ -870,7 +908,7 @@ async function handleSendAdminOtp(e) {
     try {
         const res = await fetch(`${API_BASE}/api/admin/auth/otp/send`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: deviceHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ email })
         });
         const data = await res.json();
@@ -918,7 +956,7 @@ async function handleVerifyAdminOtp(e) {
     try {
         const res = await fetch(`${API_BASE}/api/admin/auth/otp/verify`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: deviceHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ email: currentOtpTargetEmail, otpCode })
         });
         const data = await res.json();
@@ -1498,12 +1536,34 @@ let realtimeRefreshTimer = null;
 function handleAdminRealtimeEvent(data) {
     if (!data || !data.type) return;
 
+    // Khách đổi ngôn ngữ: cập nhật ngay ngôn ngữ dùng cho phản hồi của Sale,
+    // không chờ fetchSessions hoàn tất hoặc đợi tới tin nhắn tiếp theo.
+    if (data.type === 'session_update' && data.detectedLanguage && data.sessionId) {
+        const changedSession = sessionsList.find(session => String(session.id) === String(data.sessionId));
+        if (changedSession) changedSession.detected_language = data.detectedLanguage;
+        if (currentSessionId && String(data.sessionId) === String(currentSessionId)) {
+            currentDetectedLang = data.detectedLanguage;
+            const detailLangSelect = document.getElementById('detail-lang-select');
+            if (detailLangSelect) detailLangSelect.value = data.detectedLanguage;
+        }
+    }
+
     // 1. Cập nhật danh sách phiên chat ở sidebar khi có tin nhắn mới / cập nhật
     if (['new_message', 'session_update', 'order_update', 'reload_sessions'].includes(data.type)) {
+        // Debounce 1,5 giây, KHÔNG phải 150ms.
+        //
+        // fetchSessions() gọi /api/admin/chats — truy vấn nặng nhất hệ thống
+        // (6 subquery tương quan lên bảng messages cho mỗi phiên). Server phát
+        // sự kiện này cho MỌI admin cùng dự án, nên với 50 agent online thì một
+        // tin nhắn của khách = 50 lần chạy truy vấn đó. Ở 150ms, các sự kiện
+        // liên tiếp gần như không gộp được với nhau.
+        //
+        // 1,5 giây vẫn cảm giác tức thì với người dùng (âm thanh và huy hiệu
+        // chưa đọc đã được xử lý riêng ngay bên dưới, không đợi fetch).
         clearTimeout(realtimeRefreshTimer);
         realtimeRefreshTimer = setTimeout(() => {
             fetchSessions();
-        }, 150);
+        }, 1500);
     }
 
     // 1b. Phát âm thanh NGAY khi nhận tin từ khách — không chờ fetchSessions trả về.
@@ -2095,9 +2155,9 @@ function renderSessionsList(sessions) {
         const isMC = session.platform && session.platform !== 'widget';
 
         const avatarHtml = session.visitor_avatar
-            ? `<img src="${session.visitor_avatar}" class="visitor-avatar-img" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
-              + `<div class="visitor-avatar-initials" style="display:none">${(session.visitor_name || '?')[0].toUpperCase()}</div>`
-            : `<div class="visitor-avatar-initials">${(session.visitor_name || '?')[0].toUpperCase()}</div>`;
+            ? `<img src="${escapeHtml(session.visitor_avatar)}" class="visitor-avatar-img" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+              + `<div class="visitor-avatar-initials" style="display:none">${escapeHtml((session.visitor_name || '?')[0].toUpperCase())}</div>`
+            : `<div class="visitor-avatar-initials">${escapeHtml((session.visitor_name || '?')[0].toUpperCase())}</div>`;
 
         const platformMeta = {
             messenger:            { icon: 'ri-messenger-fill',  label: 'Messenger', color: '#4267B2' },
@@ -2137,7 +2197,7 @@ function renderSessionsList(sessions) {
                 <div class="visitor-avatar-wrap">${avatarHtml}${avatarBadge}</div>
                 <div class="session-card-info">
                     <div class="session-card-top-row">
-                        <span class="session-name" title="${session.visitor_name || ''}">${session.visitor_name || 'Khách hàng'}</span>
+                        <span class="session-name" title="${escapeHtml(session.visitor_name || '')}">${escapeHtml(session.visitor_name || 'Khách hàng')}</span>
                         <span class="session-card-time">${dateStr}</span>
                     </div>
                     <div class="session-card-bottom-row">
@@ -2212,7 +2272,7 @@ function renderSessionsList(sessions) {
 
             groupHeader.innerHTML = `
                 <i class="ri-user-line"></i>
-                <span class="group-email" title="${group.email}">${group.email}</span>
+                <span class="group-email" title="${escapeHtml(group.email || '')}">${escapeHtml(group.email || '')}</span>
                 <span class="group-count-badge">${group.sessions.length} ${countText}</span>
             `;
 
@@ -2477,9 +2537,9 @@ async function selectSession(sessionId) {
     if (chatHeaderAvatar) {
         if (session.visitor_avatar) {
             chatHeaderAvatar.style.display = 'block';
-            chatHeaderAvatar.innerHTML = `<img src="${session.visitor_avatar}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid rgba(99,102,241,0.4);" alt="" onerror="this.parentElement.style.display='none'">`;
+            chatHeaderAvatar.innerHTML = `<img src="${escapeHtml(session.visitor_avatar)}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid rgba(99,102,241,0.4);" alt="" onerror="this.parentElement.style.display='none'">`;
         } else {
-            const initials = (session.visitor_name || '?')[0].toUpperCase();
+            const initials = escapeHtml((session.visitor_name || '?')[0].toUpperCase());
             const isSocial = ['messenger','instagram','whatsapp','facebook','zalo','tiktok','pancake'].includes(session.platform) || (session.platform || '').startsWith('manychat');
             if (isSocial) {
                 chatHeaderAvatar.style.display = 'block';
@@ -4893,6 +4953,7 @@ function applyAdminMgmtFocus() {
             // Vẽ lại theo trạng thái quyền hiện tại (dòng này được tạo mới mỗi lần
             // mở màn hình nên phải gọi lại, không thể dựa vào lần set trước đó).
             renderPushStatusRow(lastPushState);
+            void loadMyDevices();
         }
         setSelfProfileStatus('');
 
@@ -6188,4 +6249,76 @@ function clearSalePicker() {
 document.addEventListener('click', (event) => {
     const chip = event.target.closest('#org-group-sales-select .sale-chip');
     if (chip) chip.classList.toggle('is-on');
+});
+
+// --- Thiết bị của tôi (Lớp 2 bảo mật license) --------------------------------
+
+function formatDeviceTime(value) {
+    if (!value) return '—';
+    try { return new Date(value).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }); }
+    catch { return '—'; }
+}
+
+async function loadMyDevices() {
+    const section = document.getElementById('self-devices-section');
+    const list = document.getElementById('self-devices-list');
+    const count = document.getElementById('self-devices-count');
+    const note = document.getElementById('self-devices-note');
+    if (!section || !list) return;
+
+    // Chỉ Agent/Sale của dự án QR mới bị ràng theo thiết bị — các vai trò khác
+    // không có gì để hiển thị ở đây.
+    if (!isRestrictedConsole()) { section.classList.add('hide'); return; }
+
+    section.classList.remove('hide');
+    list.innerHTML = '<p class="self-devices-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/me/devices`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Không tải được danh sách thiết bị.');
+
+        const active = (data.devices || []).filter(d => d.status === 'active');
+        if (count) count.textContent = `${active.length}/${data.limit} thiết bị`;
+
+        list.innerHTML = active.length ? active.map(device => `
+            <article class="self-device${device.is_current ? ' is-current' : ''}">
+                <i class="${/iPhone|Android/i.test(device.label || '') ? 'ri-smartphone-line' : 'ri-computer-line'}"></i>
+                <div class="self-device-main">
+                    <strong>${escapeHtml(device.label || 'Thiết bị')}${device.is_current ? ' <span class="self-device-badge">đang dùng</span>' : ''}</strong>
+                    <small>Lần cuối: ${escapeHtml(formatDeviceTime(device.last_seen))}</small>
+                </div>
+                ${device.is_current ? '' : `<button type="button" class="self-device-remove" data-device-remove="${device.id}" title="Gỡ thiết bị"><i class="ri-delete-bin-line"></i></button>`}
+            </article>`).join('') : '<p class="self-devices-empty">Chưa có thiết bị nào được ghi nhận.</p>';
+
+        if (note) {
+            // Nói rõ luật cooldown ngay tại đây. Nếu để người dùng chỉ gặp nó lúc
+            // bị chặn đăng nhập thì họ sẽ nghĩ hệ thống hỏng.
+            note.textContent = active.length >= data.limit
+                ? `Đã dùng hết ${data.limit} thiết bị. Gỡ bớt một thiết bị cũ trước khi đăng nhập từ máy mới. `
+                  + `Mỗi ${data.cooldownDays} ngày chỉ được đăng ký thêm thiết bị mới một lần.`
+                : `Tài khoản được dùng tối đa ${data.limit} thiết bị. `
+                  + `Mỗi ${data.cooldownDays} ngày chỉ được đăng ký thêm thiết bị mới một lần.`;
+        }
+    } catch (error) {
+        list.innerHTML = `<p class="self-devices-empty">${escapeHtml(error.message)}</p>`;
+    }
+}
+
+document.getElementById('self-devices-list')?.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-device-remove]');
+    if (!button) return;
+    const ok = await pastieConfirm(
+        'Thiết bị này sẽ phải đăng ký lại từ đầu nếu bạn muốn dùng nó về sau.',
+        { title: 'Gỡ thiết bị này?', confirmText: 'Gỡ thiết bị', danger: true }
+    );
+    if (!ok) return;
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/me/devices/${button.dataset.deviceRemove}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Không gỡ được thiết bị.');
+        toastSuccess('Đã gỡ thiết bị.');
+        await loadMyDevices();
+    } catch (error) {
+        toastError(error.message);
+    }
 });

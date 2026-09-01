@@ -17,7 +17,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r86">
+    <link rel="stylesheet" href="admin.css?v=r78">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -116,7 +116,10 @@
                 </div>
                 <!-- Tên hiển thị của Agent / Sale -->
                 <div id="agent-identity" class="agent-identity hide">
-                    <span class="agent-identity-label" id="agent-identity-label">Agent</span>
+                    <span class="agent-identity-label hide" id="agent-identity-label"></span>
+                    <!-- Hai hàng: trên là tên Agent quản lý, dưới là tên Sale.
+                         Tài khoản Agent quản lý chỉ có một hàng (tên mình). -->
+                    <span id="agent-manager-name" class="agent-manager-name hide"></span>
                     <span id="agent-display-name" class="agent-display-name"></span>
                 </div>
                 <div class="project-selector" id="project-selector-wrap">
@@ -891,6 +894,18 @@
                         <h3><i class="ri-id-card-line"></i> Hồ sơ của bạn</h3>
                     </div>
                     <div id="self-account-meta" class="self-account-meta" aria-label="Thông tin đăng nhập"></div>
+
+                    <!-- Thiết bị đã đăng ký (Lớp 2 bảo mật license). Agent tự xem
+                         và tự gỡ được — bắt liên hệ quản trị viên cho mọi lần đổi
+                         máy sẽ biến hạn mức thành gánh nặng vận hành. -->
+                    <section class="self-devices hide" id="self-devices-section">
+                        <div class="self-devices-head">
+                            <h4><i class="ri-computer-line"></i> Thiết bị đã đăng ký</h4>
+                            <span class="self-devices-count" id="self-devices-count">—</span>
+                        </div>
+                        <div class="self-devices-list" id="self-devices-list"></div>
+                        <p class="self-devices-note" id="self-devices-note"></p>
+                    </section>
                     <form id="self-profile-form" class="self-profile-form">
                         <label for="self-display-name-input">Tên hiển thị</label>
                         <input type="text" id="self-display-name-input" maxlength="255" placeholder="Nhập tên hiển thị..." autocomplete="off" required>
@@ -1105,6 +1120,6 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r86"></script>
+    <script src="admin.js?v=r78"></script>
 </body>
 </html>

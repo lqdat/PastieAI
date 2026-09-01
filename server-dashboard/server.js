@@ -405,6 +405,76 @@ app.get('/widget/v1.js', (_req, res) => {
 
 const crypto = require('crypto');
 
+// ============================================================================
+// RATE LIMIT
+//
+// Trước đây toàn hệ thống không có một giới hạn nào. Hệ quả cụ thể, khai thác
+// được ngay: brute-force mật khẩu và OTP không bị cản; spam /api/otp/send đốt
+// hạn mức email và dội bom hộp thư nạn nhân; spam /api/chats/message gọi Gemini
+// dịch + trả lời không giới hạn từ người dùng ẩn danh.
+//
+// Cài trong bộ nhớ tiến trình, không thêm phụ thuộc. Đánh đổi phải biết trước:
+// chạy nhiều instance thì mỗi instance đếm riêng, nên giới hạn thực tế nhân lên
+// theo số instance. Khi lên nhiều instance cần chuyển sang Redis.
+// ============================================================================
+
+const rateBuckets = new Map();
+
+// Dọn định kỳ, nếu không Map chỉ tăng theo số IP từng ghé qua.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateBuckets.entries()) {
+    if (entry.resetAt <= now) rateBuckets.delete(key);
+  }
+}, 5 * 60 * 1000);
+
+function clientIpOf(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+}
+
+/**
+ * @param {string} name     Tên nhóm giới hạn (để các endpoint khác nhau không đụng nhau)
+ * @param {number} max      Số lượt tối đa trong cửa sổ
+ * @param {number} windowMs Độ dài cửa sổ
+ * @param {(req)=>string} [keyFn] Khoá đếm; mặc định theo IP
+ */
+function rateLimit(name, max, windowMs, keyFn) {
+  return (req, res, next) => {
+    const key = `${name}:${keyFn ? keyFn(req) : clientIpOf(req)}`;
+    const now = Date.now();
+    let entry = rateBuckets.get(key);
+    if (!entry || entry.resetAt <= now) {
+      entry = { count: 0, resetAt: now + windowMs };
+      rateBuckets.set(key, entry);
+    }
+    entry.count += 1;
+    if (entry.count > max) {
+      const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+      res.setHeader('Retry-After', String(retryAfter));
+      return res.status(429).json({
+        error: `Bạn thao tác quá nhanh. Vui lòng thử lại sau ${retryAfter} giây.`,
+        code: 'RATE_LIMITED',
+      });
+    }
+    return next();
+  };
+}
+
+// Đăng nhập và OTP: giới hạn theo CẢ IP lẫn email. Chỉ theo IP thì kẻ tấn công
+// đổi IP là xong; chỉ theo email thì một IP quét được nhiều tài khoản.
+const emailKeyOf = (req) => String(req.body?.email || req.body?.username || '').trim().toLowerCase() || clientIpOf(req);
+
+const limitLoginIp = rateLimit('login-ip', 20, 10 * 60 * 1000);
+const limitLoginEmail = rateLimit('login-email', 8, 10 * 60 * 1000, emailKeyOf);
+const limitOtpSendIp = rateLimit('otp-send-ip', 10, 10 * 60 * 1000);
+// Gửi OTP tốn tiền email thật, siết chặt hơn theo địa chỉ nhận.
+const limitOtpSendEmail = rateLimit('otp-send-email', 3, 10 * 60 * 1000, emailKeyOf);
+const limitOtpVerifyIp = rateLimit('otp-verify-ip', 30, 10 * 60 * 1000);
+const limitOtpVerifyEmail = rateLimit('otp-verify-email', 10, 10 * 60 * 1000, emailKeyOf);
+// Gửi tin nhắn: mỗi tin có thể kéo theo một lượt gọi LLM.
+const limitChatMessage = rateLimit('chat-message', 30, 60 * 1000);
+
+
 // Cryptographically secure password hashing using Node's native PBKDF2
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -425,7 +495,18 @@ async function seedSuperAdmin() {
   try {
     const result = await db.query("SELECT * FROM admins WHERE role = 'superadmin' LIMIT 1");
     if (result.rows.length === 0) {
-      const adminPassword = process.env.ADMIN_PASSWORD || 'PastiePhuQuoc@123';
+      // KHÔNG có mật khẩu mặc định.
+      //
+      // Trước đây fallback là một chuỗi nằm sẵn trong mã nguồn, nên bất kỳ bản
+      // triển khai nào chưa đặt ADMIN_PASSWORD — kể cả DB mới hoặc DB vừa khôi
+      // phục từ backup — đều đăng nhập được bằng admin/<chuỗi đó> để lấy quyền
+      // superadmin toàn cục. Thà không seed còn hơn seed một cửa sau.
+      const adminPassword = process.env.ADMIN_PASSWORD;
+      if (!adminPassword || adminPassword.length < 12) {
+        console.error('[Seed] BỎ QUA tạo superadmin: chưa đặt ADMIN_PASSWORD (tối thiểu 12 ký tự).');
+        console.error('[Seed] Đặt biến môi trường ADMIN_PASSWORD rồi khởi động lại để tạo tài khoản quản trị đầu tiên.');
+        return;
+      }
       const hashedPassword = hashPassword(adminPassword);
       await db.query(
         "INSERT INTO admins (username, password_hash, full_name, role, avatar_url) VALUES ($1, $2, $3, $4, $5)",
@@ -522,6 +603,222 @@ const QR_CHAT_SESSION_MS = 15 * 60 * 1000;
 // --- LỚP 1 BẢO MẬT LICENSE: Single Active Session ----------------------------
 // Mỗi admin_id chỉ được phép có duy nhất 1 phiên (token) hoạt động tại một thời điểm.
 // Khi phát hành token mới -> thu hồi (xóa) toàn bộ token cũ và gửi thông báo SSE session_revoked.
+// ============================================================================
+// LỚP 2 + 3 BẢO MẬT LICENSE: ràng theo thiết bị và nhật ký truy cập
+//
+// Vì sao cần: lớp 1 (một phiên hoạt động) chỉ chặn được việc dùng ĐỒNG THỜI.
+// Kiểu chuyền tay theo ca — sáng người này, chiều người khác — không bao giờ tạo
+// ra hai phiên cùng lúc, nên lớp 1 hoàn toàn không thấy gì. Lớp này gắn license
+// vào DANH SÁCH THIẾT BỊ đã đăng ký thay vì vào phiên đăng nhập.
+//
+// Nguyên tắc đã chốt trong BAO-MAT-LICENSE.md, không được đổi tuỳ tiện:
+//   - KHÔNG tự động khoá tài khoản. Agent thật cũng đổi máy, đổi mạng. Khoá nhầm
+//     một khách hàng thật thiệt hại hơn nhiều so với một tài khoản bị dùng chung.
+//     Ở đây chỉ TỪ CHỐI ĐĂNG NHẬP từ thiết bị lạ, tài khoản vẫn nguyên vẹn.
+//   - Hạn mức mặc định 2 (laptop + điện thoại). Đặt 1 sẽ khiến agent thật rất khó
+//     chịu và tạo áp lực lách ngược lại.
+// ============================================================================
+
+const DEVICE_LIMIT_DEFAULT = Number(process.env.DEVICE_LIMIT_DEFAULT || 2);
+// Cooldown là mấu chốt của cả lớp này: không có nó thì chỉ cần xoá dữ liệu trình
+// duyệt là thành "máy mới" và vượt hạn mức thoải mái.
+const DEVICE_CHANGE_COOLDOWN_DAYS = Number(process.env.DEVICE_CHANGE_COOLDOWN_DAYS || 30);
+
+// Chỉ áp cho tài khoản trực chat của dự án QR. Superadmin, DealPhuQuoc và các
+// role cũ không đụng tới — cùng ràng buộc phạm vi như phần khung giờ làm việc.
+// Sale có được TRẢ LỜI vào hội thoại này không.
+//
+// Trước đây Sale được MIỄN hoàn toàn kiểm tra claim/assign — nghĩa là Sale B
+// chen được vào cuộc chat Sale A đang phục vụ khách, và cướp được mọi chat chưa
+// ai nhận trong project kể cả ngoài nhóm mình. Vòng bảo vệ 409 "đã có người
+// khác tiếp nhận" không áp dụng cho họ.
+//
+// Luật đúng: chat của chính mình, HOẶC chat chưa ai nhận và thuộc nhóm mình.
+async function canSaleWriteToSession(saleId, session) {
+  const claimed = session.claimed_by_admin_id;
+  if (claimed && Number(claimed) === Number(saleId)) return true;
+  if (claimed) return false;                 // người khác đang giữ
+  if (!session.group_id) return true;        // phiên cũ chưa gắn nhóm, giữ nguyên hành vi
+  const member = await db.query(
+    `SELECT 1 FROM agent_group_sales WHERE group_id = $1 AND sale_id = $2 AND is_active = TRUE`,
+    [session.group_id, saleId]
+  );
+  return member.rows.length > 0;
+}
+
+// Danh sách nhóm mà một Sale đang thuộc về. Dùng để giới hạn phạm vi dữ liệu
+// Sale nhìn thấy (khách hàng, mã QR) — Sale chỉ được thấy phần của nhóm mình.
+async function groupIdsOfSale(saleId) {
+  const result = await db.query(
+    `SELECT group_id FROM agent_group_sales WHERE sale_id = $1 AND is_active = TRUE`,
+    [saleId]
+  );
+  return result.rows.map((row) => row.group_id);
+}
+
+async function isDeviceRestrictedAdmin(admin) {
+  if (admin?.role !== 'agent' && admin?.role !== 'sale') return false;
+  if (!admin?.project_id) return false;
+  return (await getQrProjectIds()).has(admin.project_id);
+}
+
+function readDeviceHeaders(req) {
+  return {
+    deviceId: String(req?.headers['x-device-id'] || '').slice(0, 64) || null,
+    fingerprint: String(req?.headers['x-device-fp'] || '').slice(0, 64) || null,
+    userAgent: String(req?.headers['user-agent'] || '').slice(0, 1000),
+    clientIp: req?.headers['x-forwarded-for']?.split(',')[0]?.trim() || req?.socket?.remoteAddress || '',
+  };
+}
+
+// Đặt tên dễ đọc cho thiết bị từ user-agent, để agent nhận ra máy nào là máy nào
+// trong màn hình quản lý thiết bị.
+function describeDevice(userAgent) {
+  const ua = String(userAgent || '');
+  const os = /iPhone|iPad/i.test(ua) ? 'iPhone/iPad'
+    : /Android/i.test(ua) ? 'Android'
+    : /Mac OS X/i.test(ua) ? 'macOS'
+    : /Windows/i.test(ua) ? 'Windows'
+    : /Linux/i.test(ua) ? 'Linux' : 'Thiết bị khác';
+  const browser = /Edg\//i.test(ua) ? 'Edge'
+    : /OPR\//i.test(ua) ? 'Opera'
+    : /Chrome\//i.test(ua) ? 'Chrome'
+    : /Firefox\//i.test(ua) ? 'Firefox'
+    : /Safari\//i.test(ua) ? 'Safari' : 'Trình duyệt';
+  return `${browser} trên ${os}`;
+}
+
+/**
+ * Kiểm tra thiết bị TRƯỚC KHI cấp token.
+ * @returns {Promise<{ok: true} | {ok: false, error: string, code: string}>}
+ */
+async function checkDeviceAllowed(admin, req) {
+  if (!(await isDeviceRestrictedAdmin(admin))) return { ok: true };
+
+  const { deviceId, fingerprint, userAgent, clientIp } = readDeviceHeaders(req);
+  // Không có device_id (trình duyệt chặn localStorage, hoặc client cũ chưa cập
+  // nhật): cho qua thay vì khoá người dùng ra ngoài. Thà bỏ lọt còn hơn chặn nhầm.
+  if (!deviceId) return { ok: true };
+
+  const known = await db.query(
+    `SELECT id, status, fingerprint FROM admin_devices WHERE admin_id = $1 AND device_id = $2`,
+    [admin.id, deviceId]
+  );
+
+  if (known.rows[0]) {
+    if (known.rows[0].status === 'revoked') {
+      return {
+        ok: false,
+        code: 'DEVICE_REVOKED',
+        error: 'Thiết bị này đã bị gỡ khỏi tài khoản. Liên hệ quản trị viên để đăng ký lại.',
+      };
+    }
+    await db.query(
+      `UPDATE admin_devices
+          SET last_seen = NOW(), last_ip = $2, user_agent = $3,
+              fingerprint = COALESCE($4, fingerprint)
+        WHERE id = $1`,
+      [known.rows[0].id, clientIp, userAgent, fingerprint]
+    );
+    return { ok: true };
+  }
+
+  // Thiết bị lạ: xét hạn mức.
+  const info = await db.query(
+    `SELECT a.device_limit, a.last_device_change_at,
+            (SELECT COUNT(*)::int FROM admin_devices d
+              WHERE d.admin_id = a.id AND d.status = 'active') AS active_count
+       FROM admins a WHERE a.id = $1`,
+    [admin.id]
+  );
+  const row = info.rows[0] || {};
+  const limit = Number.isFinite(row.device_limit) && row.device_limit !== null
+    ? row.device_limit
+    : DEVICE_LIMIT_DEFAULT;
+
+  if (row.active_count < limit) {
+    await registerDevice(admin.id, { deviceId, fingerprint, userAgent, clientIp }, false);
+    return { ok: true };
+  }
+
+  // Đã kín chỗ. Cooldown quyết định có cho thay thiết bị hay không — đây chính là
+  // chỗ chặn kiểu chuyền tay: mỗi ngày một máy khác sẽ chạm trần ngay ngày thứ hai.
+  const lastChange = row.last_device_change_at ? new Date(row.last_device_change_at) : null;
+  const cooldownMs = DEVICE_CHANGE_COOLDOWN_DAYS * 24 * 3600 * 1000;
+  const daysLeft = lastChange
+    ? Math.ceil((lastChange.getTime() + cooldownMs - Date.now()) / (24 * 3600 * 1000))
+    : 0;
+
+  if (daysLeft > 0) {
+    return {
+      ok: false,
+      code: 'DEVICE_COOLDOWN',
+      error: `Tài khoản đã dùng đủ ${limit} thiết bị và vừa đổi thiết bị gần đây. `
+        + `Có thể đăng ký thiết bị mới sau ${daysLeft} ngày, hoặc liên hệ quản trị viên.`,
+    };
+  }
+
+  return {
+    ok: false,
+    code: 'DEVICE_LIMIT',
+    error: `Tài khoản đã đăng ký đủ ${limit} thiết bị. `
+      + 'Hãy gỡ bớt một thiết bị cũ trong mục Thiết bị của tôi, hoặc liên hệ quản trị viên.',
+  };
+}
+
+async function registerDevice(adminId, { deviceId, fingerprint, userAgent, clientIp }, countsAsChange = true) {
+  await db.query(
+    `INSERT INTO admin_devices (admin_id, device_id, fingerprint, label, user_agent, last_ip)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (admin_id, device_id)
+     DO UPDATE SET status = 'active', last_seen = NOW(), last_ip = EXCLUDED.last_ip`,
+    [adminId, deviceId, fingerprint, describeDevice(userAgent), userAgent, clientIp]
+  );
+  // Thiết bị ĐẦU TIÊN của tài khoản không tính là "đổi thiết bị" — nếu tính thì
+  // agent mới nhận máy đã bị khoá cooldown ngay từ lần đăng nhập thứ hai.
+  if (countsAsChange) {
+    await db.query('UPDATE admins SET last_device_change_at = NOW() WHERE id = $1', [adminId]);
+  }
+}
+
+// --- Lớp 3: nhật ký truy cập -------------------------------------------------
+// Chỉ ghi khi IP hoặc thiết bị KHÁC lần gần nhất. Ghi mọi request thì bảng phình
+// theo số lần gọi API — vừa tốn đĩa vừa không dùng được để phân tích.
+async function logAdminAccess(admin, req) {
+  try {
+    if (!(await isDeviceRestrictedAdmin(admin))) return;
+    const { deviceId, userAgent, clientIp } = readDeviceHeaders(req);
+    const last = await db.query(
+      `SELECT device_id, client_ip FROM admin_access_log
+        WHERE admin_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [admin.id]
+    );
+    const prev = last.rows[0];
+    if (prev && prev.device_id === deviceId && prev.client_ip === clientIp) return;
+    await db.query(
+      `INSERT INTO admin_access_log (admin_id, device_id, client_ip, user_agent)
+       VALUES ($1, $2, $3, $4)`,
+      [admin.id, deviceId, clientIp, userAgent]
+    );
+  } catch (error) {
+    // Nhật ký hỏng không được làm hỏng phiên làm việc của người dùng.
+    console.error('[License] Không ghi được nhật ký truy cập:', error.message);
+  }
+}
+
+// Dọn nhật ký cũ hơn 90 ngày, chạy mỗi 24 giờ. Không có bước này thì bảng chỉ
+// tăng chứ không bao giờ giảm.
+setInterval(() => {
+  db.query(`DELETE FROM admin_access_log WHERE created_at < NOW() - INTERVAL '90 days'`)
+    .catch((error) => console.error('[License] Không dọn được nhật ký truy cập:', error.message));
+  // Token của người không quay lại nằm lại vĩnh viễn nếu không dọn.
+  db.query(`DELETE FROM admin_sessions WHERE expires_at < NOW() - INTERVAL '7 days'`)
+    .catch((error) => console.error('[Dọn dẹp] Không xoá được phiên hết hạn:', error.message));
+  // OTP hết hạn: khoá chính là email nên bảng bị chặn trên, nhưng dọn cho sạch.
+  db.query(`DELETE FROM admin_otps WHERE expires_at < NOW() - INTERVAL '1 day'`).catch(() => {});
+  db.query(`DELETE FROM otps WHERE expires_at < NOW() - INTERVAL '1 day'`).catch(() => {});
+}, 24 * 3600 * 1000);
+
 async function issueSingleActiveAdminSession(admin, req = null) {
   const clientIp = req ? (req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '') : '';
   const userAgent = req ? String(req.headers['user-agent'] || '').slice(0, 1000) : '';
@@ -629,6 +926,10 @@ async function checkAdminAuth(req, res, next) {
       manager_name: adminSession.manager_name || adminSession.manager_username || null,
       token: token
     };
+
+    // Lớp 3 license: ghi nhật ký khi IP hoặc thiết bị đổi so với lần trước.
+    // Không await — nhật ký không được làm chậm request của người dùng.
+    void logAdminAccess(req.admin, req);
 
     return next();
   } catch (error) {
@@ -1138,7 +1439,7 @@ app.use('/api', (req, res, next) => {
  *         description: Lỗi hệ thống khi xử lý
  */
 // 1. Generate and Send OTP to email
-app.post('/api/otp/send', async (req, res) => {
+app.post('/api/otp/send', limitOtpSendIp, limitOtpSendEmail, async (req, res) => {
   const { email, projectId } = req.body;
   if (projectId === 'dealphuquoc') {
     return res.status(403).json({
@@ -1151,7 +1452,7 @@ app.post('/api/otp/send', async (req, res) => {
   }
 
   // Generate 6-digit code
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const code = String(crypto.randomInt(100000, 1000000));
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes expiration
 
   try {
@@ -1294,7 +1595,7 @@ async function findActiveAnonymousSessionForClient(projectId, clientIp, browser,
 }
 
 // 2. Verify OTP and Create/Activate Chat Session
-app.post('/api/otp/verify', async (req, res) => {
+app.post('/api/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, async (req, res) => {
   const { email, code, name, projectId, language, qrCode } = req.body;
   
   if (!email || !code || !projectId) {
@@ -1538,7 +1839,7 @@ async function blockStaffOutOfHours(req, res, sender, sessionId = null) {
   }
 }
 
-app.post('/api/chats/message', async (req, res) => {
+app.post('/api/chats/message', limitChatMessage, async (req, res) => {
   const { sessionId, sender, text, targetLang, visitorLang, adminLang } = req.body;
 
   if (!sessionId || !sender || !text || !targetLang) {
@@ -1590,6 +1891,17 @@ app.post('/api/chats/message', async (req, res) => {
       const assigned = sessionRes.rows[0].assigned_admin_id;
       const isSuper = isSuperAdmin(sendingAdmin);
       const isSale = sendingAdmin.role === 'sale';
+
+      // Sale KHÔNG còn được miễn kiểm tra: chỉ ghi được vào chat của chính mình,
+      // hoặc chat chưa ai nhận và thuộc nhóm mình.
+      if (isSale && !isSuper) {
+        const allowed = await canSaleWriteToSession(sendingAdmin.id, sessionRes.rows[0]);
+        if (!allowed) {
+          return claim && Number(claim) !== Number(sendingAdmin.id)
+            ? res.status(409).json({ error: 'Cuộc trò chuyện này đã được nhân viên khác tiếp nhận.', claimedByAdminId: claim })
+            : res.status(403).json({ error: 'Cuộc trò chuyện này không thuộc nhóm của bạn.' });
+        }
+      }
 
       if (!isSuper && !isSale) {
         const isClaimedByMe = claim && Number(claim) === Number(sendingAdmin.id);
@@ -1945,6 +2257,14 @@ app.post('/api/chats/:sessionId/attachments', uploadAttachmentMiddleware, async 
       const claim = session.claimed_by_admin_id;
       const assigned = session.assigned_admin_id;
       const isSale = sendingAdmin.role === 'sale';
+      // Cùng luật như khi gửi tin nhắn — nếu không thì chặn được đường chữ mà
+      // vẫn hở đường file.
+      if (isSale && !isSuperAdmin(sendingAdmin)) {
+        const allowed = await canSaleWriteToSession(sendingAdmin.id, session);
+        if (!allowed) {
+          return res.status(403).json({ error: 'Cuộc trò chuyện này không thuộc nhóm của bạn.' });
+        }
+      }
       if (!isSuperAdmin(sendingAdmin) && !isSale) {
         const isClaimedByMe = claim && Number(claim) === Number(sendingAdmin.id);
         const isAssignedToMe = assigned && Number(assigned) === Number(sendingAdmin.id);
@@ -2056,6 +2376,67 @@ app.post('/api/chats/session/language', async (req, res) => {
   } catch (error) {
     console.error('Update session language error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi cập nhật ngôn ngữ.' });
+  }
+});
+
+/**
+ * @openapi
+ * /api/chats/{sessionId}/visitor-language:
+ *   post:
+ *     summary: Khách đổi ngôn ngữ trong phiên chat
+ *     description: Lưu ngôn ngữ mới cho phiên và dùng ngôn ngữ đó để dịch lại lịch sử cũng như các phản hồi tiếp theo.
+ *     tags: [Tin nhắn]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [language]
+ *             properties:
+ *               language: { type: string, enum: [vi, en, ru, zh, ko] }
+ *     responses:
+ *       200: { description: Đã cập nhật ngôn ngữ }
+ *       400: { description: Ngôn ngữ không hợp lệ }
+ *       404: { description: Không tìm thấy phiên }
+ *       410: { description: Phiên đã đóng }
+ */
+app.post('/api/chats/:sessionId/visitor-language', async (req, res) => {
+  const sessionId = req.params.sessionId;
+  const language = String(req.body?.language || '').toLowerCase();
+  const validLanguages = new Set(['vi', 'en', 'ru', 'zh', 'ko']);
+  if (!validLanguages.has(language)) {
+    return res.status(400).json({ error: 'Ngôn ngữ không hợp lệ.' });
+  }
+
+  try {
+    const existing = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Không tìm thấy phiên chat.' });
+    await expireQrSessionIfNeeded(existing.rows[0]);
+    if (existing.rows[0].status === 'closed') return res.status(410).json({ error: 'Phiên chat đã kết thúc.' });
+
+    const result = await db.query(
+      'UPDATE sessions SET detected_language = $1 WHERE id = $2 RETURNING id, detected_language, expires_at',
+      [language, sessionId]
+    );
+    const expiresAt = await extendQrSessionOnActivity({ ...existing.rows[0], detected_language: language });
+    // Dashboard không polling liên tục nữa. Đẩy thay đổi để Sale, Agent quản lý
+    // và Superadmin đang xem phiên này cập nhật ngôn ngữ ngay lập tức.
+    notifyAdminRealtime('session_update', {
+      sessionId,
+      projectId: existing.rows[0].project_id,
+      detectedLanguage: language,
+      source: 'visitor_language',
+    });
+    res.json({ success: true, language, expiresAt, session: result.rows[0] });
+  } catch (error) {
+    console.error('Update visitor language error:', error);
+    res.status(500).json({ error: 'Không thể cập nhật ngôn ngữ của phiên chat.' });
   }
 });
 
@@ -2457,7 +2838,41 @@ app.post('/api/chats/session/request-agent', async (req, res) => {
  *         description: Lỗi hệ thống
  */
 // Helper to retrieve cached translation or translate using Gemini and cache it
-async function getOrTranslateMessage(msg, targetLang) {
+// Nạp cache dịch cho CẢ DANH SÁCH bằng một truy vấn.
+//
+// Trước đây mỗi tin nhắn là một câu SELECT riêng lên message_translations. Portal
+// tải 50 tin mỗi 3,5 giây, nên một khách đang mở chat là tới 52 truy vấn mỗi
+// lượt poll; 200 chat mở là khoảng 3.000 truy vấn/giây chỉ để ĐỌC CACHE.
+//
+// Truy vấn vốn đã trúng PRIMARY KEY (message_id, target_lang) — vấn đề không
+// phải là index mà là số lượt đi về giữa Node và Postgres.
+async function preloadTranslations(messages, targetLang) {
+  const cache = new Map();
+  if (!targetLang) return cache;
+  const ids = messages
+    .filter((msg) => !msg.attachment_key && (msg.language || '').toLowerCase() !== targetLang.toLowerCase())
+    .map((msg) => msg.id)
+    .filter((id) => Number.isInteger(id));
+  if (ids.length === 0) return cache;
+  try {
+    const result = await db.query(
+      `SELECT message_id, translated_text FROM message_translations
+        WHERE message_id = ANY($1::int[]) AND target_lang = $2`,
+      [ids, targetLang.toLowerCase()]
+    );
+    for (const row of result.rows) cache.set(row.message_id, row.translated_text);
+  } catch (error) {
+    // Hỏng cache thì rơi về đường cũ (mỗi tin một truy vấn), không làm vỡ request.
+    console.error('[Cache Preload Error]:', error.message);
+  }
+  return cache;
+}
+
+/**
+ * @param {Map<number,string>} [preloaded] Cache đã nạp sẵn bởi preloadTranslations.
+ *   Có nó thì bỏ hẳn được câu SELECT riêng cho từng tin.
+ */
+async function getOrTranslateMessage(msg, targetLang, preloaded) {
   // Attachment messages carry a fixed placeholder caption ("[Đính kèm] ...") —
   // translating it every time would just waste Gemini calls for no benefit.
   if (msg.attachment_key) return msg.translated_text || msg.original_text;
@@ -2468,6 +2883,12 @@ async function getOrTranslateMessage(msg, targetLang) {
 
   if (msgLang === targetLangCode) {
     return msg.original_text;
+  }
+
+  // Cache đã nạp sẵn theo lô: không cần đi thêm một vòng tới database.
+  if (preloaded instanceof Map) {
+    const hit = preloaded.get(msg.id);
+    if (hit !== undefined) return hit;
   }
 
   // Check message_translations cache first
@@ -2522,7 +2943,10 @@ async function getOrTranslateMessage(msg, targetLang) {
     // Non-blocking fallback
   }
 
-  return msg.translated_text || msg.original_text;
+  // Khi client yêu cầu một ngôn ngữ cụ thể, không được trả lại bản dịch cũ
+  // nằm trong messages.translated_text (thường là tiếng Việt). Nếu lượt dịch
+  // mới lỗi, trả bản gốc còn đúng hơn hiển thị nhầm ngôn ngữ trước đó.
+  return msg.original_text;
 }
 
 // 5. Get messages for a session (Public route for the Visitor Widget)
@@ -2610,9 +3034,12 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
     
     const messages = result.rows.reverse();
 
+    // Nạp cache dịch một lượt cho cả danh sách, thay vì mỗi tin một truy vấn.
+    const translationCache = await preloadTranslations(messages, visitorLang);
+
     // Dịch song song các tin nhắn nếu ngôn ngữ khách hàng được chỉ định
     await Promise.all(messages.map(async (msg) => {
-      msg.translated_text = await getOrTranslateMessage(msg, visitorLang);
+      msg.translated_text = await getOrTranslateMessage(msg, visitorLang, translationCache);
       // Presigned S3 URLs expire — always hand back a fresh one instead of a stale cached value.
       if (msg.attachment_key) {
         msg.attachment_url = await s3.getPresignedUrl(msg.attachment_key, 6 * 3600).catch(() => msg.attachment_url);
@@ -2920,7 +3347,33 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
 
   const sessionRes = await db.query('SELECT detected_language FROM sessions WHERE id = $1', [req.params.sessionId]);
   const language = invoiceLanguageFor(sessionRes.rows[0], req.query.lang);
-  const invoice = await prepareInvoiceDelivery(order.invoice || {}, language);
+
+  // CACHE PDF HOÁ ĐƠN.
+  //
+  // Portal khách gọi endpoint này mỗi 3,5 giây. Trước đây mỗi lượt gọi đều dựng
+  // lại PDF bằng pdfkit kèm nhúng font — với 200 chat có hoá đơn là 57 lần render
+  // mỗi giây trên một tiến trình Node đơn luồng, vỡ ở khoảng 25 hoá đơn mở.
+  //
+  // Bản render phụ thuộc hai thứ: nội dung đơn và NGÔN NGỮ khách đang chọn. Nên
+  // cache theo ngôn ngữ, và chỉ dùng lại khi đơn chưa đổi kể từ lúc render.
+  const cached = order.invoice_render && typeof order.invoice_render === 'object'
+    ? order.invoice_render[language]
+    : null;
+  const orderStamp = new Date(order.updated_at || order.created_at || 0).getTime();
+
+  let invoice;
+  if (cached && Number(cached.orderStamp) === orderStamp) {
+    invoice = cached.invoice;
+  } else {
+    invoice = await prepareInvoiceDelivery(order.invoice || {}, language);
+    // Chỉ lưu khi thật sự vừa render (generated: true). Trường hợp hoá đơn đã có
+    // sẵn pdfUrl thì không có gì để cache.
+    if (invoice?.generated) {
+      const store = { ...(order.invoice_render || {}), [language]: { orderStamp, invoice } };
+      db.query('UPDATE chat_orders SET invoice_render = $1 WHERE id = $2', [JSON.stringify(store), order.id])
+        .catch((error) => console.error('[Invoice] Không lưu được cache PDF:', error.message));
+    }
+  }
 
   res.json({
     order: { ...order, invoice },
@@ -3000,7 +3453,7 @@ app.post('/api/chats/:sessionId/order/finish', async (req, res) => {
 // --- ADMIN AUTHENTICATION ENDPOINTS ---
 
 // Admin Login
-app.post('/api/admin/login', async (req, res) => {
+app.post('/api/admin/login', limitLoginIp, limitLoginEmail, async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Vui lòng điền đầy đủ tên đăng nhập và mật khẩu.' });
@@ -3024,6 +3477,11 @@ app.post('/api/admin/login', async (req, res) => {
 
     const hoursError = await checkWorkingHours(admin);
     if (hoursError) return res.status(403).json({ error: hoursError, code: 'OUT_OF_HOURS' });
+
+    // Lớp 2 license: thiết bị lạ vượt hạn mức thì từ chối CẤP TOKEN, không khoá
+    // tài khoản. Người dùng vẫn đăng nhập được từ thiết bị đã đăng ký.
+    const deviceCheck = await checkDeviceAllowed(admin, req);
+    if (!deviceCheck.ok) return res.status(403).json({ error: deviceCheck.error, code: deviceCheck.code });
 
     // Create single active session token (8 hours)
     const { token } = await issueSingleActiveAdminSession(admin, req);
@@ -3184,6 +3642,16 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null) 
     throw err;
   }
 
+  // Lớp 2 license: kiểm tra thiết bị trước khi cấp token. Ném lỗi thay vì trả
+  // object, vì cả hai nơi gọi hàm này đều bắt lỗi theo error.status.
+  const deviceCheck = await checkDeviceAllowed(admin, req);
+  if (!deviceCheck.ok) {
+    const err = new Error(deviceCheck.error);
+    err.status = 403;
+    err.code = deviceCheck.code;
+    throw err;
+  }
+
   // 4. Phát hành phiên đăng nhập duy nhất (Single Active Session)
   const { token: sessionToken } = await issueSingleActiveAdminSession(admin, req);
 
@@ -3203,7 +3671,7 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null) 
 }
 
 // 1. POST Google OAuth Sign-In
-app.post('/api/admin/auth/google', async (req, res) => {
+app.post('/api/admin/auth/google', limitLoginIp, async (req, res) => {
   const { credential } = req.body;
   if (!credential) {
     return res.status(400).json({ error: 'Thiếu Google credential token.' });
@@ -3240,7 +3708,7 @@ app.post('/api/admin/auth/google', async (req, res) => {
 });
 
 // 2. POST Send Email OTP for Admin
-app.post('/api/admin/auth/otp/send', async (req, res) => {
+app.post('/api/admin/auth/otp/send', limitOtpSendIp, limitOtpSendEmail, async (req, res) => {
   const { email } = req.body;
   const cleanEmail = String(email || '').trim().toLowerCase();
 
@@ -3303,7 +3771,7 @@ app.post('/api/admin/auth/otp/send', async (req, res) => {
     }
 
     // Generate 6-digit OTP
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpCode = String(crypto.randomInt(100000, 1000000));
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
     // Upsert into admin_otps table
@@ -3330,7 +3798,7 @@ app.post('/api/admin/auth/otp/send', async (req, res) => {
 });
 
 // 3. POST Verify Email OTP for Admin
-app.post('/api/admin/auth/otp/verify', async (req, res) => {
+app.post('/api/admin/auth/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, async (req, res) => {
   const { email, otpCode } = req.body;
   const cleanEmail = String(email || '').trim().toLowerCase();
   const cleanOtp = String(otpCode || '').trim();
@@ -3340,13 +3808,35 @@ app.post('/api/admin/auth/otp/verify', async (req, res) => {
   }
 
   try {
+    // Đếm số lần sai TRƯỚC khi so mã. Không có bước này thì mã 6 chữ số sống
+    // 5 phút, sai không bị vô hiệu — brute-force chỉ là vấn đề băng thông.
+    const OTP_MAX_ATTEMPTS = 5;
+    const pending = await db.query(
+      'SELECT code, attempts FROM admin_otps WHERE email = $1 AND expires_at > CURRENT_TIMESTAMP LIMIT 1',
+      [cleanEmail]
+    );
+    if (pending.rows.length === 0) {
+      return res.status(400).json({ error: 'Mã xác thực OTP không chính xác hoặc đã hết hạn.' });
+    }
+    if (pending.rows[0].attempts >= OTP_MAX_ATTEMPTS) {
+      await db.query('DELETE FROM admin_otps WHERE email = $1', [cleanEmail]);
+      return res.status(429).json({ error: 'Bạn đã nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới.' });
+    }
+
     const otpRes = await db.query(
       'SELECT * FROM admin_otps WHERE email = $1 AND code = $2 AND expires_at > CURRENT_TIMESTAMP LIMIT 1',
       [cleanEmail, cleanOtp]
     );
 
     if (otpRes.rows.length === 0) {
-      return res.status(400).json({ error: 'Mã xác thực OTP không chính xác hoặc đã hết hạn.' });
+      // Sai thì tăng bộ đếm; đủ 5 lần là mã bị huỷ, phải xin mã mới.
+      await db.query('UPDATE admin_otps SET attempts = attempts + 1 WHERE email = $1', [cleanEmail]);
+      const left = OTP_MAX_ATTEMPTS - pending.rows[0].attempts - 1;
+      return res.status(400).json({
+        error: left > 0
+          ? `Mã xác thực không chính xác. Còn ${left} lần thử.`
+          : 'Mã xác thực không chính xác. Vui lòng yêu cầu mã mới.',
+      });
     }
 
     // Delete used OTP
@@ -3493,6 +3983,11 @@ app.post('/api/admin/sso', async (req, res) => {
 
     const ssoHoursError = await checkWorkingHours(admin);
     if (ssoHoursError) return res.status(403).json({ error: ssoHoursError, code: 'OUT_OF_HOURS' });
+
+    const ssoDeviceCheck = await checkDeviceAllowed(admin, req);
+    if (!ssoDeviceCheck.ok) {
+      return res.status(403).json({ error: ssoDeviceCheck.error, code: ssoDeviceCheck.code });
+    }
 
     // Create single active session token (8 hours)
     const { token: sessionToken } = await issueSingleActiveAdminSession(admin, req);
@@ -3641,16 +4136,33 @@ app.get('/api/admin/customers', checkAdminAuth, async (req, res) => {
   const projectId = String(req.query.projectId || req.admin.project_id || '');
   if (!projectId || !canAccessProject(req.admin, projectId)) return res.status(403).json({ error: 'Bạn không có quyền xem khách hàng của project này.' });
   try {
-    const onlyAssignedAgent = req.admin.role === 'agent';
+    // Phạm vi dữ liệu theo vai trò:
+    //   - Sale  : chỉ khách đến từ QR của các NHÓM mình thuộc về.
+    //   - Agent : chỉ khách đến từ QR mình sở hữu.
+    //   - Còn lại (superadmin / project_admin / project_owner): cả dự án.
+    //
+    // Trước đây biến lọc chỉ xét role 'agent', nên 'sale' rơi vào nhánh không
+    // lọc và đọc được email cùng họ tên của TOÀN BỘ khách hàng trong dự án.
+    let scopeSql = '';
+    const params = [projectId];
+    if (isSale(req.admin)) {
+      const groups = await groupIdsOfSale(req.admin.id);
+      scopeSql = 'AND q.group_id = ANY($2::int[])';
+      params.push(groups);
+    } else if (isAgentManager(req.admin)) {
+      scopeSql = 'AND q.owner_admin_id = $2';
+      params.push(req.admin.id);
+    }
+
     const result = await db.query(
       `SELECT c.id, c.email, c.full_name, c.auth_provider, c.first_login_at, c.last_login_at,
               q.label AS last_qr_label, a.full_name AS assigned_agent_name
          FROM customers c
          LEFT JOIN qr_chat_accounts q ON q.id = c.last_qr_account_id
          LEFT JOIN admins a ON a.id = q.owner_admin_id
-        WHERE c.project_id = $1 ${onlyAssignedAgent ? 'AND q.owner_admin_id = $2' : ''}
+        WHERE c.project_id = $1 ${scopeSql}
         ORDER BY c.last_login_at DESC`,
-      onlyAssignedAgent ? [projectId, req.admin.id] : [projectId]
+      params
     );
     res.json(result.rows);
   } catch (error) {
@@ -3662,13 +4174,25 @@ app.get('/api/admin/customers', checkAdminAuth, async (req, res) => {
 app.get('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
   const projectId = String(req.query.projectId || 'qr-concierge');
   if (!canAccessProject(req.admin, projectId)) return res.status(403).json({ error: 'Bạn không có quyền xem QR của project này.' });
-  const onlyOwner = req.admin.role === 'agent';
+  // Cùng luật phạm vi như danh sách khách hàng. Ở đây còn quan trọng hơn: mỗi
+  // dòng kèm chat_url, tức là đường mở thẳng phiên chat khách của nhóm khác.
+  let scopeSql = '';
+  const params = [projectId];
+  if (isSale(req.admin)) {
+    const groups = await groupIdsOfSale(req.admin.id);
+    scopeSql = 'AND q.group_id = ANY($2::int[])';
+    params.push(groups);
+  } else if (isAgentManager(req.admin)) {
+    scopeSql = 'AND q.owner_admin_id = $2';
+    params.push(req.admin.id);
+  }
+
   const result = await db.query(
     `SELECT q.id, q.code, q.label, q.is_active, q.created_at, a.id AS owner_admin_id, a.full_name AS owner_name
        FROM qr_chat_accounts q JOIN admins a ON a.id = q.owner_admin_id
-      WHERE q.project_id = $1 AND q.is_active = TRUE ${onlyOwner ? 'AND q.owner_admin_id = $2' : ''}
+      WHERE q.project_id = $1 AND q.is_active = TRUE ${scopeSql}
       ORDER BY q.created_at DESC`,
-    onlyOwner ? [projectId, req.admin.id] : [projectId]
+    params
   );
   res.json(result.rows.map((account) => ({ ...account, chat_url: qrCustomerChatUrl(req, account.code) })));
 });
@@ -4158,10 +4682,17 @@ app.post('/api/admin/chats/:sessionId/claim', checkAdminAuth, requireWorkingHour
   }
 
   try {
-    const sessionResult = await db.query('SELECT project_id, claimed_by_admin_id, operator_no, detected_language FROM sessions WHERE id = $1', [sessionId]);
+    const sessionResult = await db.query('SELECT project_id, claimed_by_admin_id, group_id, operator_no, detected_language FROM sessions WHERE id = $1', [sessionId]);
     if (sessionResult.rows.length === 0) return res.status(404).json({ error: 'Không tìm thấy cuộc trò chuyện.' });
     const session = sessionResult.rows[0];
     if (!canAccessProject(req.admin, session.project_id)) return res.status(403).json({ error: 'Bạn không có quyền tiếp nhận chat của project này.' });
+
+    // Sale chỉ tiếp nhận được chat thuộc nhóm mình. Trước đây chỉ kiểm tra
+    // project nên Sale cướp được mọi chat chưa ai nhận trong dự án, kể cả của
+    // nhóm khác.
+    if (isSale(req.admin) && !(await canSaleWriteToSession(req.admin.id, session))) {
+      return res.status(403).json({ error: 'Cuộc trò chuyện này không thuộc nhóm của bạn.' });
+    }
     if (session.claimed_by_admin_id && session.claimed_by_admin_id !== req.admin.id && !isSuperAdmin(req.admin)) {
       return res.status(409).json({ error: 'Chat này đã được nhân viên khác tiếp nhận.' });
     }
@@ -4351,12 +4882,11 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
         COALESCE(g.name, g2.name) as group_name,
         COALESCE(s.group_id, q.group_id) as group_id,
         q.label as qr_label,
-        (SELECT COUNT(*) FROM messages WHERE session_id = s.id) as message_count,
-        (SELECT MAX(created_at) FROM messages WHERE session_id = s.id) as last_message_at,
-        (SELECT original_text FROM messages WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1) as last_message_preview,
-        (SELECT sender FROM messages WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1) as last_message_sender,
-        (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.sender = 'visitor'
-           AND m.created_at > COALESCE(rr.last_seen_at, to_timestamp(0))) as unread_visitor,
+        mstat.message_count,
+        mstat.last_message_at,
+        mlast.original_text as last_message_preview,
+        mlast.sender as last_message_sender,
+        mstat.unread_visitor,
         COALESCE(rr.seen_message_count, -1) as seen_message_count
       FROM sessions s
       LEFT JOIN admins a ON s.assigned_admin_id = a.id
@@ -4365,6 +4895,26 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
       LEFT JOIN qr_chat_accounts q ON s.qr_account_id = q.id
       LEFT JOIN agent_groups g2 ON q.group_id = g2.id
       LEFT JOIN session_read_receipts rr ON rr.session_id = s.id AND rr.admin_id = $1
+      -- Trước đây chỗ này là 5 subquery tương quan riêng biệt, mỗi cái quét lại
+      -- index của bảng messages cho TỪNG phiên chat. Với 2.000 phiên × 40 tin là
+      -- khoảng 500 nghìn index entry mỗi lần gọi — mà endpoint này được gọi lại
+      -- mỗi khi có sự kiện SSE.
+      --
+      -- Gộp thành 2 LATERAL: một cái quét đếm/tổng hợp, một cái lấy tin cuối.
+      -- 5 lượt quét còn 2, và đọc dễ hơn hẳn.
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS message_count,
+               MAX(created_at) AS last_message_at,
+               COUNT(*) FILTER (
+                 WHERE sender = 'visitor'
+                   AND created_at > COALESCE(rr.last_seen_at, to_timestamp(0))
+               ) AS unread_visitor
+          FROM messages WHERE session_id = s.id
+      ) mstat ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT original_text, sender FROM messages
+         WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1
+      ) mlast ON TRUE
     `;
 
     // Chỉ hiện multichannel session khi đã chuyển sang agent (show_in_dashboard=true)
@@ -4393,12 +4943,16 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
     } else if (isAgentManager(req.admin)) {
       // Agent quản lý thấy toàn bộ chat của các nhóm mình sở hữu, cộng các phiên
       // QR cũ chưa được gắn nhóm (dữ liệu trước migration).
+      // Dùng danh sách project QR thật thay cho chuỗi cứng 'qr-concierge':
+      // với dự án QR thứ hai, so sánh chuỗi luôn đúng nên điều kiện tự vô hiệu
+      // và Agent X thấy được chat của Agent Y cùng dự án.
+      const qrIds = [...(await getQrProjectIds())];
       conditions.push(`(
-        s.project_id <> 'qr-concierge'
-        OR s.assigned_admin_id = $${params.length + 1}
-        OR s.group_id IN (SELECT id FROM agent_groups WHERE agent_id = $${params.length + 1})
+        NOT (s.project_id = ANY($${params.length + 1}::varchar[]))
+        OR s.assigned_admin_id = $${params.length + 2}
+        OR s.group_id IN (SELECT id FROM agent_groups WHERE agent_id = $${params.length + 2})
       )`);
-      params.push(req.admin.id);
+      params.push(qrIds, req.admin.id);
     }
     // Bộ lọc trạng thái định tuyến cho giao diện Agent: đang chờ / đang xử lý / đã đóng.
     const routing = String(req.query.routing || '').trim();
@@ -4409,6 +4963,13 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
 
     queryText += ' WHERE ' + conditions.join(' AND ');
     queryText += ' ORDER BY s.created_at DESC';
+
+    // Trần cứng: bảng sessions chỉ tăng, không bao giờ xoá (phiên đóng vẫn giữ).
+    // Không có LIMIT thì chi phí endpoint này tăng tuyến tính theo tuổi hệ thống,
+    // trong khi giao diện chỉ hiển thị được vài chục dòng đầu.
+    const chatLimit = Math.min(500, Math.max(20, Number.parseInt(req.query.limit, 10) || 200));
+    queryText += ` LIMIT $${params.length + 1}`;
+    params.push(chatLimit);
 
     const result = await db.query(queryText, params);
     
@@ -4478,7 +5039,28 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
       return res.status(403).json({ error: 'Bạn không có quyền xem hội thoại thuộc project khác.' });
     }
 
-    if (req.admin.role === 'agent' && sess.project_id === 'qr-concierge') {
+    // Sale chỉ được đọc hội thoại của nhóm mình, hoặc chat chính mình đã tiếp
+    // nhận. Trước đây KHÔNG có nhánh nào cho 'sale' ở đây — trong khi
+    // /api/admin/chats lại lọc rất chặt theo nhóm. Sale chỉ cần biết sessionId
+    // (SSE phát cho mọi client cùng project) là đọc trọn chat của Sale khác.
+    if (isSale(req.admin) && (await getQrProjectIds()).has(sess.project_id)) {
+      const isMine = Number(sess.claimed_by_admin_id) === Number(req.admin.id);
+      let inMyGroup = false;
+      if (sess.group_id) {
+        const member = await db.query(
+          `SELECT 1 FROM agent_group_sales WHERE group_id = $1 AND sale_id = $2 AND is_active = TRUE`,
+          [sess.group_id, req.admin.id]
+        );
+        inMyGroup = member.rows.length > 0;
+      }
+      if (!isMine && !inMyGroup) {
+        return res.status(403).json({ error: 'Hội thoại này không thuộc nhóm của bạn.' });
+      }
+    }
+
+    // Dùng getQrProjectIds() thay cho chuỗi cứng 'qr-concierge': khi có dự án QR
+    // thứ hai, so sánh chuỗi sẽ luôn sai và Agent X đọc được chat của Agent Y.
+    if (isAgentManager(req.admin) && (await getQrProjectIds()).has(sess.project_id)) {
       const isDirectOwner = Number(sess.assigned_admin_id) === Number(req.admin.id);
       let isMySale = false;
       if (sess.claimed_by_admin_id) {
@@ -4515,9 +5097,11 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
     
     const messages = result.rows.reverse();
 
+    const translationCache = await preloadTranslations(messages, targetLang);
+
     // Dịch song song các tin nhắn theo ngôn ngữ được khóa của cuộc trò chuyện
     await Promise.all(messages.map(async (msg) => {
-      msg.translated_text = await getOrTranslateMessage(msg, targetLang);
+      msg.translated_text = await getOrTranslateMessage(msg, targetLang, translationCache);
       // Presigned S3 URLs expire — always hand back a fresh one instead of a stale cached value.
       if (msg.attachment_key) {
         msg.attachment_url = await s3.getPresignedUrl(msg.attachment_key, 6 * 3600).catch(() => msg.attachment_url);
@@ -4637,16 +5221,32 @@ app.delete('/api/admin/chats/:sessionId', checkAdminAuth, async (req, res) => {
  */
 // 3. Export data (JSONL for Fine-tuning / CSV for Sales Scripting)
 app.get('/api/admin/export', checkAdminAuth, async (req, res) => {
-  const { format, projectId } = req.query; // format = 'jsonl' | 'csv'
-  
+  const { format } = req.query; // format = 'jsonl' | 'csv'
+
+  // Trước đây endpoint này chỉ có checkAdminAuth và `SELECT * FROM sessions`
+  // không điều kiện: một tài khoản Sale gọi được là tải trọn lịch sử hội thoại
+  // cùng email khách hàng của MỌI project. Đối chiếu /api/admin/reports/data —
+  // vốn chặn sale và scope theo project — cho thấy đây là thiếu sót, không phải
+  // chủ ý.
+  if (!isSuperAdmin(req.admin) && !isProjectOwner(req.admin) && !isProjectAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Bạn không có quyền xuất dữ liệu.' });
+  }
+  // Tài khoản gắn project bị ép về project của mình; superadmin BẮT BUỘC chọn
+  // project — không cho phép xuất toàn hệ thống trong một lần gọi.
+  const projectId = isSuperAdmin(req.admin) ? String(req.query.projectId || '') : req.admin.project_id;
+  if (!projectId) {
+    return res.status(400).json({ error: 'Cần chọn dự án cụ thể để xuất dữ liệu.' });
+  }
+
+  // Trần cứng: bảng sessions chỉ tăng chứ không giảm. Không có LIMIT thì một
+  // lần bấm "Xuất dữ liệu" ở 50k phiên là N+1 tuần tự cộng chuỗi vài trăm MB
+  // trong RAM — đủ giết cả tiến trình Node, không riêng endpoint này.
+  const exportLimit = Math.min(5000, Math.max(1, Number.parseInt(req.query.limit, 10) || 5000));
+
   try {
     // 1. Get sessions
-    let sessionsQuery = 'SELECT * FROM sessions';
-    const params = [];
-    if (projectId) {
-      sessionsQuery += ' WHERE project_id = $1';
-      params.push(projectId);
-    }
+    let sessionsQuery = 'SELECT * FROM sessions WHERE project_id = $1 ORDER BY created_at DESC LIMIT $2';
+    const params = [projectId, exportLimit];
     const sessionsRes = await db.query(sessionsQuery, params);
     const sessions = sessionsRes.rows;
 
@@ -4767,12 +5367,22 @@ app.get('/api/admin/reports/data', checkAdminAuth, async (req, res) => {
         ag.username AS agent_email,
         q.label AS qr_label,
         q.code AS qr_code,
-        (SELECT COUNT(*)::int FROM messages WHERE session_id = s.id) AS total_messages,
-        (SELECT COUNT(*)::int FROM messages WHERE session_id = s.id AND sender = 'visitor') AS visitor_messages,
-        (SELECT COUNT(*)::int FROM messages WHERE session_id = s.id AND sender = 'agent') AS staff_messages,
-        (SELECT COUNT(*)::int FROM messages WHERE session_id = s.id AND sender = 'ai') AS ai_messages,
-        (SELECT MAX(created_at) FROM messages WHERE session_id = s.id) AS last_message_at
+        mstat.total_messages,
+        mstat.visitor_messages,
+        mstat.staff_messages,
+        mstat.ai_messages,
+        mstat.last_message_at
       FROM sessions s
+      -- Gộp 5 subquery tương quan (mỗi cái quét lại messages cho từng phiên)
+      -- thành một lượt quét duy nhất.
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS total_messages,
+               COUNT(*) FILTER (WHERE sender = 'visitor')::int AS visitor_messages,
+               COUNT(*) FILTER (WHERE sender = 'agent')::int   AS staff_messages,
+               COUNT(*) FILTER (WHERE sender = 'ai')::int      AS ai_messages,
+               MAX(created_at) AS last_message_at
+          FROM messages WHERE session_id = s.id
+      ) mstat ON TRUE
       LEFT JOIN admins ca ON ca.id = s.claimed_by_admin_id
       LEFT JOIN admins ag ON ag.id = COALESCE(s.assigned_admin_id, ca.managed_by_admin_id)
       LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
@@ -4832,6 +5442,12 @@ app.get('/api/admin/reports/data', checkAdminAuth, async (req, res) => {
       queryText += ' WHERE ' + conditions.join(' AND ');
     }
     queryText += ' ORDER BY s.created_at DESC';
+
+    // Cùng lý do như /api/admin/chats: không có trần thì chi phí tăng theo tuổi
+    // hệ thống, và toàn bộ kết quả còn được gộp lại trong RAM của Node ở dưới.
+    const reportLimit = Math.min(5000, Math.max(50, Number.parseInt(req.query.limit, 10) || 2000));
+    queryText += ` LIMIT $${params.length + 1}`;
+    params.push(reportLimit);
 
     const result = await db.query(queryText, params);
     const sessions = result.rows;
@@ -5176,11 +5792,13 @@ function verifyMetaSignature(req, res, next) {
   const appSecret = process.env.META_APP_SECRET;
 
   // If App Secret is not configured, we skip signature verification (dev fallback)
+  // FAIL-CLOSED. Trước đây thiếu META_APP_SECRET là bỏ qua xác minh và chấp
+  // nhận MỌI request — ai cũng bơm được tin nhắn giả vào dashboard, tạo session
+  // rác và kích hoạt gọi LLM. Môi trường mới rất dễ rơi vào trạng thái này.
   if (!appSecret) {
-    console.warn('WARNING: META_APP_SECRET is not configured in .env. Skipping webhook signature verification.');
-    return next();
+    console.error('[Webhook] TỪ CHỐI: chưa cấu hình META_APP_SECRET, không thể xác minh chữ ký.');
+    return res.status(503).json({ error: 'Webhook chưa được cấu hình.' });
   }
-
   if (!signature) {
     console.error('Signature verification failed: Missing x-hub-signature-256 header.');
     return res.status(401).send('Missing signature');
@@ -5194,7 +5812,12 @@ function verifyMetaSignature(req, res, next) {
     .update(req.rawBody || '')
     .digest('hex');
 
-  if (signatureHash !== expectedHash) {
+  // So sánh time-safe: `!==` trên chuỗi trả về sớm ở byte đầu khác nhau, để lộ
+  // thông tin qua thời gian phản hồi.
+  const sigBuf = Buffer.from(String(signatureHash || ''), 'utf8');
+  const expBuf = Buffer.from(expectedHash, 'utf8');
+  const signatureValid = sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf);
+  if (!signatureValid) {
     console.error('Signature verification failed: Hashes mismatch.');
     return res.status(401).send('Invalid signature');
   }
@@ -5210,6 +5833,39 @@ function parseProjectRef(text) {
 
 // In-memory webhook log (last 20 calls) — view at GET /api/debug/webhook-log
 const _webhookLog = [];
+// ============================================================================
+// CHẶN NHÓM /api/debug/* VÀ /api/test-*
+//
+// Các endpoint này trước đây mở công khai, không xác thực, và rò rất nhiều:
+//   /api/debug/webhook-log   -> 20 payload webhook Meta nguyên văn (tên khách,
+//                               sender_id, nội dung tin nhắn)
+//   /api/test-resend         -> gửi email từ domain công ty tới địa chỉ bất kỳ,
+//                               trả về tiền tố RESEND_API_KEY
+//   /api/test-ai, test-gemini-> gọi LLM tuỳ ý, đốt quota
+//   /api/debug/kb            -> nội dung knowledge base của project bất kỳ
+//
+// Trên production: trả 404 (không phải 403 — không xác nhận sự tồn tại).
+// Ngoài production: bắt buộc đăng nhập superadmin.
+// ============================================================================
+app.use(['/api/debug', '/api/test-ai', '/api/test-gemini', '/api/test-resend'], async (req, res, next) => {
+  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DEBUG_ROUTES !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  const header = req.headers['authorization'] || '';
+  if (!header.startsWith('Bearer ')) return res.status(404).json({ error: 'Not found' });
+  try {
+    const result = await db.query(
+      `SELECT a.role FROM admin_sessions s JOIN admins a ON a.id = s.admin_id
+        WHERE s.token = $1 AND s.expires_at > NOW()`,
+      [header.substring(7)]
+    );
+    if (result.rows[0]?.role !== 'superadmin') return res.status(404).json({ error: 'Not found' });
+    return next();
+  } catch {
+    return res.status(404).json({ error: 'Not found' });
+  }
+});
+
 app.get('/api/debug/webhook-log', (req, res) => res.json(_webhookLog));
 
 // Incoming message handling (POST)
@@ -5362,7 +6018,7 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
         return;
       }
       const email = text.trim().toLowerCase();
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const code = String(crypto.randomInt(100000, 1000000));
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
       await db.query(
         `INSERT INTO otps (email, code, expires_at) VALUES ($1, $2, $3)
@@ -5885,7 +6541,17 @@ app.post('/api/admin/knowledge/manual', checkAdminAuth, async (req, res) => {
 
 // 1. GET Channel configurations for a project (WhatsApp Cloud API)
 app.get('/api/admin/channels', checkAdminAuth, async (req, res) => {
-  const projectId = req.query.projectId || req.admin.project_id || 'pastie-landingpage';
+  // Endpoint này từng chỉ có checkAdminAuth: bất kỳ tài khoản nào đăng nhập —
+  // kể cả Sale cấp thấp nhất — đều đọc được WhatsApp Access Token DẠNG RÕ của
+  // MỌI project, chỉ bằng cách đổi ?projectId=. Token đó đủ để gửi tin nhắn
+  // WhatsApp mạo danh doanh nghiệp.
+  if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin) && !isProjectOwner(req.admin)) {
+    return res.status(403).json({ error: 'Bạn không có quyền xem cấu hình kênh.' });
+  }
+  // Tài khoản gắn project chỉ được xem project của chính mình, bỏ qua query.
+  const projectId = isSuperAdmin(req.admin)
+    ? (req.query.projectId || 'pastie-landingpage')
+    : (req.admin.project_id || 'pastie-landingpage');
   try {
     const configRes = await db.query('SELECT * FROM channel_configs WHERE project_id = $1', [projectId]);
     const row = configRes.rows[0];
@@ -5900,8 +6566,12 @@ app.get('/api/admin/channels', checkAdminAuth, async (req, res) => {
         whatsapp_phone_number_id: row?.whatsapp_phone_number_id || process.env.WHATSAPP_PHONE_NUMBER_ID || '',
         whatsapp_waba_id: row?.whatsapp_waba_id || process.env.WHATSAPP_WABA_ID || '',
         whatsapp_business_phone: row?.whatsapp_business_phone || process.env.WHATSAPP_BUSINESS_PHONE || '',
-        whatsapp_access_token: row?.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN || '',
-        meta_verify_token: row?.meta_verify_token || process.env.META_VERIFY_TOKEN || 'pastie_verify_token_2026',
+        // KHÔNG trả token dạng rõ về trình duyệt. Giao diện chỉ cần biết đã cấu
+        // hình hay chưa, và 4 ký tự cuối để đối chiếu. Token thật không bao giờ
+        // rời khỏi máy chủ — có lộ log trình duyệt hay lịch sử mạng cũng vô hại.
+        whatsapp_access_token_set: Boolean(row?.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN),
+        whatsapp_access_token_hint: String(row?.whatsapp_access_token || process.env.WHATSAPP_ACCESS_TOKEN || '').slice(-4),
+        meta_verify_token_set: Boolean(row?.meta_verify_token || process.env.META_VERIFY_TOKEN),
         webhook_url: webhookUrl,
         direct_link: (row?.whatsapp_business_phone || process.env.WHATSAPP_BUSINESS_PHONE) ? `https://wa.me/${(row?.whatsapp_business_phone || process.env.WHATSAPP_BUSINESS_PHONE).replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Xin chào! Tôi cần tư vấn thông tin dịch vụ.')}` : ''
       }
@@ -5943,8 +6613,12 @@ app.get('/api/chats/channels', async (req, res) => {
 
 // POST Save WhatsApp channel config
 app.post('/api/admin/channels', checkAdminAuth, async (req, res) => {
+  // Cùng lỗ hổng như đường GET, nhưng nguy hiểm hơn vì đây là đường GHI:
+  // trước đây Sale đổi được cấu hình kênh của mọi project.
+  if (!isSuperAdmin(req.admin) && !isProjectAdmin(req.admin) && !isProjectOwner(req.admin)) {
+    return res.status(403).json({ error: 'Bạn không có quyền sửa cấu hình kênh.' });
+  }
   const {
-    projectId = req.admin.project_id || 'pastie-landingpage',
     whatsappPhoneNumberId = '',
     whatsappWabaId = '',
     whatsappBusinessPhone = '',
@@ -5958,8 +6632,11 @@ app.post('/api/admin/channels', checkAdminAuth, async (req, res) => {
   const token = String(whatsappAccessToken || '').trim();
   const verifyToken = String(metaVerifyToken || '').trim() || 'pastie_verify_token_2026';
 
+  // Tài khoản gắn project không được ghi sang project khác.
+  const targetProject = isSuperAdmin(req.admin) ? projectId : (req.admin.project_id || projectId);
+
   try {
-    const existsRes = await db.query('SELECT project_id FROM channel_configs WHERE project_id = $1 LIMIT 1', [projectId]);
+    const existsRes = await db.query('SELECT project_id FROM channel_configs WHERE project_id = $1 LIMIT 1', [targetProject]);
     if (existsRes.rows.length > 0) {
       await db.query(`
         UPDATE channel_configs
@@ -5971,20 +6648,25 @@ app.post('/api/admin/channels', checkAdminAuth, async (req, res) => {
             meta_verify_token = $5,
             updated_at = CURRENT_TIMESTAMP
         WHERE project_id = $6
-      `, [phoneId, wabaId, phone, token, verifyToken, projectId]);
+      `, [phoneId, wabaId, phone, token, verifyToken, targetProject]);
     } else {
       await db.query(`
         INSERT INTO channel_configs (project_id, platform, whatsapp_phone_number_id, whatsapp_waba_id, whatsapp_business_phone, whatsapp_access_token, meta_verify_token)
         VALUES ($1, 'whatsapp', $2, $3, $4, $5, $6)
-      `, [projectId, phoneId, wabaId, phone, token, verifyToken]);
+      `, [targetProject, phoneId, wabaId, phone, token, verifyToken]);
     }
 
     // Update runtime env immediately
     if (phoneId) process.env.WHATSAPP_PHONE_NUMBER_ID = phoneId;
     if (wabaId) process.env.WHATSAPP_WABA_ID = wabaId;
     if (phone) process.env.WHATSAPP_BUSINESS_PHONE = phone;
-    if (token) process.env.WHATSAPP_ACCESS_TOKEN = token;
-    if (verifyToken) process.env.META_VERIFY_TOKEN = verifyToken;
+    // KHÔNG ghi đè process.env lúc chạy nữa.
+    //
+    // process.env dùng chung cho cả tiến trình, không tách theo project. Trước
+    // đây lưu cấu hình của MỘT project là đổi luôn token dùng cho TẤT CẢ —
+    // nghĩa là mọi tin nhắn WhatsApp outbound của toàn hệ thống chạy qua tài
+    // khoản Meta vừa được ghi vào. Cấu hình đã nằm trong bảng channel_configs,
+    // nơi dùng phải đọc theo project_id.
 
     res.json({ success: true, message: 'Đã lưu cấu hình WhatsApp thành công.' });
   } catch (error) {
@@ -6052,11 +6734,6 @@ app.get('/api/debug/session/:sessionId', async (req, res) => {
 app.get('/api/admin/keywords', checkAdminAuth, async (req, res) => {
   const { projectId = 'pastie-landingpage' } = req.query;
   try {
-    await db.query(`CREATE TABLE IF NOT EXISTS transfer_keywords (
-      project_id TEXT PRIMARY KEY,
-      keywords JSONB NOT NULL DEFAULT '[]',
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
     const r = await db.query('SELECT keywords FROM transfer_keywords WHERE project_id = $1', [projectId]);
     res.json({ keywords: r.rows[0]?.keywords || [] });
   } catch (e) {
@@ -6067,11 +6744,6 @@ app.get('/api/admin/keywords', checkAdminAuth, async (req, res) => {
 app.post('/api/admin/keywords', checkAdminAuth, async (req, res) => {
   const { keywords = [], projectId = 'pastie-landingpage' } = req.body;
   try {
-    await db.query(`CREATE TABLE IF NOT EXISTS transfer_keywords (
-      project_id TEXT PRIMARY KEY,
-      keywords JSONB NOT NULL DEFAULT '[]',
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
     await db.query(
       `INSERT INTO transfer_keywords (project_id, keywords) VALUES ($1, $2)
        ON CONFLICT (project_id) DO UPDATE SET keywords = $2, updated_at = NOW()`,
@@ -6939,6 +7611,150 @@ app.post('/api/agent/qr-accounts/:qrId/revoke', checkAdminAuth, async (req, res)
   } catch (error) {
     console.error('Revoke QR error:', error);
     res.status(500).json({ error: 'Không thu hồi được QR.' });
+  }
+});
+
+// --- API quản lý thiết bị (Lớp 2) -------------------------------------------
+
+// Thiết bị của chính mình. Agent/Sale tự xem và tự gỡ được — nếu bắt liên hệ
+// quản trị viên cho mọi lần đổi máy thì hạn mức trở thành gánh nặng vận hành.
+app.get('/api/admin/me/devices', checkAdminAuth, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT id, device_id, label, status, first_seen, last_seen, last_ip
+         FROM admin_devices WHERE admin_id = $1 ORDER BY last_seen DESC`,
+      [req.admin.id]
+    );
+    const info = await db.query(
+      'SELECT device_limit, last_device_change_at FROM admins WHERE id = $1',
+      [req.admin.id]
+    );
+    const currentDeviceId = String(req.headers['x-device-id'] || '');
+    res.json({
+      limit: info.rows[0]?.device_limit ?? DEVICE_LIMIT_DEFAULT,
+      cooldownDays: DEVICE_CHANGE_COOLDOWN_DAYS,
+      lastChangeAt: info.rows[0]?.last_device_change_at || null,
+      devices: result.rows.map((row) => ({ ...row, is_current: row.device_id === currentDeviceId })),
+    });
+  } catch (error) {
+    console.error('List my devices error:', error);
+    res.status(500).json({ error: 'Không tải được danh sách thiết bị.' });
+  }
+});
+
+app.delete('/api/admin/me/devices/:deviceRowId', checkAdminAuth, async (req, res) => {
+  try {
+    const row = await db.query(
+      'SELECT id, device_id FROM admin_devices WHERE id = $1 AND admin_id = $2',
+      [Number(req.params.deviceRowId), req.admin.id]
+    );
+    if (!row.rows[0]) return res.status(404).json({ error: 'Không tìm thấy thiết bị.' });
+
+    // Không cho gỡ chính thiết bị đang dùng: gỡ xong là tự khoá mình ra ngoài,
+    // và lần đăng nhập sau lại tính là thiết bị lạ.
+    if (row.rows[0].device_id === String(req.headers['x-device-id'] || '')) {
+      return res.status(400).json({ error: 'Không thể gỡ thiết bị bạn đang dùng. Hãy gỡ từ thiết bị khác.' });
+    }
+
+    await db.query(`UPDATE admin_devices SET status = 'revoked' WHERE id = $1`, [row.rows[0].id]);
+    // Gỡ thiết bị KHÔNG tính là "đổi thiết bị" nên không chạm cooldown — người
+    // dùng chủ động dọn chỗ là việc nên khuyến khích, không nên phạt.
+    await db.query('DELETE FROM admin_sessions WHERE admin_id = $1 AND device_id = $2',
+      [req.admin.id, row.rows[0].device_id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Revoke my device error:', error);
+    res.status(500).json({ error: 'Không gỡ được thiết bị.' });
+  }
+});
+
+// Superadmin: xem thiết bị của một tài khoản và reset khi agent đổi máy hỏng.
+app.get('/api/superadmin/accounts/:adminId/devices', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được xem.' });
+  try {
+    const devices = await db.query(
+      `SELECT id, device_id, label, status, first_seen, last_seen, last_ip
+         FROM admin_devices WHERE admin_id = $1 ORDER BY last_seen DESC`,
+      [Number(req.params.adminId)]
+    );
+    res.json({ devices: devices.rows });
+  } catch (error) {
+    console.error('List devices error:', error);
+    res.status(500).json({ error: 'Không tải được danh sách thiết bị.' });
+  }
+});
+
+// Reset thiết bị: gỡ hết và xoá cooldown. Dùng khi agent thật đổi máy vì hỏng
+// hóc — luôn ghi log ai reset để không thành cửa sau lách hạn mức.
+app.post('/api/superadmin/accounts/:adminId/devices/reset', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được reset thiết bị.' });
+  const adminId = Number(req.params.adminId);
+  try {
+    await db.query(`UPDATE admin_devices SET status = 'revoked' WHERE admin_id = $1`, [adminId]);
+    await db.query('UPDATE admins SET last_device_change_at = NULL WHERE id = $1', [adminId]);
+    await db.query('DELETE FROM admin_sessions WHERE admin_id = $1', [adminId]);
+    console.log(`[License] Superadmin ${req.admin.username} (id=${req.admin.id}) reset thiết bị của admin id=${adminId}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Reset devices error:', error);
+    res.status(500).json({ error: 'Không reset được thiết bị.' });
+  }
+});
+
+// Đặt hạn mức thiết bị riêng cho một tài khoản (NULL = dùng mặc định hệ thống).
+app.put('/api/superadmin/accounts/:adminId/device-limit', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được đặt hạn mức.' });
+  const raw = req.body?.deviceLimit;
+  const limit = raw === undefined || raw === null || raw === '' ? null : Math.max(1, Number.parseInt(raw, 10));
+  try {
+    await db.query('UPDATE admins SET device_limit = $2 WHERE id = $1', [Number(req.params.adminId), limit]);
+    res.json({ success: true, deviceLimit: limit });
+  } catch (error) {
+    console.error('Set device limit error:', error);
+    res.status(500).json({ error: 'Không đặt được hạn mức thiết bị.' });
+  }
+});
+
+// Danh sách tài khoản NGHI NGỜ dùng chung (Lớp 3).
+//
+// Chỉ để con người xem và tự quyết — KHÔNG tự động khoá. Agent thật cũng đổi
+// mạng (nhà → quán cà phê → 4G) và dùng cả laptop lẫn điện thoại; khoá nhầm một
+// khách hàng thật thiệt hại hơn nhiều so với một tài khoản bị dùng chung.
+app.get('/api/superadmin/license/suspicious', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được xem.' });
+  const days = Math.min(90, Math.max(1, Number.parseInt(req.query.days, 10) || 30));
+  try {
+    const result = await db.query(
+      `SELECT a.id, a.username, a.full_name, a.role, a.project_id,
+              COUNT(DISTINCT l.client_ip)  AS ip_count,
+              COUNT(DISTINCT l.device_id)  AS device_count,
+              COUNT(*)                     AS switch_count,
+              MAX(l.created_at)            AS last_seen,
+              COUNT(DISTINCT DATE_TRUNC('hour', l.created_at)) AS active_hours
+         FROM admin_access_log l
+         JOIN admins a ON a.id = l.admin_id
+        WHERE l.created_at > NOW() - ($1 || ' days')::interval
+        GROUP BY a.id
+       HAVING COUNT(DISTINCT l.client_ip) > 3 OR COUNT(DISTINCT l.device_id) > 1
+        ORDER BY COUNT(DISTINCT l.device_id) DESC, COUNT(DISTINCT l.client_ip) DESC
+        LIMIT 100`,
+      [String(days)]
+    );
+
+    // Điểm nghi ngờ chỉ để XẾP THỨ TỰ cho người xem, không phải phán quyết.
+    // Nhiều thiết bị là tín hiệu mạnh nhất; nhiều IP thì yếu hơn nhiều vì đổi
+    // mạng là chuyện bình thường.
+    const rows = result.rows.map((row) => {
+      const devices = Number(row.device_count) || 0;
+      const ips = Number(row.ip_count) || 0;
+      const score = Math.min(100, devices * 25 + Math.max(0, ips - 3) * 5);
+      return { ...row, score };
+    }).sort((a, b) => b.score - a.score);
+
+    res.json({ days, accounts: rows });
+  } catch (error) {
+    console.error('Suspicious accounts error:', error);
+    res.status(500).json({ error: 'Không tải được danh sách nghi ngờ.' });
   }
 });
 

@@ -12,7 +12,17 @@ const pool = new Pool({
   connectionString,
   ssl: connectionString && !connectionString.includes('localhost') && !connectionString.includes('127.0.0.1')
     ? { rejectUnauthorized: false }
-    : false
+    : false,
+  // Mặc định của pg là 10 kết nối — trần thông lượng khoảng 500 truy vấn/giây
+  // với truy vấn 20ms. Nâng lên 20; muốn cao hơn phải kiểm tra max_connections
+  // của Postgres phía sau, và dùng PgBouncer nếu chạy nhiều instance Node.
+  max: Number(process.env.PG_POOL_MAX || 20),
+  idleTimeoutMillis: 30000,
+  // 0 = chờ vô hạn khi pool cạn. Thà lỗi nhanh còn hơn treo: treo thì người
+  // dùng thấy "đơ" và không có gì trong log để lần ra.
+  connectionTimeoutMillis: 5000,
+  // Chặn một truy vấn nặng (ví dụ xuất dữ liệu) giữ kết nối quá lâu.
+  statement_timeout: 15000,
 });
 
 // Prevent unhandled errors from crashing the Node process on idle client drops
@@ -510,6 +520,128 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     await query(`ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS client_ip VARCHAR(45);`);
     await query(`ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP;`);
     await query(`CREATE INDEX IF NOT EXISTS idx_admin_sessions_admin ON admin_sessions(admin_id);`);
+
+    // --- LỚP 2 BẢO MẬT LICENSE: ràng theo thiết bị ---------------------------
+    //
+    // Lớp 1 chỉ chặn được việc dùng ĐỒNG THỜI. Kiểu chuyền tay theo ca (sáng
+    // người này, chiều người khác) không bao giờ tạo ra hai phiên cùng lúc nên
+    // lớp 1 hoàn toàn không thấy. Lớp này gắn license vào DANH SÁCH THIẾT BỊ
+    // thay vì vào phiên đăng nhập.
+    await query(`
+      CREATE TABLE IF NOT EXISTS admin_devices (
+        id SERIAL PRIMARY KEY,
+        admin_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        device_id VARCHAR(64) NOT NULL,
+        fingerprint VARCHAR(64),
+        label VARCHAR(120),
+        user_agent TEXT,
+        last_ip VARCHAR(45),
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (admin_id, device_id)
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_admin_devices_admin ON admin_devices(admin_id, status);`);
+
+    // device_limit NULL = dùng mặc định toàn hệ thống (DEVICE_LIMIT_DEFAULT).
+    // last_device_change_at phục vụ cooldown: đây mới là thứ chặn kiểu chuyền
+    // tay, vì không có nó thì chỉ cần xoá dữ liệu trình duyệt là thành máy mới.
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS device_limit INT;`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_device_change_at TIMESTAMP;`);
+
+    // --- LỚP 3 BẢO MẬT LICENSE: nhật ký truy cập ----------------------------
+    //
+    // Chỉ ghi khi IP hoặc thiết bị KHÁC lần trước, không ghi mọi request —
+    // ghi hết thì bảng phình theo số lần gọi API, vô dụng mà tốn đĩa.
+    await query(`
+      CREATE TABLE IF NOT EXISTS admin_access_log (
+        id BIGSERIAL PRIMARY KEY,
+        admin_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        device_id VARCHAR(64),
+        client_ip VARCHAR(45),
+        user_agent TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_access_log_admin_time ON admin_access_log(admin_id, created_at DESC);`);
+
+    // Đếm số lần nhập sai OTP. Không có cột này thì mã 6 chữ số sống 5 phút và
+    // không bao giờ bị vô hiệu khi sai — quét hết 900.000 khả năng chỉ là vấn đề
+    // băng thông.
+    await query(`ALTER TABLE admin_otps ADD COLUMN IF NOT EXISTS attempts INT NOT NULL DEFAULT 0;`);
+    await query(`ALTER TABLE otps ADD COLUMN IF NOT EXISTS attempts INT NOT NULL DEFAULT 0;`);
+
+    // --- INDEX HIỆU NĂNG ------------------------------------------------------
+    // Đối chiếu index hiện có với các câu WHERE/ORDER BY thật trong server.js.
+    // Sáu index đầu vá đúng các chỗ đang quét toàn bảng `sessions`.
+    //
+    // Lưu ý: KHÔNG dùng CONCURRENTLY ở đây vì lệnh đó không chạy được trong
+    // transaction và cần bảng đã tồn tại; chạy lúc khởi động với bảng nhỏ thì
+    // khoá không đáng kể. Khi bảng đã lớn, tạo tay bằng CONCURRENTLY trước rồi
+    // lệnh IF NOT EXISTS ở đây sẽ bỏ qua.
+
+    // Webhook WhatsApp/Messenger tra session cho MỖI tin đến.
+    await query(`CREATE INDEX IF NOT EXISTS idx_sessions_platform_sender
+      ON sessions(platform, platform_sender_id, project_id, created_at DESC)
+      WHERE platform_sender_id IS NOT NULL;`);
+
+    // Portal và widget tra session theo danh tính khách, mỗi 2-3,5 giây.
+    await query(`CREATE INDEX IF NOT EXISTS idx_sessions_project_email
+      ON sessions(project_id, LOWER(visitor_email)) WHERE visitor_email IS NOT NULL;`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_sessions_project_phone
+      ON sessions(project_id, visitor_phone) WHERE visitor_phone IS NOT NULL;`);
+
+    // Hai vòng quét nền (45 giây và 60 giây) đóng session hết hạn.
+    await query(`CREATE INDEX IF NOT EXISTS idx_sessions_active_expiry
+      ON sessions(expires_at) WHERE status = 'active' AND expires_at IS NOT NULL;`);
+
+    // Quét nền chọn phiên đã đóng nhưng chưa có tóm tắt AI.
+    await query(`CREATE INDEX IF NOT EXISTS idx_sessions_unsummarized
+      ON sessions(created_at DESC)
+      WHERE status = 'closed' AND (ai_summary IS NULL OR ai_summary = '');`);
+
+    // Tìm lại phiên ẩn danh của cùng một khách.
+    await query(`CREATE INDEX IF NOT EXISTS idx_sessions_anon_reuse
+      ON sessions(project_id, client_ip, browser, device, created_at DESC)
+      WHERE visitor_email IS NULL AND status = 'active';`);
+
+    // ORDER BY created_at DESC khi KHÔNG lọc theo status. Index
+    // (project_id, status, created_at) không phục vụ được vì status nằm giữa.
+    await query(`CREATE INDEX IF NOT EXISTS idx_sessions_project_created
+      ON sessions(project_id, created_at DESC);`);
+
+    // Lệnh dọn nhật ký truy cập 90 ngày.
+    await query(`CREATE INDEX IF NOT EXISTS idx_access_log_created
+      ON admin_access_log(created_at);`);
+
+    // Đếm tin chưa đọc của khách trong danh sách hội thoại.
+    await query(`CREATE INDEX IF NOT EXISTS idx_messages_session_visitor
+      ON messages(session_id, created_at DESC) WHERE sender = 'visitor';`);
+
+    // message_translations chưa có cột thời gian nên KHÔNG dọn được theo tuổi.
+    // Với chat đa ngôn ngữ, bảng này lớn hơn cả `messages` (1 tin × N ngôn ngữ).
+    // Thêm cột ngay bây giờ, kể cả khi chưa dùng tới — thêm muộn thì mọi dòng cũ
+    // đều mang cùng một mốc thời gian và mất luôn khả năng dọn theo tuổi.
+    await query(`ALTER TABLE message_translations ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
+
+    // Cache bản PDF hoá đơn đã render, khoá theo ngôn ngữ khách chọn:
+    //   { "vi": { orderStamp: <ms>, invoice: {...} }, "en": {...} }
+    // Portal poll đơn hàng mỗi 3,5 giây; không có cache thì mỗi lượt poll là một
+    // lần dựng PDF bằng pdfkit kèm nhúng font — điểm nóng CPU nặng nhất hệ thống.
+    // orderStamp lưu updated_at lúc render để biết đơn đã đổi hay chưa.
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS invoice_render JSONB NOT NULL DEFAULT '{}'::jsonb;`);
+
+    // Trước đây bảng này được CREATE TABLE IF NOT EXISTS ngay trong handler của
+    // /api/admin/keywords — mỗi lần gọi API đều khoá catalog và ghi WAL. DDL
+    // thuộc về nơi khởi tạo schema, không thuộc đường xử lý request.
+    await query(`
+      CREATE TABLE IF NOT EXISTS transfer_keywords (
+        project_id TEXT PRIMARY KEY,
+        keywords JSONB NOT NULL DEFAULT '[]',
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
 
     // Bảng cờ cho các migration DỮ LIỆU chỉ được chạy đúng một lần. Khác với
     // CREATE TABLE IF NOT EXISTS (chạy lại vô hại), việc đổi role là thao tác
