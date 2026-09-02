@@ -90,14 +90,14 @@ const INVOICE_I18N = {
   },
 };
 
-// room_charge chỉ xuất hiện với Agent được superadmin cho phép; nhãn vẫn khai
-// báo đủ mọi ngôn ngữ để hoá đơn cũ in ra không bị lòi mã máy.
+// room_charge / pay_later chỉ xuất hiện theo cấu hình của Superadmin; nhãn vẫn
+// khai báo đủ mọi ngôn ngữ để hóa đơn và payload POS không lộ mã kỹ thuật.
 const PAYMENT_METHOD_I18N = {
-  vi: { cash: 'Tiền mặt', bank_qr: 'Chuyển khoản QR', card: 'Thẻ', room_charge: 'Cộng vào tiền phòng' },
-  en: { cash: 'Cash', bank_qr: 'Bank transfer (QR)', card: 'Card', room_charge: 'Charge to room' },
-  ru: { cash: 'Наличные', bank_qr: 'Перевод по QR', card: 'Карта', room_charge: 'На счёт номера' },
-  zh: { cash: '现金', bank_qr: '扫码转账', card: '刷卡', room_charge: '记入房账' },
-  ko: { cash: '현금', bank_qr: 'QR 계좌이체', card: '카드', room_charge: '객실 요금에 청구' },
+  vi: { cash: 'Tiền mặt', bank_qr: 'Chuyển khoản QR', card: 'Thẻ', room_charge: 'Cộng vào tiền phòng', pay_later: 'Thanh toán sau' },
+  en: { cash: 'Cash', bank_qr: 'Bank transfer (QR)', card: 'Card', room_charge: 'Charge to room', pay_later: 'Pay later' },
+  ru: { cash: 'Наличные', bank_qr: 'Перевод по QR', card: 'Карта', room_charge: 'На счёт номера', pay_later: 'Оплатить позже' },
+  zh: { cash: '现金', bank_qr: '扫码转账', card: '刷卡', room_charge: '记入房账', pay_later: '稍后付款' },
+  ko: { cash: '현금', bank_qr: 'QR 계좌이체', card: '카드', room_charge: '객실 요금에 청구', pay_later: '나중에 결제' },
 };
 
 function normalizeLanguage(language) {

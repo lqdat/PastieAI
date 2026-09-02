@@ -601,7 +601,7 @@ app.get('/customer-chat/:code', async (req, res) => {
     if (!account) return res.status(404).send('Mã QR không hợp lệ hoặc đã hết hiệu lực.');
     const clientId = String(process.env.GOOGLE_CLIENT_ID || '');
     const json = JSON.stringify({ projectId: account.project_id, qrCode: String(req.params.code), clientId }).replace(/</g, '\\u003c');
-    res.type('html').send(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chat hỗ trợ</title><script src="https://accounts.google.com/gsi/client" async defer></script><style>body{margin:0;font-family:'Be Vietnam Pro',Arial,sans-serif;background:linear-gradient(135deg,#fff7fb,#f8f7ff);color:#2d2335;min-height:100vh}.portal{max-width:440px;margin:0 auto;padding:72px 20px}.portal-card{padding:30px;border:1px solid #efd8e7;border-radius:24px;background:#fff;box-shadow:0 18px 55px #8c4a7620;text-align:center}.portal-mark{width:50px;height:50px;margin:0 auto 16px;border-radius:16px;display:grid;place-items:center;background:#ffe0ef;color:#ec4899;font-size:25px}.portal-card h1{margin:0;font-size:23px}.portal-card p{margin:10px 0 20px;line-height:1.55;color:#766878;font-size:14px}.portal-note{margin-top:18px;color:#978a99;font-size:11px}</style></head><body><main class="portal"><section class="portal-card"><div class="portal-mark">✦</div><h1>Trò chuyện hỗ trợ</h1><p>Đăng nhập nhanh bằng Google, hoặc mở khung chat để nhận mã xác thực qua email.</p><div id="google"></div><div class="portal-note">Phiên chat sẽ tự kết thúc sau 15 phút.</div></section></main><script>const QR=${json};function startGoogle(r){fetch('/api/qr-chat/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:r.credential,projectId:QR.projectId,qrCode:QR.qrCode})}).then(x=>x.json().then(d=>({ok:x.ok,d}))).then(({ok,d})=>{if(!ok)throw Error(d.error);sessionStorage.setItem('pastie_chat_'+QR.projectId+'_'+QR.qrCode+'_session_id',d.sessionId);sessionStorage.setItem('pastie_chat_'+QR.projectId+'_'+QR.qrCode+'_mode','ai');location.reload();}).catch(e=>alert(e.message));}function g(){if(QR.clientId&&window.google?.accounts?.id){google.accounts.id.initialize({client_id:QR.clientId,callback:startGoogle});google.accounts.id.renderButton(document.getElementById('google'),{theme:'outline',size:'large',text:'continue_with'});}else setTimeout(g,250)}g();</script><script src="/widget/v1.js" data-project="${account.project_id}" data-qr-code="${req.params.code}" async></script></body></html>`);
+    res.type('html').send(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chat hỗ trợ</title><script src="https://accounts.google.com/gsi/client" async defer></script><style>body{margin:0;font-family:'Be Vietnam Pro',Arial,sans-serif;background:linear-gradient(135deg,#fff7fb,#f8f7ff);color:#2d2335;min-height:100vh}.portal{max-width:440px;margin:0 auto;padding:72px 20px}.portal-card{padding:30px;border:1px solid #efd8e7;border-radius:24px;background:#fff;box-shadow:0 18px 55px #8c4a7620;text-align:center}.portal-mark{width:50px;height:50px;margin:0 auto 16px;border-radius:16px;display:grid;place-items:center;background:#ffe0ef;color:#ec4899;font-size:25px}.portal-card h1{margin:0;font-size:23px}.portal-card p{margin:10px 0 20px;line-height:1.55;color:#766878;font-size:14px}</style></head><body><main class="portal"><section class="portal-card"><div class="portal-mark">✦</div><h1>Trò chuyện hỗ trợ</h1><p>Đăng nhập nhanh bằng Google, hoặc mở khung chat để nhận mã xác thực qua email.</p><div id="google"></div></section></main><script>const QR=${json};function startGoogle(r){fetch('/api/qr-chat/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:r.credential,projectId:QR.projectId,qrCode:QR.qrCode})}).then(x=>x.json().then(d=>({ok:x.ok,d}))).then(({ok,d})=>{if(!ok)throw Error(d.error);sessionStorage.setItem('pastie_chat_'+QR.projectId+'_'+QR.qrCode+'_session_id',d.sessionId);sessionStorage.setItem('pastie_chat_'+QR.projectId+'_'+QR.qrCode+'_mode','ai');location.reload();}).catch(e=>alert(e.message));}function g(){if(QR.clientId&&window.google?.accounts?.id){google.accounts.id.initialize({client_id:QR.clientId,callback:startGoogle});google.accounts.id.renderButton(document.getElementById('google'),{theme:'outline',size:'large',text:'continue_with'});}else setTimeout(g,250)}g();</script><script src="/widget/v1.js" data-project="${account.project_id}" data-qr-code="${req.params.code}" async></script></body></html>`);
   } catch (error) {
     console.error('[QR Concierge] Cannot open QR chat:', error.message);
     res.status(500).send('Không thể mở trang chat.');
@@ -3311,7 +3311,7 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
 // ── Sample order / billing API ─────────────────────────────────────────────
 // This is intentionally provider-neutral. A POS/billing system can later call
 // these endpoints or supply the invoice JSON/HTML/PNG/PDF URLs in `invoice`.
-const PAYMENT_METHODS = new Set(['cash', 'bank_qr', 'card', 'room_charge']);
+const PAYMENT_METHODS = new Set(['cash', 'bank_qr', 'card', 'room_charge', 'pay_later']);
 const escapeInvoiceHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const formatVnd = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} ₫`;
 
@@ -3460,8 +3460,13 @@ app.put('/api/admin/orders/:orderId/invoice', checkAdminAuth, requireWorkingHour
 // Customer portal polls this endpoint. Hóa đơn được vẽ lại thành PDF theo đúng
 // ngôn ngữ khách đang chọn (?lang=), nên đổi ngôn ngữ là hóa đơn đổi theo.
 app.get('/api/chats/:sessionId/order', async (req, res) => {
-  const order = await getChatOrderForVisitor(req.params.sessionId);
+  let order = await getChatOrderForVisitor(req.params.sessionId);
   if (!order) return res.status(404).json({ error: 'Chưa có đơn hàng đang hoạt động.' });
+
+  if (order.status === 'awaiting_payment' && !order.payment_method) {
+    const autoSelected = await maybeAutoSelectDeferredPayment(order);
+    if (autoSelected) order = autoSelected;
+  }
 
   const sessionRes = await db.query('SELECT detected_language FROM sessions WHERE id = $1', [req.params.sessionId]);
   const language = invoiceLanguageFor(sessionRes.rows[0], req.query.lang);
@@ -3495,8 +3500,13 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
 
   res.json({
     order: { ...order, invoice },
-    paymentMethods: ['cash', 'bank_qr', 'card'],
+    paymentMethods: (await paymentMethodsForSession(req.params.sessionId, language)).map((entry) => entry.id),
     paymentMethodLabels: invoiceHelper.PAYMENT_METHOD_I18N[language] || invoiceHelper.PAYMENT_METHOD_I18N.vi,
+    defaultPaymentMethod: await deferredPaymentForSession(req.params.sessionId),
+    autoPaymentAt: order.bill_sent_at
+      ? new Date(new Date(order.bill_sent_at).getTime() + 120000).toISOString()
+      : null,
+    autoPaymentSeconds: 120,
     language,
   });
 });
@@ -3515,7 +3525,8 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
   }
 
   const updated = await db.query(
-    `UPDATE chat_orders SET payment_method = $1, payment_selected_at = NOW(), updated_at = NOW()
+    `UPDATE chat_orders SET payment_method = $1, payment_selected_at = NOW(),
+            payment_auto_selected_at = NULL, updated_at = NOW()
       WHERE id = $2 AND status = 'awaiting_payment' RETURNING *`,
     [method, order.id]
   );
@@ -3543,6 +3554,7 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
     console.error('[Order] Không thể ghi tin nhắn phương thức thanh toán:', error.message);
   }
 
+  void deliverPosEvent(order.id, 'payment.selected');
   res.json({ success: true, order: updated.rows[0] });
 });
 
@@ -3557,6 +3569,7 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
       WHERE id = $2 RETURNING *`,
     [String(req.body?.reference || '').trim().slice(0, 255) || null, order.id]
   );
+  void deliverPosEvent(order.id, 'order.paid');
   res.json({ success: true, order: updated.rows[0], nextAction: 'customer_thank_you' });
 });
 
@@ -8408,6 +8421,238 @@ async function resolveMenuOwner(sessionId) {
   return result.rows[0] || null;
 }
 
+// ── Kết nối phần mềm tính tiền (POS) ────────────────────────────────────────
+// Payload dùng snake_case cố định và có schema_version để đối tác nâng cấp mà
+// không phải đoán cấu trúc. Mỗi event có khóa idempotency order:event:version.
+async function loadPosOrderContext(orderId) {
+  const result = await db.query(
+    `SELECT o.*, s.visitor_name, s.visitor_email, s.visitor_phone,
+            s.detected_language, s.qr_account_id, s.group_id,
+            s.claimed_by_admin_id, q.label AS qr_label, g.name AS group_name,
+            COALESCE(g.agent_id, q.owner_admin_id) AS agent_id,
+            owner.full_name AS agent_name, sale.full_name AS sale_name
+       FROM chat_orders o
+       JOIN sessions s ON s.id = o.session_id
+       LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+       LEFT JOIN agent_groups g ON g.id = s.group_id
+       LEFT JOIN admins owner ON owner.id = COALESCE(g.agent_id, q.owner_admin_id)
+       LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
+      WHERE o.id = $1`,
+    [orderId]
+  );
+  return result.rows[0] || null;
+}
+
+function buildPosOrderPayload(order, event) {
+  const version = Number(order.version || 1);
+  return {
+    schema_version: '1.0',
+    event,
+    event_id: `${order.id}:${event}:v${version}`,
+    occurred_at: new Date().toISOString(),
+    order: {
+      id: order.id,
+      version,
+      status: order.status,
+      currency: order.currency || 'VND',
+      total_amount: Number(order.total_amount || 0),
+      items: (Array.isArray(order.items) ? order.items : []).map((item) => ({
+        menu_item_id: item.menuItemId ?? null,
+        name: item.name || '',
+        quantity: Number(item.quantity || 0),
+        unit_price: Number(item.unitPrice || 0),
+        line_total: Number(item.lineTotal || 0),
+        note: item.note || null,
+      })),
+      payment: {
+        method: order.payment_method || null,
+        reference: order.payment_reference || null,
+        selected_at: order.payment_selected_at || null,
+        auto_selected: Boolean(order.payment_auto_selected_at),
+        paid_at: order.paid_at || null,
+      },
+      created_at: order.created_at,
+      updated_at: order.updated_at,
+    },
+    chat: {
+      session_id: order.session_id,
+      language: order.detected_language || 'vi',
+      qr_account_id: order.qr_account_id || null,
+      qr_label: order.qr_label || null,
+      group_id: order.group_id || null,
+      group_name: order.group_name || null,
+    },
+    customer: {
+      name: order.visitor_name || 'Khách hàng',
+      email: order.visitor_email || null,
+      phone: order.visitor_phone || null,
+    },
+    assignment: {
+      agent_id: order.agent_id || null,
+      agent_name: order.agent_name || null,
+      sale_id: order.claimed_by_admin_id || null,
+      sale_name: order.sale_name || null,
+    },
+  };
+}
+
+function validatePosWebhookUrl(raw) {
+  if (!raw) return null;
+  const url = new URL(String(raw));
+  if (url.protocol !== 'https:') throw new Error('Webhook POS phải dùng HTTPS.');
+  const host = url.hostname.toLowerCase();
+  if (host === 'localhost' || host === '::1' || host.endsWith('.local')
+      || /^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)
+      || /^169\.254\./.test(host)
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
+    throw new Error('Webhook POS không được trỏ tới địa chỉ nội bộ.');
+  }
+  return url.toString();
+}
+
+async function deliverPosEvent(orderId, event) {
+  const order = await loadPosOrderContext(orderId);
+  if (!order?.agent_id) return { skipped: true, reason: 'no_agent' };
+  const integrationRes = await db.query(
+    `SELECT * FROM pos_integrations WHERE agent_id = $1 AND is_active = TRUE`,
+    [order.agent_id]
+  );
+  const integration = integrationRes.rows[0];
+  if (!integration) return { skipped: true, reason: 'not_configured' };
+
+  const payload = buildPosOrderPayload(order, event);
+  const delivery = await db.query(
+    `INSERT INTO pos_deliveries (agent_id, order_id, event, version, payload)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (order_id, event, version) DO NOTHING
+     RETURNING id`,
+    [order.agent_id, order.id, event, Number(order.version || 1), JSON.stringify(payload)]
+  );
+  if (!delivery.rows[0]) return { skipped: true, reason: 'already_delivered_or_queued' };
+  if (!integration.webhook_url) return { queued: true, reason: 'pull_only' };
+
+  const body = JSON.stringify(payload);
+  const signature = crypto.createHmac('sha256', integration.signing_secret).update(body).digest('hex');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(integration.webhook_url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Pastie-Event': event,
+        'X-Pastie-Delivery': String(delivery.rows[0].id),
+        'X-Pastie-Signature': `sha256=${signature}`,
+      },
+      body,
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`POS trả HTTP ${response.status}`);
+    await db.query(
+      `UPDATE pos_deliveries SET status = 'delivered', attempts = attempts + 1,
+              response_status = $2, delivered_at = NOW(), last_error = NULL
+        WHERE id = $1`,
+      [delivery.rows[0].id, response.status]
+    );
+    return { delivered: true };
+  } catch (error) {
+    await db.query(
+      `UPDATE pos_deliveries SET status = 'failed', attempts = attempts + 1,
+              last_error = $2 WHERE id = $1`,
+      [delivery.rows[0].id, String(error.message || error).slice(0, 500)]
+    ).catch(() => {});
+    return { delivered: false, error: error.message };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function posAgentId(admin) {
+  return isSale(admin) ? Number(admin.agent_id || 0) : Number(admin.id || 0);
+}
+
+app.get('/api/agent/pos-integration', checkAdminAuth, async (req, res) => {
+  if (!['agent', 'superadmin'].includes(req.admin.role)) return res.status(403).json({ error: 'Tài khoản không có quyền cấu hình POS.' });
+  const agentId = req.admin.role === 'superadmin' && req.query.agentId
+    ? Number(req.query.agentId) : posAgentId(req.admin);
+  const result = await db.query(
+    `SELECT agent_id, project_id, webhook_url, is_active, created_at, updated_at,
+            RIGHT(api_key, 6) AS api_key_suffix
+       FROM pos_integrations WHERE agent_id = $1`,
+    [agentId]
+  );
+  res.json({ integration: result.rows[0] || null, docsUrl: '/docs/pos-integration' });
+});
+
+app.put('/api/agent/pos-integration', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'agent') return res.status(403).json({ error: 'Chỉ Agent được cấu hình kết nối POS của mình.' });
+  try {
+    const webhookUrl = validatePosWebhookUrl(req.body?.webhookUrl);
+    const projectId = String(req.admin.project_id || 'qr-concierge');
+    const existing = await db.query('SELECT * FROM pos_integrations WHERE agent_id = $1', [req.admin.id]);
+    const apiKey = existing.rows[0]?.api_key || `pst_pos_${crypto.randomBytes(24).toString('hex')}`;
+    const signingSecret = existing.rows[0]?.signing_secret || `pst_whsec_${crypto.randomBytes(24).toString('hex')}`;
+    const saved = await db.query(
+      `INSERT INTO pos_integrations (agent_id, project_id, webhook_url, signing_secret, api_key, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (agent_id) DO UPDATE SET webhook_url = EXCLUDED.webhook_url,
+          is_active = EXCLUDED.is_active, updated_at = NOW()
+       RETURNING agent_id, project_id, webhook_url, is_active, updated_at`,
+      [req.admin.id, projectId, webhookUrl, signingSecret, apiKey, req.body?.isActive !== false]
+    );
+    res.json({
+      success: true,
+      integration: saved.rows[0],
+      credentials: existing.rows[0] ? undefined : { apiKey, signingSecret },
+      warning: existing.rows[0] ? undefined : 'Hãy lưu hai khóa này ngay; hệ thống sẽ không hiển thị lại.',
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Không lưu được cấu hình POS.' });
+  }
+});
+
+async function checkPosApiKey(req, res, next) {
+  const key = String(req.get('X-Pastie-API-Key') || '').trim();
+  if (!key) return res.status(401).json({ error: 'Thiếu X-Pastie-API-Key.' });
+  const result = await db.query(
+    'SELECT agent_id, project_id FROM pos_integrations WHERE api_key = $1 AND is_active = TRUE',
+    [key]
+  );
+  if (!result.rows[0]) return res.status(401).json({ error: 'API key không hợp lệ.' });
+  req.posIntegration = result.rows[0];
+  next();
+}
+
+app.get('/api/pos/v1/orders', checkPosApiKey, async (req, res) => {
+  const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 50));
+  const updatedAfter = req.query.updated_after ? new Date(String(req.query.updated_after)) : null;
+  if (updatedAfter && Number.isNaN(updatedAfter.getTime())) return res.status(400).json({ error: 'updated_after phải là ISO-8601.' });
+  const result = await db.query(
+    `SELECT o.id FROM chat_orders o
+       JOIN sessions s ON s.id = o.session_id
+       LEFT JOIN agent_groups g ON g.id = s.group_id
+       LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+      WHERE COALESCE(g.agent_id, q.owner_admin_id) = $1
+        AND ($2::timestamptz IS NULL OR o.updated_at > $2)
+      ORDER BY o.updated_at ASC LIMIT $3`,
+    [req.posIntegration.agent_id, updatedAfter ? updatedAfter.toISOString() : null, limit]
+  );
+  const orders = [];
+  for (const row of result.rows) {
+    const order = await loadPosOrderContext(row.id);
+    orders.push(buildPosOrderPayload(order, 'order.snapshot'));
+  }
+  res.json({ data: orders, count: orders.length, has_more: orders.length === limit });
+});
+
+app.get('/api/pos/v1/orders/:orderId', checkPosApiKey, async (req, res) => {
+  const order = await loadPosOrderContext(req.params.orderId);
+  if (!order || Number(order.agent_id) !== Number(req.posIntegration.agent_id)) {
+    return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+  }
+  res.json(buildPosOrderPayload(order, 'order.snapshot'));
+});
+
 app.get('/api/chats/:sessionId/menu', async (req, res) => {
   try {
     const owner = await resolveMenuOwner(req.params.sessionId);
@@ -8542,13 +8787,124 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) 
       [sessionId, text]
     );
     const sessionRow = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
-    if (sessionRow.rows[0]) void notifyAgentMessage(sessionRow.rows[0], text);
+    if (sessionRow.rows[0]) {
+      void notifyAgentMessage(sessionRow.rows[0], text);
+      await extendQrSessionOnActivity(sessionRow.rows[0]);
+    }
     broadcastAdminEvent('order_update', { sessionId, orderId, status: 'pending_confirm' });
+    void deliverPosEvent(orderId, 'order.created');
 
     res.status(201).json({ success: true, order: created.rows[0] });
   } catch (error) {
     console.error('Customer place order error:', error);
     res.status(500).json({ error: 'Không gửi được đơn đặt món.' });
+  }
+});
+
+// Khách mở lại menu từ bill và xác nhận danh sách mới. Nếu bill cũ đã được
+// Sale xác nhận thì hoàn tồn cũ trong cùng transaction trước khi đưa đơn về
+// trạng thái chờ xác nhận; Sale luôn phải duyệt lại bản mới.
+app.put('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) => {
+  const sessionId = req.params.sessionId;
+  const lines = Array.isArray(req.body?.items) ? req.body.items : [];
+  if (!lines.length) return res.status(400).json({ error: 'Đơn hàng phải có ít nhất một món.' });
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const ownerRes = await client.query(
+      `SELECT COALESCE(g.agent_id, q.owner_admin_id) AS agent_id, s.*
+         FROM sessions s
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+        WHERE s.id = $1 FOR UPDATE OF s`,
+      [sessionId]
+    );
+    const session = ownerRes.rows[0];
+    if (!session || session.status !== 'active') {
+      await client.query('ROLLBACK');
+      return res.status(410).json({ error: 'Phiên chat đã kết thúc.' });
+    }
+    const orderRes = await client.query(
+      `SELECT * FROM chat_orders WHERE session_id = $1
+        AND status IN ('pending_confirm', 'awaiting_payment')
+        ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+      [sessionId]
+    );
+    const order = orderRes.rows[0];
+    if (!order) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Không tìm thấy đơn đang chỉnh sửa.' });
+    }
+
+    const wanted = new Map();
+    for (const line of lines) {
+      const id = Number(line?.itemId);
+      const quantity = Math.max(1, Math.min(99, Math.round(Number(line?.quantity) || 1)));
+      if (Number.isInteger(id)) wanted.set(id, (wanted.get(id) || 0) + quantity);
+    }
+    if (!wanted.size) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Danh sách món không hợp lệ.' });
+    }
+    const priced = await client.query(
+      `SELECT id, name, price, stock_quantity FROM qr_menu_items
+        WHERE id = ANY($1::int[]) AND agent_id = $2 AND is_available = TRUE`,
+      [[...wanted.keys()], session.agent_id]
+    );
+    if (priced.rows.length !== wanted.size) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Một vài món không còn khả dụng. Vui lòng chọn lại.' });
+    }
+
+    // Bill đã xác nhận từng trừ tồn nên phải hoàn lại trước khi kiểm đơn mới.
+    if (order.status === 'awaiting_payment') {
+      for (const oldLine of (Array.isArray(order.items) ? order.items : [])) {
+        if (!oldLine?.menuItemId) continue;
+        await client.query(
+          `UPDATE qr_menu_items SET stock_quantity = stock_quantity + $2, updated_at = NOW()
+            WHERE id = $1 AND stock_quantity IS NOT NULL`,
+          [Number(oldLine.menuItemId), Math.max(1, Math.round(Number(oldLine.quantity) || 1))]
+        );
+      }
+    }
+    const short = priced.rows.filter((row) => row.stock_quantity !== null && Number(row.stock_quantity) < wanted.get(row.id));
+    if (short.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `Không đủ số lượng cho: ${short.map((row) => row.name).join(', ')}.` });
+    }
+    const items = priced.rows.map((row) => {
+      const quantity = wanted.get(row.id);
+      const unitPrice = Number(row.price);
+      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal: Math.round(unitPrice * quantity), note: null };
+    });
+    const total = items.reduce((sum, item) => sum + item.lineTotal, 0);
+    const updated = await client.query(
+      `UPDATE chat_orders SET items = $2, total_amount = $3, status = 'pending_confirm',
+              invoice = '{}'::jsonb, invoice_render = '{}'::jsonb,
+              payment_method = NULL, payment_reference = NULL, payment_selected_at = NULL,
+              payment_auto_selected_at = NULL, bill_sent_at = NULL, confirmed_at = NULL,
+              confirmed_by_admin_id = NULL, version = version + 1, updated_at = NOW()
+        WHERE id = $1 RETURNING *`,
+      [order.id, JSON.stringify(items), total]
+    );
+    await extendQrSessionOnActivity(session, client);
+    await client.query('COMMIT');
+
+    const text = `[Đặt món] Khách đã cập nhật đơn (${items.map((item) => `${item.name} x${item.quantity}`).join(', ')}). Vui lòng xác nhận lại.`;
+    await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+       VALUES ($1, 'system', $2, $2, 'vi')`,
+      [sessionId, text]
+    );
+    broadcastAdminEvent('order_update', { sessionId, orderId: order.id, status: 'pending_confirm' });
+    void deliverPosEvent(order.id, 'order.updated');
+    res.json({ success: true, order: updated.rows[0] });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Revise customer order error:', error);
+    res.status(500).json({ error: 'Không cập nhật được đơn hàng.' });
+  } finally {
+    client.release();
   }
 });
 
@@ -8612,7 +8968,7 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
       const result = await client.query(
         `UPDATE chat_orders
             SET status = 'awaiting_payment', invoice = $2, invoice_render = '{}'::jsonb,
-                confirmed_by_admin_id = $3, confirmed_at = NOW(), updated_at = NOW()
+                confirmed_by_admin_id = $3, confirmed_at = NOW(), bill_sent_at = NOW(), updated_at = NOW()
           WHERE id = $1 AND status = 'pending_confirm'
           RETURNING *`,
         [order.id, JSON.stringify(invoice), req.admin.id]
@@ -8642,6 +8998,7 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
     );
 
     broadcastAdminEvent('order_update', { sessionId: order.session_id, orderId: order.id, status: 'awaiting_payment' });
+    void deliverPosEvent(order.id, 'order.confirmed');
     res.json({ success: true, order: updated });
   } catch (error) {
     console.error('Confirm order error:', error);
@@ -8740,18 +9097,71 @@ app.put('/api/admin/orders/:orderId/notes', checkAdminAuth, requireWorkingHours,
 
 // --- Phương thức thanh toán khả dụng -----------------------------------------
 
-// Ba phương thức nền luôn có; "cộng vào tiền phòng" chỉ có nghĩa với khách sạn
-// nên superadmin bật cho từng Agent. Mã phương thức dùng lại đúng bộ đã có từ
-// trước (cash / bank_qr / card) — không đặt tên mới, nếu không hoá đơn cũ và
-// hoá đơn mới sẽ nói hai thứ tiếng khác nhau.
+// Ba phương thức trả ngay luôn có. Superadmin chọn đúng MỘT phương thức trả chậm
+// cho từng Agent: cộng vào tiền phòng HOẶC thanh toán sau. Không bao giờ trả cả
+// hai nút về client.
 async function paymentMethodsForSession(sessionId, language) {
   const ids = ['cash', 'bank_qr', 'card'];
   const owner = await resolveMenuOwner(sessionId);
   if (owner?.agent_id) {
-    const row = await db.query('SELECT allow_room_charge FROM admins WHERE id = $1', [owner.agent_id]);
-    if (row.rows[0]?.allow_room_charge) ids.push('room_charge');
+    const row = await db.query(
+      'SELECT deferred_payment_mode, allow_room_charge FROM admins WHERE id = $1',
+      [owner.agent_id]
+    );
+    const deferred = row.rows[0]?.deferred_payment_mode
+      || (row.rows[0]?.allow_room_charge ? 'room_charge' : 'none');
+    if (deferred === 'room_charge' || deferred === 'pay_later') ids.push(deferred);
   }
   return ids.map((id) => ({ id, label: invoiceHelper.paymentMethodLabel(id, language || 'vi') }));
+}
+
+async function deferredPaymentForSession(sessionId) {
+  const owner = await resolveMenuOwner(sessionId);
+  if (!owner?.agent_id) return 'none';
+  const row = await db.query(
+    'SELECT deferred_payment_mode, allow_room_charge FROM admins WHERE id = $1',
+    [owner.agent_id]
+  );
+  const mode = row.rows[0]?.deferred_payment_mode
+    || (row.rows[0]?.allow_room_charge ? 'room_charge' : 'none');
+  return mode === 'room_charge' || mode === 'pay_later' ? mode : 'none';
+}
+
+// Tự chọn phương thức trả chậm sau 2 phút kể từ lúc Sale gửi bill. UPDATE có
+// điều kiện giúp nhiều request/tác vụ nền chạy đồng thời vẫn chỉ chọn một lần.
+async function maybeAutoSelectDeferredPayment(order) {
+  if (!order || order.status !== 'awaiting_payment' || order.payment_method || !order.bill_sent_at) return null;
+  const dueAt = new Date(order.bill_sent_at).getTime() + 120000;
+  if (!Number.isFinite(dueAt) || Date.now() < dueAt) return null;
+  const method = await deferredPaymentForSession(order.session_id);
+  if (method === 'none') return null;
+
+  const updated = await db.query(
+    `UPDATE chat_orders
+        SET payment_method = $2, payment_selected_at = NOW(),
+            payment_auto_selected_at = NOW(), updated_at = NOW()
+      WHERE id = $1 AND status = 'awaiting_payment' AND payment_method IS NULL
+      RETURNING *`,
+    [order.id, method]
+  );
+  if (!updated.rows[0]) return null;
+
+  const label = invoiceHelper.paymentMethodLabel(method, 'vi');
+  const text = `[Thanh toán] Sau 2 phút chưa có lựa chọn, hệ thống đã chọn mặc định: ${label}.`;
+  await db.query(
+    `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+     VALUES ($1, 'system', $2, $2, 'vi')`,
+    [order.session_id, text]
+  ).catch(() => {});
+  broadcastAdminEvent('order_update', {
+    sessionId: order.session_id,
+    orderId: order.id,
+    status: 'awaiting_payment',
+    paymentMethod: method,
+    autoSelected: true,
+  });
+  void deliverPosEvent(order.id, 'payment.selected');
+  return updated.rows[0];
 }
 
 app.get('/api/chats/:sessionId/payment-methods', async (req, res) => {
@@ -8765,15 +9175,40 @@ app.get('/api/chats/:sessionId/payment-methods', async (req, res) => {
   }
 });
 
-// Superadmin bật/tắt "cộng vào tiền phòng" cho một Agent.
-app.put('/api/admin/agents/:id/room-charge', checkAdminAuth, async (req, res) => {
+// Superadmin chọn phương thức trả chậm mặc định cho một Agent.
+app.put('/api/admin/agents/:id/deferred-payment', checkAdminAuth, async (req, res) => {
   if (req.admin.role !== 'superadmin') return res.status(403).json({ error: 'Chỉ superadmin đổi được thiết lập này.' });
-  const allow = req.body?.allow === true;
+  const mode = String(req.body?.mode || 'none');
+  if (!['none', 'room_charge', 'pay_later'].includes(mode)) {
+    return res.status(400).json({ error: 'mode phải là none, room_charge hoặc pay_later.' });
+  }
   try {
     const updated = await db.query(
-      `UPDATE admins SET allow_room_charge = $2 WHERE id = $1 AND role = 'agent'
-       RETURNING id, full_name, allow_room_charge`,
-      [Number(req.params.id), allow]
+      `UPDATE admins
+          SET deferred_payment_mode = $2,
+              allow_room_charge = ($2 = 'room_charge')
+        WHERE id = $1 AND role = 'agent'
+        RETURNING id, full_name, deferred_payment_mode`,
+      [Number(req.params.id), mode]
+    );
+    if (!updated.rows[0]) return res.status(404).json({ error: 'Không tìm thấy Agent.' });
+    res.json({ success: true, agent: updated.rows[0] });
+  } catch (error) {
+    console.error('Set deferred payment error:', error);
+    res.status(500).json({ error: 'Không đổi được thiết lập.' });
+  }
+});
+
+// Giữ endpoint cũ để dashboard đang cache không bị gãy trong lúc rollout.
+app.put('/api/admin/agents/:id/room-charge', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'superadmin') return res.status(403).json({ error: 'Chỉ superadmin đổi được thiết lập này.' });
+  const mode = req.body?.allow === true ? 'room_charge' : 'none';
+  try {
+    const updated = await db.query(
+      `UPDATE admins SET deferred_payment_mode = $2, allow_room_charge = ($2 = 'room_charge')
+        WHERE id = $1 AND role = 'agent'
+        RETURNING id, full_name, allow_room_charge, deferred_payment_mode`,
+      [Number(req.params.id), mode]
     );
     if (!updated.rows[0]) return res.status(404).json({ error: 'Không tìm thấy Agent.' });
     res.json({ success: true, agent: updated.rows[0] });
@@ -8846,6 +9281,19 @@ async function startServer() {
       );
       for (const row of unsummarized.rows) {
         void autoSummarizeClosedSession(row.id);
+      }
+
+      // Không phụ thuộc việc khách còn mở trang: bill quá 2 phút vẫn được áp
+      // phương thức trả chậm mặc định mà Superadmin đã chọn cho Agent.
+      const overdueOrders = await db.query(
+        `SELECT * FROM chat_orders
+          WHERE status = 'awaiting_payment' AND payment_method IS NULL
+            AND bill_sent_at IS NOT NULL
+            AND bill_sent_at <= NOW() - INTERVAL '2 minutes'
+          ORDER BY bill_sent_at ASC LIMIT 100`
+      );
+      for (const order of overdueOrders.rows) {
+        await maybeAutoSelectDeferredPayment(order);
       }
     } catch (err) {
       // background sweep error
