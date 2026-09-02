@@ -631,7 +631,64 @@ app.get('/api/qr-chat/:code', async (req, res) => {
 
 const ADMIN_SESSION_HOURS = 8;
 const ADMIN_SESSION_MS = ADMIN_SESSION_HOURS * 3600000;
-const QR_CHAT_SESSION_MS = 15 * 60 * 1000;
+// Hai đồng hồ khác nhau, đừng gộp lại:
+//
+//   QR_CHAT_SESSION_MS  — CUỘC TRÒ CHUYỆN còn sống bao lâu. 1 tiếng, trượt.
+//                         Đủ dài để khách gọi món, chờ bếp, ăn xong rồi hỏi thêm
+//                         mà cuộc chat vẫn là một mạch liền.
+//
+//   QR_IDENTITY_MS      — KHÁCH LÀ AI còn được nhớ bao lâu. 15 phút, trượt theo
+//                         mọi tin nhắn trong cuộc chat (kể cả tin của Sale) và
+//                         mọi thao tác của khách.
+//
+// Định danh gắn theo DỰ ÁN chứ không theo mã QR, nên quét mã khác trong cùng dự
+// án thì vào thẳng, khỏi nhập OTP lại.
+const QR_CHAT_SESSION_MS = 60 * 60 * 1000;
+const QR_IDENTITY_MS = 15 * 60 * 1000;
+
+// Cấp một token định danh mới cho khách sau khi xác thực xong.
+async function issueQrIdentity({ projectId, email, customerId = null, authProvider = null }, queryRunner = db) {
+  if (!projectId || !email) return null;
+  const token = `qid_${crypto.randomBytes(24).toString('base64url')}`;
+  await queryRunner.query(
+    `INSERT INTO qr_identities (token, project_id, customer_id, email, auth_provider, expires_at)
+     VALUES ($1, $2, $3, LOWER($4), $5, $6)`,
+    [token, projectId, customerId, email, authProvider, new Date(Date.now() + QR_IDENTITY_MS)]
+  );
+  return { token, expiresAt: new Date(Date.now() + QR_IDENTITY_MS) };
+}
+
+// Đọc token và gia hạn ngay nếu còn hạn. Trả null khi hết hạn hoặc không có —
+// nơi gọi tự quyết định là bắt xác thực lại hay bỏ qua.
+async function touchQrIdentity(token, projectId, queryRunner = db) {
+  const clean = String(token || '').trim();
+  if (!clean || !projectId) return null;
+  const result = await queryRunner.query(
+    `UPDATE qr_identities
+        SET expires_at = $3, last_seen_at = NOW()
+      WHERE token = $1 AND project_id = $2 AND expires_at > NOW()
+      RETURNING token, email, customer_id, auth_provider, expires_at`,
+    [clean, projectId, new Date(Date.now() + QR_IDENTITY_MS)]
+  );
+  return result.rows[0] || null;
+}
+
+// Gọi ở mọi nơi có hoạt động trong cuộc chat. Gia hạn cả hai đồng hồ cùng lúc:
+// cuộc trò chuyện và định danh. Tin của Sale cũng tính là hoạt động — khách đang
+// đọc trả lời thì không thể coi là đã bỏ đi.
+async function touchQrActivity(session, identityToken, queryRunner = db) {
+  await extendQrSessionOnActivity(session, queryRunner);
+  if (identityToken && session?.project_id) {
+    await touchQrIdentity(identityToken, session.project_id, queryRunner);
+  } else if (session?.project_id && session?.visitor_email) {
+    // Không có token trong tay (ví dụ tin do Sale gửi): gia hạn theo email.
+    await queryRunner.query(
+      `UPDATE qr_identities SET expires_at = $3, last_seen_at = NOW()
+        WHERE project_id = $1 AND LOWER(email) = LOWER($2) AND expires_at > NOW()`,
+      [session.project_id, session.visitor_email, new Date(Date.now() + QR_IDENTITY_MS)]
+    );
+  }
+}
 
 // --- LỚP 1 BẢO MẬT LICENSE: Single Active Session ----------------------------
 // Mỗi admin_id chỉ được phép có duy nhất 1 phiên (token) hoạt động tại một thời điểm.
@@ -1377,6 +1434,19 @@ async function extendQrSessionOnActivity(session, queryRunner = db) {
     [expiresAt, session.id]
   );
   if (result.rows[0]) session.expires_at = result.rows[0].expires_at;
+
+  // Gia hạn luôn ĐỊNH DANH của khách theo cùng một nhịp. Đặt ở đây thay vì ở
+  // từng nơi gọi vì mọi hoạt động trong cuộc chat đều đi qua hàm này — kể cả
+  // tin nhắn do Sale gửi, và đó là đúng: khách đang đọc trả lời thì không thể
+  // coi là đã bỏ đi.
+  if (session.project_id && session.visitor_email) {
+    await queryRunner.query(
+      `UPDATE qr_identities SET expires_at = $3, last_seen_at = NOW()
+        WHERE project_id = $1 AND LOWER(email) = LOWER($2) AND expires_at > NOW()`,
+      [session.project_id, session.visitor_email, new Date(Date.now() + QR_IDENTITY_MS)]
+    ).catch(() => {});   // gia hạn hụt không được làm hỏng việc gửi tin
+  }
+
   return result.rows[0]?.expires_at || null;
 }
 
@@ -1681,7 +1751,9 @@ app.post('/api/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, async (req, r
 
     const existingSession = qrAccount ? null : await findActiveSessionForClient(projectId, email, clientIp, browser, device);
     if (existingSession) {
-      return res.json({ success: true, sessionId: existingSession.id, name: finalName, reused: true });
+      const idReused = await issueQrIdentity({ projectId, email, authProvider: 'otp' }).catch(() => null);
+      return res.json({ success: true, sessionId: existingSession.id, name: finalName, reused: true,
+        identityToken: idReused?.token || null, identityExpiresAt: idReused?.expiresAt || null });
     }
 
     // Auto-assignment algorithm (Least Active Load)
@@ -1747,7 +1819,11 @@ app.post('/api/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, async (req, r
     // khách vẫn có thể thử lại cùng mã thay vì bị khóa khỏi form OTP.
     await db.query('DELETE FROM otps WHERE email = $1', [email]);
 
-    res.json({ success: true, sessionId, name: finalName });
+    // Token định danh sống độc lập với phiên chat: khách quét mã QR khác trong
+    // cùng dự án sẽ dùng lại token này thay vì nhập OTP lần nữa.
+    const identity = await issueQrIdentity({ projectId, email, authProvider: 'otp' }).catch(() => null);
+    res.json({ success: true, sessionId, name: finalName,
+      identityToken: identity?.token || null, identityExpiresAt: identity?.expiresAt || null });
   } catch (error) {
     console.error('OTP Verify Error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi xác thực OTP.' });
@@ -4148,6 +4224,104 @@ app.get('/api/admin/projects', checkAdminAuth, async (req, res) => {
 
 // Google sign-in for QR Concierge visitors. Google proves the customer's email;
 // the resulting chat session is still constrained to the QR owner's 15-minute slot.
+// Khách quét mã QR: có còn được nhận diện không, và nối vào cuộc chat nào.
+//
+// Đây là chỗ trả lời câu "quét mã khác thì có phải đăng nhập lại không":
+//
+//   Cùng Agent, khác mã QR (bàn 5 -> hồ bơi)
+//     -> KHÔNG xác thực lại, và NỐI TIẾP cuộc chat đang mở. Mở cuộc thứ hai thì
+//        Sale thấy hai luồng cho cùng một khách và không biết trả lời ở đâu.
+//        Chỉ ghi một dòng vào chat cho Sale biết khách đã đổi chỗ.
+//
+//   Khác Agent (khách sạn -> nhà hàng khác chủ)
+//     -> Cũng KHÔNG xác thực lại, vì định danh gắn theo dự án. Nhưng bắt buộc là
+//        cuộc chat MỚI của nhóm Agent kia. Cuộc cũ để nguyên, không đóng: khách
+//        có thể quay lại hỏi tiếp bên cũ.
+//
+// Hết hạn định danh thì trả authenticated:false và cổng khách hiện lại màn OTP.
+app.post('/api/qr-chat/:code/resume', limitChatMessage, async (req, res) => {
+  try {
+    const account = await resolveQrChatAccount('qr-concierge', String(req.params.code || ''));
+    if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
+
+    const identity = await touchQrIdentity(req.body?.identityToken, account.project_id);
+    if (!identity) return res.json({ authenticated: false });
+
+    const agentIdOfQr = await (async () => {
+      if (!account.group_id) return account.owner_admin_id;
+      const g = await db.query('SELECT agent_id FROM agent_groups WHERE id = $1', [account.group_id]);
+      return g.rows[0]?.agent_id || account.owner_admin_id;
+    })();
+
+    // Cuộc chat còn sống của chính khách này trong dự án, kèm Agent đang phụ trách.
+    const openRes = await db.query(
+      `SELECT s.*, COALESCE(g.agent_id, q.owner_admin_id) AS agent_id, q.label AS qr_label
+         FROM sessions s
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+        WHERE s.project_id = $1 AND LOWER(s.visitor_email) = LOWER($2)
+          AND s.status = 'active' AND s.qr_account_id IS NOT NULL
+          AND (s.expires_at IS NULL OR s.expires_at > NOW())
+        ORDER BY s.created_at DESC`,
+      [account.project_id, identity.email]
+    );
+    const sameAgent = openRes.rows.find((row) => Number(row.agent_id) === Number(agentIdOfQr));
+
+    if (sameAgent) {
+      const movedQr = Number(sameAgent.qr_account_id) !== Number(account.id);
+      if (movedQr) {
+        await db.query(
+          'UPDATE sessions SET qr_account_id = $2, group_id = COALESCE($3, group_id) WHERE id = $1',
+          [sameAgent.id, account.id, account.group_id || null]
+        );
+        // Sale cần biết khách đã đổi chỗ, nếu không sẽ mang đồ tới bàn cũ.
+        const text = `[Vị trí] Khách vừa quét mã "${account.label}"${sameAgent.qr_label ? ` (trước đó ở "${sameAgent.qr_label}")` : ''}.`;
+        await db.query(
+          `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+           VALUES ($1, 'system', $2, $2, 'vi')`,
+          [sameAgent.id, text]
+        );
+        broadcastAdminEvent('session_update', { sessionId: sameAgent.id });
+      }
+      await touchQrActivity(sameAgent, identity.token);
+      return res.json({
+        authenticated: true, sessionId: sameAgent.id, continued: true, movedQr,
+        identityExpiresAt: identity.expires_at,
+      });
+    }
+
+    // Chưa có cuộc nào với Agent này: mở cuộc mới, không đụng vào cuộc của Agent khác.
+    const sessionId = randomUUID();
+    const { browser, device } = parseUserAgent(req.headers['user-agent'] || '');
+    const customer = await db.query(
+      'SELECT full_name FROM customers WHERE project_id = $1 AND LOWER(email) = LOWER($2)',
+      [account.project_id, identity.email]
+    );
+    await db.query(
+      `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified,
+                             status, browser, device, client_ip, assigned_admin_id, qr_account_id,
+                             expires_at, group_id, routing_status)
+       VALUES ($1, $2, $3, $4, 'vi', TRUE, 'active', $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [sessionId, account.project_id, customer.rows[0]?.full_name || 'Khách hàng', identity.email,
+       browser, device, getClientIp(req), account.owner_admin_id, account.id,
+       new Date(Date.now() + QR_CHAT_SESSION_MS), account.group_id || null,
+       account.group_id ? 'waiting' : null]
+    );
+    await upsertCustomer({
+      projectId: account.project_id, email: identity.email,
+      fullName: customer.rows[0]?.full_name || 'Khách hàng',
+      authProvider: identity.auth_provider, qrAccountId: account.id,
+    }).catch(() => {});
+    broadcastAdminEvent('session_update', { sessionId });
+
+    res.json({ authenticated: true, sessionId, continued: false, movedQr: false,
+      identityExpiresAt: identity.expires_at });
+  } catch (error) {
+    console.error('QR resume error:', error);
+    res.status(500).json({ error: 'Không mở được cuộc trò chuyện.' });
+  }
+});
+
 app.post('/api/qr-chat/google', async (req, res) => {
   const { credential, projectId = 'qr-concierge', qrCode } = req.body || {};
   if (!credential || !qrCode) return res.status(400).json({ error: 'Thiếu thông tin đăng nhập Google hoặc mã QR.' });
@@ -4178,7 +4352,11 @@ app.post('/api/qr-chat/google', async (req, res) => {
       authProvider: 'google',
       qrAccountId: account.id
     }).catch((error) => console.error('Customer profile save failed after Google login:', error.message));
-    res.json({ success: true, sessionId, expiresAt: new Date(Date.now() + QR_CHAT_SESSION_MS) });
+    const identity = await issueQrIdentity({
+      projectId, email: profile.email, authProvider: 'google',
+    }).catch(() => null);
+    res.json({ success: true, sessionId, expiresAt: new Date(Date.now() + QR_CHAT_SESSION_MS),
+      identityToken: identity?.token || null, identityExpiresAt: identity?.expiresAt || null });
   } catch (error) {
     console.error('[QR Concierge] Google customer sign-in failed:', error.message);
     res.status(500).json({ error: 'Không thể đăng nhập Google.' });

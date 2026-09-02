@@ -755,6 +755,130 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // do superadmin bật cho từng Agent, không phải Agent tự bật.
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS allow_room_charge BOOLEAN NOT NULL DEFAULT FALSE;`);
 
+    // ── Định danh khách TÁCH KHỎI phiên chat ───────────────────────────────
+    //
+    // Trước đây hai thứ này là một: sessions.expires_at vừa là "cuộc chat còn
+    // sống" vừa là "khách còn được nhận diện". Gộp lại thì không diễn tả được
+    // tình huống thường gặp nhất: khách quét mã QR ở hồ bơi lúc trưa rồi quét mã
+    // ở nhà hàng lúc tối — cùng một khách sạn, mà phải nhập lại OTP.
+    //
+    // Nay tách đôi:
+    //   qr_identities.expires_at  — khách là ai. 15 phút, trượt theo MỌI tin nhắn
+    //                               trong cuộc chat (cả tin của Sale) và mọi thao
+    //                               tác của khách.
+    //   sessions.expires_at       — cuộc trò chuyện. 1 tiếng, trượt.
+    //
+    // Token gắn theo DỰ ÁN chứ không theo mã QR: quét mã khác trong cùng dự án
+    // thì vào thẳng, khỏi xác thực lại. Cô lập giữa các Agent vẫn do group_id và
+    // canSaleWriteToSession lo, không phải do token này.
+    await query(`
+      CREATE TABLE IF NOT EXISTS qr_identities (
+        token TEXT PRIMARY KEY,
+        project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        customer_id INT REFERENCES customers(id) ON DELETE CASCADE,
+        email VARCHAR(255) NOT NULL,
+        auth_provider VARCHAR(20),
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_qr_identities_lookup ON qr_identities(project_id, LOWER(email));`);
+    // Bắt buộc email lưu ở dạng thường ngay tại database. Mọi nơi tra cứu đều
+    // dùng LOWER() nên chữ hoa không gây sai kết quả, nhưng một dòng ghi thiếu
+    // LOWER() sẽ tạo ra hai bản ghi cho cùng một người mà không ai nhận ra.
+    // Rẻ hơn nhiều so với việc trông vào trí nhớ của người viết dòng INSERT sau.
+    await query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'qr_identities_email_lowercase') THEN
+          ALTER TABLE qr_identities ADD CONSTRAINT qr_identities_email_lowercase
+            CHECK (email = LOWER(email));
+        END IF;
+      END $$;
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_qr_identities_expiry ON qr_identities(expires_at);`);
+
+    // ── Một trong hai nút thanh toán chậm, do superadmin chọn cho từng Agent ──
+    //
+    // 'room_charge' chỉ có nghĩa với khách sạn, 'pay_later' hợp với nhà hàng lẻ,
+    // và không bao giờ hiện cả hai — hiện cả hai thì khách phải hiểu sự khác
+    // nhau giữa hai thứ vốn là chuyện nội bộ của cơ sở.
+    //
+    // Cột allow_room_charge cũ giữ lại để không gãy bản đang chạy; giá trị được
+    // chuyển sang cột mới ngay bên dưới.
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS deferred_payment_mode VARCHAR(20) NOT NULL DEFAULT 'none';`);
+    await query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'admins_deferred_payment_mode_valid') THEN
+          ALTER TABLE admins ADD CONSTRAINT admins_deferred_payment_mode_valid
+            CHECK (deferred_payment_mode IN ('none', 'room_charge', 'pay_later'));
+        END IF;
+      END $$;
+    `);
+    // Agent nào đang bật cộng tiền phòng thì chuyển thẳng sang chế độ đó.
+    await query(`UPDATE admins SET deferred_payment_mode = 'room_charge'
+                  WHERE allow_room_charge = TRUE AND deferred_payment_mode = 'none';`);
+
+    // ── Đơn có số phiên bản ───────────────────────────────────────────────────
+    //
+    // Tồn kho bị trừ lúc Sale xác nhận. Khách sửa đơn sau đó thì phải HOÀN tồn cũ
+    // rồi trừ lại theo đơn mới — không thì mỗi lần sửa là kho hụt thêm một lần.
+    // Phần mềm tính tiền bên ngoài cũng cần số này để biết bản nào mới hơn.
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1;`);
+    // Mốc thời gian hệ thống TỰ chọn phương thức thay khách, để còn đối chứng khi
+    // có tranh cãi. NULL nghĩa là chính khách bấm.
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS payment_auto_selected_at TIMESTAMP;`);
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS bill_sent_at TIMESTAMP;`);
+
+    // ── Tích hợp phần mềm tính tiền ───────────────────────────────────────────
+    //
+    // Mỗi Agent tự nối tới phần mềm tính tiền của mình. Đơn được đẩy sang đó bằng
+    // webhook JSON, ký HMAC-SHA256 để bên nhận xác minh là thật.
+    //
+    // api_key dùng cho chiều NGƯỢC lại: phần mềm tính tiền gọi vào để đọc đơn khi
+    // họ lỡ webhook. Có cả hai chiều thì mất một cú webhook không thành mất đơn.
+    await query(`
+      CREATE TABLE IF NOT EXISTS pos_integrations (
+        agent_id INT PRIMARY KEY REFERENCES admins(id) ON DELETE CASCADE,
+        project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        webhook_url TEXT,
+        signing_secret TEXT NOT NULL,
+        api_key TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_pos_api_key ON pos_integrations(api_key);`);
+
+    // Nhật ký từng lần đẩy. Giữ cả payload đã gửi: khi bên kia bảo "không nhận
+    // được" thì phải có bằng chứng gửi cái gì, lúc nào, họ trả về gì.
+    //
+    // (order_id, event, version) là khoá idempotency: gửi lại cùng bộ ba này thì
+    // bên nhận biết là trùng, không tạo đơn thứ hai.
+    await query(`
+      CREATE TABLE IF NOT EXISTS pos_deliveries (
+        id SERIAL PRIMARY KEY,
+        agent_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        order_id TEXT NOT NULL,
+        event VARCHAR(30) NOT NULL,
+        version INT NOT NULL DEFAULT 1,
+        payload JSONB NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        attempts INT NOT NULL DEFAULT 0,
+        last_error TEXT,
+        response_status INT,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        delivered_at TIMESTAMP
+      );
+    `);
+    await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_pos_delivery_once
+                   ON pos_deliveries(order_id, event, version);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_pos_delivery_retry
+                   ON pos_deliveries(status, created_at) WHERE status <> 'delivered';`);
+
     // Thực đơn khách: lọc theo còn bán + còn hàng, sắp ưu đãi lên đầu.
     await query(`CREATE INDEX IF NOT EXISTS idx_menu_items_agent_stock
                    ON qr_menu_items(agent_id, is_available, stock_quantity);`);
