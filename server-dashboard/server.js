@@ -337,7 +337,29 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason.stack || reason || reason.message);
 });
 
-app.use(cors());
+// CORS phải mở cho phần khách: widget được nhúng vào website của người khác,
+// nên origin gọi tới là vô số và không thể liệt kê trước.
+//
+// Nhưng /api/admin thì khác hẳn — chỉ bảng điều khiển gọi tới, và bảng điều
+// khiển chạy ở một số origin đếm được. Đặt ADMIN_ALLOWED_ORIGINS (ngăn cách bởi
+// dấu phẩy) khi deploy dashboard ở domain riêng.
+//
+// Bỏ trống = giữ nguyên hành vi cũ (mở), để việc deploy hiện tại không gãy.
+const ADMIN_ALLOWED_ORIGINS = String(process.env.ADMIN_ALLOWED_ORIGINS || '')
+  .split(',').map((value) => value.trim().replace(/\/$/, '')).filter(Boolean);
+
+app.use(cors((req, callback) => {
+  // Không phải API quản trị: mở, vì widget cần thế.
+  if (!req.path.startsWith('/api/admin')) return callback(null, { origin: true });
+  if (ADMIN_ALLOWED_ORIGINS.length === 0) return callback(null, { origin: true });
+
+  // Không có Origin nghĩa là cùng origin, hoặc gọi từ máy chủ / dòng lệnh —
+  // trình duyệt không gửi header này khi cùng origin, chặn ở đây là tự bắn chân.
+  const origin = String(req.headers.origin || '').replace(/\/$/, '');
+  if (!origin || ADMIN_ALLOWED_ORIGINS.includes(origin)) return callback(null, { origin: true });
+
+  callback(null, { origin: false });
+}));
 app.use(express.json({
   verify: (req, res, buf) => {
     req.rawBody = buf;

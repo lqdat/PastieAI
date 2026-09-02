@@ -401,7 +401,10 @@ const logoutBtn = document.getElementById('logout-btn');
 
 
 // Base URL helper
-const API_BASE = window.location.origin;
+// Deploy kèm backend thì origin của trang chính là backend — đó là trường hợp
+// mặc định và không cần cấu hình gì. Deploy riêng (Railway static) thì config.js
+// sinh lúc build sẽ đặt window.PASTIE_API_BASE trỏ về backend thật.
+const API_BASE = (window.PASTIE_API_BASE || window.location.origin).replace(/\/$/, '');
 
 
 const TOAST_ICONS = {
