@@ -30,7 +30,7 @@ const AI_TEXT_MAX_LEN = 500;   // max chars sent to Gemini
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const rawVapidSubject = (process.env.VAPID_SUBJECT || 'mailto:support@pastie.vn').trim();
+const rawVapidSubject = (process.env.VAPID_SUBJECT || 'mailto:support@pastiechat.com').trim();
 const VAPID_SUBJECT = rawVapidSubject.includes('@') && !rawVapidSubject.startsWith('mailto:')
   ? `mailto:${rawVapidSubject}`
   : rawVapidSubject;
@@ -297,7 +297,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: 'https://dashboard.pastie.vn',
+        url: 'https://api.pastiechat.com',
         description: 'Production server',
       },
       {

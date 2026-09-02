@@ -735,7 +735,7 @@
             <div class="form-group" style="margin-bottom: 20px;">
                 <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">Cào dữ liệu tự động từ URL (Landing Page)</label>
                 <div style="display: flex; gap: 8px;">
-                    <input type="url" id="kb-url-input" placeholder="Ví dụ: https://pastie.vn" style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;" value="https://pastie-landingpage.vercel.app">
+                    <input type="url" id="kb-url-input" placeholder="Ví dụ: https://pastiechat.com" style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;" value="https://pastie-landingpage.vercel.app">
                     <button id="kb-sync-btn" class="primary-btn" style="width: auto; padding: 0 20px; white-space: nowrap;"><i class="ri-refresh-line"></i> Đồng bộ URL</button>
                 </div>
                 <div id="kb-sync-status" style="font-size: 12px; margin-top: 8px; color: var(--text-secondary); text-align: left; display: flex; align-items: center; gap: 6px;">
@@ -839,7 +839,7 @@
                         Mỗi dự án gắn với một <strong>Phone Number ID</strong> riêng. Khi khách nhắn tin vào số WhatsApp này, hệ thống sẽ tự động đối soát Phone Number ID để gán đúng cuộc trò chuyện vào dự án và sử dụng đúng <strong>Knowledge Base (AI Tri Thức)</strong> của dự án đó.
                     </p>
                     <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
-                        <span><strong>Callback URL:</strong> <code id="channel-webhook-url" style="color: #60a5fa; user-select: all;">https://chatboard.pastie.vn/api/multichannel/webhook</code></span>
+                        <span><strong>Callback URL:</strong> <code id="channel-webhook-url" style="color: #60a5fa; user-select: all;">https://api.pastiechat.com/api/multichannel/webhook</code></span>
                         <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('channel-webhook-url').textContent); alert('Đã sao chép Callback URL');" style="background: rgba(255,255,255,0.1); border: 0; color: var(--text-primary); border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;">Copy</button>
                     </div>
                     <div style="font-size: 12px; color: var(--text-secondary); display: flex; justify-content: space-between; align-items: center;">

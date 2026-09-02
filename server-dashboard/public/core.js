@@ -21,7 +21,7 @@ function getToken() {
 // Thông báo và hộp xác nhận trong ứng dụng
 //
 // Thay cho alert() / confirm() của trình duyệt, vốn hiện tên miền
-// "dashboard.pastie.vn says", không theo được giao diện, và quan trọng hơn:
+// "api.pastiechat.com says", không theo được giao diện, và quan trọng hơn:
 // alert() KHÓA hẳn luồng JS — trong lúc hộp thoại mở thì polling chat, ghi âm và
 // mọi timer đều đứng.
 //

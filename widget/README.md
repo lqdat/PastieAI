@@ -8,7 +8,7 @@ Chèn đoạn sau ngay trước thẻ `</body>`. Thay `data-project` bằng ID d
 
 ```html
 <script
-  src="https://dashboard.pastie.vn/widget/v1.js"
+  src="https://api.pastiechat.com/widget/v1.js"
   data-project="ten-project-cua-ban"
   async
 ></script>
@@ -19,7 +19,7 @@ Nếu CDN/widget được host ở một domain khác backend, chỉ định bac
 ```html
 <script
   src="https://cdn.example.com/pastie-chat.js"
-  data-backend="https://dashboard.pastie.vn"
+  data-backend="https://api.pastiechat.com"
   data-project="ten-project-cua-ban"
   async
 ></script>

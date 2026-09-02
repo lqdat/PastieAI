@@ -10,7 +10,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 // --- CẤU HÌNH ---
-const BASE_URL = process.env.TEST_SERVER_URL || 'https://dashboard.pastie.vn'; // Đổi thành http://localhost:3000 để test local
+const BASE_URL = process.env.TEST_SERVER_URL || 'https://api.pastiechat.com'; // Đổi thành http://localhost:3000 để test local
 const APP_SECRET = process.env.META_APP_SECRET;
 
 // Dữ liệu giả lập Messenger (thay bằng Page ID thật nếu muốn test project mapping)

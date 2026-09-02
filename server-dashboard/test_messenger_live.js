@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-const BASE_URL   = 'https://dashboard.pastie.vn';
+const BASE_URL   = 'https://api.pastiechat.com';
 const APP_SECRET = process.env.META_APP_SECRET;
 const PAGE_ID    = '1216771101509661'; // Fanpage ID thật đã cấu hình
 
