@@ -30,7 +30,7 @@ const AI_TEXT_MAX_LEN = 500;   // max chars sent to Gemini
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const rawVapidSubject = (process.env.VAPID_SUBJECT || 'mailto:support@pastiechat.com').trim();
+const rawVapidSubject = (process.env.VAPID_SUBJECT || 'mailto:pastiephuquoc@pastie.vn').trim();
 const VAPID_SUBJECT = rawVapidSubject.includes('@') && !rawVapidSubject.startsWith('mailto:')
   ? `mailto:${rawVapidSubject}`
   : rawVapidSubject;
