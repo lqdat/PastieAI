@@ -348,9 +348,20 @@ process.on('unhandledRejection', (reason, promise) => {
 const ADMIN_ALLOWED_ORIGINS = String(process.env.ADMIN_ALLOWED_ORIGINS || '')
   .split(',').map((value) => value.trim().replace(/\/$/, '')).filter(Boolean);
 
+// Vài đường dẫn nằm dưới /api/admin nhưng CÔNG KHAI theo thiết kế. Cổng khách QR
+// ở origin khác gọi tới để lấy Google client ID — nếu chặn thì nút đăng nhập
+// Google của KHÁCH chết, dù nó chẳng liên quan gì tới quyền quản trị.
+//
+// Cố tình liệt kê từng đường dẫn thay vì thêm origin cổng khách vào
+// ADMIN_ALLOWED_ORIGINS: thêm origin là mở cho origin đó TOÀN BỘ API quản trị,
+// đắt hơn nhiều so với mở đúng một endpoint chỉ trả về một client ID công khai
+// và một giá trị boolean.
+const PUBLIC_ADMIN_PATHS = new Set(['/api/admin/auth/config']);
+
 app.use(cors((req, callback) => {
   // Không phải API quản trị: mở, vì widget cần thế.
   if (!req.path.startsWith('/api/admin')) return callback(null, { origin: true });
+  if (PUBLIC_ADMIN_PATHS.has(req.path)) return callback(null, { origin: true });
   if (ADMIN_ALLOWED_ORIGINS.length === 0) return callback(null, { origin: true });
 
   // Không có Origin nghĩa là cùng origin, hoặc gọi từ máy chủ / dòng lệnh —
