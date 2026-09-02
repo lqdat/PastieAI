@@ -8,7 +8,12 @@
     const loader = document.currentScript;
     if (!loader || document.getElementById('pastie-chat-widget-root')) return;
 
-    const configuredBackend = (loader.dataset.backend || '').replace(/\/$/, '');
+    // Đặt lúc build bởi scripts/build.js. Rỗng = suy ra từ origin của chính
+    // script, đúng như trước. Cần nó khi widget được host riêng: lúc ấy origin
+    // của script là máy chủ tĩnh, không phải backend.
+    // Thứ tự ưu tiên: data-backend trên thẻ nhúng > giá trị build > origin script.
+    const BUILD_BACKEND = '';
+    const configuredBackend = (loader.dataset.backend || BUILD_BACKEND || '').replace(/\/$/, '');
     let backend = configuredBackend;
     if (!backend) {
         try { backend = new URL(loader.src).origin; } catch (error) { return; }

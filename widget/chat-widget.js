@@ -9,6 +9,11 @@
         BACKEND_URL: (function() {
             const configuredUrl = _scriptEl && _scriptEl.dataset.backend;
             if (configuredUrl) return configuredUrl.replace(/\/$/, '');
+            // Đặt lúc build. Bình thường pastie-chat.js đã truyền data-backend
+            // xuống rồi, nhưng ai nạp thẳng file này từ máy chủ tĩnh thì origin
+            // của script không phải backend — giá trị build cứu trường hợp đó.
+            const BUILD_BACKEND = '';
+            if (BUILD_BACKEND) return BUILD_BACKEND.replace(/\/$/, '');
             if (_scriptEl && _scriptEl.src) {
                 try {
                     const url = new URL(_scriptEl.src);
