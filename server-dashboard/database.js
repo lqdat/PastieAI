@@ -709,6 +709,56 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS reject_reason TEXT;`);
     await query(`CREATE INDEX IF NOT EXISTS idx_chat_orders_status ON chat_orders(session_id, status, created_at DESC);`);
 
+    // ── Tồn kho, nhóm ưu đãi, ghi chú món, thanh toán ──────────────────────
+    //
+    // stock_quantity NULL = KHÔNG giới hạn. Đây là mặc định, và là điều Agent
+    // thấy khi bỏ trống ô số lượng. Có số = giới hạn thật, trừ dần khi Sale xác
+    // nhận đơn (không phải khi khách bấm đặt — khách đặt mới chỉ là đề nghị).
+    //
+    // Ba trạng thái hiển thị, đừng nhầm lẫn:
+    //   is_available = FALSE            -> Agent tự tắt, ẩn bất kể tồn
+    //   stock_quantity = 0, hide = TRUE -> hết hàng, ẩn khỏi thực đơn
+    //   stock_quantity = 0, hide = FALSE-> hết hàng, vẫn hiện kèm nhãn "hết"
+    // Số tồn KHÔNG BAO GIỜ gửi xuống cho khách; nó chỉ quyết định món có xuất
+    // hiện hay không.
+    await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS stock_quantity INT;`);
+    await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS hide_when_out BOOLEAN NOT NULL DEFAULT TRUE;`);
+    // Ràng buộc idempotent bằng DO block thay vì bọc catch: catch sẽ nuốt luôn
+    // cả lỗi thật, còn đây thì chỉ bỏ qua đúng trường hợp ràng buộc đã tồn tại.
+    await query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'qr_menu_items_stock_not_negative') THEN
+          ALTER TABLE qr_menu_items
+            ADD CONSTRAINT qr_menu_items_stock_not_negative
+            CHECK (stock_quantity IS NULL OR stock_quantity >= 0);
+        END IF;
+      END $$;
+    `);
+
+    // Mỗi Agent có đúng một nhóm Ưu đãi. Món trong nhóm này chạy slider lên đầu
+    // thực đơn của khách. Chỉ mục một phần bên dưới là thứ bảo đảm "đúng một".
+    await query(`ALTER TABLE qr_menu_categories ADD COLUMN IF NOT EXISTS is_promo BOOLEAN NOT NULL DEFAULT FALSE;`);
+    await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_menu_one_promo_per_agent
+                   ON qr_menu_categories(agent_id) WHERE is_promo;`);
+
+    // Sale chỉ được ghi chú cho từng món ("không hành", "ít cay") — không sửa
+    // giá, không sửa số lượng. Ghi chú nằm ngay trong phần tử của mảng items,
+    // nên không cần bảng riêng; cột này chỉ ghi ai sửa lần cuối.
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS notes_updated_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS notes_updated_at TIMESTAMP;`);
+    // Khách chọn phương thức thanh toán; nhân viên mới là người xác nhận đã thu.
+    // Tách hai mốc thời gian để không nhầm "khách bấm" với "đã có tiền".
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS payment_selected_at TIMESTAMP;`);
+
+    // Chỉ khách sạn mới cộng được vào tiền phòng; nhà hàng lẻ thì không. Cờ này
+    // do superadmin bật cho từng Agent, không phải Agent tự bật.
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS allow_room_charge BOOLEAN NOT NULL DEFAULT FALSE;`);
+
+    // Thực đơn khách: lọc theo còn bán + còn hàng, sắp ưu đãi lên đầu.
+    await query(`CREATE INDEX IF NOT EXISTS idx_menu_items_agent_stock
+                   ON qr_menu_items(agent_id, is_available, stock_quantity);`);
+
     await query(`
       CREATE TABLE IF NOT EXISTS transfer_keywords (
         project_id TEXT PRIMARY KEY,

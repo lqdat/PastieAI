@@ -3202,7 +3202,7 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
 // ── Sample order / billing API ─────────────────────────────────────────────
 // This is intentionally provider-neutral. A POS/billing system can later call
 // these endpoints or supply the invoice JSON/HTML/PNG/PDF URLs in `invoice`.
-const PAYMENT_METHODS = new Set(['cash', 'bank_qr', 'card']);
+const PAYMENT_METHODS = new Set(['cash', 'bank_qr', 'card', 'room_charge']);
 const escapeInvoiceHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const formatVnd = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} ₫`;
 
@@ -3250,6 +3250,12 @@ app.post('/api/admin/orders', checkAdminAuth, requireWorkingHours, async (req, r
   const session = sessionRes.rows[0];
   if (!session) return res.status(404).json({ error: 'Phiên chat không hoạt động.' });
   if (!canAccessProject(req.admin, session.project_id)) return res.status(403).json({ error: 'Bạn không có quyền tạo đơn cho project này.' });
+  // Quyền theo project là CHƯA ĐỦ cho Sale: trong cùng một dự án QR vẫn có nhiều
+  // nhóm, và Sale nhóm này không được đụng vào chat của nhóm kia. Cùng loại kiểm
+  // tra đã áp cho tin nhắn và tệp đính kèm.
+  if (isSale(req.admin) && !(await canSaleWriteToSession(req.admin.id, session))) {
+    return res.status(403).json({ error: 'Cuộc trò chuyện này không thuộc nhóm của bạn.' });
+  }
   const normalizedItems = items.map((item) => {
     const name = String(item?.name || '').trim().slice(0, 255);
     const quantity = Number(item?.quantity);
@@ -3279,6 +3285,9 @@ app.post('/samplebill', checkAdminAuth, async (req, res) => {
   const session = sessionRes.rows[0];
   if (!session) return res.status(404).json({ error: 'Phiên chat không hoạt động.' });
   if (!canAccessProject(req.admin, session.project_id)) return res.status(403).json({ error: 'Bạn không có quyền tạo bill cho project này.' });
+  if (isSale(req.admin) && !(await canSaleWriteToSession(req.admin.id, session))) {
+    return res.status(403).json({ error: 'Cuộc trò chuyện này không thuộc nhóm của bạn.' });
+  }
 
   const items = [{ name: 'Nước suối', quantity: 2, unitPrice: 10000, lineTotal: 20000 }];
   const orderId = randomUUID();
@@ -3388,7 +3397,20 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
   if (!PAYMENT_METHODS.has(method)) return res.status(400).json({ error: 'Phương thức thanh toán không hợp lệ.' });
   const order = await getChatOrderForVisitor(req.params.sessionId);
   if (!order || order.status !== 'awaiting_payment') return res.status(409).json({ error: 'Đơn hàng không ở trạng thái chờ thanh toán.' });
-  const updated = await db.query('UPDATE chat_orders SET payment_method = $1, updated_at = NOW() WHERE id = $2 RETURNING *', [method, order.id]);
+
+  // Danh sách đã lọc sẵn ở /payment-methods, nhưng client nào cũng gửi bừa được
+  // — quyền phải kiểm ở đây mới có giá trị.
+  const allowed = await paymentMethodsForSession(req.params.sessionId);
+  if (!allowed.some((entry) => entry.id === method)) {
+    return res.status(403).json({ error: 'Phương thức này không áp dụng ở đây.' });
+  }
+
+  const updated = await db.query(
+    `UPDATE chat_orders SET payment_method = $1, payment_selected_at = NOW(), updated_at = NOW()
+      WHERE id = $2 AND status = 'awaiting_payment' RETURNING *`,
+    [method, order.id]
+  );
+  if (!updated.rows[0]) return res.status(409).json({ error: 'Đơn này vừa được xử lý.' });
 
   // Báo cho Agent biết khách đã chọn phương thức nào: ghi thẳng vào cuộc chat
   // (tiếng Việt để Agent đọc ngay; khách vẫn thấy bản dịch theo ngôn ngữ họ chọn)
@@ -7066,7 +7088,7 @@ app.get('/api/superadmin/agents', checkAdminAuth, async (req, res) => {
   try {
     const result = await db.query(
       `SELECT a.id, a.username, a.full_name, a.project_id, a.is_active, a.created_at,
-              a.sale_limit,
+              a.sale_limit, a.allow_room_charge,
               (SELECT COUNT(*) FROM admins s WHERE s.managed_by_admin_id = a.id AND s.role = 'sale') AS sale_count,
               (SELECT COUNT(*) FROM agent_groups g WHERE g.agent_id = a.id) AS group_count
          FROM admins a
@@ -7832,13 +7854,52 @@ async function refreshMenuImageUrl(item) {
   }
 }
 
+// Mỗi Agent có đúng một nhóm "Ưu đãi"; món trong đó chạy slider lên đầu thực đơn
+// của khách. Tạo theo kiểu tự lành: gọi ở nơi nào cũng an toàn, kể cả với Agent
+// đã tồn tại từ trước khi có tính năng này. Chỉ mục một phần idx_menu_one_promo
+// _per_agent mới là thứ bảo đảm "đúng một" — không phải đoạn mã này.
+const PROMO_CATEGORY_NAME = 'Ưu đãi';
+async function ensurePromoCategory(agentId, projectId) {
+  const found = await db.query(
+    'SELECT * FROM qr_menu_categories WHERE agent_id = $1 AND is_promo LIMIT 1', [agentId]
+  );
+  if (found.rows[0]) return found.rows[0];
+  // sort_order = -1 để nhóm ưu đãi luôn đứng trước mọi nhóm Agent tự tạo.
+  const created = await db.query(
+    `INSERT INTO qr_menu_categories (agent_id, project_id, name, sort_order, is_promo)
+     VALUES ($1, $2, $3, -1, TRUE)
+     ON CONFLICT DO NOTHING RETURNING *`,
+    [agentId, projectId, PROMO_CATEGORY_NAME]
+  );
+  if (created.rows[0]) return created.rows[0];
+  // Hai request song song cùng tạo: cái thua đọc lại cái thắng vừa ghi.
+  const again = await db.query(
+    'SELECT * FROM qr_menu_categories WHERE agent_id = $1 AND is_promo LIMIT 1', [agentId]
+  );
+  return again.rows[0] || null;
+}
+
+// Số tồn Agent gửi lên: chuỗi rỗng / null / undefined đều nghĩa là KHÔNG giới
+// hạn. Phân biệt được "bỏ trống" với "điền số 0" là điểm mấu chốt — 0 nghĩa là
+// hết sạch, còn bỏ trống nghĩa là bán thoải mái.
+function parseStockInput(value) {
+  if (value === undefined) return { provided: false, value: null };
+  if (value === null || String(value).trim() === '') return { provided: true, value: null };
+  const number = Math.round(Number(value));
+  if (!Number.isFinite(number) || number < 0) return { provided: true, value: null, invalid: true };
+  return { provided: true, value: number };
+}
+
 // --- Agent quản lý danh mục --------------------------------------------------
 
 app.get('/api/agent/menu/categories', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
   try {
+    // Tạo ở đây thay vì lúc superadmin tạo Agent, để những Agent có trước tính
+    // năng này cũng tự có nhóm Ưu đãi mà không cần chạy script vá dữ liệu.
+    await ensurePromoCategory(req.admin.id, req.admin.project_id);
     const result = await db.query(
-      `SELECT c.id, c.name, c.sort_order, c.is_active,
+      `SELECT c.id, c.name, c.sort_order, c.is_active, c.is_promo,
               (SELECT COUNT(*)::int FROM qr_menu_items i WHERE i.category_id = c.id) AS item_count
          FROM qr_menu_categories c
         WHERE c.agent_id = $1 ORDER BY c.sort_order, c.id`,
@@ -7893,6 +7954,16 @@ app.put('/api/agent/menu/categories/:id', checkAdminAuth, async (req, res) => {
 app.delete('/api/agent/menu/categories/:id', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
   try {
+    // Nhóm Ưu đãi là cấu trúc, không phải dữ liệu Agent tự tạo — xoá đi thì
+    // slider đầu thực đơn biến mất mà Agent không hiểu vì sao. Cho ẩn, không cho xoá.
+    const promo = await db.query(
+      'SELECT is_promo FROM qr_menu_categories WHERE id = $1 AND agent_id = $2',
+      [Number(req.params.id), req.admin.id]
+    );
+    if (promo.rows[0]?.is_promo) {
+      return res.status(400).json({ error: 'Không xoá được nhóm Ưu đãi. Bạn có thể ẩn nhóm này nếu chưa dùng tới.' });
+    }
+
     // Món trong danh mục KHÔNG bị xoá theo — chỉ mất phân loại (ON DELETE SET NULL).
     // Xoá nhầm danh mục mà mất luôn cả thực đơn thì quá đắt cho một thao tác lỡ tay.
     const deleted = await db.query(
@@ -7935,11 +8006,13 @@ app.get('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 
 app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
-  const { categoryId, name, description, price } = req.body || {};
+  const { categoryId, name, description, price, hideWhenOut } = req.body || {};
   const cleanName = String(name || '').trim().slice(0, 255);
   const cleanPrice = Math.max(0, Math.round(Number(price)));
   if (!cleanName) return res.status(400).json({ error: 'Cần tên món.' });
   if (!Number.isFinite(cleanPrice)) return res.status(400).json({ error: 'Giá không hợp lệ.' });
+  const stock = parseStockInput(req.body?.stockQuantity);
+  if (stock.invalid) return res.status(400).json({ error: 'Số lượng tồn phải là số không âm, hoặc để trống nếu không giới hạn.' });
 
   try {
     // Danh mục phải thuộc chính Agent này, nếu không thì món của hộ A rơi vào
@@ -7953,12 +8026,14 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
     }
 
     const created = await db.query(
-      `INSERT INTO qr_menu_items (category_id, agent_id, project_id, name, description, price, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6,
+      `INSERT INTO qr_menu_items (category_id, agent_id, project_id, name, description, price,
+                                 stock_quantity, hide_when_out, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
                COALESCE((SELECT MAX(sort_order) + 1 FROM qr_menu_items WHERE agent_id = $2), 0))
        RETURNING *`,
       [categoryId ? Number(categoryId) : null, req.admin.id, req.admin.project_id,
-       cleanName, String(description || '').trim() || null, cleanPrice]
+       cleanName, String(description || '').trim() || null, cleanPrice,
+       stock.value, hideWhenOut === false ? false : true]
     );
     const item = created.rows[0];
 
@@ -7975,7 +8050,9 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 
 app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
-  const { categoryId, name, description, price, isAvailable, sortOrder } = req.body || {};
+  const { categoryId, name, description, price, isAvailable, sortOrder, hideWhenOut } = req.body || {};
+  const stock = parseStockInput(req.body?.stockQuantity);
+  if (stock.invalid) return res.status(400).json({ error: 'Số lượng tồn phải là số không âm, hoặc để trống nếu không giới hạn.' });
   try {
     const current = await db.query(
       'SELECT * FROM qr_menu_items WHERE id = $1 AND agent_id = $2',
@@ -8000,6 +8077,10 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
               price = COALESCE($7, price),
               is_available = COALESCE($8, is_available),
               sort_order = COALESCE($9, sort_order),
+              -- Cờ $10 phân biệt "Agent gửi lên số tồn" với "Agent không nhắc
+              -- tới nó". Không có cờ này thì mỗi lần sửa giá sẽ xoá luôn số tồn.
+              stock_quantity = CASE WHEN $10::boolean THEN $11 ELSE stock_quantity END,
+              hide_when_out = COALESCE($12, hide_when_out),
               updated_at = NOW()
         WHERE id = $1 AND agent_id = $2 RETURNING *`,
       [current.rows[0].id, req.admin.id,
@@ -8008,7 +8089,9 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
        description !== undefined, description !== undefined ? (String(description).trim() || null) : null,
        price !== undefined ? Math.max(0, Math.round(Number(price))) : null,
        typeof isAvailable === 'boolean' ? isAvailable : null,
-       Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : null]
+       Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : null,
+       stock.provided, stock.value,
+       typeof hideWhenOut === 'boolean' ? hideWhenOut : null]
     );
     const item = updated.rows[0];
 
@@ -8124,28 +8207,45 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
 
     // Bản dịch đã có sẵn trong DB (dịch lúc Agent lưu món), nên đây chỉ là một
     // phép JOIN — khách không phải chờ gọi AI lần nào.
+    // KHÔNG chọn stock_quantity vào kết quả: số tồn là chuyện nội bộ của Agent,
+    // khách chỉ được biết món còn hay hết. Chỉ suy ra cờ sold_out.
+    //
+    // Ba lớp lọc, đúng theo đặc tả:
+    //   is_available = FALSE                -> Agent tự tắt, không hiện
+    //   stock = 0 và hide_when_out = TRUE   -> hết hàng, ẩn hẳn
+    //   stock = 0 và hide_when_out = FALSE  -> hết hàng, vẫn hiện, gắn nhãn hết
+    //   stock IS NULL                       -> không giới hạn, luôn hiện
     const items = await db.query(
       `SELECT i.id, i.category_id, i.price, i.currency, i.image_url, i.image_key,
               i.image_url_expires_at, i.sort_order,
+              (i.stock_quantity IS NOT NULL AND i.stock_quantity <= 0) AS sold_out,
+              COALESCE(c.is_promo, FALSE) AS is_promo,
               COALESCE(NULLIF(t.name, ''), i.name) AS name,
               COALESCE(NULLIF(t.description, ''), i.description) AS description
          FROM qr_menu_items i
+         LEFT JOIN qr_menu_categories c ON c.id = i.category_id
          LEFT JOIN qr_menu_item_translations t ON t.item_id = i.id AND t.lang = $2
-        WHERE i.agent_id = $1 AND i.is_available = TRUE
-        ORDER BY i.sort_order, i.id`,
+        WHERE i.agent_id = $1
+          AND i.is_available = TRUE
+          AND NOT (i.stock_quantity IS NOT NULL AND i.stock_quantity <= 0 AND i.hide_when_out)
+        ORDER BY COALESCE(c.is_promo, FALSE) DESC, c.sort_order NULLS LAST, i.sort_order, i.id`,
       [owner.agent_id, useLang]
     );
     const categories = await db.query(
-      `SELECT id, name, sort_order FROM qr_menu_categories
-        WHERE agent_id = $1 AND is_active = TRUE ORDER BY sort_order, id`,
+      `SELECT id, name, sort_order, is_promo FROM qr_menu_categories
+        WHERE agent_id = $1 AND is_active = TRUE ORDER BY is_promo DESC, sort_order, id`,
       [owner.agent_id]
     );
 
     const withImages = await Promise.all(items.rows.map(refreshMenuImageUrl));
+    const clean = withImages.map(({ image_key, image_url_expires_at, ...item }) => item);
     res.json({
       language: useLang,
       categories: categories.rows,
-      items: withImages.map(({ image_key, image_url_expires_at, ...item }) => item),
+      // Món ưu đãi tách riêng để cổng khách dựng slider đầu trang mà không phải
+      // tự đoán nhóm nào là nhóm ưu đãi.
+      promoItems: clean.filter((item) => item.is_promo),
+      items: clean,
     });
   } catch (error) {
     console.error('Get menu error:', error);
@@ -8187,7 +8287,7 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) 
     // GIÁ LẤY TỪ DATABASE, không lấy từ body. Đây là ranh giới tin cậy của toàn
     // bộ tính năng: client chỉ được nói "món nào, mấy phần".
     const priced = await db.query(
-      `SELECT id, name, price FROM qr_menu_items
+      `SELECT id, name, price, stock_quantity FROM qr_menu_items
         WHERE id = ANY($1::int[]) AND agent_id = $2 AND is_available = TRUE`,
       [[...wanted.keys()], owner.agent_id]
     );
@@ -8195,10 +8295,22 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) 
       return res.status(409).json({ error: 'Một vài món vừa hết hoặc không còn trong thực đơn. Vui lòng chọn lại.' });
     }
 
+    // Chặn sớm cho khách một thông báo tử tế. Đây KHÔNG phải hàng rào thật —
+    // hàng rào thật là lệnh trừ tồn nguyên tử lúc Sale xác nhận, vì giữa lúc
+    // khách bấm và lúc Sale xác nhận còn cả một khoảng thời gian.
+    const short = priced.rows.filter(
+      (row) => row.stock_quantity !== null && Number(row.stock_quantity) < wanted.get(row.id)
+    );
+    if (short.length) {
+      return res.status(409).json({
+        error: `Không đủ số lượng cho: ${short.map((row) => row.name).join(', ')}. Vui lòng chọn lại.`,
+      });
+    }
+
     const items = priced.rows.map((row) => {
       const quantity = wanted.get(row.id);
       const unitPrice = Number(row.price);
-      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal: Math.round(unitPrice * quantity) };
+      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal: Math.round(unitPrice * quantity), note: null };
     });
     const totalAmount = items.reduce((sum, item) => sum + item.lineTotal, 0);
 
@@ -8249,17 +8361,77 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
     }
 
     // Hoá đơn chỉ được phát ra ở bước này — trước khi Sale xác nhận thì đơn của
-    // khách mới chỉ là đề nghị.
+    // khách mới chỉ là đề nghị. Và tồn kho cũng chỉ trừ ở đây, cùng lý do.
     const invoice = buildSampleInvoice(order.id, session, order.items, Number(order.total_amount));
-    const updated = await db.query(
-      `UPDATE chat_orders
-          SET status = 'awaiting_payment', invoice = $2, invoice_render = '{}'::jsonb,
-              confirmed_by_admin_id = $3, confirmed_at = NOW(), updated_at = NOW()
-        WHERE id = $1 RETURNING *`,
-      [order.id, JSON.stringify(invoice), req.admin.id]
+
+    const client = await db.pool.connect();
+    let updated;
+    try {
+      await client.query('BEGIN');
+
+      // Trừ tồn NGUYÊN TỬ. Điều kiện nằm ngay trong lệnh UPDATE chứ không phải
+      // "đọc rồi kiểm rồi ghi" — hai Sale bấm xác nhận cùng lúc cho hai đơn
+      // cùng món thì chỉ một lệnh thấy đủ hàng, lệnh kia không trả về dòng nào.
+      //
+      // stock_quantity IS NULL nghĩa là không giới hạn: phép trừ cho ra NULL,
+      // nên món đó vẫn mãi không giới hạn.
+      const shortages = [];
+      for (const line of (Array.isArray(order.items) ? order.items : [])) {
+        if (!line?.menuItemId) continue; // đơn Sale gõ tay không gắn với món trong thực đơn
+        const quantity = Math.max(1, Math.round(Number(line.quantity) || 1));
+        const taken = await client.query(
+          `UPDATE qr_menu_items
+              SET stock_quantity = stock_quantity - $2, updated_at = NOW()
+            WHERE id = $1
+              AND (stock_quantity IS NULL OR stock_quantity >= $2)
+            RETURNING id`,
+          [Number(line.menuItemId), quantity]
+        );
+        if (taken.rowCount === 0) shortages.push(line.name || `#${line.menuItemId}`);
+      }
+
+      if (shortages.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: `Không đủ hàng để xác nhận: ${shortages.join(', ')}. Hãy báo khách và từ chối đơn, hoặc bổ sung tồn kho rồi thử lại.`,
+          shortages,
+        });
+      }
+
+      const result = await client.query(
+        `UPDATE chat_orders
+            SET status = 'awaiting_payment', invoice = $2, invoice_render = '{}'::jsonb,
+                confirmed_by_admin_id = $3, confirmed_at = NOW(), updated_at = NOW()
+          WHERE id = $1 AND status = 'pending_confirm'
+          RETURNING *`,
+        [order.id, JSON.stringify(invoice), req.admin.id]
+      );
+      // Đơn đã bị người khác xử lý xen vào giữa: trả tồn lại bằng cách huỷ cả
+      // giao dịch, không được để tồn bị trừ mà đơn thì không đổi trạng thái.
+      if (result.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Đơn này vừa được người khác xử lý.' });
+      }
+      updated = result.rows[0];
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    // Báo khách: bếp đã nhận. Gửi sau khi COMMIT — thà thiếu một tin nhắn còn
+    // hơn báo bếp đang làm trong khi giao dịch đã bị huỷ.
+    const kitchenText = 'Đơn của bạn đã được xác nhận, bếp đang chuẩn bị. Vui lòng chờ trong giây lát.';
+    await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id)
+       VALUES ($1, 'agent', $2, $2, 'vi', $3)`,
+      [order.session_id, kitchenText, req.admin.id]
     );
+
     broadcastAdminEvent('order_update', { sessionId: order.session_id, orderId: order.id, status: 'awaiting_payment' });
-    res.json({ success: true, order: updated.rows[0] });
+    res.json({ success: true, order: updated });
   } catch (error) {
     console.error('Confirm order error:', error);
     res.status(500).json({ error: 'Không xác nhận được đơn hàng.' });
@@ -8303,6 +8475,100 @@ app.post('/api/admin/orders/:orderId/reject', checkAdminAuth, requireWorkingHour
   } catch (error) {
     console.error('Reject order error:', error);
     res.status(500).json({ error: 'Không từ chối được đơn hàng.' });
+  }
+});
+
+// --- Sale ghi chú từng món ----------------------------------------------------
+
+// Sale CHỈ được ghi chú ("không hành", "ít cay"). Không sửa giá, không sửa số
+// lượng, không thêm bớt món — nếu khách muốn đổi thì đặt lại đơn. Giữ ranh giới
+// này thì giá vẫn luôn là giá trong database, không ai gõ tay vào được.
+app.put('/api/admin/orders/:orderId/notes', checkAdminAuth, requireWorkingHours, async (req, res) => {
+  const notes = req.body?.notes;
+  if (!notes || typeof notes !== 'object') return res.status(400).json({ error: 'Cần danh sách ghi chú.' });
+  try {
+    const orderRes = await db.query('SELECT * FROM chat_orders WHERE id = $1', [req.params.orderId]);
+    const order = orderRes.rows[0];
+    if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+    if (order.status !== 'pending_confirm') {
+      return res.status(409).json({ error: 'Chỉ ghi chú được khi đơn còn chờ xác nhận.' });
+    }
+    if (!canAccessProject(req.admin, order.project_id)) {
+      return res.status(403).json({ error: 'Bạn không có quyền xử lý đơn của project này.' });
+    }
+    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [order.session_id]);
+    if (isSale(req.admin) && !(await canSaleWriteToSession(req.admin.id, sessionRes.rows[0]))) {
+      return res.status(403).json({ error: 'Cuộc trò chuyện này không thuộc nhóm của bạn.' });
+    }
+
+    // Dựng lại mảng items từ bản trong DB rồi chỉ đặt lại trường note. Không
+    // nhận nguyên mảng items từ client — làm vậy là mở đường cho việc sửa giá.
+    const current = Array.isArray(order.items) ? order.items : [];
+    const merged = current.map((line, index) => {
+      const key = line?.menuItemId != null ? String(line.menuItemId) : String(index);
+      const note = notes[key];
+      if (note === undefined) return line;
+      return { ...line, note: String(note || '').trim().slice(0, 300) || null };
+    });
+
+    const updated = await db.query(
+      `UPDATE chat_orders
+          SET items = $2, notes_updated_by_admin_id = $3, notes_updated_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND status = 'pending_confirm' RETURNING *`,
+      [order.id, JSON.stringify(merged), req.admin.id]
+    );
+    if (!updated.rows[0]) return res.status(409).json({ error: 'Đơn này vừa được người khác xử lý.' });
+
+    broadcastAdminEvent('order_update', { sessionId: order.session_id, orderId: order.id, status: 'pending_confirm' });
+    res.json({ success: true, order: updated.rows[0] });
+  } catch (error) {
+    console.error('Update order notes error:', error);
+    res.status(500).json({ error: 'Không lưu được ghi chú.' });
+  }
+});
+
+// --- Phương thức thanh toán khả dụng -----------------------------------------
+
+// Ba phương thức nền luôn có; "cộng vào tiền phòng" chỉ có nghĩa với khách sạn
+// nên superadmin bật cho từng Agent. Mã phương thức dùng lại đúng bộ đã có từ
+// trước (cash / bank_qr / card) — không đặt tên mới, nếu không hoá đơn cũ và
+// hoá đơn mới sẽ nói hai thứ tiếng khác nhau.
+async function paymentMethodsForSession(sessionId, language) {
+  const ids = ['cash', 'bank_qr', 'card'];
+  const owner = await resolveMenuOwner(sessionId);
+  if (owner?.agent_id) {
+    const row = await db.query('SELECT allow_room_charge FROM admins WHERE id = $1', [owner.agent_id]);
+    if (row.rows[0]?.allow_room_charge) ids.push('room_charge');
+  }
+  return ids.map((id) => ({ id, label: invoiceHelper.paymentMethodLabel(id, language || 'vi') }));
+}
+
+app.get('/api/chats/:sessionId/payment-methods', async (req, res) => {
+  try {
+    const owner = await resolveMenuOwner(req.params.sessionId);
+    const language = String(req.query.lang || owner?.detected_language || 'vi');
+    res.json({ methods: await paymentMethodsForSession(req.params.sessionId, language) });
+  } catch (error) {
+    console.error('List payment methods error:', error);
+    res.status(500).json({ error: 'Không tải được phương thức thanh toán.' });
+  }
+});
+
+// Superadmin bật/tắt "cộng vào tiền phòng" cho một Agent.
+app.put('/api/admin/agents/:id/room-charge', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'superadmin') return res.status(403).json({ error: 'Chỉ superadmin đổi được thiết lập này.' });
+  const allow = req.body?.allow === true;
+  try {
+    const updated = await db.query(
+      `UPDATE admins SET allow_room_charge = $2 WHERE id = $1 AND role = 'agent'
+       RETURNING id, full_name, allow_room_charge`,
+      [Number(req.params.id), allow]
+    );
+    if (!updated.rows[0]) return res.status(404).json({ error: 'Không tìm thấy Agent.' });
+    res.json({ success: true, agent: updated.rows[0] });
+  } catch (error) {
+    console.error('Toggle room charge error:', error);
+    res.status(500).json({ error: 'Không đổi được thiết lập.' });
   }
 });
 
