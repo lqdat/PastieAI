@@ -85,8 +85,10 @@
     margin: 14px 0 4px;
     padding: 14px;
     border: 1px solid var(--panel-border, rgba(0, 0, 0, 0.08));
-    border-radius: var(--radius-md, 12px);
-    background: var(--surface-tint, rgba(0, 0, 0, 0.02));
+    border-radius: 12px;
+    /* Cùng nền với .org-form ở admin.css. Hai form nằm sát nhau trong cùng một
+       thẻ, lệch nền là thấy ngay. */
+    background: rgba(0, 0, 0, 0.015);
 }
 
 /* Lưới 12 cột: đủ chỗ cho tên món dài mà giá và tồn kho vẫn nằm cùng hàng. */
@@ -149,6 +151,9 @@
 .menu-field-stock { grid-column: span 4; }
 .menu-field-hide  { grid-column: span 4; }
 .menu-field-desc  { grid-column: span 12; }
+.menu-field-catname { grid-column: span 9; }
+.menu-field-catbtn  { grid-column: span 3; justify-content: flex-end; }
+.menu-field-catbtn button { width: 100%; }
 
 /* "Khi hết hàng" chỉ có nghĩa khi đã điền số tồn. Làm mờ thay vì ẩn: ẩn đi thì
    ô khác nhảy chỗ mỗi lần gõ, mà người dùng cũng không biết là có tuỳ chọn đó. */
@@ -445,13 +450,20 @@
 /* --- Màn hình hẹp -------------------------------------------------------- */
 
 @media (max-width: 720px) {
-    /* Máy hẹp: mỗi ô một hàng, trừ giá và tồn kho vốn ngắn nên đứng cạnh nhau. */
+    /* Ghép cặp theo ĐÚNG thứ tự trong DOM: name / price+cat / stock / hide / desc.
+       Lần đầu tôi cho price và stock cùng span 6 mà quên rằng giữa chúng còn ô
+       danh mục span 12, nên mỗi ô lại nằm một hàng lẻ nửa chiều ngang. */
     .menu-field-name,
-    .menu-field-cat,
     .menu-field-hide,
     .menu-field-desc { grid-column: span 12; }
-    .menu-field-price,
-    .menu-field-stock { grid-column: span 6; }
+    .menu-field-price { grid-column: span 5; }
+    .menu-field-cat   { grid-column: span 7; }
+    /* Tồn kho để nguyên chiều ngang: chữ "Không giới hạn" là chỗ dễ hiểu nhầm
+       nhất của cả tính năng, cắt cụt nó thì mất luôn tác dụng. */
+    .menu-field-stock { grid-column: span 12; }
+    .menu-field-catname { grid-column: span 12; }
+    .menu-field-catbtn  { grid-column: span 12; }
+    .menu-field-catbtn > span { display: none; }
 
     /* 16px là ngưỡng Safari trên iOS ngừng tự phóng to trang khi chạm ô nhập. */
     .menu-field input,

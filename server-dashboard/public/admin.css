@@ -3118,6 +3118,10 @@ button {
 .org-tab {
     display: inline-flex;
     align-items: center;
+    /* Không co lại: .org-tabs đã có overflow-x nhưng flex mặc định vẫn cho phép
+       co, nên trên máy hẹp chữ bị cắt thay vì thanh cuộn xuất hiện. Từ khi có
+       thẻ thứ năm (Thực đơn) thì 390px không còn đủ chỗ. */
+    flex-shrink: 0;
     gap: 5px;
     padding: 6px 14px;
     border: 0;

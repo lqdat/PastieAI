@@ -351,14 +351,21 @@
 
                 <!-- Thực đơn: chỉ Agent quản lý dự án QR -->
                 <section class="org-pane hide" data-org-pane="menu">
-                    <form class="org-form" id="menu-category-form">
-                        <div class="org-form-row">
-                            <label style="flex:1;">Danh mục
-                                <input type="text" id="menu-category-name" placeholder="Món khai vị, Đồ uống, Hải sản..." maxlength="150">
-                                <small class="org-field-hint">Chia nhóm cho khách dễ xem. Không bắt buộc — món chưa phân loại vẫn hiển thị.</small>
+                    <form class="menu-form" id="menu-category-form">
+                        <div class="menu-form-grid">
+                            <label class="menu-field menu-field-catname">
+                                <span>Danh mục</span>
+                                <input type="text" id="menu-category-name" placeholder="Món khai vị, Đồ uống, Hải sản..." maxlength="150" autocomplete="off">
                             </label>
-                            <button type="submit" class="org-submit" style="align-self:flex-start;margin-top:22px;"><i class="ri-add-line"></i> Thêm</button>
+                            <div class="menu-field menu-field-catbtn">
+                                <span aria-hidden="true">&nbsp;</span>
+                                <button type="submit" class="menu-btn-primary"><i class="ri-add-line"></i> Thêm</button>
+                            </div>
                         </div>
+                        <p class="menu-form-note">
+                            <i class="ri-information-line"></i>
+                            <span>Chia nhóm cho khách dễ xem. Không bắt buộc — món chưa phân loại vẫn hiển thị.</span>
+                        </p>
                         <div class="menu-cat-row" id="menu-category-list"></div>
                     </form>
 
