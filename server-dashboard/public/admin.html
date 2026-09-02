@@ -1159,7 +1159,13 @@
         </div>
     </div>
 
-    <script src="admin.js?v=r78"></script>
-    <script src="menu-console.js?v=r1"></script>
+    <!-- Thứ tự nạp là hợp đồng: bốn module chỉ chứa khai báo, admin.js chứa
+         toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
+    <script src="core.js?v=r79"></script>
+    <script src="chat.js?v=r79"></script>
+    <script src="org-console.js?v=r79"></script>
+    <script src="project-admin.js?v=r79"></script>
+    <script src="menu-console.js?v=r79"></script>
+    <script src="admin.js?v=r79"></script>
 </body>
 </html>
