@@ -7758,6 +7758,554 @@ app.get('/api/superadmin/license/suspicious', checkAdminAuth, async (req, res) =
   }
 });
 
+// ============================================================================
+// MENU CỦA DỰ ÁN QR
+//
+// Menu thuộc về AGENT (mỗi Agent là một hộ kinh doanh), không thuộc nhóm hay QR.
+// Khách quét bất kỳ mã QR nào của hộ đó đều thấy chung một thực đơn:
+//     session -> group -> agent -> menu
+//
+// Luồng đặt món: khách tự chọn -> đơn ở trạng thái pending_confirm -> Sale xác
+// nhận -> awaiting_payment (hoá đơn phát ra) -> khách chọn phương thức -> paid.
+//
+// NGUYÊN TẮC KHÔNG ĐƯỢC PHÁ: giá LUÔN tra từ bảng qr_menu_items. Khách chỉ gửi
+// lên itemId và số lượng. Nếu tin giá do client gửi thì bất kỳ ai cũng đặt được
+// đơn 0 đồng bằng một dòng lệnh.
+// ============================================================================
+
+const MENU_LANGS = ['vi', 'en', 'ru', 'zh', 'ko'];
+const MENU_SOURCE_LANG = 'vi'; // Agent nhập tiếng Việt, các thứ tiếng còn lại dịch máy
+
+// Dịch tên và mô tả món sang 4 ngôn ngữ còn lại NGAY LÚC LƯU.
+//
+// Dịch lúc lưu chứ không lúc khách xem: menu đọc nhiều ghi ít, và khách đang đói
+// thì không nên phải chờ 5 lượt gọi AI. Đổi lại, sửa món là phải dịch lại.
+//
+// Bản dịch Agent đã tự sửa (is_manual = TRUE) KHÔNG bị ghi đè — nếu không thì
+// mỗi lần sửa giá là xoá sạch công sức sửa tay.
+async function translateMenuItem(itemId, name, description) {
+  const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
+  await Promise.all(targets.map(async (lang) => {
+    try {
+      const manual = await db.query(
+        'SELECT is_manual FROM qr_menu_item_translations WHERE item_id = $1 AND lang = $2',
+        [itemId, lang]
+      );
+      if (manual.rows[0]?.is_manual) return;
+
+      const [nameOut, descOut] = await Promise.all([
+        gemini.translateText(name, lang, { sourceLang: MENU_SOURCE_LANG }),
+        description ? gemini.translateText(description, lang, { sourceLang: MENU_SOURCE_LANG })
+                    : Promise.resolve({ translatedText: null }),
+      ]);
+
+      await db.query(
+        `INSERT INTO qr_menu_item_translations (item_id, lang, name, description, is_manual, updated_at)
+         VALUES ($1, $2, $3, $4, FALSE, NOW())
+         ON CONFLICT (item_id, lang)
+         DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, updated_at = NOW()`,
+        [itemId, lang, nameOut.translatedText || name, descOut.translatedText]
+      );
+    } catch (error) {
+      // Dịch hỏng thì món vẫn phải lưu được — khách sẽ thấy tên tiếng Việt gốc.
+      console.error(`[Menu] Không dịch được món ${itemId} sang ${lang}:`, error.message);
+    }
+  }));
+}
+
+// Ảnh menu ký 7 ngày; gia hạn khi còn dưới 1 ngày. Không gia hạn thì ảnh biến
+// mất khỏi thực đơn của khách mà không ai hay.
+async function refreshMenuImageUrl(item) {
+  if (!item?.image_key) return item;
+  const expires = item.image_url_expires_at ? new Date(item.image_url_expires_at).getTime() : 0;
+  if (item.image_url && expires - Date.now() > 24 * 3600 * 1000) return item;
+  try {
+    const url = await s3.getMenuImageUrl(item.image_key);
+    if (!url) return item;
+    const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
+    await db.query('UPDATE qr_menu_items SET image_url = $2, image_url_expires_at = $3 WHERE id = $1',
+      [item.id, url, expiresAt]);
+    return { ...item, image_url: url, image_url_expires_at: expiresAt };
+  } catch (error) {
+    console.error('[Menu] Không gia hạn được URL ảnh:', error.message);
+    return item;
+  }
+}
+
+// --- Agent quản lý danh mục --------------------------------------------------
+
+app.get('/api/agent/menu/categories', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const result = await db.query(
+      `SELECT c.id, c.name, c.sort_order, c.is_active,
+              (SELECT COUNT(*)::int FROM qr_menu_items i WHERE i.category_id = c.id) AS item_count
+         FROM qr_menu_categories c
+        WHERE c.agent_id = $1 ORDER BY c.sort_order, c.id`,
+      [req.admin.id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('List menu categories error:', error);
+    res.status(500).json({ error: 'Không tải được danh mục thực đơn.' });
+  }
+});
+
+app.post('/api/agent/menu/categories', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const name = String(req.body?.name || '').trim().slice(0, 150);
+  if (!name) return res.status(400).json({ error: 'Cần tên danh mục.' });
+  try {
+    const created = await db.query(
+      `INSERT INTO qr_menu_categories (agent_id, project_id, name, sort_order)
+       VALUES ($1, $2, $3, COALESCE((SELECT MAX(sort_order) + 1 FROM qr_menu_categories WHERE agent_id = $1), 0))
+       RETURNING *`,
+      [req.admin.id, req.admin.project_id, name]
+    );
+    res.status(201).json({ success: true, category: created.rows[0] });
+  } catch (error) {
+    console.error('Create menu category error:', error);
+    res.status(500).json({ error: 'Không tạo được danh mục.' });
+  }
+});
+
+app.put('/api/agent/menu/categories/:id', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const { name, sortOrder, isActive } = req.body || {};
+  try {
+    const updated = await db.query(
+      `UPDATE qr_menu_categories
+          SET name = COALESCE($3, name), sort_order = COALESCE($4, sort_order), is_active = COALESCE($5, is_active)
+        WHERE id = $1 AND agent_id = $2 RETURNING *`,
+      [Number(req.params.id), req.admin.id,
+       name ? String(name).trim().slice(0, 150) : null,
+       Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : null,
+       typeof isActive === 'boolean' ? isActive : null]
+    );
+    if (!updated.rows[0]) return res.status(404).json({ error: 'Không tìm thấy danh mục.' });
+    res.json({ success: true, category: updated.rows[0] });
+  } catch (error) {
+    console.error('Update menu category error:', error);
+    res.status(500).json({ error: 'Không cập nhật được danh mục.' });
+  }
+});
+
+app.delete('/api/agent/menu/categories/:id', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    // Món trong danh mục KHÔNG bị xoá theo — chỉ mất phân loại (ON DELETE SET NULL).
+    // Xoá nhầm danh mục mà mất luôn cả thực đơn thì quá đắt cho một thao tác lỡ tay.
+    const deleted = await db.query(
+      'DELETE FROM qr_menu_categories WHERE id = $1 AND agent_id = $2 RETURNING id',
+      [Number(req.params.id), req.admin.id]
+    );
+    if (!deleted.rows[0]) return res.status(404).json({ error: 'Không tìm thấy danh mục.' });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete menu category error:', error);
+    res.status(500).json({ error: 'Không xoá được danh mục.' });
+  }
+});
+
+// --- Agent quản lý món -------------------------------------------------------
+
+app.get('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const result = await db.query(
+      `SELECT i.*, c.name AS category_name,
+              COALESCE(json_agg(json_build_object(
+                'lang', t.lang, 'name', t.name, 'description', t.description, 'is_manual', t.is_manual
+              )) FILTER (WHERE t.lang IS NOT NULL), '[]') AS translations
+         FROM qr_menu_items i
+         LEFT JOIN qr_menu_categories c ON c.id = i.category_id
+         LEFT JOIN qr_menu_item_translations t ON t.item_id = i.id
+        WHERE i.agent_id = $1
+        GROUP BY i.id, c.name
+        ORDER BY c.sort_order NULLS LAST, i.sort_order, i.id`,
+      [req.admin.id]
+    );
+    const items = await Promise.all(result.rows.map(refreshMenuImageUrl));
+    res.json(items);
+  } catch (error) {
+    console.error('List menu items error:', error);
+    res.status(500).json({ error: 'Không tải được danh sách món.' });
+  }
+});
+
+app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const { categoryId, name, description, price } = req.body || {};
+  const cleanName = String(name || '').trim().slice(0, 255);
+  const cleanPrice = Math.max(0, Math.round(Number(price)));
+  if (!cleanName) return res.status(400).json({ error: 'Cần tên món.' });
+  if (!Number.isFinite(cleanPrice)) return res.status(400).json({ error: 'Giá không hợp lệ.' });
+
+  try {
+    // Danh mục phải thuộc chính Agent này, nếu không thì món của hộ A rơi vào
+    // thực đơn của hộ B.
+    if (categoryId) {
+      const own = await db.query(
+        'SELECT 1 FROM qr_menu_categories WHERE id = $1 AND agent_id = $2',
+        [Number(categoryId), req.admin.id]
+      );
+      if (!own.rows[0]) return res.status(400).json({ error: 'Danh mục không thuộc thực đơn của bạn.' });
+    }
+
+    const created = await db.query(
+      `INSERT INTO qr_menu_items (category_id, agent_id, project_id, name, description, price, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6,
+               COALESCE((SELECT MAX(sort_order) + 1 FROM qr_menu_items WHERE agent_id = $2), 0))
+       RETURNING *`,
+      [categoryId ? Number(categoryId) : null, req.admin.id, req.admin.project_id,
+       cleanName, String(description || '').trim() || null, cleanPrice]
+    );
+    const item = created.rows[0];
+
+    // Dịch ngay lúc lưu, nhưng KHÔNG bắt Agent chờ: trả về món trước, dịch chạy
+    // nền. Agent bấm "Lưu" xong thấy món hiện ra ngay, bản dịch đến sau vài giây.
+    void translateMenuItem(item.id, cleanName, description);
+
+    res.status(201).json({ success: true, item });
+  } catch (error) {
+    console.error('Create menu item error:', error);
+    res.status(500).json({ error: 'Không tạo được món.' });
+  }
+});
+
+app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const { categoryId, name, description, price, isAvailable, sortOrder } = req.body || {};
+  try {
+    const current = await db.query(
+      'SELECT * FROM qr_menu_items WHERE id = $1 AND agent_id = $2',
+      [Number(req.params.id), req.admin.id]
+    );
+    if (!current.rows[0]) return res.status(404).json({ error: 'Không tìm thấy món.' });
+
+    if (categoryId) {
+      const own = await db.query(
+        'SELECT 1 FROM qr_menu_categories WHERE id = $1 AND agent_id = $2',
+        [Number(categoryId), req.admin.id]
+      );
+      if (!own.rows[0]) return res.status(400).json({ error: 'Danh mục không thuộc thực đơn của bạn.' });
+    }
+
+    const cleanName = name !== undefined ? String(name).trim().slice(0, 255) : null;
+    const updated = await db.query(
+      `UPDATE qr_menu_items
+          SET category_id = COALESCE($3, category_id),
+              name = COALESCE($4, name),
+              description = CASE WHEN $5::boolean THEN $6 ELSE description END,
+              price = COALESCE($7, price),
+              is_available = COALESCE($8, is_available),
+              sort_order = COALESCE($9, sort_order),
+              updated_at = NOW()
+        WHERE id = $1 AND agent_id = $2 RETURNING *`,
+      [current.rows[0].id, req.admin.id,
+       categoryId ? Number(categoryId) : null,
+       cleanName,
+       description !== undefined, description !== undefined ? (String(description).trim() || null) : null,
+       price !== undefined ? Math.max(0, Math.round(Number(price))) : null,
+       typeof isAvailable === 'boolean' ? isAvailable : null,
+       Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : null]
+    );
+    const item = updated.rows[0];
+
+    // Chỉ dịch lại khi TÊN hoặc MÔ TẢ đổi. Sửa giá hay bật/tắt còn món thì không
+    // cần gọi AI — đây là thao tác hằng ngày, dịch lại mỗi lần là đốt tiền vô ích.
+    const textChanged = (cleanName && cleanName !== current.rows[0].name)
+      || (description !== undefined && String(description || '') !== String(current.rows[0].description || ''));
+    if (textChanged) void translateMenuItem(item.id, item.name, item.description);
+
+    res.json({ success: true, item, retranslated: textChanged });
+  } catch (error) {
+    console.error('Update menu item error:', error);
+    res.status(500).json({ error: 'Không cập nhật được món.' });
+  }
+});
+
+// Agent sửa tay một bản dịch. Đánh dấu is_manual để lần dịch máy sau không ghi đè.
+app.put('/api/agent/menu/items/:id/translations/:lang', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const lang = String(req.params.lang || '').toLowerCase();
+  if (!MENU_LANGS.includes(lang)) return res.status(400).json({ error: 'Ngôn ngữ không hỗ trợ.' });
+  try {
+    const own = await db.query('SELECT 1 FROM qr_menu_items WHERE id = $1 AND agent_id = $2',
+      [Number(req.params.id), req.admin.id]);
+    if (!own.rows[0]) return res.status(404).json({ error: 'Không tìm thấy món.' });
+
+    await db.query(
+      `INSERT INTO qr_menu_item_translations (item_id, lang, name, description, is_manual, updated_at)
+       VALUES ($1, $2, $3, $4, TRUE, NOW())
+       ON CONFLICT (item_id, lang)
+       DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, is_manual = TRUE, updated_at = NOW()`,
+      [Number(req.params.id), lang,
+       String(req.body?.name || '').trim().slice(0, 255) || null,
+       String(req.body?.description || '').trim() || null]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update menu translation error:', error);
+    res.status(500).json({ error: 'Không lưu được bản dịch.' });
+  }
+});
+
+app.delete('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const deleted = await db.query(
+      'DELETE FROM qr_menu_items WHERE id = $1 AND agent_id = $2 RETURNING image_key',
+      [Number(req.params.id), req.admin.id]
+    );
+    if (!deleted.rows[0]) return res.status(404).json({ error: 'Không tìm thấy món.' });
+    if (deleted.rows[0].image_key) void s3.deleteObject(deleted.rows[0].image_key).catch(() => {});
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete menu item error:', error);
+    res.status(500).json({ error: 'Không xoá được món.' });
+  }
+});
+
+// Ảnh món. Dùng lại middleware upload của attachment nhưng lưu vào tiền tố riêng
+// và ký URL dài hạn.
+app.post('/api/agent/menu/items/:id/image', checkAdminAuth, uploadAttachmentMiddleware, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  if (!req.file) return res.status(400).json({ error: 'Chưa chọn ảnh.' });
+  if (!String(req.file.mimetype || '').startsWith('image/')) {
+    return res.status(400).json({ error: 'Chỉ nhận tệp ảnh.' });
+  }
+  try {
+    const item = await db.query('SELECT id, image_key FROM qr_menu_items WHERE id = $1 AND agent_id = $2',
+      [Number(req.params.id), req.admin.id]);
+    if (!item.rows[0]) return res.status(404).json({ error: 'Không tìm thấy món.' });
+
+    const key = s3.buildMenuImageKey(req.admin.project_id, req.admin.id, req.file.originalname);
+    await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
+    const url = await s3.getMenuImageUrl(key);
+    const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
+
+    await db.query(
+      'UPDATE qr_menu_items SET image_key = $2, image_url = $3, image_url_expires_at = $4, updated_at = NOW() WHERE id = $1',
+      [item.rows[0].id, key, url, expiresAt]
+    );
+    // Xoá ảnh cũ sau khi ảnh mới đã lưu thành công, không phải trước.
+    if (item.rows[0].image_key) void s3.deleteObject(item.rows[0].image_key).catch(() => {});
+    res.json({ success: true, imageUrl: url });
+  } catch (error) {
+    console.error('Upload menu image error:', error);
+    res.status(500).json({ error: 'Không tải được ảnh lên.' });
+  }
+});
+
+// --- Khách xem menu và tự đặt món --------------------------------------------
+
+// Tìm Agent (hộ kinh doanh) của một phiên chat: session -> group -> agent.
+// Phiên QR cũ chưa gắn nhóm thì lùi về owner_admin_id của mã QR.
+async function resolveMenuOwner(sessionId) {
+  const result = await db.query(
+    `SELECT COALESCE(g.agent_id, q.owner_admin_id) AS agent_id, s.detected_language, s.status, s.project_id
+       FROM sessions s
+       LEFT JOIN agent_groups g ON g.id = s.group_id
+       LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+      WHERE s.id = $1`,
+    [sessionId]
+  );
+  return result.rows[0] || null;
+}
+
+app.get('/api/chats/:sessionId/menu', async (req, res) => {
+  try {
+    const owner = await resolveMenuOwner(req.params.sessionId);
+    if (!owner?.agent_id) return res.json({ categories: [], items: [] });
+
+    const lang = String(req.query.lang || owner.detected_language || 'vi').toLowerCase().slice(0, 2);
+    const useLang = MENU_LANGS.includes(lang) ? lang : 'vi';
+
+    // Bản dịch đã có sẵn trong DB (dịch lúc Agent lưu món), nên đây chỉ là một
+    // phép JOIN — khách không phải chờ gọi AI lần nào.
+    const items = await db.query(
+      `SELECT i.id, i.category_id, i.price, i.currency, i.image_url, i.image_key,
+              i.image_url_expires_at, i.sort_order,
+              COALESCE(NULLIF(t.name, ''), i.name) AS name,
+              COALESCE(NULLIF(t.description, ''), i.description) AS description
+         FROM qr_menu_items i
+         LEFT JOIN qr_menu_item_translations t ON t.item_id = i.id AND t.lang = $2
+        WHERE i.agent_id = $1 AND i.is_available = TRUE
+        ORDER BY i.sort_order, i.id`,
+      [owner.agent_id, useLang]
+    );
+    const categories = await db.query(
+      `SELECT id, name, sort_order FROM qr_menu_categories
+        WHERE agent_id = $1 AND is_active = TRUE ORDER BY sort_order, id`,
+      [owner.agent_id]
+    );
+
+    const withImages = await Promise.all(items.rows.map(refreshMenuImageUrl));
+    res.json({
+      language: useLang,
+      categories: categories.rows,
+      items: withImages.map(({ image_key, image_url_expires_at, ...item }) => item),
+    });
+  } catch (error) {
+    console.error('Get menu error:', error);
+    res.status(500).json({ error: 'Không tải được thực đơn.' });
+  }
+});
+
+// Khách gửi đơn. Chỉ nhận itemId và số lượng — giá tự tra từ DB.
+app.post('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) => {
+  const sessionId = req.params.sessionId;
+  const lines = Array.isArray(req.body?.items) ? req.body.items : [];
+  if (lines.length === 0) return res.status(400).json({ error: 'Chưa chọn món nào.' });
+
+  try {
+    const owner = await resolveMenuOwner(sessionId);
+    if (!owner) return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
+    if (owner.status !== 'active') return res.status(410).json({ error: 'Phiên chat đã kết thúc.' });
+    if (!owner.agent_id) return res.status(400).json({ error: 'Thực đơn chưa được thiết lập.' });
+
+    // Một phiên chỉ có một đơn đang chờ. Không chặn thì khách bấm hai lần là Sale
+    // thấy hai đơn giống nhau và không biết cái nào thật.
+    const pending = await db.query(
+      `SELECT id FROM chat_orders
+        WHERE session_id = $1 AND status IN ('pending_confirm', 'awaiting_payment') LIMIT 1`,
+      [sessionId]
+    );
+    if (pending.rows[0]) {
+      return res.status(409).json({ error: 'Bạn đang có một đơn chờ xử lý. Vui lòng đợi tư vấn viên xác nhận.' });
+    }
+
+    const wanted = new Map();
+    for (const line of lines) {
+      const id = Number(line?.itemId);
+      const qty = Math.max(1, Math.min(99, Math.round(Number(line?.quantity) || 1)));
+      if (Number.isInteger(id)) wanted.set(id, (wanted.get(id) || 0) + qty);
+    }
+    if (wanted.size === 0) return res.status(400).json({ error: 'Danh sách món không hợp lệ.' });
+
+    // GIÁ LẤY TỪ DATABASE, không lấy từ body. Đây là ranh giới tin cậy của toàn
+    // bộ tính năng: client chỉ được nói "món nào, mấy phần".
+    const priced = await db.query(
+      `SELECT id, name, price FROM qr_menu_items
+        WHERE id = ANY($1::int[]) AND agent_id = $2 AND is_available = TRUE`,
+      [[...wanted.keys()], owner.agent_id]
+    );
+    if (priced.rows.length !== wanted.size) {
+      return res.status(409).json({ error: 'Một vài món vừa hết hoặc không còn trong thực đơn. Vui lòng chọn lại.' });
+    }
+
+    const items = priced.rows.map((row) => {
+      const quantity = wanted.get(row.id);
+      const unitPrice = Number(row.price);
+      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal: Math.round(unitPrice * quantity) };
+    });
+    const totalAmount = items.reduce((sum, item) => sum + item.lineTotal, 0);
+
+    const orderId = randomUUID();
+    const created = await db.query(
+      `INSERT INTO chat_orders (id, session_id, project_id, total_amount, items, status, placed_by)
+       VALUES ($1, $2, $3, $4, $5, 'pending_confirm', 'customer') RETURNING *`,
+      [orderId, sessionId, owner.project_id, totalAmount, JSON.stringify(items)]
+    );
+
+    // Ghi vào chính cuộc chat để Sale thấy ngay trong luồng hội thoại, và bắn
+    // thông báo đẩy như một tin nhắn đến bình thường.
+    const summary = items.map((item) => `${item.name} x${item.quantity}`).join(', ');
+    const text = `[Đặt món] Khách vừa đặt: ${summary}. Tạm tính ${formatVnd(totalAmount)}.`;
+    await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+       VALUES ($1, 'system', $2, $2, 'vi')`,
+      [sessionId, text]
+    );
+    const sessionRow = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    if (sessionRow.rows[0]) void notifyAgentMessage(sessionRow.rows[0], text);
+    broadcastAdminEvent('order_update', { sessionId, orderId, status: 'pending_confirm' });
+
+    res.status(201).json({ success: true, order: created.rows[0] });
+  } catch (error) {
+    console.error('Customer place order error:', error);
+    res.status(500).json({ error: 'Không gửi được đơn đặt món.' });
+  }
+});
+
+// --- Sale xác nhận hoặc từ chối đơn khách đặt --------------------------------
+
+app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHours, async (req, res) => {
+  try {
+    const orderRes = await db.query('SELECT * FROM chat_orders WHERE id = $1', [req.params.orderId]);
+    const order = orderRes.rows[0];
+    if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+    if (order.status !== 'pending_confirm') {
+      return res.status(409).json({ error: 'Đơn này không ở trạng thái chờ xác nhận.' });
+    }
+    if (!canAccessProject(req.admin, order.project_id)) {
+      return res.status(403).json({ error: 'Bạn không có quyền xử lý đơn của project này.' });
+    }
+    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [order.session_id]);
+    const session = sessionRes.rows[0];
+    if (isSale(req.admin) && !(await canSaleWriteToSession(req.admin.id, session))) {
+      return res.status(403).json({ error: 'Cuộc trò chuyện này không thuộc nhóm của bạn.' });
+    }
+
+    // Hoá đơn chỉ được phát ra ở bước này — trước khi Sale xác nhận thì đơn của
+    // khách mới chỉ là đề nghị.
+    const invoice = buildSampleInvoice(order.id, session, order.items, Number(order.total_amount));
+    const updated = await db.query(
+      `UPDATE chat_orders
+          SET status = 'awaiting_payment', invoice = $2, invoice_render = '{}'::jsonb,
+              confirmed_by_admin_id = $3, confirmed_at = NOW(), updated_at = NOW()
+        WHERE id = $1 RETURNING *`,
+      [order.id, JSON.stringify(invoice), req.admin.id]
+    );
+    broadcastAdminEvent('order_update', { sessionId: order.session_id, orderId: order.id, status: 'awaiting_payment' });
+    res.json({ success: true, order: updated.rows[0] });
+  } catch (error) {
+    console.error('Confirm order error:', error);
+    res.status(500).json({ error: 'Không xác nhận được đơn hàng.' });
+  }
+});
+
+app.post('/api/admin/orders/:orderId/reject', checkAdminAuth, requireWorkingHours, async (req, res) => {
+  const reason = String(req.body?.reason || '').trim().slice(0, 500);
+  try {
+    const orderRes = await db.query('SELECT * FROM chat_orders WHERE id = $1', [req.params.orderId]);
+    const order = orderRes.rows[0];
+    if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+    if (order.status !== 'pending_confirm') {
+      return res.status(409).json({ error: 'Đơn này không ở trạng thái chờ xác nhận.' });
+    }
+    if (!canAccessProject(req.admin, order.project_id)) {
+      return res.status(403).json({ error: 'Bạn không có quyền xử lý đơn của project này.' });
+    }
+    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [order.session_id]);
+    if (isSale(req.admin) && !(await canSaleWriteToSession(req.admin.id, sessionRes.rows[0]))) {
+      return res.status(403).json({ error: 'Cuộc trò chuyện này không thuộc nhóm của bạn.' });
+    }
+
+    await db.query(
+      `UPDATE chat_orders SET status = 'rejected', reject_reason = $2,
+              confirmed_by_admin_id = $3, confirmed_at = NOW(), updated_at = NOW()
+        WHERE id = $1`,
+      [order.id, reason || null, req.admin.id]
+    );
+    // Báo lại cho khách trong chat, có lý do nếu Sale nhập.
+    const text = reason
+      ? `[Đặt món] Rất tiếc, đơn của bạn chưa thực hiện được: ${reason}`
+      : '[Đặt món] Rất tiếc, đơn của bạn chưa thực hiện được. Tư vấn viên sẽ trao đổi thêm với bạn.';
+    await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id)
+       VALUES ($1, 'agent', $2, $2, 'vi', $3)`,
+      [order.session_id, text, req.admin.id]
+    );
+    broadcastAdminEvent('order_update', { sessionId: order.session_id, orderId: order.id, status: 'rejected' });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Reject order error:', error);
+    res.status(500).json({ error: 'Không từ chối được đơn hàng.' });
+  }
+});
+
 // --- Chuyển chat sang Sale khác ----------------------------------------------
 
 app.post('/api/chats/:sessionId/transfer', checkAdminAuth, requireWorkingHours, async (req, res) => {

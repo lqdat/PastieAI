@@ -18,6 +18,7 @@
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
     <link rel="stylesheet" href="admin.css?v=r78">
+    <link rel="stylesheet" href="menu-console.css?v=r1">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -137,7 +138,7 @@
                 </button>
 
                 <!-- Nút riêng cho Agent: Quản lý Sale & Nhóm, Báo cáo, Tài khoản, Thông báo -->
-                <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, Nhóm tiếp nhận và Mã QR">
+                <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, Nhóm tiếp nhận, Mã QR và Thực đơn">
                     <i class="ri-organization-chart"></i><span>Sale &amp; Nhóm</span>
                 </button>
                 <button id="report-modal-btn" class="header-quick-btn" type="button" title="Báo cáo hiệu suất tư vấn &amp; Xuất Excel">
@@ -231,7 +232,7 @@
         <div id="org-modal" class="modal-overlay hide">
             <div class="org-card">
                 <header class="org-head">
-                    <h2 id="org-title"><i class="ri-team-line" style="color:var(--accent-color);margin-right:6px;"></i>Quản lý Sale, nhóm và QR</h2>
+                    <h2 id="org-title"><i class="ri-team-line" style="color:var(--accent-color);margin-right:6px;"></i>Quản lý Sale, nhóm, QR và thực đơn</h2>
                     <button type="button" class="icon-btn" id="org-close-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
                 </header>
 
@@ -240,6 +241,7 @@
                     <button type="button" class="org-tab is-active" data-org-tab="groups"><i class="ri-team-line"></i> <span>Nhóm</span></button>
                     <button type="button" class="org-tab" data-org-tab="sales"><i class="ri-user-shared-line"></i> <span>Sale</span></button>
                     <button type="button" class="org-tab" data-org-tab="qr"><i class="ri-qr-code-line"></i> <span>Mã QR</span></button>
+                    <button type="button" class="org-tab" data-org-tab="menu"><i class="ri-restaurant-2-line"></i> <span>Thực đơn</span></button>
                 </nav>
 
                 <p class="org-status hide" id="org-status"></p>
@@ -346,6 +348,43 @@
                     </div>
                     <div class="org-list" id="org-qr-list"></div>
                 </section>
+
+                <!-- Thực đơn: chỉ Agent quản lý dự án QR -->
+                <section class="org-pane hide" data-org-pane="menu">
+                    <form class="org-form" id="menu-category-form">
+                        <div class="org-form-row">
+                            <label style="flex:1;">Danh mục
+                                <input type="text" id="menu-category-name" placeholder="Món khai vị, Đồ uống, Hải sản..." maxlength="150">
+                                <small class="org-field-hint">Chia nhóm cho khách dễ xem. Không bắt buộc — món chưa phân loại vẫn hiển thị.</small>
+                            </label>
+                            <button type="submit" class="org-submit" style="align-self:flex-start;margin-top:22px;"><i class="ri-add-line"></i> Thêm</button>
+                        </div>
+                        <div class="menu-cat-row" id="menu-category-list"></div>
+                    </form>
+
+                    <form class="org-form" id="menu-item-form" style="margin-top:14px;">
+                        <div class="org-form-row">
+                            <label style="flex:2;">Tên món *<input type="text" id="menu-item-name" required placeholder="Gỏi cá trích" maxlength="255"></label>
+                            <label style="flex:1;">Giá (VNĐ) *<input type="number" id="menu-item-price" required min="0" step="1000" placeholder="120000"></label>
+                        </div>
+                        <div class="org-form-row">
+                            <label style="flex:1;">Danh mục<select id="menu-item-category"></select></label>
+                            <label style="flex:2;">Mô tả<input type="text" id="menu-item-desc" placeholder="Cá trích tươi, rau rừng, bánh tráng"></label>
+                        </div>
+                        <div class="org-form-row" style="gap:8px;">
+                            <button type="submit" class="org-submit" id="menu-item-submit"><i class="ri-add-circle-line"></i> Thêm món</button>
+                            <button type="button" class="org-submit hide" id="menu-item-cancel" style="background:none;color:var(--text-secondary);border:1px solid var(--panel-border);">Huỷ sửa</button>
+                        </div>
+                        <small class="org-field-hint">Tên và mô tả được dịch tự động sang Anh, Nga, Trung, Hàn ngay khi lưu. Bấm vào ô ngôn ngữ ở mỗi món để sửa lại bản dịch.</small>
+                    </form>
+
+                    <div class="org-list-header">
+                        <h4>Các món trong thực đơn</h4>
+                        <span id="menu-count-badge" class="org-count-badge">0 món</span>
+                    </div>
+                    <div class="org-list" id="menu-item-list"></div>
+                </section>
+
             </div>
         </div>
 
@@ -1121,5 +1160,6 @@
     </div>
 
     <script src="admin.js?v=r78"></script>
+    <script src="menu-console.js?v=r1"></script>
 </body>
 </html>

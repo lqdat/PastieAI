@@ -5386,6 +5386,8 @@ function switchOrgTab(name) {
     if (name === 'sales') void loadOrgSales();
     if (name === 'groups') void loadOrgGroups();
     if (name === 'qr') void loadOrgQr();
+    // Thực đơn nằm ở menu-console.js — mảnh đầu tiên của QR Console tách riêng.
+    if (name === 'menu') void window.MenuConsole?.load();
 }
 
 function openOrgModal() {
@@ -5396,11 +5398,11 @@ function openOrgModal() {
     // Superadmin cố tình KHÔNG thiết lập thay Agent; backend cũng trả 403.
     const isSuper = CURRENT_ADMIN?.role === 'superadmin';
     document.querySelector('[data-org-tab="agents"]')?.classList.toggle('hide', !isSuper);
-    ['sales', 'groups', 'qr'].forEach((name) => {
+    ['sales', 'groups', 'qr', 'menu'].forEach((name) => {
         document.querySelector(`[data-org-tab="${name}"]`)?.classList.toggle('hide', isSuper);
     });
     const title = document.getElementById('org-title');
-    if (title) title.textContent = isSuper ? 'Quản lý Agent' : 'Quản lý Sale, nhóm và QR';
+    if (title) title.textContent = isSuper ? 'Quản lý Agent' : 'Quản lý Sale, nhóm, QR và thực đơn';
     const kicker = document.getElementById('org-kicker');
     if (kicker) kicker.textContent = 'PHÂN CẤP TỔ CHỨC';
 

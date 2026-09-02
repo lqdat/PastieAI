@@ -635,6 +635,80 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // Trước đây bảng này được CREATE TABLE IF NOT EXISTS ngay trong handler của
     // /api/admin/keywords — mỗi lần gọi API đều khoá catalog và ghi WAL. DDL
     // thuộc về nơi khởi tạo schema, không thuộc đường xử lý request.
+    // ========================================================================
+    // MENU CỦA DỰ ÁN QR — chỉ dùng cho project_type = 'qr_concierge'
+    //
+    // Menu gắn với AGENT chứ không gắn với nhóm hay QR: mỗi Agent là một hộ kinh
+    // doanh, cả cửa hàng dùng chung một thực đơn. Khách quét QR bất kỳ của hộ đó
+    // đều thấy cùng một menu (session -> group -> agent).
+    // ========================================================================
+    await query(`
+      CREATE TABLE IF NOT EXISTS qr_menu_categories (
+        id SERIAL PRIMARY KEY,
+        agent_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name VARCHAR(150) NOT NULL,
+        sort_order INT NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_menu_categories_agent ON qr_menu_categories(agent_id, sort_order);`);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS qr_menu_items (
+        id SERIAL PRIMARY KEY,
+        category_id INT REFERENCES qr_menu_categories(id) ON DELETE SET NULL,
+        agent_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        -- Giá là NGUỒN SỰ THẬT DUY NHẤT. Khách gửi lên chỉ có itemId và số lượng;
+        -- máy chủ luôn tự tra giá ở đây. Không bao giờ tin giá do client gửi.
+        price NUMERIC(14,0) NOT NULL DEFAULT 0,
+        currency VARCHAR(8) NOT NULL DEFAULT 'VND',
+        image_key TEXT,
+        image_url TEXT,
+        image_url_expires_at TIMESTAMP,
+        is_available BOOLEAN NOT NULL DEFAULT TRUE,
+        sort_order INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_menu_items_agent ON qr_menu_items(agent_id, is_available, sort_order);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_menu_items_category ON qr_menu_items(category_id, sort_order);`);
+
+    // Bản dịch tên/mô tả món. KHÁC với message_translations: tên món là nội dung
+    // TĨNH, dùng lại hàng nghìn lần, nên lưu hẳn theo món thay vì cache theo tin.
+    //
+    // is_manual: Agent tự sửa bản dịch nào thì bản đó được đánh dấu, và lần dịch
+    // tự động sau KHÔNG ghi đè lên — nếu không thì mỗi lần Agent sửa giá là công
+    // sức dịch tay bị xoá sạch.
+    await query(`
+      CREATE TABLE IF NOT EXISTS qr_menu_item_translations (
+        item_id INT NOT NULL REFERENCES qr_menu_items(id) ON DELETE CASCADE,
+        lang VARCHAR(10) NOT NULL,
+        name VARCHAR(255),
+        description TEXT,
+        is_manual BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (item_id, lang)
+      );
+    `);
+
+    // Khách tự đặt món nên đơn hàng có thêm một trạng thái TRƯỚC awaiting_payment:
+    //   pending_confirm  -> khách vừa đặt, chờ Sale xác nhận
+    //   awaiting_payment -> Sale đã xác nhận, hoá đơn phát ra
+    //   paid             -> đã thanh toán
+    //   rejected         -> Sale từ chối (hết món, đặt nhầm)
+    // Đơn do Sale tạo tay vẫn vào thẳng awaiting_payment như trước, không đổi.
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS placed_by VARCHAR(20) NOT NULL DEFAULT 'staff';`);
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS confirmed_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP;`);
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS reject_reason TEXT;`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_chat_orders_status ON chat_orders(session_id, status, created_at DESC);`);
+
     await query(`
       CREATE TABLE IF NOT EXISTS transfer_keywords (
         project_id TEXT PRIMARY KEY,

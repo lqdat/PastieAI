@@ -1,0 +1,12 @@
+# Chuẩn hoá xuống dòng: kho lưu LF, máy Windows checkout ra CRLF.
+# Không có dòng này, mỗi lần mở file trên Windows git lại báo đổi cả nghìn dòng.
+* text=auto
+
+# File nhị phân: không đụng vào.
+*.png binary
+*.jpg binary
+*.ico binary
+*.wav binary
+*.mp3 binary
+*.woff  binary
+*.woff2 binary

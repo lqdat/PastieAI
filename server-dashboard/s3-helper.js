@@ -82,6 +82,29 @@ async function getPresignedUrl(key, expiresInSeconds = 3600) {
   return signedRequest.url;
 }
 
+// Khoá cho ảnh món trong menu. Tách hẳn khỏi attachment của chat: menu thuộc về
+// một Agent (hộ kinh doanh) chứ không thuộc phiên chat nào, và sống lâu hơn nhiều.
+function buildMenuImageKey(projectId, agentId, originalFileName) {
+  const safeName = sanitizeFileName(originalFileName);
+  const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${projectId}/menu/${agentId}/${unique}-${safeName}`;
+}
+
+// URL ký dài hạn cho ảnh menu.
+//
+// Vì sao không dùng chung getPresignedUrl 6 giờ như file đính kèm: ảnh đính kèm
+// chỉ được xem vài lần ngay sau khi gửi, còn ảnh menu hiển thị cho mọi khách quét
+// QR, liên tục, trong nhiều tháng. Ký 6 giờ nghĩa là cứ 6 giờ lại phải ký lại
+// toàn bộ menu — vừa tốn, vừa dễ để lọt ảnh hỏng ra giao diện khách.
+//
+// SigV4 giới hạn tối đa 7 ngày, nên đây là mốc dài nhất có thể; phía server tự
+// gia hạn khi còn dưới 1 ngày (xem refreshMenuImageUrl trong server.js).
+const MENU_IMAGE_URL_TTL_SECONDS = 7 * 24 * 3600;
+
+async function getMenuImageUrl(key) {
+  return getPresignedUrl(key, MENU_IMAGE_URL_TTL_SECONDS);
+}
+
 async function deleteObject(key) {
   if (!isConfigured) return;
   const res = await client.fetch(objectUrl(key), { method: 'DELETE' });
@@ -128,6 +151,9 @@ async function deleteSessionAttachments(projectId, sessionId) {
 module.exports = {
   isConfigured,
   buildAttachmentKey,
+  buildMenuImageKey,
+  getMenuImageUrl,
+  MENU_IMAGE_URL_TTL_SECONDS,
   sanitizeFileName,
   uploadBuffer,
   getPresignedUrl,
