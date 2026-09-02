@@ -106,14 +106,15 @@
             return;
         }
         box.innerHTML = CATEGORIES.map((category) => `
-            <span class="menu-cat-chip${category.is_active ? '' : ' is-off'}" data-category-chip="${category.id}">
+            <span class="menu-cat-chip${category.is_active ? '' : ' is-off'}${category.is_promo ? ' is-promo' : ''}" data-category-chip="${category.id}">
+                ${category.is_promo ? '<i class="ri-flashlight-fill" title="Nhóm ưu đãi — món trong đây chạy lên đầu thực đơn của khách"></i>' : ''}
                 <button type="button" class="menu-cat-name" data-category-rename="${category.id}" title="Đổi tên">${escapeHtml(category.name)}</button>
                 <small>${category.item_count}</small>
                 <button type="button" class="menu-cat-toggle" data-category-toggle="${category.id}"
                         title="${category.is_active ? 'Đang hiện với khách — bấm để ẩn' : 'Đang ẩn — bấm để hiện'}">
                     <i class="ri-${category.is_active ? 'eye-line' : 'eye-off-line'}"></i>
                 </button>
-                <button type="button" class="menu-cat-del" data-category-delete="${category.id}" title="Xoá danh mục"><i class="ri-close-line"></i></button>
+                ${category.is_promo ? '' : `<button type="button" class="menu-cat-del" data-category-delete="${category.id}" title="Xoá danh mục"><i class="ri-close-line"></i></button>`}
             </span>
         `).join('');
     }
@@ -123,7 +124,7 @@
         if (!select) return;
         const current = select.value;
         select.innerHTML = '<option value="">— Không thuộc danh mục —</option>'
-            + CATEGORIES.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+            + CATEGORIES.map((c) => `<option value="${c.id}">${c.is_promo ? '⚡ ' : ''}${escapeHtml(c.name)}</option>`).join('');
         if (current) select.value = current;
     }
 
@@ -156,6 +157,17 @@
         `).join('');
     }
 
+    // Tồn kho null = không giới hạn, không hiện gì cho đỡ rối. Có số thì mới
+    // hiện, và tô đỏ/cam để Agent liếc qua là biết món nào sắp phải nhập thêm.
+    function stockBadge(item) {
+        if (item.stock_quantity === null || item.stock_quantity === undefined) return '';
+        const left = Number(item.stock_quantity);
+        if (left <= 0) {
+            return `<span class="menu-stock is-out"><i class="ri-close-circle-line"></i> Hết hàng${item.hide_when_out ? ' · đã ẩn' : ' · vẫn hiện'}</span>`;
+        }
+        return `<span class="menu-stock${left <= 5 ? ' is-low' : ''}"><i class="ri-archive-line"></i> Còn ${left}</span>`;
+    }
+
     function itemCard(item) {
         const done = translatedCount(item);
         const waiting = pendingTranslation.has(item.id);
@@ -182,6 +194,7 @@
                     <strong>${escapeHtml(item.name)}</strong>
                     <span class="menu-price">${money(item.price)}</span>
                 </div>
+                ${stockBadge(item)}
                 ${item.description ? `<p class="menu-desc">${escapeHtml(item.description)}</p>` : ''}
                 <div class="menu-langs">
                     ${waiting && done === 0
@@ -259,6 +272,9 @@
     async function deleteCategory(id) {
         const category = CATEGORIES.find((c) => c.id === Number(id));
         if (!category) return;
+        if (category.is_promo) {
+            return showToast('Không xoá được nhóm Ưu đãi. Bạn có thể ẩn nhóm này nếu chưa dùng tới.', 'error');
+        }
         // Nói rõ món KHÔNG mất theo — backend để ON DELETE SET NULL.
         const ok = await pastieConfirm(
             category.item_count > 0
@@ -284,6 +300,11 @@
         $('menu-item-price').value = item ? Number(item.price) : '';
         $('menu-item-desc').value = item ? (item.description || '') : '';
         $('menu-item-category').value = item && item.category_id ? String(item.category_id) : '';
+        // null -> ô trống, đúng nghĩa "không giới hạn". Dùng == null để bắt cả
+        // undefined; nếu dùng || thì số 0 (hết sạch) cũng thành ô trống.
+        $('menu-item-stock').value = item && item.stock_quantity != null ? String(item.stock_quantity) : '';
+        $('menu-item-hide').value = item && item.hide_when_out === false ? 'false' : 'true';
+        syncHideField();
         const submit = $('menu-item-submit');
         if (submit) {
             submit.innerHTML = item
@@ -304,7 +325,18 @@
         if (!name) return showToast('Cần tên món.', 'error');
         if (!Number.isFinite(price) || price < 0) return showToast('Giá không hợp lệ.', 'error');
 
-        const payload = { name, price, description, categoryId: categoryId ? Number(categoryId) : null };
+        const rawStock = $('menu-item-stock').value.trim();
+        if (rawStock !== '' && (!/^\d+$/.test(rawStock) || Number(rawStock) < 0)) {
+            return showToast('Số lượng tồn phải là số nguyên không âm, hoặc để trống nếu không giới hạn.', 'error');
+        }
+        const payload = {
+            name, price, description,
+            categoryId: categoryId ? Number(categoryId) : null,
+            // Chuỗi rỗng gửi lên nguyên vẹn: backend hiểu đó là "bỏ trống" tức
+            // không giới hạn, khác hẳn với việc không gửi trường này.
+            stockQuantity: rawStock === '' ? '' : Number(rawStock),
+            hideWhenOut: $('menu-item-hide').value !== 'false',
+        };
         const editing = editingItemId;
         try {
             const result = editing
@@ -460,7 +492,16 @@
 
     // --- Nối sự kiện ---------------------------------------------------------
 
+    // "Khi hết hàng" chỉ có nghĩa khi đã điền số tồn. Làm mờ thay vì ẩn: ẩn thì
+    // các ô khác nhảy chỗ mỗi lần gõ, mà người dùng cũng không biết là có nó.
+    function syncHideField() {
+        const idle = $('menu-item-stock')?.value.trim() === '';
+        $('menu-item-hide-field')?.classList.toggle('is-idle', idle);
+    }
+
     function bind() {
+        $('menu-item-stock')?.addEventListener('input', syncHideField);
+        syncHideField();
         $('menu-category-form')?.addEventListener('submit', addCategory);
         $('menu-item-form')?.addEventListener('submit', submitItem);
         $('menu-item-cancel')?.addEventListener('click', () => fillItemForm(null));

@@ -362,20 +362,57 @@
                         <div class="menu-cat-row" id="menu-category-list"></div>
                     </form>
 
-                    <form class="org-form" id="menu-item-form" style="margin-top:14px;">
-                        <div class="org-form-row">
-                            <label style="flex:2;">Tên món *<input type="text" id="menu-item-name" required placeholder="Gỏi cá trích" maxlength="255"></label>
-                            <label style="flex:1;">Giá (VNĐ) *<input type="number" id="menu-item-price" required min="0" step="1000" placeholder="120000"></label>
+                    <!-- Form nhập món. Bố cục theo lưới thay vì flex + inline style:
+                         trên PC gom thành ba hàng gọn, trên máy hẹp tự xếp dọc. -->
+                    <form class="menu-form" id="menu-item-form">
+                        <div class="menu-form-grid">
+                            <label class="menu-field menu-field-name">
+                                <span>Tên món <b>*</b></span>
+                                <input type="text" id="menu-item-name" required placeholder="Gỏi cá trích" maxlength="255" autocomplete="off">
+                            </label>
+
+                            <label class="menu-field menu-field-price">
+                                <span>Giá <b>*</b></span>
+                                <div class="menu-input-suffix">
+                                    <input type="number" id="menu-item-price" required min="0" step="1000" placeholder="120000" inputmode="numeric">
+                                    <em>₫</em>
+                                </div>
+                            </label>
+
+                            <label class="menu-field menu-field-cat">
+                                <span>Danh mục</span>
+                                <select id="menu-item-category"></select>
+                            </label>
+
+                            <label class="menu-field menu-field-stock">
+                                <span>Số lượng tồn</span>
+                                <input type="number" id="menu-item-stock" min="0" step="1" placeholder="Không giới hạn" inputmode="numeric">
+                            </label>
+
+                            <label class="menu-field menu-field-hide" id="menu-item-hide-field">
+                                <span>Khi hết hàng</span>
+                                <select id="menu-item-hide">
+                                    <option value="true">Ẩn khỏi thực đơn</option>
+                                    <option value="false">Vẫn hiện, ghi "hết"</option>
+                                </select>
+                            </label>
+
+                            <label class="menu-field menu-field-desc">
+                                <span>Mô tả</span>
+                                <input type="text" id="menu-item-desc" placeholder="Cá trích tươi, rau rừng, bánh tráng" autocomplete="off">
+                            </label>
                         </div>
-                        <div class="org-form-row">
-                            <label style="flex:1;">Danh mục<select id="menu-item-category"></select></label>
-                            <label style="flex:2;">Mô tả<input type="text" id="menu-item-desc" placeholder="Cá trích tươi, rau rừng, bánh tráng"></label>
+
+                        <p class="menu-form-note">
+                            <i class="ri-information-line"></i>
+                            <span>Để trống <b>số lượng tồn</b> nghĩa là bán không giới hạn — khách không bao giờ nhìn thấy con số này.
+                            Tên và mô tả được dịch tự động sang Anh, Nga, Trung, Hàn ngay khi lưu.</span>
+                        </p>
+
+                        <div class="menu-form-actions">
+                            <button type="button" class="menu-btn-ghost hide" id="menu-item-cancel">Huỷ sửa</button>
+                            <button type="submit" class="menu-btn-primary" id="menu-item-submit"><i class="ri-add-circle-line"></i> Thêm món</button>
                         </div>
-                        <div class="org-form-row" style="gap:8px;">
-                            <button type="submit" class="org-submit" id="menu-item-submit"><i class="ri-add-circle-line"></i> Thêm món</button>
-                            <button type="button" class="org-submit hide" id="menu-item-cancel" style="background:none;color:var(--text-secondary);border:1px solid var(--panel-border);">Huỷ sửa</button>
-                        </div>
-                        <small class="org-field-hint">Tên và mô tả được dịch tự động sang Anh, Nga, Trung, Hàn ngay khi lưu. Bấm vào ô ngôn ngữ ở mỗi món để sửa lại bản dịch.</small>
                     </form>
 
                     <div class="org-list-header">
