@@ -7908,15 +7908,49 @@ app.delete('/api/admin/me/devices/:deviceRowId', checkAdminAuth, async (req, res
 app.get('/api/superadmin/accounts/:adminId/devices', checkAdminAuth, async (req, res) => {
   if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được xem.' });
   try {
+    const account = await db.query(
+      `SELECT id, username, full_name, role, project_id, device_limit, last_device_change_at
+         FROM admins WHERE id = $1`,
+      [Number(req.params.adminId)]
+    );
+    if (!account.rows[0]) return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
     const devices = await db.query(
       `SELECT id, device_id, label, status, first_seen, last_seen, last_ip
          FROM admin_devices WHERE admin_id = $1 ORDER BY last_seen DESC`,
       [Number(req.params.adminId)]
     );
-    res.json({ devices: devices.rows });
+    res.json({
+      account: account.rows[0],
+      limit: account.rows[0].device_limit ?? DEVICE_LIMIT_DEFAULT,
+      cooldownDays: DEVICE_CHANGE_COOLDOWN_DAYS,
+      lastChangeAt: account.rows[0].last_device_change_at || null,
+      devices: devices.rows,
+    });
   } catch (error) {
     console.error('List devices error:', error);
     res.status(500).json({ error: 'Không tải được danh sách thiết bị.' });
+  }
+});
+
+// Superadmin thu hồi riêng một thiết bị, không ảnh hưởng các máy còn lại.
+app.delete('/api/superadmin/accounts/:adminId/devices/:deviceRowId', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được thu hồi thiết bị.' });
+  const adminId = Number(req.params.adminId);
+  const deviceRowId = Number(req.params.deviceRowId);
+  try {
+    const device = await db.query(
+      `SELECT id, device_id, label FROM admin_devices WHERE id = $1 AND admin_id = $2`,
+      [deviceRowId, adminId]
+    );
+    if (!device.rows[0]) return res.status(404).json({ error: 'Không tìm thấy thiết bị của tài khoản này.' });
+    await db.query(`UPDATE admin_devices SET status = 'revoked' WHERE id = $1`, [deviceRowId]);
+    await db.query('DELETE FROM admin_sessions WHERE admin_id = $1 AND device_id = $2',
+      [adminId, device.rows[0].device_id]);
+    console.log(`[License] Superadmin ${req.admin.username} thu hồi thiết bị ${device.rows[0].label || deviceRowId} của admin id=${adminId}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Superadmin revoke device error:', error);
+    res.status(500).json({ error: 'Không thu hồi được thiết bị.' });
   }
 });
 
@@ -7941,7 +7975,11 @@ app.post('/api/superadmin/accounts/:adminId/devices/reset', checkAdminAuth, asyn
 app.put('/api/superadmin/accounts/:adminId/device-limit', checkAdminAuth, async (req, res) => {
   if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được đặt hạn mức.' });
   const raw = req.body?.deviceLimit;
-  const limit = raw === undefined || raw === null || raw === '' ? null : Math.max(1, Number.parseInt(raw, 10));
+  const parsed = raw === undefined || raw === null || raw === '' ? null : Number.parseInt(raw, 10);
+  if (parsed !== null && (!Number.isInteger(parsed) || parsed < 1 || parsed > 20)) {
+    return res.status(400).json({ error: 'Giới hạn thiết bị phải là số nguyên từ 1 đến 20.' });
+  }
+  const limit = parsed;
   try {
     await db.query('UPDATE admins SET device_limit = $2 WHERE id = $1', [Number(req.params.adminId), limit]);
     res.json({ success: true, deviceLimit: limit });

@@ -115,7 +115,7 @@ async function createBrandedQrPoster(imageUrl, businessName) {
     }
     const [qrImage, logoImage] = await Promise.all([
         loadPosterImage(imageUrl),
-        loadPosterImage('/logoApp.png'),
+        loadPosterImage('/pastie-logo@2x.png'),
     ]);
     const canvas = document.createElement('canvas');
     // Poster 4:5 nhỏ gọn để in bảng để bàn/giấy nhỏ, không dùng tỷ lệ A4.
@@ -141,55 +141,14 @@ async function createBrandedQrPoster(imageUrl, businessName) {
     ctx.fillStyle = accent;
     ctx.fillRect(0, 0, canvas.width, 22);
 
-    ctx.drawImage(logoImage, 90, 58, 104, 104);
-    // Giữ biểu tượng P nguyên bản và dùng wordmark Pastie Chat hai màu giống
-    // nhận diện thương hiệu. Phần chữ Việt bên dưới vẫn dùng Be Vietnam Pro.
-    ctx.save();
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.lineJoin = 'round';
-    ctx.miterLimit = 2;
-    ctx.font = '400 66px "Lobster", "Segoe Script", cursive';
-    const brandX = 222;
-    const brandY = 130;
-    const pastieText = 'Pastie';
-    const pastieWidth = ctx.measureText(pastieText).width;
-
-    const pastieGradient = ctx.createLinearGradient(brandX, 72, brandX, 138);
-    pastieGradient.addColorStop(0, '#ffe24a');
-    pastieGradient.addColorStop(.55, '#ffb629');
-    pastieGradient.addColorStop(1, '#f07b1f');
-    ctx.strokeStyle = '#6f1f16';
-    ctx.lineWidth = 9;
-    ctx.strokeText(pastieText, brandX, brandY);
-    ctx.fillStyle = pastieGradient;
-    ctx.fillText(pastieText, brandX, brandY);
-
-    const chatX = brandX + pastieWidth + 8;
-    const chatGradient = ctx.createLinearGradient(chatX, 72, chatX, 138);
-    chatGradient.addColorStop(0, '#4bd4ed');
-    chatGradient.addColorStop(.55, '#159ec7');
-    chatGradient.addColorStop(1, '#0877a8');
-    ctx.strokeStyle = '#6f1f16';
-    ctx.strokeText('Chat', chatX, brandY);
-    ctx.fillStyle = chatGradient;
-    ctx.fillText('Chat', chatX, brandY);
-    ctx.restore();
-
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#c52d77';
-    ctx.font = `700 18px ${posterFont}`;
-    ctx.fillText('KẾT NỐI TƯ VẤN • LIVE SUPPORT', 225, 166);
+    // Header chỉ có đúng một logo thương hiệu. Không ghép thêm logo nhỏ, không
+    // vẽ lại wordmark bằng font và không đặt slogan/câu chào gây trùng lặp.
+    const logoWidth = 590;
+    const logoHeight = logoWidth * (logoImage.naturalHeight / logoImage.naturalWidth);
+    ctx.drawImage(logoImage, (canvas.width - logoWidth) / 2, 64, logoWidth, logoHeight);
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#a12d68';
-    ctx.font = `700 18px ${posterFont}`;
-    ctx.fillText('CHÀO MỪNG QUÝ KHÁCH • WELCOME TO', canvas.width / 2, 224);
-    ctx.fillStyle = '#30233a';
-    ctx.font = `800 50px ${posterFont}`;
-    const businessLines = drawPosterText(ctx, businessName || 'Hộ kinh doanh', canvas.width / 2, 292, 900, 58, 2);
-
-    const cardY = businessLines > 1 ? 420 : 370;
+    const cardY = 280;
     const cardX = 190;
     const cardSize = 700;
     ctx.save();
@@ -218,12 +177,18 @@ async function createBrandedQrPoster(imageUrl, businessName) {
     ctx.font = `700 23px ${posterFont}`;
     ctx.fillText('SCAN TO START A CHAT', canvas.width / 2, copyY + 38);
 
+    // Tên cơ sở vẫn có trên poster theo yêu cầu nhận diện ban đầu, nhưng chuyển
+    // xuống phần nội dung; khu vực logo phía trên luôn sạch và chỉ có logo.
+    ctx.fillStyle = '#30233a';
+    ctx.font = `800 28px ${posterFont}`;
+    drawPosterText(ctx, businessName || 'Hộ kinh doanh', canvas.width / 2, copyY + 82, 820, 34, 1);
+
     ctx.fillStyle = '#fff0f7';
-    drawPosterRoundedRect(ctx, 205, copyY + 66, 670, 54, 27);
+    drawPosterRoundedRect(ctx, 205, copyY + 112, 670, 54, 27);
     ctx.fill();
     ctx.fillStyle = '#b62b70';
     ctx.font = `700 17px ${posterFont}`;
-    ctx.fillText('Mở Camera / Open Camera  •  Hướng vào QR / Point at QR', canvas.width / 2, copyY + 101);
+    ctx.fillText('Mở Camera / Open Camera  •  Hướng vào QR / Point at QR', canvas.width / 2, copyY + 147);
 
     ctx.fillStyle = '#9a8b99';
     ctx.font = `500 16px ${posterFont}`;
@@ -379,6 +344,9 @@ async function loadOrgAgents() {
                         · <strong>${agent.group_count} nhóm</strong>${agent.sale_limit && agent.sale_count >= agent.sale_limit ? ' · <span style="color:#ef4444;font-weight:700;">Đã hết suất</span>' : ''}</small>
                 </div>
                 <div class="org-agent-actions">
+                    <button type="button" class="org-device-btn" data-agent-devices="${agent.id}" data-agent-name="${escapeHtml(agent.full_name || agent.username)}">
+                        <i class="ri-device-line"></i> Thiết bị
+                    </button>
                     <label class="org-defer">
                         <span>Trả chậm</span>
                         <select data-agent-defer="${agent.id}" title="Nút thanh toán chậm hiện cho khách của Agent này">
@@ -397,6 +365,98 @@ async function loadOrgAgents() {
         box.innerHTML = `<p class="org-empty">${escapeHtml(error.message)}</p>`;
     }
 }
+
+
+// --- Superadmin quản lý thiết bị Agent --------------------------------------
+let managedDeviceAgentId = null;
+
+function closeAgentDevicesModal() {
+    document.getElementById('agent-devices-modal')?.classList.add('hide');
+    managedDeviceAgentId = null;
+}
+
+function formatManagedDeviceTime(value) {
+    if (!value) return 'Chưa có dữ liệu';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 'Chưa có dữ liệu' : date.toLocaleString('vi-VN');
+}
+
+async function loadAgentDevices(agentId, agentName = '') {
+    const modal = document.getElementById('agent-devices-modal');
+    const list = document.getElementById('agent-devices-list');
+    if (!modal || !list) return;
+    managedDeviceAgentId = Number(agentId);
+    modal.classList.remove('hide');
+    document.getElementById('agent-devices-account').textContent = agentName || `Agent #${agentId}`;
+    list.innerHTML = '<p class="agent-devices-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải thiết bị…</p>';
+    try {
+        const data = await orgFetch(`/api/superadmin/accounts/${agentId}/devices`);
+        const account = data.account || {};
+        document.getElementById('agent-devices-account').textContent = `${account.full_name || agentName || account.username || `Agent #${agentId}`} · ${account.username || ''}`;
+        document.getElementById('agent-device-limit').value = data.limit || 2;
+        const activeCount = (data.devices || []).filter((device) => device.status === 'active').length;
+        document.getElementById('agent-devices-help').textContent = `${activeCount}/${data.limit} thiết bị đang hoạt động. Lần đổi gần nhất: ${formatManagedDeviceTime(data.lastChangeAt)}. Thiết bị bị thu hồi sẽ đăng xuất ngay và phải đăng ký lại khi đăng nhập.`;
+        list.innerHTML = (data.devices || []).length ? data.devices.map((device) => `
+            <article class="agent-device-row${device.status !== 'active' ? ' is-revoked' : ''}">
+                <span class="agent-device-icon"><i class="${/iphone|android|ipad|mobile/i.test(device.label || '') ? 'ri-smartphone-line' : 'ri-computer-line'}"></i></span>
+                <div class="agent-device-copy">
+                    <strong>${escapeHtml(device.label || 'Thiết bị')}</strong>
+                    <small>Lần đầu: ${escapeHtml(formatManagedDeviceTime(device.first_seen))} · Lần cuối: ${escapeHtml(formatManagedDeviceTime(device.last_seen))}</small>
+                    <small>IP gần nhất: ${escapeHtml(device.last_ip || 'Không ghi nhận')} · ID: ${escapeHtml(String(device.device_id || '').slice(-12))}</small>
+                </div>
+                <span class="agent-device-status">${device.status === 'active' ? 'HOẠT ĐỘNG' : 'ĐÃ THU HỒI'}</span>
+                ${device.status === 'active' ? `<button type="button" class="agent-device-revoke" data-revoke-device="${device.id}" title="Thu hồi thiết bị"><i class="ri-logout-box-r-line"></i></button>` : ''}
+            </article>`).join('') : '<p class="agent-devices-empty">Agent này chưa đăng ký thiết bị nào.</p>';
+    } catch (error) {
+        list.innerHTML = `<p class="agent-devices-empty">${escapeHtml(error.message)}</p>`;
+    }
+}
+
+document.getElementById('org-agent-list')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-agent-devices]');
+    if (button) void loadAgentDevices(button.dataset.agentDevices, button.dataset.agentName);
+});
+
+document.getElementById('agent-devices-close')?.addEventListener('click', closeAgentDevicesModal);
+document.getElementById('agent-devices-modal')?.addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) closeAgentDevicesModal();
+});
+
+document.getElementById('agent-device-limit-save')?.addEventListener('click', async () => {
+    if (!managedDeviceAgentId) return;
+    const deviceLimit = Number(document.getElementById('agent-device-limit')?.value);
+    if (!Number.isInteger(deviceLimit) || deviceLimit < 1 || deviceLimit > 20) return showToast('Giới hạn phải từ 1 đến 20 thiết bị.', 'error');
+    try {
+        await orgFetch(`/api/superadmin/accounts/${managedDeviceAgentId}/device-limit`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceLimit }),
+        });
+        showToast('Đã lưu giới hạn thiết bị.', 'success');
+        await loadAgentDevices(managedDeviceAgentId);
+    } catch (error) { showToast(error.message, 'error'); }
+});
+
+document.getElementById('agent-devices-list')?.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-revoke-device]');
+    if (!button || !managedDeviceAgentId) return;
+    const ok = await pastieConfirm('Thiết bị này sẽ bị đăng xuất ngay. Các thiết bị khác của Agent không bị ảnh hưởng.', { title: 'Thu hồi thiết bị?', confirmText: 'Thu hồi', danger: true });
+    if (!ok) return;
+    try {
+        await orgFetch(`/api/superadmin/accounts/${managedDeviceAgentId}/devices/${button.dataset.revokeDevice}`, { method: 'DELETE' });
+        showToast('Đã thu hồi thiết bị.', 'success');
+        await loadAgentDevices(managedDeviceAgentId);
+    } catch (error) { showToast(error.message, 'error'); }
+});
+
+document.getElementById('agent-devices-reset')?.addEventListener('click', async () => {
+    if (!managedDeviceAgentId) return;
+    const ok = await pastieConfirm('Tất cả thiết bị của Agent sẽ bị thu hồi và mọi phiên đăng nhập hiện tại bị kết thúc.', { title: 'Thu hồi tất cả thiết bị?', confirmText: 'Thu hồi tất cả', danger: true });
+    if (!ok) return;
+    try {
+        await orgFetch(`/api/superadmin/accounts/${managedDeviceAgentId}/devices/reset`, { method: 'POST' });
+        showToast('Đã thu hồi toàn bộ thiết bị của Agent.', 'success');
+        await loadAgentDevices(managedDeviceAgentId);
+    } catch (error) { showToast(error.message, 'error'); }
+});
 
 
 // Superadmin chọn nút thanh toán chậm nào hiện cho khách của một Agent.

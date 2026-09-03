@@ -351,6 +351,7 @@
                             <span id="org-qr-count-badge" class="org-count-badge">0 QR</span>
                         
                         <button type="button" class="pane-add" data-addbox-toggle="qr"><i class="ri-qr-code-line"></i> <span>Tạo mã QR</span></button>
+                        </div>
                     </div>
                     <div class="addbox hide" data-addbox="qr">
                     <form class="org-form" id="org-qr-form">
@@ -360,9 +361,6 @@
                         </div>
                         <button type="submit" class="org-submit"><i class="ri-qr-code-line"></i> Tạo mã QR</button>
                     </form>
-                    </div>
-
-                    
                     </div>
                     <div class="org-list" id="org-qr-list"></div>
                 </section>
@@ -477,6 +475,29 @@
                 </section>
 
             </div>
+        </div>
+
+        <!-- Superadmin quản lý thiết bị đăng nhập của từng Agent -->
+        <div id="agent-devices-modal" class="modal-overlay hide">
+            <section class="agent-devices-card" role="dialog" aria-modal="true" aria-labelledby="agent-devices-title">
+                <header class="agent-devices-head">
+                    <div>
+                        <span class="account-section-kicker">BẢO MẬT LICENSE</span>
+                        <h2 id="agent-devices-title"><i class="ri-device-line"></i> Thiết bị của Agent</h2>
+                        <p id="agent-devices-account">—</p>
+                    </div>
+                    <button type="button" class="icon-btn" id="agent-devices-close" aria-label="Đóng"><i class="ri-close-line"></i></button>
+                </header>
+                <div class="agent-devices-toolbar">
+                    <label>Giới hạn thiết bị
+                        <input id="agent-device-limit" type="number" min="1" max="20" inputmode="numeric">
+                    </label>
+                    <button type="button" class="secondary-btn" id="agent-device-limit-save"><i class="ri-save-line"></i> Lưu giới hạn</button>
+                    <button type="button" class="danger-outline-btn" id="agent-devices-reset"><i class="ri-restart-line"></i> Thu hồi tất cả</button>
+                </div>
+                <p class="agent-devices-help" id="agent-devices-help"></p>
+                <div class="agent-devices-list" id="agent-devices-list"></div>
+            </section>
         </div>
 
         <div id="push-permission-modal" class="modal-overlay hide">
