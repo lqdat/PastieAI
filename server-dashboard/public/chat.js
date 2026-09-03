@@ -1621,6 +1621,9 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
     });
 
     renderAdminInvoice();
+    // Đơn CHỜ XÁC NHẬN do order-console.js vẽ; đơn đã xác nhận thì hàm trên vẽ
+    // hoá đơn. Hai trạng thái loại trừ nhau nên không chồng lên nhau.
+    window.OrderConsole?.renderPending(adminOrder, chatMessagesContainer);
 
     if (isLoadMore) {
         chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight - previousScrollHeight;

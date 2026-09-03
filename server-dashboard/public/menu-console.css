@@ -590,3 +590,132 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 12px;
 }
+
+/* --- Thẻ đơn của Sale trong khung chat ------------------------------------ */
+
+.order-card {
+    margin: 12px 0;
+    padding: 14px;
+    border: 1px solid var(--accent-color);
+    border-radius: var(--radius-md, 12px);
+    background: var(--panel-bg, #fff);
+    box-shadow: var(--shadow-sm);
+}
+
+.order-card.is-busy { opacity: 0.6; pointer-events: none; }
+
+.order-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.order-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--accent-color);
+}
+
+.order-badge {
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.16);
+    color: #b45309;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.order-line + .order-line { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--panel-border); }
+
+.order-line-main {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.order-line-main strong { flex: 1; font-size: 13.5px; overflow-wrap: anywhere; }
+.order-qty { font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.order-line-total { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.order-note {
+    width: 100%;
+    margin-top: 6px;
+    padding: 7px 10px;
+    border: 1px solid var(--panel-border, rgba(0, 0, 0, 0.12));
+    border-radius: 8px;
+    background: var(--surface-tint, rgba(0, 0, 0, 0.02));
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 12.5px;
+}
+
+.order-note:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    background: var(--panel-bg, #fff);
+}
+
+.order-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--panel-border);
+    font-size: 13px;
+}
+
+.order-total strong { font-size: 16px; color: var(--accent-color); font-variant-numeric: tabular-nums; }
+
+.order-hint {
+    display: flex;
+    gap: 6px;
+    margin: 10px 0 0;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.order-hint i { flex: 0 0 auto; margin-top: 1px; color: var(--accent-color); }
+
+.order-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.order-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 10px 12px;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s, background 0.15s;
+}
+
+/* Xác nhận là thao tác không đảo ngược được — trừ kho, bếp bắt đầu làm — nên nó
+   là nút duy nhất được tô đặc, và đứng cuối để không bấm nhầm. */
+.order-btn.is-confirm { flex: 1.4; background: var(--accent-color); color: #fff; }
+.order-btn.is-confirm:hover { filter: brightness(1.08); }
+.order-btn.is-note { border-color: var(--panel-border); background: none; color: var(--text-secondary); }
+.order-btn.is-note:hover { background: var(--panel-hover, rgba(0, 0, 0, 0.05)); }
+.order-btn.is-reject { border-color: var(--danger-color, #ef4444); background: none; color: var(--danger-color, #ef4444); }
+.order-btn.is-reject:hover { background: var(--danger-glow, rgba(239, 68, 68, 0.1)); }
+
+@media (max-width: 560px) {
+    .order-actions { flex-wrap: wrap; }
+    .order-btn { flex-basis: calc(50% - 4px); padding: 11px 10px; }
+    .order-btn.is-confirm { flex-basis: 100%; order: 3; }
+}
