@@ -59,6 +59,7 @@
             }
             render();
             scheduleTranslationPoll();
+            void loadPos();
         } catch (error) {
             if (list) {
                 list.innerHTML = `<p class="org-empty is-error"><i class="ri-error-warning-line"></i> ${escapeHtml(error.message)}</p>`;
@@ -488,6 +489,96 @@
             document.addEventListener('keydown', onKey);
             setTimeout(() => { input.focus(); input.select(); }, 30);
         });
+    }
+
+    // --- Kết nối phần mềm tính tiền ------------------------------------------
+    //
+    // Agent tự khai địa chỉ nhận dữ liệu của phần mềm tính tiền bên họ. Hai khoá
+    // chỉ hiện ĐÚNG MỘT LẦN ngay sau khi tạo — về sau chỉ còn 6 ký tự cuối để đối
+    // chiếu. Không lưu lại được thì phải tạo mới, và bản cũ ngừng hoạt động.
+
+    let posState = null;
+
+    async function loadPos() {
+        const box = $('menu-pos-box');
+        if (!box) return;
+        box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+        try {
+            posState = await orgFetch('/api/agent/pos-integration');
+            renderPos();
+        } catch (error) {
+            box.innerHTML = `<p class="org-empty is-error">${escapeHtml(error.message)}</p>`;
+        }
+    }
+
+    function renderPos(freshCredentials) {
+        const box = $('menu-pos-box');
+        if (!box) return;
+        const it = posState?.integration || null;
+
+        box.innerHTML = `
+            <div class="menu-pos">
+                ${freshCredentials ? `
+                <div class="menu-pos-keys">
+                    <strong><i class="ri-key-2-line"></i> Lưu hai khoá này ngay — hệ thống sẽ không hiển thị lại</strong>
+                    <label>API key <small>(gọi API đọc đơn về)</small>
+                        <input type="text" readonly value="${escapeHtml(freshCredentials.apiKey)}" onclick="this.select()">
+                    </label>
+                    <label>Signing secret <small>(xác minh chữ ký webhook — không gửi cho ai)</small>
+                        <input type="text" readonly value="${escapeHtml(freshCredentials.signingSecret)}" onclick="this.select()">
+                    </label>
+                </div>` : ''}
+
+                <form class="menu-form" id="menu-pos-form" style="margin-top:${freshCredentials ? '12px' : '0'};">
+                    <div class="menu-form-grid">
+                        <label class="menu-field menu-field-name">
+                            <span>Địa chỉ nhận dữ liệu (webhook URL)</span>
+                            <input type="url" id="menu-pos-url" placeholder="https://pos-cua-ban.com/pastie/webhook"
+                                   value="${escapeHtml(it?.webhook_url || '')}">
+                        </label>
+                        <label class="menu-field menu-field-price">
+                            <span>Trạng thái</span>
+                            <select id="menu-pos-active">
+                                <option value="true"${it?.is_active !== false ? ' selected' : ''}>Đang bật</option>
+                                <option value="false"${it?.is_active === false ? ' selected' : ''}>Tạm tắt</option>
+                            </select>
+                        </label>
+                    </div>
+                    <p class="menu-form-note">
+                        <i class="ri-information-line"></i>
+                        <span>${it
+                            ? `Đang dùng API key <code>…${escapeHtml(it.api_key_suffix || '')}</code>.
+                               Để trống địa chỉ webhook thì hệ thống vẫn ghi đủ mọi đơn, bên kia chủ động gọi API đọc về.`
+                            : 'Lưu lần đầu sẽ sinh ra API key và signing secret. Gửi <b>đường dẫn tài liệu</b> ở trên cho bên viết phần mềm tính tiền.'}</span>
+                    </p>
+                    <div class="menu-form-actions">
+                        <button type="submit" class="menu-btn-primary"><i class="ri-links-line"></i> ${it ? 'Lưu thay đổi' : 'Tạo kết nối'}</button>
+                    </div>
+                </form>
+            </div>`;
+
+        $('menu-pos-form')?.addEventListener('submit', savePos);
+    }
+
+    async function savePos(event) {
+        event.preventDefault();
+        const url = $('menu-pos-url').value.trim();
+        if (url && !/^https:\/\//i.test(url)) {
+            return showToast('Địa chỉ webhook phải bắt đầu bằng https:// — dữ liệu đơn hàng không gửi qua kênh không mã hoá.', 'error');
+        }
+        try {
+            const result = await orgFetch('/api/agent/pos-integration', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ webhookUrl: url || null, isActive: $('menu-pos-active').value === 'true' }),
+            });
+            posState = await orgFetch('/api/agent/pos-integration');
+            // credentials chỉ có mặt ở lần tạo đầu tiên.
+            renderPos(result.credentials);
+            showToast(result.credentials ? 'Đã tạo kết nối. Hãy lưu hai khoá ngay.' : 'Đã lưu kết nối.', 'success');
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
     }
 
     // --- Nối sự kiện ---------------------------------------------------------

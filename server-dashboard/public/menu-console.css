@@ -485,3 +485,108 @@
     .menu-item-actions { flex-basis: 100%; justify-content: flex-end; }
     .menu-item-head { flex-wrap: wrap; gap: 2px; }
 }
+
+/* --- Ô chọn phương thức trả chậm trong thẻ Agent -------------------------- */
+
+.org-agent-actions {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.org-defer { display: flex; flex-direction: column; gap: 4px; }
+
+.org-defer > span {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.org-defer select {
+    padding: 6px 8px;
+    border: 1px solid var(--panel-border, rgba(0, 0, 0, 0.12));
+    border-radius: 8px;
+    background: var(--panel-bg, #fff);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 12px;
+}
+
+.org-defer select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px var(--accent-glow, rgba(99, 102, 241, 0.16));
+}
+
+@media (max-width: 620px) {
+    /* Máy hẹp: xuống hàng riêng, ô chọn trải rộng cho dễ chạm. */
+    .org-agent-actions { flex-basis: 100%; flex-wrap: wrap; margin-top: 8px; }
+    .org-defer { flex: 1; }
+    .org-defer select { width: 100%; padding: 9px 10px; font-size: 16px; }
+}
+
+/* --- Kết nối phần mềm tính tiền ------------------------------------------- */
+
+.menu-docs-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 11px;
+    border: 1px solid var(--accent-color);
+    border-radius: 999px;
+    color: var(--accent-color);
+    font-size: 11.5px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.menu-docs-link:hover { background: var(--accent-soft, rgba(99, 102, 241, 0.12)); }
+
+/* Khối hiện hai khoá. Cố ý làm nổi bật và hơi chói: đây là thứ chỉ hiện một lần,
+   người dùng lướt qua là mất. */
+.menu-pos-keys {
+    padding: 14px;
+    border: 1px solid var(--warn-color, #f59e0b);
+    border-radius: 12px;
+    background: rgba(245, 158, 11, 0.1);
+}
+
+.menu-pos-keys > strong {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 13px;
+    color: #b45309;
+}
+
+.menu-pos-keys label {
+    display: block;
+    margin-top: 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.menu-pos-keys small { font-weight: 500; opacity: 0.8; }
+
+.menu-pos-keys input {
+    width: 100%;
+    margin-top: 4px;
+    padding: 9px 11px;
+    border: 1px solid var(--panel-border, rgba(0, 0, 0, 0.12));
+    border-radius: 8px;
+    background: var(--panel-bg, #fff);
+    color: var(--text-primary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px;
+}
+
+.menu-form-note code {
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: var(--surface-neutral, rgba(0, 0, 0, 0.05));
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+}

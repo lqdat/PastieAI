@@ -1588,6 +1588,13 @@ document.getElementById('org-qr-form')?.addEventListener('submit', async (event)
 
 
 // Các nút trong danh sách được gắn bằng ủy quyền sự kiện
+// Ô chọn cần sự kiện 'change', không phải 'click' — bàn phím đổi lựa chọn không
+// sinh ra click, mà đó là cách người dùng bàn phím thao tác với select.
+document.getElementById('org-modal')?.addEventListener('change', (event) => {
+    const defer = event.target.closest('[data-agent-defer]');
+    if (defer) void setAgentDeferredPayment(defer.dataset.agentDefer, defer.value);
+});
+
 document.getElementById('org-modal')?.addEventListener('click', async (event) => {
     const saleEdit = event.target.closest('[data-sale-edit]');
     if (saleEdit) {

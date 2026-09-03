@@ -378,9 +378,19 @@ async function loadOrgAgents() {
                     <small><i class="ri-team-line"></i> Đã tạo: <strong>${agent.sale_count}${agent.sale_limit ? '/' + agent.sale_limit : ''} Sale</strong>
                         · <strong>${agent.group_count} nhóm</strong>${agent.sale_limit && agent.sale_count >= agent.sale_limit ? ' · <span style="color:#ef4444;font-weight:700;">Đã hết suất</span>' : ''}</small>
                 </div>
-                <button type="button" class="org-toggle" data-agent-toggle="${agent.id}" data-active="${agent.is_active}">
-                    ${agent.is_active ? '✓ Đang hoạt động' : '✗ Đã khóa'}
-                </button>
+                <div class="org-agent-actions">
+                    <label class="org-defer">
+                        <span>Trả chậm</span>
+                        <select data-agent-defer="${agent.id}" title="Nút thanh toán chậm hiện cho khách của Agent này">
+                            <option value="none"${agent.deferred_payment_mode === 'none' || !agent.deferred_payment_mode ? ' selected' : ''}>Không có</option>
+                            <option value="room_charge"${agent.deferred_payment_mode === 'room_charge' ? ' selected' : ''}>Cộng tiền phòng</option>
+                            <option value="pay_later"${agent.deferred_payment_mode === 'pay_later' ? ' selected' : ''}>Thanh toán sau</option>
+                        </select>
+                    </label>
+                    <button type="button" class="org-toggle" data-agent-toggle="${agent.id}" data-active="${agent.is_active}">
+                        ${agent.is_active ? '✓ Đang hoạt động' : '✗ Đã khóa'}
+                    </button>
+                </div>
             </article>`).join('') : '<p class="org-empty">Chưa có Agent nào trong hệ thống.</p>';
     } catch (error) {
         if (badge) badge.textContent = '0 Agent';
@@ -388,6 +398,29 @@ async function loadOrgAgents() {
     }
 }
 
+
+// Superadmin chọn nút thanh toán chậm nào hiện cho khách của một Agent.
+//
+// Chỉ MỘT trong hai nút được hiện, không bao giờ cả hai: khách sạn dùng "cộng
+// tiền phòng", cơ sở lẻ dùng "thanh toán sau". Hiện cả hai thì khách phải hiểu
+// sự khác nhau giữa hai thứ vốn là chuyện nội bộ của cơ sở.
+//
+// Đây cũng là phương thức được TỰ CHỌN nếu khách không bấm gì trong 2 phút sau
+// khi nhận bill — nên chọn "Không có" nghĩa là không bao giờ tự chọn thay khách.
+async function setAgentDeferredPayment(agentId, mode) {
+    try {
+        const result = await orgFetch(`/api/admin/agents/${agentId}/deferred-payment`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode }),
+        });
+        const label = { none: 'không có nút trả chậm', room_charge: 'cộng vào tiền phòng', pay_later: 'thanh toán sau' }[mode];
+        showToast(`${result.agent?.full_name || 'Agent'}: ${label}.`, 'success');
+    } catch (error) {
+        showToast(error.message, 'error');
+        void loadOrgAgents(true);   // trả ô chọn về đúng giá trị đang lưu
+    }
+}
 
 // --- Sale --------------------------------------------------------------------
 

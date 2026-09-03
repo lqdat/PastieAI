@@ -7302,7 +7302,7 @@ app.get('/api/superadmin/agents', checkAdminAuth, async (req, res) => {
   try {
     const result = await db.query(
       `SELECT a.id, a.username, a.full_name, a.project_id, a.is_active, a.created_at,
-              a.sale_limit, a.allow_room_charge,
+              a.sale_limit, a.allow_room_charge, a.deferred_payment_mode,
               (SELECT COUNT(*) FROM admins s WHERE s.managed_by_admin_id = a.id AND s.role = 'sale') AS sale_count,
               (SELECT COUNT(*) FROM agent_groups g WHERE g.agent_id = a.id) AS group_count
          FROM admins a
