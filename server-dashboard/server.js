@@ -8206,7 +8206,10 @@ app.get('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
          LEFT JOIN qr_menu_categories c ON c.id = i.category_id
          LEFT JOIN qr_menu_item_translations t ON t.item_id = i.id
         WHERE i.agent_id = $1
-        GROUP BY i.id, c.name
+        -- c.sort_order phải có mặt trong GROUP BY vì ORDER BY dùng tới nó.
+        -- Thiếu là Postgres từ chối cả câu lệnh, kể cả khi bảng chưa có dòng nào
+        -- — nên endpoint 500 ngay từ thực đơn trống, trông như lỗi dữ liệu.
+        GROUP BY i.id, c.name, c.sort_order
         ORDER BY c.sort_order NULLS LAST, i.sort_order, i.id`,
       [req.admin.id]
     );

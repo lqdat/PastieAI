@@ -43,13 +43,16 @@
         if (!quiet && list) {
             list.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải thực đơn…</p>';
         }
+        // Hai nguồn dữ liệu ĐỘC LẬP nhau. Dùng Promise.all thì một bên hỏng là
+        // cả hai cùng không hiện — thêm danh mục thành công mà màn hình trống
+        // trơn, người dùng tưởng thêm không được. Đó chính là lỗi đã gặp.
+        const [catResult, itemResult] = await Promise.allSettled([
+            fetchMenu('/categories'),
+            fetchMenu('/items'),
+        ]);
         try {
-            const [categories, items] = await Promise.all([
-                fetchMenu('/categories'),
-                fetchMenu('/items'),
-            ]);
-            CATEGORIES = Array.isArray(categories) ? categories : [];
-            ITEMS = Array.isArray(items) ? items : [];
+            CATEGORIES = catResult.status === 'fulfilled' && Array.isArray(catResult.value) ? catResult.value : [];
+            ITEMS = itemResult.status === 'fulfilled' && Array.isArray(itemResult.value) ? itemResult.value : [];
 
             // Món nào đã có đủ bản dịch thì thôi chờ.
             for (const item of ITEMS) {
@@ -60,6 +63,14 @@
             render();
             scheduleTranslationPoll();
             void loadPos();
+
+            // Báo lỗi cho ĐÚNG phần hỏng, phần còn lại vẫn dùng được bình thường.
+            if (catResult.status === 'rejected') {
+                showToast(catResult.reason?.message || 'Không tải được danh mục.', 'error');
+            }
+            if (itemResult.status === 'rejected' && list) {
+                list.innerHTML = `<p class="org-empty is-error"><i class="ri-error-warning-line"></i> ${escapeHtml(itemResult.reason?.message || 'Không tải được danh sách món.')}</p>`;
+            }
         } catch (error) {
             // Tải hỏng thì VẪN dựng lại ô chọn danh mục. Bỏ qua bước này thì ô
             // chọn rỗng trơn, và danh sách xổ xuống thành một vệt đen không có
