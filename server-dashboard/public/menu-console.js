@@ -296,6 +296,9 @@
     // --- Thao tác món --------------------------------------------------------
 
     function fillItemForm(item) {
+        // Form mặc định gập lại. Bấm "Sửa" mà form vẫn đóng thì người dùng không
+        // thấy gì xảy ra; bấm "Huỷ sửa" thì thu lại cho gọn.
+        window.toggleAddBox?.('menu-item', Boolean(item));
         editingItemId = item ? item.id : null;
         $('menu-item-name').value = item ? item.name : '';
         $('menu-item-price').value = item ? Number(item.price) : '';

@@ -271,6 +271,13 @@
 
                 <!-- Nhóm (Groups) -->
                 <section class="org-pane" data-org-pane="groups">
+                    <div class="org-list-header">
+                        <h4>Danh sách nhóm &amp; Thành viên</h4>
+                        <span id="org-group-count-badge" class="org-count-badge">0 Nhóm</span>
+                    
+                        <button type="button" class="pane-add" data-addbox-toggle="groups"><i class="ri-add-line"></i> <span>Thêm nhóm</span></button>
+                    </div>
+                    <div class="addbox hide" data-addbox="groups">
                     <form class="org-form" id="org-group-form">
                         <div class="org-form-row">
                             <label>Tên nhóm *<input type="text" id="org-group-name" required placeholder="Lễ tân, Nhà hàng, VIP..."></label>
@@ -284,21 +291,21 @@
                         </div>
                         <button type="submit" class="org-submit"><i class="ri-add-circle-line"></i> Thêm nhóm</button>
                     </form>
-                    <div class="org-list-header">
-                        <h4>Danh sách nhóm &amp; Thành viên</h4>
-                        <span id="org-group-count-badge" class="org-count-badge">0 Nhóm</span>
                     </div>
+
+                    
                     <div class="org-list" id="org-group-list"></div>
                 </section>
 
                 <!-- Sale -->
                 <section class="org-pane hide" data-org-pane="sales">
-                    <div class="org-quota-banner" id="org-sale-quota-banner">
-                        <div class="org-quota-info">
-                            <i class="ri-team-line"></i>
-                            <strong>Hạn mức: <span id="org-quota-count">—</span></strong>
-                        </div>
+                    <div class="org-list-header">
+                        <h4>Danh sách Sale</h4>
+                        <span id="org-sale-count-badge" class="org-count-badge">0 Sale</span>
+                    
+                        <button type="button" class="pane-add" data-addbox-toggle="sales"><i class="ri-user-add-line"></i> <span>Thêm Sale</span></button>
                     </div>
+                    <div class="addbox hide" data-addbox="sales">
                     <form class="org-form" id="org-sale-form">
                         <input type="hidden" id="org-sale-id" value="">
                         <div class="org-form-row">
@@ -321,22 +328,20 @@
                             <button type="button" class="secondary-btn hide" id="org-sale-cancel-btn" style="width:auto;padding:8px 14px;font-size:12px;"><i class="ri-close-line"></i> Hủy</button>
                         </div>
                     </form>
-                    <div class="org-list-header">
-                        <h4>Danh sách Sale</h4>
-                        <span id="org-sale-count-badge" class="org-count-badge">0 Sale</span>
                     </div>
+
+                    <div class="org-quota-banner" id="org-sale-quota-banner">
+                        <div class="org-quota-info">
+                            <i class="ri-team-line"></i>
+                            <strong>Hạn mức: <span id="org-quota-count">—</span></strong>
+                        </div>
+                    </div>
+                    
                     <div class="org-list" id="org-sale-list"></div>
                 </section>
 
                 <!-- QR -->
                 <section class="org-pane hide" data-org-pane="qr">
-                    <form class="org-form" id="org-qr-form">
-                        <div class="org-form-row">
-                            <label>Tên vị trí đặt QR *<input type="text" id="org-qr-label" required placeholder="Bàn 1, Phòng 101, Quầy Bar..."></label>
-                            <label>Nhóm tiếp nhận *<select id="org-qr-group"></select></label>
-                        </div>
-                        <button type="submit" class="org-submit"><i class="ri-qr-code-line"></i> Tạo mã QR</button>
-                    </form>
                     <div class="org-list-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:14px; margin-bottom:8px;">
                         <h4>Mã QR hoạt động</h4>
                         <div style="display:flex; gap:8px; align-items:center;">
@@ -344,13 +349,34 @@
                                 <option value="">— Tất cả nhóm —</option>
                             </select>
                             <span id="org-qr-count-badge" class="org-count-badge">0 QR</span>
+                        
+                        <button type="button" class="pane-add" data-addbox-toggle="qr"><i class="ri-qr-code-line"></i> <span>Tạo mã QR</span></button>
+                    </div>
+                    <div class="addbox hide" data-addbox="qr">
+                    <form class="org-form" id="org-qr-form">
+                        <div class="org-form-row">
+                            <label>Tên vị trí đặt QR *<input type="text" id="org-qr-label" required placeholder="Bàn 1, Phòng 101, Quầy Bar..."></label>
+                            <label>Nhóm tiếp nhận *<select id="org-qr-group"></select></label>
                         </div>
+                        <button type="submit" class="org-submit"><i class="ri-qr-code-line"></i> Tạo mã QR</button>
+                    </form>
+                    </div>
+
+                    
                     </div>
                     <div class="org-list" id="org-qr-list"></div>
                 </section>
 
                 <!-- Thực đơn: chỉ Agent quản lý dự án QR -->
                 <section class="org-pane hide" data-org-pane="menu">
+                    <div class="org-list-header">
+                        <h4>Các món trong thực đơn</h4>
+                        <span id="menu-count-badge" class="org-count-badge">0 món</span>
+                    
+                        <button type="button" class="pane-add is-quiet" data-addbox-toggle="menu-cat"><i class="ri-price-tag-3-line"></i> <span>Danh mục</span></button>
+                        <button type="button" class="pane-add" data-addbox-toggle="menu-item"><i class="ri-add-circle-line"></i> <span>Thêm món</span></button>
+                    </div>
+                    <div class="addbox hide" data-addbox="menu-cat">
                     <form class="menu-form" id="menu-category-form">
                         <div class="menu-form-grid">
                             <label class="menu-field menu-field-catname">
@@ -366,11 +392,10 @@
                             <i class="ri-information-line"></i>
                             <span>Chia nhóm cho khách dễ xem. Không bắt buộc — món chưa phân loại vẫn hiển thị.</span>
                         </p>
-                        <div class="menu-cat-row" id="menu-category-list"></div>
                     </form>
-
-                    <!-- Form nhập món. Bố cục theo lưới thay vì flex + inline style:
-                         trên PC gom thành ba hàng gọn, trên máy hẹp tự xếp dọc. -->
+                    </div>
+                    <div class="menu-cat-row" id="menu-category-list"></div>
+                    <div class="addbox hide" data-addbox="menu-item">
                     <form class="menu-form" id="menu-item-form">
                         <div class="menu-form-grid">
                             <label class="menu-field menu-field-name">
@@ -421,11 +446,13 @@
                             <button type="submit" class="menu-btn-primary" id="menu-item-submit"><i class="ri-add-circle-line"></i> Thêm món</button>
                         </div>
                     </form>
-
-                    <div class="org-list-header">
-                        <h4>Các món trong thực đơn</h4>
-                        <span id="menu-count-badge" class="org-count-badge">0 món</span>
                     </div>
+
+
+                    <!-- Form nhập món. Bố cục theo lưới thay vì flex + inline style:
+                         trên PC gom thành ba hàng gọn, trên máy hẹp tự xếp dọc. -->
+
+                    
                     <div class="org-list" id="menu-item-list"></div>
 
                     <!-- Kết nối phần mềm tính tiền. Đặt cuối thẻ Thực đơn vì đây là

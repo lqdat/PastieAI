@@ -719,3 +719,93 @@
     .order-btn { flex-basis: calc(50% - 4px); padding: 11px 10px; }
     .order-btn.is-confirm { flex-basis: 100%; order: 3; }
 }
+
+/* --- Form thêm mới: mặc định gập, bấm nút mới mở ------------------------- */
+
+.org-list-header .pane-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    /* Nút đầu tiên đẩy cả cụm sang phải; các nút sau bám sát nó. Đặt auto lên
+       nút chính thay vì nút đầu sẽ khiến nút phụ bị bỏ lửng cạnh tiêu đề. */
+    margin-left: 8px;
+    padding: 7px 14px;
+    border: 0;
+    border-radius: 9px;
+    background: var(--accent-color);
+    color: #fff;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s, background 0.15s;
+}
+
+.org-list-header .pane-add:first-of-type { margin-left: auto; }
+.org-list-header .pane-add:hover { filter: brightness(1.08); }
+
+/* Nút phụ (Danh mục) không cạnh tranh với nút chính (Thêm món). */
+.org-list-header .pane-add.is-quiet {
+    border: 1px solid var(--panel-border, rgba(0, 0, 0, 0.14));
+    background: none;
+    color: var(--text-secondary);
+}
+
+.org-list-header .pane-add.is-quiet:hover { background: var(--panel-hover, rgba(0, 0, 0, 0.05)); }
+
+/* Đang mở: nút đổi thành trạng thái "đóng lại", để người dùng biết bấm lần nữa
+   là thu gọn chứ không phải thêm cái thứ hai. */
+.org-list-header .pane-add.is-open {
+    background: var(--panel-hover, rgba(0, 0, 0, 0.06));
+    color: var(--text-secondary);
+    border: 1px solid var(--panel-border, rgba(0, 0, 0, 0.14));
+}
+
+.org-list-header .pane-add.is-open i { transform: rotate(45deg); }
+.org-list-header .pane-add i { transition: transform 0.18s; }
+
+.addbox { animation: addbox-in 0.18s ease-out; }
+
+@keyframes addbox-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .addbox { animation: none; }
+    .org-list-header .pane-add i { transition: none; }
+}
+
+@media (max-width: 560px) {
+    /* Máy hẹp: tiêu đề một hàng, hai nút một hàng riêng bên dưới, chia đôi.
+       Cho badge giãn hết phần còn lại của hàng đầu là cách ép xuống dòng mà
+       không cần thêm phần tử ngăn cách nào. */
+    .org-list-header { flex-wrap: wrap; }
+    .org-list-header .org-count-badge { flex: 1; }
+    .org-list-header .pane-add {
+        flex: 1;
+        margin-left: 0;
+        justify-content: center;
+        padding: 11px 12px;
+        white-space: nowrap;
+    }
+    .org-list-header .pane-add:first-of-type { margin-left: 0; }
+}
+
+/* --- Thanh thẻ trên máy hẹp ------------------------------------------------ */
+
+@media (max-width: 560px) {
+    /* 5 thẻ không vừa một hàng 358px. Cuộn ngang thì thẻ cuối bị khuất mà không
+       có dấu hiệu gì báo còn nữa — người dùng tưởng chỉ có bấy nhiêu. Cho xuống
+       hàng: cao thêm một chút nhưng không giấu gì cả. */
+    .org-tabs {
+        flex-wrap: wrap;
+        overflow-x: visible;
+    }
+
+    .org-tab {
+        flex: 1 1 calc(50% - 4px);
+        justify-content: center;
+        padding: 9px 10px;
+    }
+}

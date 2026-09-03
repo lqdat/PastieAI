@@ -1590,6 +1590,31 @@ document.getElementById('org-qr-form')?.addEventListener('submit', async (event)
 // Các nút trong danh sách được gắn bằng ủy quyền sự kiện
 // Ô chọn cần sự kiện 'change', không phải 'click' — bàn phím đổi lựa chọn không
 // sinh ra click, mà đó là cách người dùng bàn phím thao tác với select.
+// Bốn thẻ tổ chức đều theo cùng một khuôn: mặc định CHỈ hiện danh sách, bấm nút
+// "Thêm" mới mở form. Việc thường xuyên là xem và sửa danh sách, còn thêm mới là
+// việc thỉnh thoảng — để form chiếm nửa màn hình suốt là đặt sai thứ tự ưu tiên.
+//
+// Sau khi thêm thành công, form vẫn MỞ: người dùng thường nhập nhiều mục liên
+// tiếp, đóng lại sau mỗi lần là bắt họ bấm thêm một cú cho mỗi mục.
+function toggleAddBox(name, force) {
+    const box = document.querySelector(`[data-addbox="${name}"]`);
+    const button = document.querySelector(`[data-addbox-toggle="${name}"]`);
+    if (!box) return;
+    const open = force === undefined ? box.classList.contains('hide') : force;
+    box.classList.toggle('hide', !open);
+    button?.classList.toggle('is-open', open);
+    if (open) {
+        // Con trỏ vào ô đầu tiên: mở form ra rồi còn phải đi tìm chỗ gõ là thừa một bước.
+        box.querySelector('input:not([type="hidden"]), select, textarea')?.focus();
+    }
+}
+window.toggleAddBox = toggleAddBox;
+
+document.getElementById('org-modal')?.addEventListener('click', (event) => {
+    const toggle = event.target.closest('[data-addbox-toggle]');
+    if (toggle) toggleAddBox(toggle.dataset.addboxToggle);
+});
+
 document.getElementById('org-modal')?.addEventListener('change', (event) => {
     const defer = event.target.closest('[data-agent-defer]');
     if (defer) void setAgentDeferredPayment(defer.dataset.agentDefer, defer.value);
@@ -1601,6 +1626,8 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         const id = Number(saleEdit.dataset.saleEdit);
         const sale = ORG_SALES.find((s) => s.id === id);
         if (!sale) return;
+        // Form gập mặc định; bấm Sửa mà không mở ra thì không thấy gì xảy ra.
+        toggleAddBox('sales', true);
         const idEl = document.getElementById('org-sale-id');
         const nameEl = document.getElementById('org-sale-name');
         const emailEl = document.getElementById('org-sale-email');
