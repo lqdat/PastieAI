@@ -55,6 +55,32 @@
   .toc a:hover { text-decoration: underline; }
   footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border);
            color: var(--muted); font-size: 13px; }
+
+  /* --- Khổ điện thoại ---------------------------------------------------
+     Tài liệu kỹ thuật hay được đọc trên điện thoại ngay tại chỗ đang tích hợp,
+     nên không được để trang cuộn ngang. Ba thứ gây tràn: bảng nhiều cột, khối
+     mã dài, và <code> trong ô bảng bị cấm xuống dòng. */
+  @media (max-width: 700px) {
+    .wrap { padding: 26px 14px 60px; }
+    h1 { font-size: 23px; }
+    h2 { font-size: 18px; margin-top: 36px; }
+
+    /* Bảng tự cuộn ngang trong khung của nó, không đẩy cả trang. */
+    table {
+      display: block;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Trong ô bảng, mã dài phải được xuống dòng. Giữ nowrap ở đây là thứ kéo
+       bảng rộng ra nhất. */
+    td code { white-space: normal; overflow-wrap: anywhere; }
+
+    pre { font-size: 12px; padding: 12px; }
+    pre code { overflow-wrap: normal; }
+    .toc { padding: 14px 16px; }
+    .toc ol { padding-left: 18px; }
+  }
 </style>
 </head>
 <body>

@@ -819,3 +819,69 @@
     background: var(--panel-bg, #ffffff);
     color: var(--text-primary, #2d2335);
 }
+
+/* --- Chọn ảnh món ngay trong form ----------------------------------------- */
+
+.menu-field-photo { grid-column: span 12; }
+
+.menu-photo-pick {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 8px 10px;
+    border: 1px dashed var(--panel-border, rgba(0, 0, 0, 0.16));
+    border-radius: 10px;
+    background: var(--panel-bg, #fff);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.menu-photo-pick:hover { border-color: var(--accent-color); background: var(--surface-tint, rgba(0, 0, 0, 0.02)); }
+
+.menu-photo-thumb {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    overflow: hidden;
+    border-radius: 9px;
+    background: var(--surface-neutral, rgba(0, 0, 0, 0.04));
+    color: var(--text-secondary);
+    font-size: 19px;
+}
+
+.menu-photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+.menu-photo-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    /* Tên tệp có thể rất dài; cắt bằng ba chấm chứ không đẩy nút xoá ra ngoài. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.menu-photo-clear {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: var(--text-secondary);
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.menu-photo-clear:hover { background: var(--danger-glow, rgba(239, 68, 68, 0.12)); color: var(--danger-color, #ef4444); }
+
+@media (max-width: 720px) {
+    .menu-photo-pick { padding: 10px; }
+    .menu-photo-thumb { width: 42px; height: 42px; }
+}

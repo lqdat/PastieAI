@@ -21,6 +21,9 @@
     let CATEGORIES = [];
     let ITEMS = [];
     let editingItemId = null;
+    // Ảnh chọn trong form, chưa gửi. Endpoint ảnh cần id của món nên không tải
+    // lên trước khi món tồn tại được — giữ tệp ở đây rồi gửi ngay sau khi tạo.
+    let pendingPhoto = null;
     // Món vừa tạo/sửa: bản dịch chạy nền nên phải quay lại hỏi mới thấy.
     let pendingTranslation = new Set();
     let pollTimer = null;
@@ -310,6 +313,27 @@
 
     // --- Thao tác món --------------------------------------------------------
 
+    // Hiện ảnh đã chọn, hoặc ảnh hiện có của món đang sửa, hoặc trạng thái trống.
+    function showPhotoPreview(url, caption) {
+        const thumb = $('menu-item-photo-thumb');
+        const text = $('menu-item-photo-text');
+        const clear = $('menu-item-photo-clear');
+        if (!thumb || !text) return;
+        thumb.innerHTML = url
+            ? `<img src="${escapeHtml(url)}" alt="">`
+            : '<i class="ri-image-add-line"></i>';
+        text.textContent = caption;
+        clear?.classList.toggle('hide', !url);
+    }
+
+    function resetPhotoField(item) {
+        pendingPhoto = null;
+        const input = $('menu-item-photo');
+        if (input) input.value = '';
+        if (item?.image_url) showPhotoPreview(item.image_url, 'Ảnh hiện tại — bấm để đổi');
+        else showPhotoPreview('', 'Chọn ảnh món — bấm để tải lên');
+    }
+
     function fillItemForm(item) {
         // Form mặc định gập lại. Bấm "Sửa" mà form vẫn đóng thì người dùng không
         // thấy gì xảy ra; bấm "Huỷ sửa" thì thu lại cho gọn.
@@ -331,6 +355,7 @@
                 : '<i class="ri-add-circle-line"></i> Thêm món';
         }
         $('menu-item-cancel')?.classList.toggle('hide', !item);
+        resetPhotoField(item);
         if (item) $('menu-item-name').focus();
     }
 
@@ -374,6 +399,18 @@
             if (result?.item?.id) pendingTranslation.add(result.item.id);
             else if (editing) pendingTranslation.add(editing);
 
+            // Ảnh phải gửi SAU khi có id món. Người dùng chỉ thấy một thao tác,
+            // bên dưới là hai bước — nhưng nếu bước ảnh hỏng thì món vẫn đã lưu,
+            // nên báo riêng thay vì để tưởng cả việc thêm món thất bại.
+            const savedId = result?.item?.id || editing;
+            if (pendingPhoto && savedId) {
+                try {
+                    await uploadImage(savedId, pendingPhoto, { silent: true });
+                } catch (photoError) {
+                    showToast(`Đã lưu món, nhưng chưa tải được ảnh: ${photoError.message}`, 'error', 6000);
+                }
+            }
+
             fillItemForm(null);
             showToast(editing ? 'Đã lưu thay đổi.' : `Đã thêm "${name}". Đang dịch sang 4 ngôn ngữ…`, 'success');
             await load(true);
@@ -413,9 +450,12 @@
         }
     }
 
-    async function uploadImage(id, file) {
+    async function uploadImage(id, file, { silent = false } = {}) {
         if (!file) return;
-        if (!file.type.startsWith('image/')) return showToast('Chỉ nhận tệp ảnh.', 'error');
+        if (!file.type.startsWith('image/')) {
+            if (silent) throw new Error('Chỉ nhận tệp ảnh.');
+            return showToast('Chỉ nhận tệp ảnh.', 'error');
+        }
         const card = document.querySelector(`[data-item="${id}"] .menu-thumb`);
         card?.classList.add('is-loading');
         try {
@@ -427,11 +467,14 @@
             });
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data.error || 'Không tải được ảnh lên.');
-            showToast('Đã cập nhật ảnh món.', 'success');
-            await load(true);
+            if (!silent) {
+                showToast('Đã cập nhật ảnh món.', 'success');
+                await load(true);
+            }
         } catch (error) {
-            showToast(error.message, 'error');
             card?.classList.remove('is-loading');
+            if (silent) throw error;      // nơi gọi tự quyết định báo thế nào
+            showToast(error.message, 'error');
         }
     }
 
@@ -623,6 +666,30 @@
 
     function bind() {
         setDocsLink();
+
+        $('menu-item-photo')?.addEventListener('change', (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) {
+                event.target.value = '';
+                return showToast('Chỉ nhận tệp ảnh.', 'error');
+            }
+            // 5MB: ảnh món chụp bằng điện thoại thường 2–4MB, quá ngưỡng này gần
+            // như luôn là ảnh chưa nén và sẽ làm thực đơn của khách tải chậm.
+            if (file.size > 5 * 1024 * 1024) {
+                event.target.value = '';
+                return showToast('Ảnh quá 5MB. Chụp lại hoặc nén bớt giúp thực đơn của khách tải nhanh hơn.', 'error', 6000);
+            }
+            pendingPhoto = file;
+            showPhotoPreview(URL.createObjectURL(file), `${file.name} — sẽ tải lên khi lưu`);
+        });
+
+        $('menu-item-photo-clear')?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            resetPhotoField(ITEMS.find((i) => i.id === editingItemId));
+        });
+
         $('menu-item-stock')?.addEventListener('input', syncHideField);
         syncHideField();
         $('menu-category-form')?.addEventListener('submit', addCategory);
