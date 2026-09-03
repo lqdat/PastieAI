@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pastie Chat — Tài liệu tích hợp phần mềm tính tiền</title>
+<style>
+  :root {
+    --bg: #fbfafc; --panel: #ffffff; --border: #e7e2ea; --text: #2d2335;
+    --muted: #6f6478; --accent: #c90c6c; --accent-soft: #fdeaf3;
+    --code-bg: #f5f2f7; --ok: #0f7b4f; --warn: #b45309; --danger: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17141b; --panel: #201c26; --border: #332c3b; --text: #ece8f0;
+      --muted: #a79db0; --accent: #ff5fa8; --accent-soft: #3a1f2e;
+      --code-bg: #191521; --ok: #4ade80; --warn: #fbbf24; --danger: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Be Vietnam Pro", Roboto, sans-serif;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 40px 20px 80px; }
+  header { border-bottom: 2px solid var(--accent); padding-bottom: 20px; margin-bottom: 8px; }
+  h1 { margin: 0 0 6px; font-size: 27px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0; }
+  .ver { display: inline-block; margin-top: 10px; padding: 3px 10px; border-radius: 999px;
+         background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; }
+  h2 { margin: 44px 0 12px; font-size: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
+  h3 { margin: 26px 0 8px; font-size: 16px; }
+  h4 { margin: 18px 0 6px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  p, li { color: var(--text); }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 5px;
+         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+        padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.6; }
+  pre code { background: none; padding: 0; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  td code { white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+  .note { border-left: 3px solid var(--accent); background: var(--accent-soft);
+          padding: 12px 16px; border-radius: 0 10px 10px 0; margin: 16px 0; }
+  .warn { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+  .note p { margin: 0; font-size: 14px; }
+  .note p + p { margin-top: 8px; }
+  .method { display: inline-block; padding: 2px 8px; border-radius: 5px; font-size: 12px;
+            font-weight: 700; background: var(--ok); color: #fff; margin-right: 8px; }
+  .toc { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin: 24px 0 0; }
+  .toc ol { margin: 8px 0 0; padding-left: 22px; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border);
+           color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Tích hợp phần mềm tính tiền với Pastie Chat</h1>
+  <p class="sub">Tài liệu dành cho lập trình viên của phần mềm tính tiền (POS) cần nhận đơn đặt món từ Pastie Chat.</p>
+  <span class="ver">schema_version 1.0</span>
+</header>
+
+<div class="toc">
+  <strong>Nội dung</strong>
+  <ol>
+    <li><a href="#tongquan">Tổng quan — đơn đi qua những trạng thái nào</a></li>
+    <li><a href="#haichieu">Hai chiều tích hợp: đẩy và đọc về</a></li>
+    <li><a href="#khoa">Khoá và cách lấy</a></li>
+    <li><a href="#webhook">Webhook: header, chữ ký, cách xác minh</a></li>
+    <li><a href="#trunglap">Chống trùng lặp và cơ chế thử lại</a></li>
+    <li><a href="#sukien">Danh sách sự kiện</a></li>
+    <li><a href="#truong">Bảng trường — giải thích từng trường</a></li>
+    <li><a href="#thanhtoan">Khối <code>payment</code> — đọc kỹ phần này</a></li>
+    <li><a href="#docve">API đọc về</a></li>
+    <li><a href="#mamau">Mã mẫu</a></li>
+    <li><a href="#checklist">Checklist trước khi chạy thật</a></li>
+  </ol>
+</div>
+
+<h2 id="tongquan">1. Tổng quan — đơn đi qua những trạng thái nào</h2>
+
+<p>Khách quét mã QR tại bàn, xem thực đơn trên điện thoại và tự đặt món. Nhân viên
+tư vấn (Sale) nhìn thấy đơn ngay trong khung chat, trao đổi với khách, rồi xác nhận.
+Phần mềm tính tiền của bạn nhận đơn ở bước <b>xác nhận</b>, không phải lúc khách bấm đặt.</p>
+
+<pre><code>Khách chọn món  ──▶  order.created      đơn mới, CHƯA trừ kho, chờ Sale
+      │
+      │ (khách sửa đơn)
+      ├──────────────▶  order.updated      đơn đổi nội dung
+      │
+Sale xác nhận  ────▶  order.confirmed    ĐÃ trừ kho, bếp làm, bill tạm tính gửi khách
+      │
+Khách chọn cách trả ▶  payment.selected   khách bấm, HOẶC hệ thống tự chọn sau 2 phút
+      │
+Nhân viên thu tiền ─▶  order.paid         tiền đã vào</code></pre>
+
+<div class="note">
+  <p><b>Mốc quan trọng nhất là <code>order.confirmed</code>.</b> Trước mốc đó đơn chỉ là
+  đề nghị của khách, có thể thay đổi hoặc bị từ chối. Từ mốc đó trở đi tồn kho đã bị trừ
+  và bếp đã bắt đầu làm.</p>
+  <p>Nếu phần mềm của bạn chỉ muốn nhận một sự kiện duy nhất, hãy chọn
+  <code>order.confirmed</code>.</p>
+</div>
+
+<h2 id="haichieu">2. Hai chiều tích hợp: đẩy và đọc về</h2>
+
+<table>
+  <tr><th>Chiều</th><th>Cách hoạt động</th><th>Khi nào dùng</th></tr>
+  <tr>
+    <td><b>Đẩy</b> (webhook)</td>
+    <td>Pastie gọi <code>POST</code> tới URL của bạn mỗi khi có sự kiện.</td>
+    <td>Mặc định. Nhận đơn theo thời gian thực.</td>
+  </tr>
+  <tr>
+    <td><b>Đọc về</b> (pull)</td>
+    <td>Bạn gọi <code>GET /api/pos/v1/orders</code> để lấy danh sách đơn.</td>
+    <td>Đối soát cuối ca, hoặc bù lại các webhook đã lỡ khi máy chủ bạn tạm ngừng.</td>
+  </tr>
+</table>
+
+<p>Nên dùng <b>cả hai</b>. Webhook cho tốc độ, đọc về cho chắc chắn. Chỉ dựa vào webhook
+thì một lần máy chủ bạn khởi động lại là mất đơn mà không ai biết.</p>
+
+<p>Nếu bạn <b>không khai URL webhook</b>, hệ thống vẫn ghi nhận đầy đủ mọi sự kiện và
+bạn lấy về bằng API đọc. Không mất dữ liệu.</p>
+
+<h2 id="khoa">3. Khoá và cách lấy</h2>
+
+<p>Chủ cơ sở (Agent) vào console Pastie, mở <b>Thực đơn → Kết nối phần mềm tính tiền</b>,
+khai URL webhook và bấm lưu. Hệ thống sinh ra hai khoá:</p>
+
+<table>
+  <tr><th>Khoá</th><th>Tiền tố</th><th>Dùng để</th></tr>
+  <tr><td><code>api_key</code></td><td><code>pst_pos_…</code></td>
+      <td>Gọi API đọc về. Gửi trong header <code>X-Pastie-API-Key</code>.</td></tr>
+  <tr><td><code>signing_secret</code></td><td><code>pst_whsec_…</code></td>
+      <td>Xác minh chữ ký webhook. <b>Không bao giờ gửi khoá này đi đâu.</b></td></tr>
+</table>
+
+<div class="note warn">
+  <p><b>Hai khoá chỉ hiện đúng một lần</b> ngay sau khi tạo. Console về sau chỉ hiển thị
+  6 ký tự cuối của <code>api_key</code> để đối chiếu. Mất khoá thì phải tạo lại, và bản cũ
+  ngừng hoạt động ngay.</p>
+</div>
+
+<h2 id="webhook">4. Webhook: header, chữ ký, cách xác minh</h2>
+
+<p>Pastie gửi <code>POST</code> với <code>Content-Type: application/json</code> tới URL bạn khai.</p>
+
+<h4>Header</h4>
+<table>
+  <tr><th>Header</th><th>Ví dụ</th><th>Ý nghĩa</th></tr>
+  <tr><td><code>X-Pastie-Event</code></td><td><code>order.confirmed</code></td>
+      <td>Tên sự kiện. Trùng với trường <code>event</code> trong thân.</td></tr>
+  <tr><td><code>X-Pastie-Delivery</code></td><td><code>1482</code></td>
+      <td>Mã lần gửi. Dùng khi cần đối chiếu với chúng tôi.</td></tr>
+  <tr><td><code>X-Pastie-Signature</code></td><td><code>sha256=a3f1…</code></td>
+      <td>Chữ ký HMAC-SHA256 của <b>toàn bộ thân request</b>, khoá là <code>signing_secret</code>.</td></tr>
+</table>
+
+<h4>Cách xác minh</h4>
+<p>Tính HMAC-SHA256 trên <b>chuỗi thân thô</b> (raw body) — không phải trên JSON đã parse
+rồi stringify lại, vì thứ tự khoá và khoảng trắng có thể khác đi và chữ ký sẽ không khớp.</p>
+
+<pre><code>signature = "sha256=" + HMAC_SHA256(raw_body, signing_secret).hex()</code></pre>
+
+<p>So sánh bằng hàm so sánh <b>thời gian hằng định</b> (<code>hash_equals</code> trong PHP,
+<code>crypto.timingSafeEqual</code> trong Node) chứ không dùng <code>==</code>.</p>
+
+<h4>Bạn cần trả về gì</h4>
+<p>Trả <code>HTTP 2xx</code> khi đã nhận được. Bất kỳ mã nào khác được coi là thất bại và
+sẽ được gửi lại. Nên trả lời <b>nhanh</b> (dưới 8 giây) rồi xử lý nền — quá 8 giây là
+timeout và bị tính là thất bại.</p>
+
+<h2 id="trunglap">5. Chống trùng lặp và cơ chế thử lại</h2>
+
+<p>Mỗi sự kiện có <code>event_id</code> theo dạng:</p>
+<pre><code>&lt;order_id&gt;:&lt;event&gt;:v&lt;version&gt;
+ví dụ:  9f3c1a2b-…:order.confirmed:v1</code></pre>
+
+<p><b>Hãy lưu <code>event_id</code> và bỏ qua nếu đã xử lý.</b> Đây là cách duy nhất bảo đảm
+không tạo hai đơn cho cùng một sự kiện khi mạng chập chờn.</p>
+
+<p>Trường <code>version</code> tăng lên mỗi khi đơn thay đổi nội dung. Nếu bạn nhận được
+<code>version</code> nhỏ hơn bản đã lưu, đó là gói đến muộn — <b>bỏ qua</b>, đừng ghi đè.</p>
+
+<div class="note">
+  <p>Pastie thử lại tối đa <b>5 lần</b> cho mỗi sự kiện thất bại, giãn cách tăng dần.
+  Sau đó sự kiện được đánh dấu thất bại và bạn lấy về bằng API đọc.</p>
+</div>
+
+<h2 id="sukien">6. Danh sách sự kiện</h2>
+
+<table>
+  <tr><th>Sự kiện</th><th>Phát khi</th><th>Kho đã trừ?</th><th>Ghi chú</th></tr>
+  <tr><td><code>order.created</code></td><td>Khách bấm đặt món</td><td>Chưa</td>
+      <td>Mới là đề nghị. Đừng in bếp ở bước này.</td></tr>
+  <tr><td><code>order.updated</code></td><td>Đơn đổi nội dung hoặc đổi cách thanh toán</td><td>Tuỳ trạng thái</td>
+      <td>Luôn kèm <code>version</code> mới. Ghi đè bản cũ.</td></tr>
+  <tr><td><code>order.confirmed</code></td><td>Sale xác nhận</td><td><b>Rồi</b></td>
+      <td>Mốc chốt. Bếp làm, bill tạm tính đã gửi khách.</td></tr>
+  <tr><td><code>payment.selected</code></td><td>Khách chọn cách trả, hoặc hệ thống tự chọn</td><td>Rồi</td>
+      <td>Xem <code>payment.auto_selected</code> ở mục 8.</td></tr>
+  <tr><td><code>order.paid</code></td><td>Nhân viên xác nhận đã thu tiền</td><td>Rồi</td>
+      <td>Kết thúc vòng đời đơn.</td></tr>
+</table>
+
+<p>Ngoài ra API đọc về trả sự kiện <code>order.snapshot</code> — cùng cấu trúc, nghĩa là
+"trạng thái hiện tại của đơn", không phải một sự kiện vừa xảy ra.</p>
+
+<h2 id="truong">7. Bảng trường — giải thích từng trường</h2>
+
+<h4>Ví dụ đầy đủ</h4>
+<div class="scroll">
+<pre><code>{
+  "schema_version": "1.0",
+  "event": "order.confirmed",
+  "event_id": "9f3c1a2b-4d5e-6f70-8901-23456789abcd:order.confirmed:v1",
+  "occurred_at": "2026-09-02T10:15:30.482Z",
+
+  "order": {
+    "id": "9f3c1a2b-4d5e-6f70-8901-23456789abcd",
+    "version": 1,
+    "status": "awaiting_payment",
+    "currency": "VND",
+    "total_amount": 590000,
+    "items": [
+      {
+        "menu_item_id": 42,
+        "name": "Gỏi cá trích Phú Quốc",
+        "quantity": 2,
+        "unit_price": 120000,
+        "line_total": 240000,
+        "note": "không hành"
+      },
+      {
+        "menu_item_id": 51,
+        "name": "Ghẹ hấp bia",
+        "quantity": 1,
+        "unit_price": 350000,
+        "line_total": 350000,
+        "note": null
+      }
+    ],
+    "payment": {
+      "method": "room_charge",
+      "reference": null,
+      "selected_at": "2026-09-02T10:17:31.004Z",
+      "auto_selected": true,
+      "paid_at": null
+    },
+    "created_at": "2026-09-02T10:12:04.117Z",
+    "updated_at": "2026-09-02T10:17:31.004Z"
+  },
+
+  "chat": {
+    "session_id": "b71e…",
+    "language": "en",
+    "qr_account_id": 7,
+    "qr_label": "Bàn 12 — sân vườn",
+    "group_id": 3,
+    "group_name": "Nhà hàng"
+  },
+
+  "customer": {
+    "name": "Anna Ivanova",
+    "email": "anna@example.com",
+    "phone": null
+  },
+
+  "assignment": {
+    "agent_id": 5,
+    "agent_name": "Khách sạn Bình Minh",
+    "sale_id": 18,
+    "sale_name": "Trần Thị Lan"
+  }
+}</code></pre>
+</div>
+
+<h4>Cấp cao nhất</h4>
+<table>
+  <tr><th>Trường</th><th>Kiểu</th><th>Giải thích</th></tr>
+  <tr><td><code>schema_version</code></td><td>string</td>
+      <td>Phiên bản cấu trúc. Hiện là <code>"1.0"</code>. Trường mới có thể được thêm mà không đổi số này — <b>đừng từ chối gói có trường lạ</b>.</td></tr>
+  <tr><td><code>event</code></td><td>string</td><td>Tên sự kiện, xem mục 6.</td></tr>
+  <tr><td><code>event_id</code></td><td>string</td><td>Khoá chống trùng. Xem mục 5.</td></tr>
+  <tr><td><code>occurred_at</code></td><td>ISO-8601 UTC</td><td>Thời điểm phát sự kiện.</td></tr>
+</table>
+
+<h4><code>order</code></h4>
+<table>
+  <tr><th>Trường</th><th>Kiểu</th><th>Giải thích</th></tr>
+  <tr><td><code>id</code></td><td>UUID</td><td>Mã đơn. Không đổi suốt vòng đời.</td></tr>
+  <tr><td><code>version</code></td><td>int</td><td>Bắt đầu từ 1, tăng mỗi lần đơn đổi. Dùng để bỏ gói đến muộn.</td></tr>
+  <tr><td><code>status</code></td><td>string</td>
+      <td><code>pending_confirm</code> chờ Sale · <code>awaiting_payment</code> đã xác nhận, chờ trả tiền · <code>paid</code> đã thu · <code>rejected</code> bị từ chối</td></tr>
+  <tr><td><code>currency</code></td><td>string</td><td>Hiện luôn là <code>"VND"</code>.</td></tr>
+  <tr><td><code>total_amount</code></td><td>number</td>
+      <td>Tổng tiền, <b>đơn vị đồng, số nguyên, không phần thập phân</b>. <code>590000</code> nghĩa là 590.000 ₫.</td></tr>
+  <tr><td><code>items[]</code></td><td>array</td><td>Danh sách món. Xem bảng dưới.</td></tr>
+  <tr><td><code>payment</code></td><td>object</td><td>Xem mục 8.</td></tr>
+  <tr><td><code>created_at</code> / <code>updated_at</code></td><td>ISO-8601</td><td>Thời điểm tạo và sửa gần nhất.</td></tr>
+</table>
+
+<h4><code>order.items[]</code></h4>
+<table>
+  <tr><th>Trường</th><th>Kiểu</th><th>Giải thích</th></tr>
+  <tr><td><code>menu_item_id</code></td><td>int | null</td>
+      <td>Mã món trong thực đơn Pastie. <code>null</code> khi nhân viên gõ tay một dòng không có trong thực đơn.</td></tr>
+  <tr><td><code>name</code></td><td>string</td><td>Tên món <b>bằng tiếng Việt</b> — tên gốc do chủ cơ sở nhập, không phải bản dịch khách nhìn thấy.</td></tr>
+  <tr><td><code>quantity</code></td><td>int</td><td>Số phần.</td></tr>
+  <tr><td><code>unit_price</code></td><td>number</td><td>Đơn giá tại thời điểm đặt, đơn vị đồng.</td></tr>
+  <tr><td><code>line_total</code></td><td>number</td><td><code>quantity × unit_price</code>, đã làm tròn. Dùng luôn số này, đừng tự nhân lại.</td></tr>
+  <tr><td><code>note</code></td><td>string | null</td>
+      <td>Ghi chú cho món, do Sale nhập theo yêu cầu khách: "không hành", "ít cay". <b>Nên in ra phiếu bếp.</b></td></tr>
+</table>
+
+<h4><code>chat</code>, <code>customer</code>, <code>assignment</code></h4>
+<table>
+  <tr><th>Trường</th><th>Kiểu</th><th>Giải thích</th></tr>
+  <tr><td><code>chat.session_id</code></td><td>string</td><td>Mã cuộc trò chuyện. Dùng khi cần tra ngược.</td></tr>
+  <tr><td><code>chat.language</code></td><td>string</td><td>Ngôn ngữ khách đang dùng: <code>vi</code>, <code>en</code>, <code>ru</code>, <code>zh</code>, <code>ko</code>.</td></tr>
+  <tr><td><code>chat.qr_label</code></td><td>string | null</td>
+      <td><b>Vị trí khách ngồi</b> — tên mã QR do chủ cơ sở đặt, thường là số bàn hoặc khu vực. Đây là trường bạn cần để biết mang đồ tới đâu.</td></tr>
+  <tr><td><code>chat.qr_account_id</code></td><td>int | null</td><td>Mã của mã QR đó.</td></tr>
+  <tr><td><code>chat.group_id</code> / <code>group_name</code></td><td>int | string</td><td>Nhóm tiếp nhận, ví dụ "Nhà hàng", "Lễ tân".</td></tr>
+  <tr><td><code>customer.name</code></td><td>string</td><td>Tên khách, mặc định "Khách hàng" nếu chưa có.</td></tr>
+  <tr><td><code>customer.email</code></td><td>string | null</td><td>Email đã xác thực của khách.</td></tr>
+  <tr><td><code>customer.phone</code></td><td>string | null</td><td>Số điện thoại, thường là <code>null</code>.</td></tr>
+  <tr><td><code>assignment.agent_id</code> / <code>agent_name</code></td><td>int | string</td><td>Cơ sở kinh doanh sở hữu đơn.</td></tr>
+  <tr><td><code>assignment.sale_id</code> / <code>sale_name</code></td><td>int | string | null</td><td>Nhân viên đang phụ trách cuộc chat.</td></tr>
+</table>
+
+<h2 id="thanhtoan">8. Khối <code>payment</code> — đọc kỹ phần này</h2>
+
+<table>
+  <tr><th>Trường</th><th>Kiểu</th><th>Giải thích</th></tr>
+  <tr><td><code>method</code></td><td>string | null</td>
+      <td><b><code>null</code> nghĩa là khách CHƯA chọn gì.</b> Đừng suy ra một giá trị mặc định — "chưa chọn" và "chọn tiền mặt" là hai chuyện khác nhau.</td></tr>
+  <tr><td><code>reference</code></td><td>string | null</td><td>Mã tham chiếu giao dịch, nếu có.</td></tr>
+  <tr><td><code>selected_at</code></td><td>ISO-8601 | null</td><td>Lúc phương thức được chọn.</td></tr>
+  <tr><td><code>auto_selected</code></td><td>boolean</td><td>Xem cảnh báo bên dưới.</td></tr>
+  <tr><td><code>paid_at</code></td><td>ISO-8601 | null</td>
+      <td><b>Chỉ khi có giá trị ở đây thì tiền mới thực sự đã vào.</b> Có <code>method</code> mà <code>paid_at</code> là <code>null</code> nghĩa là khách mới chọn cách trả, chưa trả.</td></tr>
+</table>
+
+<h4>Giá trị hợp lệ của <code>method</code></h4>
+<table>
+  <tr><th>Mã</th><th>Nghĩa</th><th>Ghi chú</th></tr>
+  <tr><td><code>cash</code></td><td>Tiền mặt</td><td></td></tr>
+  <tr><td><code>bank_qr</code></td><td>Chuyển khoản quét mã QR</td><td></td></tr>
+  <tr><td><code>card</code></td><td>Thẻ</td><td></td></tr>
+  <tr><td><code>room_charge</code></td><td>Cộng vào tiền phòng</td><td rowspan="2">Chỉ một trong hai mã này xuất hiện, tuỳ cấu hình của từng cơ sở. Khách sạn dùng <code>room_charge</code>, cơ sở lẻ dùng <code>pay_later</code>.</td></tr>
+  <tr><td><code>pay_later</code></td><td>Thanh toán sau</td></tr>
+</table>
+
+<div class="note warn">
+  <p><b><code>auto_selected: true</code> — đây là đồng ý ngầm, không phải một cú bấm.</b></p>
+  <p>Sau khi bill tạm tính gửi đi, khách được báo trước rằng nếu không chọn gì trong
+  <b>2 phút</b> thì hệ thống sẽ tự chọn phương thức trả chậm mà cơ sở đã cấu hình
+  (<code>room_charge</code> hoặc <code>pay_later</code>). Hết 2 phút mà khách im lặng thì
+  phương thức đó được ghi nhận với <code>auto_selected: true</code>.</p>
+  <p>Nếu phần mềm của bạn có quy trình đối soát hay tranh chấp, <b>nên phân biệt hai
+  trường hợp này</b>: khách chủ động bấm, và khách không phản hồi.</p>
+</div>
+
+<h2 id="docve">9. API đọc về</h2>
+
+<p>Gửi khoá trong header <code>X-Pastie-API-Key</code>. Không dùng query string — khoá lọt
+vào log máy chủ.</p>
+
+<h3><span class="method">GET</span><code>/api/pos/v1/orders</code></h3>
+<p>Danh sách đơn của cơ sở, mới nhất trước.</p>
+<table>
+  <tr><th>Tham số</th><th>Kiểu</th><th>Mặc định</th><th>Giải thích</th></tr>
+  <tr><td><code>updated_after</code></td><td>ISO-8601</td><td>—</td>
+      <td>Chỉ lấy đơn sửa sau mốc này. Dùng để đối soát tăng dần.</td></tr>
+  <tr><td><code>limit</code></td><td>int 1–100</td><td>50</td><td>Số đơn mỗi lần.</td></tr>
+</table>
+
+<pre><code>curl -H "X-Pastie-API-Key: pst_pos_xxxxx" \
+  "https://api.pastiechat.com/api/pos/v1/orders?updated_after=2026-09-02T00:00:00Z&limit=50"</code></pre>
+
+<pre><code>{
+  "data": [ { …cùng cấu trúc như webhook… } ],
+  "count": 50,
+  "has_more": true
+}</code></pre>
+
+<p><code>has_more: true</code> nghĩa là còn đơn nữa. Lấy <code>updated_at</code> lớn nhất
+trong <code>data</code> làm <code>updated_after</code> cho lần gọi kế tiếp.</p>
+
+<h3><span class="method">GET</span><code>/api/pos/v1/orders/&lt;order_id&gt;</code></h3>
+<p>Một đơn cụ thể. Trả về cùng cấu trúc, với <code>event: "order.snapshot"</code>.</p>
+
+<h4>Mã lỗi</h4>
+<table>
+  <tr><th>Mã</th><th>Nghĩa</th></tr>
+  <tr><td><code>401</code></td><td>Thiếu hoặc sai <code>X-Pastie-API-Key</code>.</td></tr>
+  <tr><td><code>404</code></td><td>Không có đơn đó, hoặc đơn không thuộc cơ sở của bạn.</td></tr>
+  <tr><td><code>400</code></td><td>Tham số sai định dạng.</td></tr>
+</table>
+
+<h2 id="mamau">10. Mã mẫu</h2>
+
+<h4>Node.js (Express)</h4>
+<pre><code>const express = require('express');
+const crypto = require('crypto');
+const app = express();
+
+// QUAN TRỌNG: lấy raw body, vì chữ ký tính trên chuỗi thô.
+app.post('/pastie/webhook',
+  express.raw({ type: 'application/json' }),
+  (req, res) => {
+    const secret = process.env.PASTIE_SIGNING_SECRET;
+    const expected = 'sha256=' + crypto.createHmac('sha256', secret)
+      .update(req.body).digest('hex');
+    const got = req.get('X-Pastie-Signature') || '';
+
+    if (got.length !== expected.length ||
+        !crypto.timingSafeEqual(Buffer.from(got), Buffer.from(expected))) {
+      return res.status(401).end();
+    }
+
+    const payload = JSON.parse(req.body.toString('utf8'));
+
+    if (daXuLy(payload.event_id)) return res.status(200).end();  // chống trùng
+    luuLai(payload.event_id);
+
+    if (payload.event === 'order.confirmed') {
+      inPhieuBep(payload.order, payload.chat.qr_label);
+    }
+
+    res.status(200).end();   // trả nhanh, xử lý nặng để nền
+  });</code></pre>
+
+<h4>PHP</h4>
+<pre><code>&lt;?php
+$raw    = file_get_contents('php://input');
+$secret = getenv('PASTIE_SIGNING_SECRET');
+$expected = 'sha256=' . hash_hmac('sha256', $raw, $secret);
+$got = $_SERVER['HTTP_X_PASTIE_SIGNATURE'] ?? '';
+
+if (!hash_equals($expected, $got)) {
+    http_response_code(401);
+    exit;
+}
+
+$payload = json_decode($raw, true);
+
+if (daXuLy($payload['event_id'])) { http_response_code(200); exit; }
+luuLai($payload['event_id']);
+
+if ($payload['event'] === 'order.confirmed') {
+    inPhieuBep($payload['order'], $payload['chat']['qr_label']);
+}
+
+http_response_code(200);</code></pre>
+
+<h2 id="checklist">11. Checklist trước khi chạy thật</h2>
+
+<table>
+  <tr><th>Việc</th><th>Vì sao</th></tr>
+  <tr><td>Xác minh chữ ký trên <b>raw body</b></td>
+      <td>Parse rồi stringify lại sẽ đổi thứ tự khoá và chữ ký không khớp.</td></tr>
+  <tr><td>So sánh chữ ký bằng hàm thời gian hằng định</td><td><code>==</code> để lộ thông tin qua thời gian phản hồi.</td></tr>
+  <tr><td>Lưu <code>event_id</code> và bỏ qua bản trùng</td><td>Mạng chập chờn sẽ khiến cùng một sự kiện đến hai lần.</td></tr>
+  <tr><td>Bỏ qua gói có <code>version</code> nhỏ hơn bản đã lưu</td><td>Gói đến muộn sẽ ghi đè bản mới nếu không kiểm.</td></tr>
+  <tr><td>Trả <code>2xx</code> trong vòng 8 giây</td><td>Chậm hơn bị tính là thất bại và gửi lại.</td></tr>
+  <tr><td>Chấp nhận trường lạ trong JSON</td><td>Trường mới sẽ được thêm mà không đổi <code>schema_version</code>.</td></tr>
+  <tr><td>Chỉ ghi nhận đã thu tiền khi <code>paid_at</code> khác <code>null</code></td><td>Có <code>method</code> không có nghĩa là đã trả.</td></tr>
+  <tr><td>Chạy thêm một vòng đối soát bằng API đọc về</td><td>Bù các webhook lỡ khi máy chủ bạn tạm ngừng.</td></tr>
+  <tr><td>Đừng in phiếu bếp ở <code>order.created</code></td><td>Lúc đó Sale chưa xác nhận, đơn có thể bị từ chối.</td></tr>
+</table>
+
+<footer>
+  <p>Tài liệu này mô tả <code>schema_version 1.0</code>. Nếu cấu trúc thay đổi theo cách
+  không tương thích ngược, số phiên bản sẽ tăng và bản cũ được giữ song song.</p>
+  <p>Có vướng mắc khi tích hợp, liên hệ chủ cơ sở đã cấp khoá cho bạn.</p>
+</footer>
+
+</div>
+</body>
+</html>

@@ -8611,6 +8611,14 @@ app.put('/api/agent/pos-integration', checkAdminAuth, async (req, res) => {
   }
 });
 
+// Tài liệu tích hợp. Công khai, KHÔNG cần đăng nhập: người đọc là lập trình viên
+// của phần mềm tính tiền bên thứ ba, chủ cơ sở chỉ việc gửi họ đường dẫn này.
+// Trang không chứa khoá của ai — khoá nằm trong console của Agent.
+app.get('/docs/pos-integration', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=600');
+  res.sendFile(path.join(__dirname, 'docs', 'pos-integration.html'));
+});
+
 async function checkPosApiKey(req, res, next) {
   const key = String(req.get('X-Pastie-API-Key') || '').trim();
   if (!key) return res.status(401).json({ error: 'Thiếu X-Pastie-API-Key.' });
