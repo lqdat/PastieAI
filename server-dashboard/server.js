@@ -7209,17 +7209,7 @@ app.post('/api/admin/chats/:sessionId/read', checkAdminAuth, requireWorkingHours
 // ============================================================================
 
 // Chuẩn hóa một khung giờ người dùng gửi lên. Trả về null nếu không hợp lệ.
-function normalizeHourWindow(entry) {
-  if (!entry) return null;
-  const clean = (value) => {
-    const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(value || '').trim());
-    return match ? `${match[1].padStart(2, '0')}:${match[2]}` : null;
-  };
-  const start = clean(entry.start_time ?? entry.start);
-  const end = clean(entry.end_time ?? entry.end);
-  if (!start || !end) return null;
-  return { start, end, timezone: String(entry.timezone || DEFAULT_WORK_TIMEZONE).slice(0, 60) };
-}
+// normalizeHourWindow định nghĩa một lần ở phần helper giờ làm việc phía trên.
 
 // Ghi đè toàn bộ khung giờ của một tài khoản trong một transaction: xóa hết rồi
 // chèn lại. Đơn giản hơn điều chỉnh từng dòng và không bao giờ để lại dòng mồ côi.
@@ -9207,24 +9197,6 @@ app.put('/api/admin/agents/:id/deferred-payment', checkAdminAuth, async (req, re
   }
 });
 
-// Giữ endpoint cũ để dashboard đang cache không bị gãy trong lúc rollout.
-app.put('/api/admin/agents/:id/room-charge', checkAdminAuth, async (req, res) => {
-  if (req.admin.role !== 'superadmin') return res.status(403).json({ error: 'Chỉ superadmin đổi được thiết lập này.' });
-  const mode = req.body?.allow === true ? 'room_charge' : 'none';
-  try {
-    const updated = await db.query(
-      `UPDATE admins SET deferred_payment_mode = $2, allow_room_charge = ($2 = 'room_charge')
-        WHERE id = $1 AND role = 'agent'
-        RETURNING id, full_name, allow_room_charge, deferred_payment_mode`,
-      [Number(req.params.id), mode]
-    );
-    if (!updated.rows[0]) return res.status(404).json({ error: 'Không tìm thấy Agent.' });
-    res.json({ success: true, agent: updated.rows[0] });
-  } catch (error) {
-    console.error('Toggle room charge error:', error);
-    res.status(500).json({ error: 'Không đổi được thiết lập.' });
-  }
-});
 
 // --- Chuyển chat sang Sale khác ----------------------------------------------
 
