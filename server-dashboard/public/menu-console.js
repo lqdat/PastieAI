@@ -61,6 +61,10 @@
             scheduleTranslationPoll();
             void loadPos();
         } catch (error) {
+            // Tải hỏng thì VẪN dựng lại ô chọn danh mục. Bỏ qua bước này thì ô
+            // chọn rỗng trơn, và danh sách xổ xuống thành một vệt đen không có
+            // mục nào — trông như lỗi giao diện chứ không như lỗi tải dữ liệu.
+            renderCategorySelect();
             if (list) {
                 list.innerHTML = `<p class="org-empty is-error"><i class="ri-error-warning-line"></i> ${escapeHtml(error.message)}</p>`;
             }
@@ -502,12 +506,25 @@
 
     let posState = null;
 
+    // Tài liệu tích hợp do BACKEND phục vụ, mà console giờ nằm ở host riêng
+    // (app.pastiechat.com) — nên đường dẫn phải tuyệt đối theo API_BASE. Để
+    // href="/integrations/pos" thì trình duyệt hiểu là host của console và mở ra
+    // chính trang đăng nhập, đúng lỗi đã gặp.
+    //
+    // Đặt ngay khi nạp file, không đợi API trả lời: liên kết phải dùng được kể
+    // cả khi phần cấu hình POS lỗi.
+    function setDocsLink(pathFromApi) {
+        const link = $('menu-docs-link');
+        if (link) link.href = `${API_BASE}${pathFromApi || '/integrations/pos'}`;
+    }
+
     async function loadPos() {
         const box = $('menu-pos-box');
         if (!box) return;
         box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
         try {
             posState = await orgFetch('/api/agent/pos-integration');
+            setDocsLink(posState?.docsUrl);
             renderPos();
         } catch (error) {
             box.innerHTML = `<p class="org-empty is-error">${escapeHtml(error.message)}</p>`;
@@ -594,6 +611,7 @@
     }
 
     function bind() {
+        setDocsLink();
         $('menu-item-stock')?.addEventListener('input', syncHideField);
         syncHideField();
         $('menu-category-form')?.addEventListener('submit', addCategory);

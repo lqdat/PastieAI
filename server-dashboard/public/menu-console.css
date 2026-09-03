@@ -809,3 +809,13 @@
         padding: 9px 10px;
     }
 }
+
+/* Danh sách xổ của <select> do hệ điều hành vẽ, không kế thừa màu của trang.
+   Không đặt rõ thì ở giao diện tối một số trình duyệt cho ra chữ đen trên nền
+   đen — nhìn ra đúng một vệt đen trống. */
+.menu-field select option,
+.org-defer select option,
+.menu-form select option {
+    background: var(--panel-bg, #ffffff);
+    color: var(--text-primary, #2d2335);
+}
