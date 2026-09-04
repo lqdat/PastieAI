@@ -361,6 +361,16 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // Migration: Add sender_admin_id column to messages if it does not exist
     await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
 
+    // Co nhung tin he thong chi danh cho nhan vien: no ton tai de don hien ra
+    // trong luong chat cua Sale, de day thong bao, va de danh sach cuoc tro
+    // chuyen co dong xem truoc. Khach khong can doc - khach da thay nguyen cai
+    // the don ngay ben duoi, noi lai bang chu chi thanh trung lap.
+    //
+    // Truoc day viec nay lam bang cach so khop ILIKE tren noi dung tin o ba cho
+    // khac nhau - hong ngay khi ai do sua mot chu trong cau. Cot nay noi thang
+    // y dinh luc GHI, thay vi doan lai luc DOC.
+    await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS visible_to VARCHAR(20) NOT NULL DEFAULT 'all';`);
+
     // Migration: File attachments (images/videos/documents) on chat messages.
     // attachment_key is the S3 object key (used to delete the file later);
     // attachment_url is a cached direct/presigned URL for convenience.
@@ -750,6 +760,35 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // Khách chọn phương thức thanh toán; nhân viên mới là người xác nhận đã thu.
     // Tách hai mốc thời gian để không nhầm "khách bấm" với "đã có tiền".
     await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS payment_selected_at TIMESTAMP;`);
+
+    // Mot phien chat chi duoc co MOT don dang mo.
+    //
+    // Quy tac nay truoc day chi la mot cau SELECT chay ngay truoc khi INSERT
+    // trong route dat mon. Doc-roi-ghi KHONG chan duoc hai request di song song:
+    // ca hai cung doc thay "chua co don nao", roi ca hai cung ghi. Khach bam hai
+    // lan, hoac mang cham khien trinh duyet gui lai, la Sale nhan hai don giong
+    // het nhau va khong biet cai nao that.
+    //
+    // Chi muc mot phan duoi day moi la hang rao that: database tu choi ban ghi
+    // thu hai, bat ke co bao nhieu tien trinh cung ghi mot luc.
+    //
+    // Du lieu cu co the da co san don trung - don truoc, giu lai don MOI NHAT
+    // (do la cai khach dang nhin va Sale dang xu ly), cac ban truoc danh dau
+    // 'superseded' de khong hien ra nua ma van con dau vet de doi chieu.
+    await query(`
+      WITH duplicates AS (
+        SELECT id, ROW_NUMBER() OVER (
+                 PARTITION BY session_id ORDER BY created_at DESC, id DESC
+               ) AS rn
+          FROM chat_orders
+         WHERE status IN ('pending_confirm', 'awaiting_payment')
+      )
+      UPDATE chat_orders SET status = 'superseded', updated_at = NOW()
+       WHERE id IN (SELECT id FROM duplicates WHERE rn > 1);
+    `);
+    await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_orders_one_open_per_session
+                   ON chat_orders(session_id)
+                 WHERE status IN ('pending_confirm', 'awaiting_payment');`);
 
     // Chỉ khách sạn mới cộng được vào tiền phòng; nhà hàng lẻ thì không. Cờ này
     // do superadmin bật cho từng Agent, không phải Agent tự bật.

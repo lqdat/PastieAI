@@ -3060,6 +3060,21 @@ async function getOrTranslateMessage(msg, targetLang, preloaded) {
 
 // 5. Get messages for a session (Public route for the Visitor Widget)
 // Secure because sessionId is a secure UUIDv4
+// Dieu kien loc tin nhan cho MAT KHACH, dung chung cho ca ba nhanh truy van ben
+// duoi - truoc day ba nhanh chep ba ban giong het nhau, sua mot cho la hai cho
+// con lai lech di ma khong ai biet.
+//
+//   visible_to = 'staff'  - tin viet cho nhan vien doc (don moi, don vua sua).
+//   nhat ky gan hoi thoai - du lieu cu chua co cot visible_to, giu lai phep so
+//                           khop theo noi dung cho toi khi cac phien do dong het.
+const visitorMessageFilter = (prefix = '') => `
+  ${prefix}visible_to <> 'staff'
+  AND NOT (${prefix}sender = 'system' AND (
+    ${prefix}original_text ILIKE '[Hệ thống] Cuộc trò chuyện đã được chỉ định cho:%'
+    OR ${prefix}original_text ILIKE '[System] The conversation has been assigned to:%'
+    OR ${prefix}original_text ILIKE 'The conversation has been assigned to:%'
+  ))`;
+
 app.get('/api/chats/:sessionId/messages', async (req, res) => {
   const { sessionId } = req.params;
   const visitorLang = req.query.visitorLang || '';
@@ -3087,11 +3102,7 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
       result = await db.query(
         `SELECT * FROM messages
          WHERE session_id = $1
-           AND NOT (sender = 'system' AND (
-             original_text ILIKE '[Hệ thống] Cuộc trò chuyện đã được chỉ định cho:%'
-             OR original_text ILIKE '[System] The conversation has been assigned to:%'
-             OR original_text ILIKE 'The conversation has been assigned to:%'
-           ))
+           AND ${visitorMessageFilter()}
          ORDER BY created_at DESC
          LIMIT $2 OFFSET $3`,
         [sessionId, limit, offset]
@@ -3115,26 +3126,16 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
          JOIN sessions s ON m.session_id = s.id 
          WHERE s.project_id = $1
            AND (${identityConditions.join(' OR ')})
-           -- Assignment logs are internal operational notes, never visitor-facing.
-           AND NOT (m.sender = 'system' AND (
-             m.original_text ILIKE '[Hệ thống] Cuộc trò chuyện đã được chỉ định cho:%'
-             OR m.original_text ILIKE '[System] The conversation has been assigned to:%'
-             OR m.original_text ILIKE 'The conversation has been assigned to:%'
-           ))
+           AND ${visitorMessageFilter('m.')}
          ORDER BY m.created_at DESC
          LIMIT $${identityParams.length - 1} OFFSET $${identityParams.length}`,
         identityParams
       );
     } else {
       result = await db.query(
-        `SELECT * FROM messages 
-         WHERE session_id = $1 
-           -- Assignment logs are internal operational notes, never visitor-facing.
-           AND NOT (sender = 'system' AND (
-             original_text ILIKE '[Hệ thống] Cuộc trò chuyện đã được chỉ định cho:%'
-             OR original_text ILIKE '[System] The conversation has been assigned to:%'
-             OR original_text ILIKE 'The conversation has been assigned to:%'
-           ))
+        `SELECT * FROM messages
+         WHERE session_id = $1
+           AND ${visitorMessageFilter()}
          ORDER BY created_at DESC
          LIMIT $2 OFFSET $3`,
         [sessionId, limit, offset]
@@ -3377,11 +3378,21 @@ app.post('/api/admin/orders', checkAdminAuth, requireWorkingHours, async (req, r
   const orderId = randomUUID();
   // Lưu JSON có cấu trúc; PDF được vẽ lúc khách mở hóa đơn theo ngôn ngữ của khách.
   const invoice = buildSampleInvoice(orderId, session, normalizedItems, totalAmount);
-  const created = await db.query(
-    `INSERT INTO chat_orders (id, session_id, project_id, created_by_admin_id, total_amount, items, invoice)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [orderId, sessionId, session.project_id, req.admin.id, totalAmount, JSON.stringify(normalizedItems), JSON.stringify(invoice)]
-  );
+  let created;
+  try {
+    created = await db.query(
+      `INSERT INTO chat_orders (id, session_id, project_id, created_by_admin_id, total_amount, items, invoice)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [orderId, sessionId, session.project_id, req.admin.id, totalAmount, JSON.stringify(normalizedItems), JSON.stringify(invoice)]
+    );
+  } catch (error) {
+    // Phien nay da co mot don dang mo - co the khach vua tu dat mon xong. Noi ro
+    // cho nhan vien thay vi de ho nhin thay loi may chu va bam lai lan nua.
+    if (error?.code === '23505') {
+      return res.status(409).json({ error: 'Cuộc trò chuyện này đang có một đơn chưa xử lý xong. Hãy xác nhận, từ chối hoặc thu tiền đơn đó trước.' });
+    }
+    throw error;
+  }
   res.status(201).json({ success: true, order: created.rows[0] });
 });
 
@@ -3421,6 +3432,9 @@ app.post('/samplebill', checkAdminAuth, async (req, res) => {
     res.status(201).json({ success: true, order: orderRes.rows[0], chatMessage: null, expiresAt });
   } catch (error) {
     await client.query('ROLLBACK');
+    if (error?.code === '23505') {
+      return res.status(409).json({ error: 'Cuộc trò chuyện này đang có một đơn chưa xử lý xong.' });
+    }
     console.error('Create sample bill error:', error);
     res.status(500).json({ error: 'Không thể tạo hóa đơn mẫu.' });
   } finally {
@@ -3485,7 +3499,16 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   const orderStamp = new Date(order.updated_at || order.created_at || 0).getTime();
 
   let invoice;
-  if (cached && Number(cached.orderStamp) === orderStamp) {
+  // CHUA XAC NHAN THI CHUA CO HOA DON.
+  //
+  // Hoa don chi duoc dung luc Sale xac nhan don. Truoc day endpoint nay van goi
+  // prepareInvoiceDelivery cho ca don dang cho, nen no ve ra mot file PDF tu
+  // object rong - khach va Sale deu nhin thay "hoa don" cua mot don chua ai
+  // duyet. Vua sai nghiep vu, vua ton mot luot render pdfkit moi 3,5 giay cho
+  // moi don dang cho.
+  if (order.status === 'pending_confirm') {
+    invoice = null;
+  } else if (cached && Number(cached.orderStamp) === orderStamp) {
     invoice = cached.invoice;
   } else {
     invoice = await prepareInvoiceDelivery(order.invoice || {}, language);
@@ -8752,7 +8775,7 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
   }
 });
 
-// Khách gửi đơn. Chỉ nhận itemId và số lượng — giá tự tra từ DB.
+// Khách gửi món, số lượng và ghi chú; giá luôn tự tra từ DB.
 app.post('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) => {
   const sessionId = req.params.sessionId;
   const lines = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -8776,10 +8799,15 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) 
     }
 
     const wanted = new Map();
+    const wantedNotes = new Map();
     for (const line of lines) {
       const id = Number(line?.itemId);
       const qty = Math.max(1, Math.min(99, Math.round(Number(line?.quantity) || 1)));
-      if (Number.isInteger(id)) wanted.set(id, (wanted.get(id) || 0) + qty);
+      if (Number.isInteger(id)) {
+        wanted.set(id, (wanted.get(id) || 0) + qty);
+        const note = typeof line?.note === 'string' ? line.note.trim().slice(0, 300) : '';
+        if (note) wantedNotes.set(id, note);
+      }
     }
     if (wanted.size === 0) return res.status(400).json({ error: 'Danh sách món không hợp lệ.' });
 
@@ -8809,24 +8837,42 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) 
     const items = priced.rows.map((row) => {
       const quantity = wanted.get(row.id);
       const unitPrice = Number(row.price);
-      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal: Math.round(unitPrice * quantity), note: null };
+      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal: Math.round(unitPrice * quantity), note: wantedNotes.get(row.id) || null };
     });
     const totalAmount = items.reduce((sum, item) => sum + item.lineTotal, 0);
 
     const orderId = randomUUID();
-    const created = await db.query(
-      `INSERT INTO chat_orders (id, session_id, project_id, total_amount, items, status, placed_by)
-       VALUES ($1, $2, $3, $4, $5, 'pending_confirm', 'customer') RETURNING *`,
-      [orderId, sessionId, owner.project_id, totalAmount, JSON.stringify(items)]
-    );
+    let created;
+    try {
+      created = await db.query(
+        `INSERT INTO chat_orders (id, session_id, project_id, total_amount, items, status, placed_by)
+         VALUES ($1, $2, $3, $4, $5, 'pending_confirm', 'customer') RETURNING *`,
+        [orderId, sessionId, owner.project_id, totalAmount, JSON.stringify(items)]
+      );
+    } catch (error) {
+      // 23505 = dung chi muc idx_chat_orders_one_open_per_session. Nghia la mot
+      // lan bam khac vua tao don xong TRONG KHOANG giua cau kiem tra o tren va
+      // cau INSERT nay. Voi khach thi day la cung mot hanh dong, nen tra loi
+      // giong het truong hop cau kiem tra bat duoc - khong phai loi 500.
+      if (error?.code === '23505') {
+        return res.status(409).json({ error: 'Bạn đang có một đơn chờ xử lý. Vui lòng đợi tư vấn viên xác nhận.' });
+      }
+      throw error;
+    }
 
     // Ghi vào chính cuộc chat để Sale thấy ngay trong luồng hội thoại, và bắn
     // thông báo đẩy như một tin nhắn đến bình thường.
-    const summary = items.map((item) => `${item.name} x${item.quantity}`).join(', ');
+    //
+    // visible_to = 'staff': tin nay KHONG hien cho khach. Khach vua bam dat xong
+    // va dang nhin thang vao the "Da gui don, cho tu van vien xac nhan" voi du
+    // mon, so luong va tien - them mot dong chu ke lai y het chi la noi hai lan.
+    // Phia nhan vien van can no: no la dong xem truoc trong danh sach chat va la
+    // noi dung cua thong bao day.
+    const summary = items.map((item) => `${item.name} x${item.quantity}${item.note ? ` (${item.note})` : ''}`).join(', ');
     const text = `[Đặt món] Khách vừa đặt: ${summary}. Tạm tính ${formatVnd(totalAmount)}.`;
     await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
-       VALUES ($1, 'system', $2, $2, 'vi')`,
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
+       VALUES ($1, 'system', $2, $2, 'vi', 'staff')`,
       [sessionId, text]
     );
     const sessionRow = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
@@ -8880,10 +8926,15 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) =
     }
 
     const wanted = new Map();
+    const wantedNotes = new Map();
     for (const line of lines) {
       const id = Number(line?.itemId);
       const quantity = Math.max(1, Math.min(99, Math.round(Number(line?.quantity) || 1)));
-      if (Number.isInteger(id)) wanted.set(id, (wanted.get(id) || 0) + quantity);
+      if (Number.isInteger(id)) {
+        wanted.set(id, (wanted.get(id) || 0) + quantity);
+        const note = typeof line?.note === 'string' ? line.note.trim().slice(0, 300) : '';
+        if (note) wantedNotes.set(id, note);
+      }
     }
     if (!wanted.size) {
       await client.query('ROLLBACK');
@@ -8918,7 +8969,7 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) =
     const items = priced.rows.map((row) => {
       const quantity = wanted.get(row.id);
       const unitPrice = Number(row.price);
-      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal: Math.round(unitPrice * quantity), note: null };
+      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal: Math.round(unitPrice * quantity), note: wantedNotes.get(row.id) || null };
     });
     const total = items.reduce((sum, item) => sum + item.lineTotal, 0);
     const updated = await client.query(
@@ -8933,10 +8984,12 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) =
     await extendQrSessionOnActivity(session, client);
     await client.query('COMMIT');
 
-    const text = `[Đặt món] Khách đã cập nhật đơn (${items.map((item) => `${item.name} x${item.quantity}`).join(', ')}). Vui lòng xác nhận lại.`;
+    // Cung chi danh cho nhan vien - cau "Vui long xac nhan lai" von noi voi Sale,
+    // khong phai voi khach. Khach thay the don da doi noi dung la du.
+    const text = `[Đặt món] Khách đã cập nhật đơn (${items.map((item) => `${item.name} x${item.quantity}${item.note ? ` (${item.note})` : ''}`).join(', ')}). Vui lòng xác nhận lại.`;
     await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
-       VALUES ($1, 'system', $2, $2, 'vi')`,
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
+       VALUES ($1, 'system', $2, $2, 'vi', 'staff')`,
       [sessionId, text]
     );
     broadcastAdminEvent('order_update', { sessionId, orderId: order.id, status: 'pending_confirm' });
