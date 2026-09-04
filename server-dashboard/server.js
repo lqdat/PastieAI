@@ -8946,6 +8946,18 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) =
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Không tìm thấy đơn đang chỉnh sửa.' });
     }
+    // Chốt phương thức thanh toán là hết đường lui.
+    //
+    // Cổng khách đã ẩn nút sửa ở bước này, nhưng ẩn nút không phải là chặn: bất
+    // kỳ ai cũng gọi thẳng được endpoint. Nếu lọt, đơn sẽ tụt về 'pending_confirm'
+    // trong khi bếp đã làm xong và tiền đã được ghi nhận — Sale nhìn vào không
+    // biết món nào thật.
+    if (order.payment_method) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'Đơn đã chốt phương thức thanh toán nên không sửa được nữa. Bạn muốn gọi thêm thì đặt một đơn mới nhé.',
+      });
+    }
 
     const wanted = new Map();
     const wantedNotes = new Map();
