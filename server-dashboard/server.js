@@ -619,6 +619,7 @@ app.get('/api/qr-chat/:code', async (req, res) => {
     if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
     res.json({
       agentName: account.owner_name || 'Agent',
+      locationLogoUrl: /^https?:\/\//i.test(String(account.owner_avatar_url || '')) ? account.owner_avatar_url : null,
       groupName: account.group_name || account.label || 'Tư vấn viên',
       label: account.label || ''
     });
@@ -1323,6 +1324,7 @@ async function resolveQrChatAccount(projectId, qrCode, queryRunner = db) {
             q.group_id,
             COALESCE(p.ai_enabled, p.project_type <> 'qr_concierge') AS ai_enabled,
             a.full_name AS owner_name,
+            a.avatar_url AS owner_avatar_url,
             g.name AS group_name
        FROM qr_chat_accounts q
        JOIN projects p ON p.id = q.project_id
@@ -3315,6 +3317,12 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
 const PAYMENT_METHODS = new Set(['cash', 'bank_qr', 'card', 'room_charge', 'pay_later']);
 const escapeInvoiceHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const formatVnd = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} ₫`;
+const QR_MENU_VAT_RATE = Math.max(0, Math.min(100, Number(process.env.QR_MENU_VAT_RATE || 10)));
+const calculateQrMenuCharges = (subtotal) => {
+  const cleanSubtotal = Math.max(0, Math.round(Number(subtotal) || 0));
+  const vatAmount = Math.round(cleanSubtotal * QR_MENU_VAT_RATE / 100);
+  return { subtotal: cleanSubtotal, vatRate: QR_MENU_VAT_RATE, vatAmount, grandTotal: cleanSubtotal + vatAmount };
+};
 
 // htmlToPlainText / prepareInvoiceDelivery / sinh PDF đã chuyển sang
 // ./invoice-helper.js để hóa đơn được vẽ lại theo đúng ngôn ngữ khách chọn.
@@ -3327,16 +3335,19 @@ function invoiceLanguageFor(session, requestedLanguage) {
   return invoiceHelper.normalizeLanguage(requestedLanguage || session?.detected_language || 'vi');
 }
 
-function buildSampleInvoice(orderId, session, items, totalAmount) {
+function buildSampleInvoice(orderId, session, items, totalAmount, charges = null) {
   const invoiceNo = `BILL-${orderId.slice(0, 8).toUpperCase()}`;
   const rows = items.map((item) => `<tr><td>${escapeInvoiceHtml(item.name)}</td><td>${item.quantity}</td><td>${formatVnd(item.unitPrice)}</td><td>${formatVnd(item.lineTotal)}</td></tr>`).join('');
+  const subtotal = Number(charges?.subtotal ?? items.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0));
+  const vatRate = Number(charges?.vatRate || 0);
+  const vatAmount = Number(charges?.vatAmount || 0);
   // Dữ liệu lưu vào DB là JSON có cấu trúc (items/tổng tiền) — PDF chỉ được vẽ
   // lúc khách mở hóa đơn, theo ngôn ngữ khách, nên KHÔNG lưu PDF ở đây.
   return {
     version: '1.0', invoiceNo, issuedAt: new Date().toISOString(),
     buyerName: session.visitor_name || 'Khách hàng',
     buyerPhone: session.visitor_phone || '',
-    items, totalAmount, currency: 'VND',
+    items, subtotal, vatRate, vatAmount, totalAmount, currency: 'VND',
     html: `<article class="pastie-bill"><h2>Hóa đơn ${invoiceNo}</h2><p>Khách hàng: ${escapeInvoiceHtml(session.visitor_name || 'Khách hàng')}</p><table><thead><tr><th>Sản phẩm</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody></table><h3>Tổng cộng: ${formatVnd(totalAmount)}</h3></article>`,
     pngUrl: null, pdfUrl: null,
   };
@@ -3563,11 +3574,13 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
     const session = sessionRes.rows[0];
     const label = invoiceHelper.paymentMethodLabel(method, 'vi');
     const text = `[Thanh toán] Khách đã chọn phương thức: ${label}.`;
+    // Cau nay noi VE khach, voi nhan vien - khach khong can doc lai chinh minh.
     await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
-       VALUES ($1, 'system', $2, $2, 'vi')`,
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
+       VALUES ($1, 'system', $2, $2, 'vi', 'staff')`,
       [req.params.sessionId, text]
     );
+    await sendOrderThankYou(req.params.sessionId, method, { autoSelected: false });
     if (session) {
       void notifyAgentMessage(session, text);
       await extendQrSessionOnActivity(session);
@@ -8510,6 +8523,12 @@ function buildPosOrderPayload(order, event) {
       status: order.status,
       currency: order.currency || 'VND',
       total_amount: Number(order.total_amount || 0),
+      pricing: {
+        subtotal: Number(order.charges?.subtotal ?? order.total_amount ?? 0),
+        vat_rate: Number(order.charges?.vatRate || 0),
+        vat_amount: Number(order.charges?.vatAmount || 0),
+        grand_total: Number(order.charges?.grandTotal ?? order.total_amount ?? 0),
+      },
       items: (Array.isArray(order.items) ? order.items : []).map((item) => ({
         menu_item_id: item.menuItemId ?? null,
         name: item.name || '',
@@ -8763,6 +8782,7 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
     const clean = withImages.map(({ image_key, image_url_expires_at, ...item }) => item);
     res.json({
       language: useLang,
+      vatRate: QR_MENU_VAT_RATE,
       categories: categories.rows,
       // Món ưu đãi tách riêng để cổng khách dựng slider đầu trang mà không phải
       // tự đoán nhóm nào là nhóm ưu đãi.
@@ -8839,15 +8859,17 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) 
       const unitPrice = Number(row.price);
       return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal: Math.round(unitPrice * quantity), note: wantedNotes.get(row.id) || null };
     });
-    const totalAmount = items.reduce((sum, item) => sum + item.lineTotal, 0);
+    const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
+    const charges = calculateQrMenuCharges(subtotal);
+    const totalAmount = charges.grandTotal;
 
     const orderId = randomUUID();
     let created;
     try {
       created = await db.query(
-        `INSERT INTO chat_orders (id, session_id, project_id, total_amount, items, status, placed_by)
-         VALUES ($1, $2, $3, $4, $5, 'pending_confirm', 'customer') RETURNING *`,
-        [orderId, sessionId, owner.project_id, totalAmount, JSON.stringify(items)]
+        `INSERT INTO chat_orders (id, session_id, project_id, total_amount, items, charges, status, placed_by)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending_confirm', 'customer') RETURNING *`,
+        [orderId, sessionId, owner.project_id, totalAmount, JSON.stringify(items), JSON.stringify(charges)]
       );
     } catch (error) {
       // 23505 = dung chi muc idx_chat_orders_one_open_per_session. Nghia la mot
@@ -8971,15 +8993,17 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) =
       const unitPrice = Number(row.price);
       return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal: Math.round(unitPrice * quantity), note: wantedNotes.get(row.id) || null };
     });
-    const total = items.reduce((sum, item) => sum + item.lineTotal, 0);
+    const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
+    const charges = calculateQrMenuCharges(subtotal);
+    const total = charges.grandTotal;
     const updated = await client.query(
-      `UPDATE chat_orders SET items = $2, total_amount = $3, status = 'pending_confirm',
+      `UPDATE chat_orders SET items = $2, total_amount = $3, charges = $4, status = 'pending_confirm',
               invoice = '{}'::jsonb, invoice_render = '{}'::jsonb,
               payment_method = NULL, payment_reference = NULL, payment_selected_at = NULL,
               payment_auto_selected_at = NULL, bill_sent_at = NULL, confirmed_at = NULL,
               confirmed_by_admin_id = NULL, version = version + 1, updated_at = NOW()
         WHERE id = $1 RETURNING *`,
-      [order.id, JSON.stringify(items), total]
+      [order.id, JSON.stringify(items), total, JSON.stringify(charges)]
     );
     await extendQrSessionOnActivity(session, client);
     await client.query('COMMIT');
@@ -9025,7 +9049,7 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
 
     // Hoá đơn chỉ được phát ra ở bước này — trước khi Sale xác nhận thì đơn của
     // khách mới chỉ là đề nghị. Và tồn kho cũng chỉ trừ ở đây, cùng lý do.
-    const invoice = buildSampleInvoice(order.id, session, order.items, Number(order.total_amount));
+    const invoice = buildSampleInvoice(order.id, session, order.items, Number(order.total_amount), order.charges);
 
     const client = await db.pool.connect();
     let updated;
@@ -9225,6 +9249,24 @@ async function deferredPaymentForSession(sessionId) {
 
 // Tự chọn phương thức trả chậm sau 2 phút kể từ lúc Sale gửi bill. UPDATE có
 // điều kiện giúp nhiều request/tác vụ nền chạy đồng thời vẫn chỉ chọn một lần.
+// Khach chon xong cach tra - hoac he thong chon thay sau 2 phut - la vong doi
+// cua don khep lai. Gui mot loi cam on de khach biet minh khong con phai lam gi
+// nua; khong co no thi man hinh dung im va khach ngoi doi mot viec khong ton tai.
+//
+// Mot cho duy nhat quyet dinh cau chu, vi hai loi vao (khach bam / het 2 phut)
+// deu ket thuc o day.
+async function sendOrderThankYou(sessionId, method, { autoSelected } = {}) {
+  const label = invoiceHelper.paymentMethodLabel(method, 'vi');
+  const text = autoSelected
+    ? `Cảm ơn quý khách! Do chưa có lựa chọn sau 2 phút, đơn được ghi nhận theo phương thức ${label}. Đơn của quý khách đã hoàn tất.`
+    : `Cảm ơn quý khách! Đơn của quý khách đã hoàn tất với phương thức ${label}.`;
+  await db.query(
+    `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+     VALUES ($1, 'system', $2, $2, 'vi')`,
+    [sessionId, text]
+  ).catch((error) => console.error('[Order] Khong gui duoc loi cam on:', error.message));
+}
+
 async function maybeAutoSelectDeferredPayment(order) {
   if (!order || order.status !== 'awaiting_payment' || order.payment_method || !order.bill_sent_at) return null;
   const dueAt = new Date(order.bill_sent_at).getTime() + 120000;
@@ -9245,10 +9287,11 @@ async function maybeAutoSelectDeferredPayment(order) {
   const label = invoiceHelper.paymentMethodLabel(method, 'vi');
   const text = `[Thanh toán] Sau 2 phút chưa có lựa chọn, hệ thống đã chọn mặc định: ${label}.`;
   await db.query(
-    `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
-     VALUES ($1, 'system', $2, $2, 'vi')`,
+    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
+     VALUES ($1, 'system', $2, $2, 'vi', 'staff')`,
     [order.session_id, text]
   ).catch(() => {});
+  await sendOrderThankYou(order.session_id, method, { autoSelected: true });
   broadcastAdminEvent('order_update', {
     sessionId: order.session_id,
     orderId: order.id,

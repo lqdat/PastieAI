@@ -57,35 +57,35 @@ const INVOICE_I18N = {
     title: 'HÓA ĐƠN BÁN HÀNG', invoiceNo: 'Số hóa đơn', date: 'Ngày bán', customer: 'Khách hàng',
     phone: 'Điện thoại', address: 'Địa chỉ', item: 'Mặt hàng', unitPrice: 'Đơn giá', quantity: 'SL',
     discount: 'Chiết khấu', lineTotal: 'Thành tiền', subtotal: 'Tổng tiền hàng',
-    totalDiscount: 'Chiết khấu', grandTotal: 'TỔNG CỘNG', paymentMethod: 'Thanh toán',
+    totalDiscount: 'Chiết khấu', vat: 'VAT', grandTotal: 'TỔNG CỘNG', paymentMethod: 'Thanh toán',
     thanks: 'Cảm ơn quý khách!', note: 'Hóa đơn được tạo tự động từ hệ thống Pastie Chat.',
   },
   en: {
     title: 'SALES INVOICE', invoiceNo: 'Invoice No.', date: 'Date', customer: 'Customer',
     phone: 'Phone', address: 'Address', item: 'Item', unitPrice: 'Unit price', quantity: 'Qty',
     discount: 'Discount', lineTotal: 'Amount', subtotal: 'Subtotal',
-    totalDiscount: 'Discount', grandTotal: 'TOTAL', paymentMethod: 'Payment',
+    totalDiscount: 'Discount', vat: 'VAT', grandTotal: 'TOTAL', paymentMethod: 'Payment',
     thanks: 'Thank you!', note: 'This invoice was generated automatically by Pastie Chat.',
   },
   ru: {
     title: 'СЧЁТ НА ОПЛАТУ', invoiceNo: 'Номер счёта', date: 'Дата', customer: 'Клиент',
     phone: 'Телефон', address: 'Адрес', item: 'Наименование', unitPrice: 'Цена', quantity: 'Кол-во',
     discount: 'Скидка', lineTotal: 'Сумма', subtotal: 'Итого по товарам',
-    totalDiscount: 'Скидка', grandTotal: 'ИТОГО', paymentMethod: 'Оплата',
+    totalDiscount: 'Скидка', vat: 'НДС', grandTotal: 'ИТОГО', paymentMethod: 'Оплата',
     thanks: 'Спасибо за покупку!', note: 'Счёт сформирован автоматически системой Pastie Chat.',
   },
   zh: {
     title: '销售发票', invoiceNo: '发票号', date: '日期', customer: '客户',
     phone: '电话', address: '地址', item: '商品', unitPrice: '单价', quantity: '数量',
     discount: '折扣', lineTotal: '金额', subtotal: '商品合计',
-    totalDiscount: '折扣', grandTotal: '总计', paymentMethod: '付款方式',
+    totalDiscount: '折扣', vat: '增值税', grandTotal: '总计', paymentMethod: '付款方式',
     thanks: '感谢惠顾！', note: '本发票由 Pastie Chat 系统自动生成。',
   },
   ko: {
     title: '판매 영수증', invoiceNo: '영수증 번호', date: '발행일', customer: '고객',
     phone: '전화번호', address: '주소', item: '품목', unitPrice: '단가', quantity: '수량',
     discount: '할인', lineTotal: '금액', subtotal: '상품 합계',
-    totalDiscount: '할인', grandTotal: '총 합계', paymentMethod: '결제 수단',
+    totalDiscount: '할인', vat: 'VAT', grandTotal: '총 합계', paymentMethod: '결제 수단',
     thanks: '이용해 주셔서 감사합니다!', note: '본 영수증은 Pastie Chat 시스템에서 자동 발행되었습니다.',
   },
 };
@@ -198,6 +198,8 @@ function buildInvoiceData(invoice, language) {
   const totalAmount = invoice?.totalAmount !== undefined
     ? toNumber(invoice.totalAmount)
     : subtotal - totalDiscount;
+  const vatRate = toNumber(invoice?.vatRate ?? invoice?.vat_rate ?? 0);
+  const vatAmount = toNumber(invoice?.vatAmount ?? invoice?.vat_amount ?? 0);
 
   return {
     invoiceNo: invoice?.invoiceNo || invoice?.invoice_no || '',
@@ -208,7 +210,7 @@ function buildInvoiceData(invoice, language) {
     sellerName: invoice?.sellerName || invoice?.seller_name || '',
     currency: invoice?.currency || 'VND',
     paymentMethod: invoice?.paymentMethod || invoice?.payment_method || '',
-    items, subtotal, totalDiscount, totalAmount,
+    items, subtotal, totalDiscount, vatRate, vatAmount, totalAmount,
     language: normalizeLanguage(language),
   };
 }
@@ -329,6 +331,7 @@ function createInvoicePdfDataUrl(invoice, language) {
     };
     summaryRow(copy.subtotal, money(data.subtotal));
     if (data.totalDiscount > 0) summaryRow(copy.totalDiscount, `- ${money(data.totalDiscount)}`);
+    if (data.vatAmount > 0) summaryRow(`${copy.vat} (${data.vatRate}%)`, money(data.vatAmount));
     summaryRow(copy.grandTotal, money(data.totalAmount), { bold: true });
     if (data.paymentMethod) {
       summaryRow(copy.paymentMethod, paymentMethodLabel(data.paymentMethod, fonts.language));
@@ -487,6 +490,7 @@ function createInvoiceSvg(invoice, language) {
   };
   summary(copy.subtotal, money(data.subtotal));
   if (data.totalDiscount > 0) summary(copy.totalDiscount, `- ${money(data.totalDiscount)}`);
+  if (data.vatAmount > 0) summary(`${copy.vat} (${data.vatRate}%)`, money(data.vatAmount));
   summary(copy.grandTotal, money(data.totalAmount), { bold: true });
   if (data.paymentMethod) summary(copy.paymentMethod, paymentMethodLabel(data.paymentMethod, code));
 

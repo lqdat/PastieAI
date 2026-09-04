@@ -255,7 +255,13 @@ không tạo hai đơn cho cùng một sự kiện khi mạng chập chờn.</p>
     "version": 1,
     "status": "awaiting_payment",
     "currency": "VND",
-    "total_amount": 590000,
+    "total_amount": 649000,
+    "pricing": {
+      "subtotal": 590000,
+      "vat_rate": 10,
+      "vat_amount": 59000,
+      "grand_total": 649000
+    },
     "items": [
       {
         "menu_item_id": 42,
@@ -328,7 +334,8 @@ không tạo hai đơn cho cùng một sự kiện khi mạng chập chờn.</p>
       <td><code>pending_confirm</code> chờ Sale · <code>awaiting_payment</code> đã xác nhận, chờ trả tiền · <code>paid</code> đã thu · <code>rejected</code> bị từ chối</td></tr>
   <tr><td><code>currency</code></td><td>string</td><td>Hiện luôn là <code>"VND"</code>.</td></tr>
   <tr><td><code>total_amount</code></td><td>number</td>
-      <td>Tổng tiền, <b>đơn vị đồng, số nguyên, không phần thập phân</b>. <code>590000</code> nghĩa là 590.000 ₫.</td></tr>
+      <td>Tổng cộng sau VAT, <b>đơn vị đồng, số nguyên, không phần thập phân</b>.</td></tr>
+  <tr><td><code>pricing</code></td><td>object</td><td>Chi tiết tiền hàng và VAT. <code>grand_total</code> luôn bằng <code>total_amount</code>.</td></tr>
   <tr><td><code>items[]</code></td><td>array</td><td>Danh sách món. Xem bảng dưới.</td></tr>
   <tr><td><code>payment</code></td><td>object</td><td>Xem mục 8.</td></tr>
   <tr><td><code>created_at</code> / <code>updated_at</code></td><td>ISO-8601</td><td>Thời điểm tạo và sửa gần nhất.</td></tr>

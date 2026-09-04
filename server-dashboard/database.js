@@ -371,6 +371,24 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // y dinh luc GHI, thay vi doan lai luc DOC.
     await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS visible_to VARCHAR(20) NOT NULL DEFAULT 'all';`);
 
+    // Danh dau lai nhung tin da ghi TRUOC khi co cot nay.
+    //
+    // Khong lam buoc nay thi bo loc chi an duoc tin moi: dong "[Dat mon] Khach
+    // vua dat: ..." dang nam san trong cac cuoc chat cu se hien voi khach mai
+    // mai. Doi voi khach dang mo may thi trong nhu ban va chua sua gi.
+    //
+    // Chi hai cau nay - cau bao don bi tu choi cung bat dau bang "[Dat mon]"
+    // nhung la noi VOI KHACH, phai giu nguyen.
+    await query(`
+      UPDATE messages SET visible_to = 'staff'
+       WHERE visible_to <> 'staff'
+         AND sender = 'system'
+         AND (original_text LIKE '[Đặt món] Khách vừa đặt:%'
+           OR original_text LIKE '[Đặt món] Khách đã cập nhật đơn%'
+           OR original_text LIKE '[Thanh toán] Khách đã chọn phương thức:%'
+           OR original_text LIKE '[Thanh toán] Sau 2 phút%');
+    `);
+
     // Migration: File attachments (images/videos/documents) on chat messages.
     // attachment_key is the S3 object key (used to delete the file later);
     // attachment_url is a cached direct/presigned URL for convenience.
@@ -757,6 +775,9 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // nên không cần bảng riêng; cột này chỉ ghi ai sửa lần cuối.
     await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS notes_updated_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
     await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS notes_updated_at TIMESTAMP;`);
+    // Chi tiết số tiền dùng chung cho màn xác nhận, hóa đơn và POS. Lưu snapshot
+    // theo đơn để việc đổi thuế suất sau này không làm thay đổi đơn cũ.
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS charges JSONB NOT NULL DEFAULT '{}'::jsonb;`);
     // Khách chọn phương thức thanh toán; nhân viên mới là người xác nhận đã thu.
     // Tách hai mốc thời gian để không nhầm "khách bấm" với "đã có tiền".
     await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS payment_selected_at TIMESTAMP;`);
