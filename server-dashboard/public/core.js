@@ -510,8 +510,15 @@ function handleChangeOtpEmail() {
     if (adminOtpCountdownInterval) clearInterval(adminOtpCountdownInterval);
     document.getElementById('otp-step-verify')?.classList.add('hide');
     document.getElementById('otp-step-email')?.classList.remove('hide');
+    // Trả tiêu đề về đúng bản dịch của ngôn ngữ đang chọn, thay vì viết cứng một
+    // chuỗi tiếng Anh. Viết cứng thì đổi ngôn ngữ console xong tiêu đề đứng im.
     const titleEl = document.getElementById('dpq-login-title');
-    if (titleEl) titleEl.textContent = 'Pastie AI Console';
+    if (titleEl) {
+        const dict = (typeof TRANSLATIONS === 'object' && TRANSLATIONS)
+            ? (TRANSLATIONS[typeof currentLang !== 'undefined' ? currentLang : 'vi'] || TRANSLATIONS.vi)
+            : null;
+        titleEl.textContent = dict?.loginTitle || 'Pastie AI Console';
+    }
     setLoginError('');
     setLoginSuccess('');
     clearAdminOtpDigits();
