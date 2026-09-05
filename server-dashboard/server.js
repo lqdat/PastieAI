@@ -229,7 +229,12 @@ function notifyAgentMessage(session, preview = '') {
 // -----------------------------------------------------------------------------
 const adminEventClients = new Set();
 
-function broadcastAdminEvent(event) {
+function broadcastAdminEvent(event, data) {
+  if (!event) return;
+  if (typeof event === 'string') {
+    event = { type: event, timestamp: Date.now(), ...(data || {}) };
+  }
+  if (!event.type) return;
   if (adminEventClients.size === 0) return;
   const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
   for (const client of adminEventClients) {
@@ -3898,9 +3903,9 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
     const label = invoiceHelper.paymentMethodLabel(method, 'vi');
     const text = `[Thanh toán] Khách đã chọn phương thức: ${label}.`;
     // Cau nay noi VE khach, voi nhan vien - khach khong can doc lai chinh minh.
-    await db.query(
+    const msgRes = await db.query(
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
-       VALUES ($1, 'system', $2, $2, 'vi', 'staff')`,
+       VALUES ($1, 'system', $2, $2, 'vi', 'staff') RETURNING id`,
       [req.params.sessionId, text]
     );
     await sendOrderThankYou(req.params.sessionId, method, { autoSelected: false });
@@ -3908,6 +3913,8 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
       void notifyAgentMessage(session, text);
       await extendQrSessionOnActivity(session);
     }
+    notifyAdminRealtime('new_message', { sessionId: req.params.sessionId, projectId: session?.project_id, sender: 'system', messageId: msgRes.rows[0]?.id });
+    notifyAdminRealtime('order_update', { sessionId: req.params.sessionId, orderId: order.id, status: 'awaiting_payment', paymentMethod: method, projectId: session?.project_id });
   } catch (error) {
     // Ghi chú cho Agent là việc phụ — không được làm hỏng thao tác chọn thanh toán của khách.
     console.error('[Order] Không thể ghi tin nhắn phương thức thanh toán:', error.message);
@@ -3928,6 +3935,7 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
       WHERE id = $2 RETURNING *`,
     [String(req.body?.reference || '').trim().slice(0, 255) || null, order.id]
   );
+  notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: 'paid', projectId: order.project_id });
   void deliverPosEvent(order.id, 'order.paid');
   res.json({ success: true, order: updated.rows[0], nextAction: 'customer_thank_you' });
 });
@@ -4653,7 +4661,7 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
            VALUES ($1, 'system', $2, $2, 'vi')`,
           [sameAgent.id, text]
         );
-        broadcastAdminEvent('session_update', { sessionId: sameAgent.id });
+        notifyAdminRealtime('session_update', { sessionId: sameAgent.id, projectId: account.project_id });
       }
       await touchQrActivity(sameAgent, identity.token);
       return res.json({
@@ -4697,7 +4705,7 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
       venueName: account.owner_name,
       placeLabel: account.label || account.group_name,
     });
-    broadcastAdminEvent('session_update', { sessionId });
+    notifyAdminRealtime('session_update', { sessionId, projectId: account.project_id });
 
     res.json({ authenticated: true, sessionId, continued: false, movedQr: false,
       identityExpiresAt: identity.expires_at });
@@ -9394,11 +9402,11 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
     if (owner.status !== 'active') return res.status(410).json({ error: 'Phiên chat đã kết thúc.' });
     if (!owner.agent_id) return res.status(400).json({ error: 'Thực đơn chưa được thiết lập.' });
 
-    // Một phiên chỉ có một đơn đang chờ. Không chặn thì khách bấm hai lần là Sale
-    // thấy hai đơn giống nhau và không biết cái nào thật.
+    // Một phiên chỉ có một đơn đang chờ (chưa chốt phương thức thanh toán).
+    // Nếu đơn cũ đã chọn thanh toán xong, khách được phép đặt lượt order mới.
     const pending = await db.query(
       `SELECT id FROM chat_orders
-        WHERE session_id = $1 AND status IN ('pending_confirm', 'awaiting_payment') LIMIT 1`,
+        WHERE session_id = $1 AND (status = 'pending_confirm' OR (status = 'awaiting_payment' AND payment_method IS NULL)) LIMIT 1`,
       [sessionId]
     );
     if (pending.rows[0]) {
@@ -9480,9 +9488,9 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
     const staffItems = await orderItemsForStaffSummary(items, owner.detected_language);
     const summary = staffItems.map((item) => `${item.name} x${item.quantity}${item.note ? ` (${item.note})` : ''}`).join(', ');
     const text = `[Đặt món] Khách vừa đặt: ${summary}. Tạm tính ${formatVnd(totalAmount)}.`;
-    await db.query(
+    const msgRes = await db.query(
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
-       VALUES ($1, 'system', $2, $2, 'vi', 'staff')`,
+       VALUES ($1, 'system', $2, $2, 'vi', 'staff') RETURNING id`,
       [sessionId, text]
     );
     const sessionRow = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
@@ -9490,7 +9498,8 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
       void notifyAgentMessage(sessionRow.rows[0], text);
       await extendQrSessionOnActivity(sessionRow.rows[0]);
     }
-    broadcastAdminEvent('order_update', { sessionId, orderId, status: 'pending_confirm' });
+    notifyAdminRealtime('new_message', { sessionId, projectId: owner.project_id, sender: 'system', messageId: msgRes.rows[0]?.id });
+    notifyAdminRealtime('order_update', { sessionId, orderId, status: 'pending_confirm', projectId: owner.project_id });
     void deliverPosEvent(orderId, 'order.created');
 
     const responseLanguage = invoiceLanguageFor(owner, req.body?.language);
@@ -9614,12 +9623,13 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
     // khong phai voi khach. Khach thay the don da doi noi dung la du.
     const staffItems = await orderItemsForStaffSummary(items, session.detected_language);
     const text = `[Đặt món] Khách đã cập nhật đơn (${staffItems.map((item) => `${item.name} x${item.quantity}${item.note ? ` (${item.note})` : ''}`).join(', ')}). Vui lòng xác nhận lại.`;
-    await db.query(
+    const editMsgRes = await db.query(
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
-       VALUES ($1, 'system', $2, $2, 'vi', 'staff')`,
+       VALUES ($1, 'system', $2, $2, 'vi', 'staff') RETURNING id`,
       [sessionId, text]
     );
-    broadcastAdminEvent('order_update', { sessionId, orderId: order.id, status: 'pending_confirm' });
+    notifyAdminRealtime('new_message', { sessionId, projectId: session.project_id, sender: 'system', messageId: editMsgRes.rows[0]?.id });
+    notifyAdminRealtime('order_update', { sessionId, orderId: order.id, status: 'pending_confirm', projectId: session.project_id });
     void deliverPosEvent(order.id, 'order.updated');
     const responseLanguage = invoiceLanguageFor(session, req.body?.language);
     const localizedOrder = await localizeOrderForVisitor(updated.rows[0], responseLanguage);
@@ -9722,7 +9732,7 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
       [order.session_id, kitchenText, req.admin.id]
     );
 
-    broadcastAdminEvent('order_update', { sessionId: order.session_id, orderId: order.id, status: 'awaiting_payment' });
+    notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: 'awaiting_payment', projectId: order.project_id });
     void deliverPosEvent(order.id, 'order.confirmed');
     res.json({ success: true, order: updated });
   } catch (error) {
@@ -9763,7 +9773,7 @@ app.post('/api/admin/orders/:orderId/reject', checkAdminAuth, requireWorkingHour
        VALUES ($1, 'agent', $2, $2, 'vi', $3)`,
       [order.session_id, text, req.admin.id]
     );
-    broadcastAdminEvent('order_update', { sessionId: order.session_id, orderId: order.id, status: 'rejected' });
+    notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: 'rejected', projectId: order.project_id });
     res.json({ success: true });
   } catch (error) {
     console.error('Reject order error:', error);
@@ -9812,7 +9822,7 @@ app.put('/api/admin/orders/:orderId/notes', checkAdminAuth, requireWorkingHours,
     );
     if (!updated.rows[0]) return res.status(409).json({ error: 'Đơn này vừa được người khác xử lý.' });
 
-    broadcastAdminEvent('order_update', { sessionId: order.session_id, orderId: order.id, status: 'pending_confirm' });
+    notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: 'pending_confirm', projectId: order.project_id });
     res.json({ success: true, order: updated.rows[0] });
   } catch (error) {
     console.error('Update order notes error:', error);
@@ -9891,18 +9901,25 @@ async function maybeAutoSelectDeferredPayment(order) {
 
   const label = invoiceHelper.paymentMethodLabel(method, 'vi');
   const text = `[Thanh toán] Sau 2 phút chưa có lựa chọn, hệ thống đã chọn mặc định: ${label}.`;
-  await db.query(
+  const autoMsgRes = await db.query(
     `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
-     VALUES ($1, 'system', $2, $2, 'vi', 'staff')`,
+     VALUES ($1, 'system', $2, $2, 'vi', 'staff') RETURNING id`,
     [order.session_id, text]
-  ).catch(() => {});
+  ).catch(() => null);
   await sendOrderThankYou(order.session_id, method, { autoSelected: true });
-  broadcastAdminEvent('order_update', {
+  notifyAdminRealtime('new_message', {
+    sessionId: order.session_id,
+    projectId: order.project_id,
+    sender: 'system',
+    messageId: autoMsgRes?.rows?.[0]?.id,
+  });
+  notifyAdminRealtime('order_update', {
     sessionId: order.session_id,
     orderId: order.id,
     status: 'awaiting_payment',
     paymentMethod: method,
     autoSelected: true,
+    projectId: order.project_id,
   });
   void deliverPosEvent(order.id, 'payment.selected');
   return updated.rows[0];

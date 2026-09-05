@@ -824,9 +824,10 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
       UPDATE chat_orders SET status = 'superseded', updated_at = NOW()
        WHERE id IN (SELECT id FROM duplicates WHERE rn > 1);
     `);
+    await query(`DROP INDEX IF EXISTS idx_chat_orders_one_open_per_session;`);
     await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_orders_one_open_per_session
                    ON chat_orders(session_id)
-                 WHERE status IN ('pending_confirm', 'awaiting_payment');`);
+                 WHERE status IN ('pending_confirm', 'awaiting_payment') AND payment_method IS NULL;`);
 
     // Chỉ khách sạn mới cộng được vào tiền phòng; nhà hàng lẻ thì không. Cờ này
     // do superadmin bật cho từng Agent, không phải Agent tự bật.

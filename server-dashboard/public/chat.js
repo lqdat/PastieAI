@@ -538,6 +538,14 @@ function handleAdminRealtimeEvent(data) {
         }
     }
 
+    // 1c. Phát âm thanh khi có đơn mới hoặc đơn cập nhật chờ xác nhận
+    if (data.type === 'order_update' && data.status === 'pending_confirm') {
+        const isViewingThisChat = document.visibilityState === 'visible' && String(data.sessionId) === String(currentSessionId);
+        if (!isViewingThisChat) {
+            playAlertSound();
+        }
+    }
+
     // 2. Cập nhật nội dung phiên chat đang mở (nếu trùng sessionId)
     if (currentSessionId && String(data.sessionId) === String(currentSessionId)) {
         if (data.type === 'new_message' || data.type === 'session_update') {
@@ -552,7 +560,8 @@ function handleAdminRealtimeEvent(data) {
             }
         }
         if (data.type === 'order_update') {
-            loadOrderForAdmin(currentSessionId);
+            adminOrderSignature = '';
+            loadMessages(currentSessionId);
         }
     }
 }
