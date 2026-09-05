@@ -220,6 +220,40 @@ async function translateWithNmt(text, targetLang) {
   }
 }
 
+// Cloud Translation nhận được nhiều chuỗi trong một request. Menu thường cần
+// dịch cả tên lẫn mô tả, nên gom theo lô giúp giảm số kết nối ra ngoài và vẫn
+// giữ đúng thứ tự đầu vào. Khi cấu hình Gemini, dùng lại đường dịch đơn để giữ
+// chất lượng/prompt hiện có; cache ở tầng gọi sẽ bảo đảm mỗi nội dung chỉ dịch
+// một lần.
+async function translateManyWithNmt(texts, targetLang) {
+  if (!GOOGLE_TRANSLATE_API_KEY) throw new Error('GOOGLE_TRANSLATE_API_KEY chưa được cấu hình');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(
+      `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(GOOGLE_TRANSLATE_API_KEY)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: texts, target: normalizeLangCode(targetLang) || 'en', format: 'text' }),
+        signal: controller.signal,
+      }
+    );
+    const data = await response.json().catch(() => ({}));
+    const translations = data?.data?.translations;
+    if (!response.ok || !Array.isArray(translations) || translations.length !== texts.length) {
+      throw new Error(data?.error?.message || `HTTP ${response.status}`);
+    }
+    return translations.map((result, index) => ({
+      translatedText: decodeHtmlEntities(result?.translatedText || texts[index]),
+      detectedLang: normalizeLangCode(result?.detectedSourceLanguage) || 'unknown',
+      provider: 'nmt',
+    }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * @param {string} text
  * @param {string} targetLang
@@ -256,6 +290,24 @@ async function translateText(text, targetLang, options = {}) {
     console.error('[Dịch] Cloud Translation cũng thất bại:', error.message);
     // Cả hai đường đều chết: trả nguyên văn để tin nhắn không bị mất.
     return { translatedText: sourceText, detectedLang: knownSource || 'unknown', provider: 'none' };
+  }
+}
+
+async function translateTexts(texts, targetLang, options = {}) {
+  const sourceTexts = (Array.isArray(texts) ? texts : [])
+    .map((text) => String(text || '').trim());
+  if (sourceTexts.length === 0) return [];
+
+  const useGemini = TRANSLATION_PROVIDER === 'gemini' && !!ai;
+  if (useGemini) {
+    return Promise.all(sourceTexts.map((text) => translateText(text, targetLang, options)));
+  }
+
+  try {
+    return await translateManyWithNmt(sourceTexts, targetLang);
+  } catch (error) {
+    console.warn('[Dịch theo lô] thất bại, chuyển sang từng chuỗi:', error.message);
+    return Promise.all(sourceTexts.map((text) => translateText(text, targetLang, options)));
   }
 }
 
@@ -367,6 +419,7 @@ const CHATBOT_FALLBACK = {
   en: 'Sorry, our system is processing. A support agent will assist you shortly!',
   ru: 'Извините, система обрабатывает запрос. Оператор свяжется с вами в ближайшее время!',
   zh: '抱歉，系统正在处理中。客服人员将尽快与您联系！',
+  ko: '죄송합니다. 시스템이 처리 중입니다. 상담원이 곧 도와드리겠습니다!',
 };
 
 async function generateChatbotResponse(systemInstruction, history, userMessage, lang = 'vi') {
@@ -438,6 +491,7 @@ async function detectLanguage(text) {
 
 module.exports = {
   translateText,
+  translateTexts,
   analyzeSession,
   generateChatbotResponse,
   detectLanguage

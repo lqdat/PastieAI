@@ -725,6 +725,23 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
       );
     `);
 
+    // Tên NHÓM món cũng phải dịch, không chỉ tên món.
+    //
+    // Trước đây khách chọn tiếng Hàn thì thấy món đã dịch nhưng thanh nhóm ở
+    // trên vẫn là "Món khai vị", "Đồ uống" — nửa Việt nửa Hàn trên cùng một
+    // màn hình. Cùng hình dạng với qr_menu_item_translations để dùng chung lối
+    // suy nghĩ: is_manual = Agent sửa tay, máy không được ghi đè.
+    await query(`
+      CREATE TABLE IF NOT EXISTS qr_menu_category_translations (
+        category_id INT NOT NULL REFERENCES qr_menu_categories(id) ON DELETE CASCADE,
+        lang VARCHAR(10) NOT NULL,
+        name VARCHAR(255),
+        is_manual BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (category_id, lang)
+      );
+    `);
+
     // Khách tự đặt món nên đơn hàng có thêm một trạng thái TRƯỚC awaiting_payment:
     //   pending_confirm  -> khách vừa đặt, chờ Sale xác nhận
     //   awaiting_payment -> Sale đã xác nhận, hoá đơn phát ra

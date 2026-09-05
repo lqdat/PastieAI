@@ -2012,6 +2012,7 @@ app.post('/api/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, async (req, r
       en: `Hi ${finalName}! 👋 I'm Pat from Pastie 🌴 How can I help you today?`,
       ru: `Привет, ${finalName}! 👋 Я Pat из Pastie 🌴 Чем могу помочь?`,
       zh: `您好，${finalName}！👋 我是 Pastie 的小助手 Pat 🌴 有什么可以帮您？`,
+      ko: `${finalName}님, 안녕하세요! 👋 Pastie의 도우미 Pat입니다 🌴 무엇을 도와드릴까요?`,
     };
     if (qrAccount) {
       // Khách quét mã ở bàn của quán thì người chào phải là QUÁN, không phải một
@@ -3647,6 +3648,27 @@ async function getChatOrderForVisitor(sessionId) {
   return result.rows[0] || null;
 }
 
+async function localizeOrderForVisitor(order, language) {
+  const target = String(language || '').toLowerCase().slice(0, 2);
+  const items = Array.isArray(order?.items) ? order.items : [];
+  if (!order || target === MENU_SOURCE_LANG || !MENU_LANGS.includes(target) || items.length === 0) {
+    return order;
+  }
+
+  const ids = [...new Set(items.map((item) => Number(item?.menuItemId)).filter(Number.isInteger))];
+  if (ids.length === 0) return order;
+  const translated = await db.query(
+    `SELECT item_id, name FROM qr_menu_item_translations
+      WHERE item_id = ANY($1::int[]) AND lang = $2 AND NULLIF(name, '') IS NOT NULL`,
+    [ids, target]
+  );
+  const names = new Map(translated.rows.map((row) => [Number(row.item_id), row.name]));
+  return {
+    ...order,
+    items: items.map((item) => ({ ...item, name: names.get(Number(item.menuItemId)) || item.name })),
+  };
+}
+
 // Agent creates a draft bill. Example body: { sessionId, items:[{name:'Nước',quantity:2,unitPrice:10000}] }
 app.post('/api/admin/orders', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const { sessionId, items } = req.body || {};
@@ -3779,12 +3801,13 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
 
   const sessionRes = await db.query('SELECT detected_language FROM sessions WHERE id = $1', [req.params.sessionId]);
   const language = invoiceLanguageFor(sessionRes.rows[0], req.query.lang);
+  const localizedOrder = await localizeOrderForVisitor(order, language);
 
   // Đường tắt như bên tin nhắn. Quan trọng: chỗ này nằm SAU
   // maybeAutoSelectDeferredPayment ở trên — đồng hồ 2 phút vẫn phải chạy mỗi
   // lượt hỏi, chỉ phần đóng gói hoá đơn mới được bỏ qua. Đặt trước là đơn quá
   // hạn sẽ không bao giờ được chốt.
-  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${language}`;
+  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${language}.i18n2`;
   if (String(req.query.known || '').trim() === orderPrint) {
     res.setHeader('X-Order-Print', orderPrint);
     return res.status(200).json({ unchanged: true, fingerprint: orderPrint });
@@ -3813,14 +3836,18 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   // moi don dang cho.
   if (order.status === 'pending_confirm') {
     invoice = null;
-  } else if (cached && Number(cached.orderStamp) === orderStamp) {
+  } else if (cached && Number(cached.orderStamp) === orderStamp && Number(cached.translationVersion) === 2) {
     invoice = cached.invoice;
   } else {
-    invoice = await prepareInvoiceDelivery(order.invoice || {}, language);
+    const invoiceSource = {
+      ...(order.invoice || {}),
+      items: localizedOrder?.items || order.invoice?.items,
+    };
+    invoice = await prepareInvoiceDelivery(invoiceSource, language);
     // Chỉ lưu khi thật sự vừa render (generated: true). Trường hợp hoá đơn đã có
     // sẵn pdfUrl thì không có gì để cache.
     if (invoice?.generated) {
-      const store = { ...(order.invoice_render || {}), [language]: { orderStamp, invoice } };
+      const store = { ...(order.invoice_render || {}), [language]: { orderStamp, translationVersion: 2, invoice } };
       db.query('UPDATE chat_orders SET invoice_render = $1 WHERE id = $2', [JSON.stringify(store), order.id])
         .catch((error) => console.error('[Invoice] Không lưu được cache PDF:', error.message));
     }
@@ -3829,7 +3856,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   res.setHeader('X-Order-Print', orderPrint);
   res.json({
     fingerprint: orderPrint,
-    order: { ...order, invoice },
+    order: { ...localizedOrder, invoice },
     paymentMethods: (await paymentMethodsForSession(req.params.sessionId, language)).map((entry) => entry.id),
     paymentMethodLabels: invoiceHelper.PAYMENT_METHOD_I18N[language] || invoiceHelper.PAYMENT_METHOD_I18N.vi,
     defaultPaymentMethod: await deferredPaymentForSession(req.params.sessionId),
@@ -5317,6 +5344,7 @@ app.post('/api/admin/chats/:sessionId/claim', checkAdminAuth, requireWorkingHour
         en: `Operator #${operatorNo} has joined. Happy to help you! 👋`,
         ru: `Оператор №${operatorNo} подключился. Рад помочь вам! 👋`,
         zh: `${operatorNo}号客服已接入，很高兴为您服务！👋`,
+        ko: `상담원 ${operatorNo}번이 연결되었습니다. 반갑습니다! 👋`,
       };
       const msg = msgs[lang] || msgs.vi;
       await db.query(
@@ -8509,6 +8537,94 @@ app.get('/api/superadmin/license/suspicious', checkAdminAuth, async (req, res) =
 const MENU_LANGS = ['vi', 'en', 'ru', 'zh', 'ko'];
 const MENU_SOURCE_LANG = 'vi'; // Agent nhập tiếng Việt, các thứ tiếng còn lại dịch máy
 
+async function orderItemsForStaffSummary(items, sourceLanguage) {
+  const source = String(sourceLanguage || '').toLowerCase().slice(0, 2);
+  if (source === 'vi') return items;
+  const noted = items.filter((item) => item.note);
+  if (noted.length === 0) return items;
+  try {
+    const translated = await gemini.translateTexts(
+      noted.map((item) => item.note), 'vi', { sourceLang: source }
+    );
+    const notes = new Map(noted.map((item, index) => [
+      item.menuItemId,
+      translated[index]?.provider === 'none' ? item.note : translated[index]?.translatedText || item.note,
+    ]));
+    return items.map((item) => ({ ...item, note: notes.get(item.menuItemId) || item.note }));
+  } catch (error) {
+    console.error('[Order] Không dịch được ghi chú cho Sale:', error.message);
+    return items;
+  }
+}
+
+async function translateMenuItemToLanguage(itemId, name, description, lang) {
+  const target = String(lang || '').toLowerCase();
+  if (!MENU_LANGS.includes(target) || target === MENU_SOURCE_LANG) {
+    return { name, description };
+  }
+
+  const manual = await db.query(
+    'SELECT name, description, is_manual FROM qr_menu_item_translations WHERE item_id = $1 AND lang = $2',
+    [itemId, target]
+  );
+  if (manual.rows[0]?.is_manual) {
+    return {
+      name: manual.rows[0].name || name,
+      description: manual.rows[0].description ?? description,
+    };
+  }
+
+  const sourceTexts = [name, ...(description ? [description] : [])];
+  const outputs = await gemini.translateTexts(sourceTexts, target, { sourceLang: MENU_SOURCE_LANG });
+  const nameOut = outputs[0];
+  const descriptionOut = description ? outputs[1] : null;
+
+  // Provider = none nghĩa là cả AI chính lẫn fallback đều hỏng. Không ghi bản
+  // tiếng Việt vào bảng dịch, nếu không lần sau hệ thống tưởng đã dịch xong và
+  // không bao giờ thử lại.
+  if (!nameOut || nameOut.provider === 'none') return null;
+
+  const translated = {
+    name: nameOut.translatedText || name,
+    description: descriptionOut?.provider === 'none'
+      ? description
+      : (descriptionOut?.translatedText ?? null),
+  };
+  await db.query(
+    `INSERT INTO qr_menu_item_translations (item_id, lang, name, description, is_manual, updated_at)
+     VALUES ($1, $2, $3, $4, FALSE, NOW())
+     ON CONFLICT (item_id, lang)
+     DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, updated_at = NOW()
+       WHERE qr_menu_item_translations.is_manual = FALSE`,
+    [itemId, target, translated.name, translated.description]
+  );
+  return translated;
+}
+
+async function translateMenuCategoryToLanguage(categoryId, name, lang) {
+  const target = String(lang || '').toLowerCase();
+  if (!MENU_LANGS.includes(target) || target === MENU_SOURCE_LANG) return { name };
+
+  const manual = await db.query(
+    'SELECT name, is_manual FROM qr_menu_category_translations WHERE category_id = $1 AND lang = $2',
+    [categoryId, target]
+  );
+  if (manual.rows[0]?.is_manual) return { name: manual.rows[0].name || name };
+
+  const out = await gemini.translateText(name, target, { sourceLang: MENU_SOURCE_LANG });
+  if (!out || out.provider === 'none') return null;
+  const translated = out.translatedText || name;
+  await db.query(
+    `INSERT INTO qr_menu_category_translations (category_id, lang, name, is_manual, updated_at)
+     VALUES ($1, $2, $3, FALSE, NOW())
+     ON CONFLICT (category_id, lang)
+     DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()
+       WHERE qr_menu_category_translations.is_manual = FALSE`,
+    [categoryId, target, translated]
+  );
+  return { name: translated };
+}
+
 // Dịch tên và mô tả món sang 4 ngôn ngữ còn lại NGAY LÚC LƯU.
 //
 // Dịch lúc lưu chứ không lúc khách xem: menu đọc nhiều ghi ít, và khách đang đói
@@ -8520,28 +8636,25 @@ async function translateMenuItem(itemId, name, description) {
   const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
   await Promise.all(targets.map(async (lang) => {
     try {
-      const manual = await db.query(
-        'SELECT is_manual FROM qr_menu_item_translations WHERE item_id = $1 AND lang = $2',
-        [itemId, lang]
-      );
-      if (manual.rows[0]?.is_manual) return;
-
-      const [nameOut, descOut] = await Promise.all([
-        gemini.translateText(name, lang, { sourceLang: MENU_SOURCE_LANG }),
-        description ? gemini.translateText(description, lang, { sourceLang: MENU_SOURCE_LANG })
-                    : Promise.resolve({ translatedText: null }),
-      ]);
-
-      await db.query(
-        `INSERT INTO qr_menu_item_translations (item_id, lang, name, description, is_manual, updated_at)
-         VALUES ($1, $2, $3, $4, FALSE, NOW())
-         ON CONFLICT (item_id, lang)
-         DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, updated_at = NOW()`,
-        [itemId, lang, nameOut.translatedText || name, descOut.translatedText]
-      );
+      await translateMenuItemToLanguage(itemId, name, description, lang);
     } catch (error) {
       // Dịch hỏng thì món vẫn phải lưu được — khách sẽ thấy tên tiếng Việt gốc.
       console.error(`[Menu] Không dịch được món ${itemId} sang ${lang}:`, error.message);
+    }
+  }));
+}
+
+// Dịch TÊN NHÓM món, cùng nguyên tắc với translateMenuItem.
+//
+// Thiếu hàm này thì khách chọn tiếng Hàn sẽ thấy tên món đã dịch nằm dưới một
+// thanh nhóm vẫn còn tiếng Việt — nửa nọ nửa kia trên cùng một màn hình.
+async function translateMenuCategory(categoryId, name) {
+  const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
+  await Promise.all(targets.map(async (lang) => {
+    try {
+      await translateMenuCategoryToLanguage(categoryId, name, lang);
+    } catch (error) {
+      console.error(`[Menu] Không dịch được nhóm ${categoryId} sang ${lang}:`, error.message);
     }
   }));
 }
@@ -8582,7 +8695,7 @@ async function ensurePromoCategory(agentId, projectId) {
      ON CONFLICT DO NOTHING RETURNING *`,
     [agentId, projectId, PROMO_CATEGORY_NAME]
   );
-  if (created.rows[0]) return created.rows[0];
+  if (created.rows[0]) { void translateMenuCategory(created.rows[0].id, PROMO_CATEGORY_NAME); return created.rows[0]; }
   // Hai request song song cùng tạo: cái thua đọc lại cái thắng vừa ghi.
   const again = await db.query(
     'SELECT * FROM qr_menu_categories WHERE agent_id = $1 AND is_promo LIMIT 1', [agentId]
@@ -8634,6 +8747,7 @@ app.post('/api/agent/menu/categories', checkAdminAuth, async (req, res) => {
        RETURNING *`,
       [req.admin.id, req.admin.project_id, name]
     );
+    void translateMenuCategory(created.rows[0].id, name);
     res.status(201).json({ success: true, category: created.rows[0] });
   } catch (error) {
     console.error('Create menu category error:', error);
@@ -8655,6 +8769,9 @@ app.put('/api/agent/menu/categories/:id', checkAdminAuth, async (req, res) => {
        typeof isActive === 'boolean' ? isActive : null]
     );
     if (!updated.rows[0]) return res.status(404).json({ error: 'Không tìm thấy danh mục.' });
+    // Chỉ dịch lại khi TÊN đổi. Đổi thứ tự hay bật/tắt nhóm mà cũng gọi AI thì
+    // mỗi lần kéo thả sắp xếp là một loạt lượt gọi vô ích.
+    if (name && String(name).trim()) void translateMenuCategory(updated.rows[0].id, updated.rows[0].name);
     res.json({ success: true, category: updated.rows[0] });
   } catch (error) {
     console.error('Update menu category error:', error);
@@ -9184,8 +9301,12 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
               i.image_url_expires_at, i.sort_order,
               (i.stock_quantity IS NOT NULL AND i.stock_quantity <= 0) AS sold_out,
               COALESCE(c.is_promo, FALSE) AS is_promo,
-              COALESCE(NULLIF(t.name, ''), i.name) AS name,
-              COALESCE(NULLIF(t.description, ''), i.description) AS description
+               COALESCE(NULLIF(t.name, ''), i.name) AS name,
+               COALESCE(NULLIF(t.description, ''), i.description) AS description,
+               i.name AS source_name, i.description AS source_description,
+               COALESCE(t.is_manual, FALSE) AS translation_is_manual,
+               (NULLIF(t.name, '') IS NOT NULL) AS name_translated,
+               (i.description IS NULL OR NULLIF(t.description, '') IS NOT NULL) AS description_translated
          FROM qr_menu_items i
          LEFT JOIN qr_menu_categories c ON c.id = i.category_id
          LEFT JOIN qr_menu_item_translations t ON t.item_id = i.id AND t.lang = $2
@@ -9196,17 +9317,60 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
       [owner.agent_id, useLang]
     );
     const categories = await db.query(
-      `SELECT id, name, sort_order, is_promo FROM qr_menu_categories
-        WHERE agent_id = $1 AND is_active = TRUE ORDER BY is_promo DESC, sort_order, id`,
-      [owner.agent_id]
+      `SELECT c.id, COALESCE(NULLIF(t.name, ''), c.name) AS name, c.sort_order, c.is_promo,
+              c.name AS source_name, (NULLIF(t.name, '') IS NOT NULL) AS translated
+         FROM qr_menu_categories c
+         LEFT JOIN qr_menu_category_translations t ON t.category_id = c.id AND t.lang = $2
+        WHERE c.agent_id = $1 AND c.is_active = TRUE
+        ORDER BY c.is_promo DESC, c.sort_order, c.id`,
+      [owner.agent_id, useLang]
     );
 
+    // Nội dung cũ có thể được tạo trước khi bảng dịch xuất hiện. Bù đúng ngôn
+    // ngữ đang yêu cầu ngay trong lượt này rồi lưu cache DB; các lượt sau chỉ
+    // còn JOIN, không gọi AI lại. Bản Agent sửa tay tuyệt đối không bị ghi đè.
+    if (useLang !== MENU_SOURCE_LANG) {
+      const missingItems = items.rows.filter((row) =>
+        !row.translation_is_manual && (!row.name_translated || !row.description_translated)
+      );
+      const missingCategories = categories.rows.filter((row) => !row.translated);
+
+      // Giới hạn 4 tác vụ đồng thời để một menu cũ nhiều món không tạo bão
+      // request tới nhà cung cấp dịch. Mỗi tác vụ món tự gom tên+mô tả một lượt.
+      const tasks = [
+        ...missingItems.map((row) => async () => {
+          const translated = await translateMenuItemToLanguage(
+            row.id, row.source_name, row.source_description, useLang
+          );
+          if (translated) {
+            row.name = translated.name;
+            row.description = translated.description;
+          }
+        }),
+        ...missingCategories.map((row) => async () => {
+          const translated = await translateMenuCategoryToLanguage(row.id, row.source_name, useLang);
+          if (translated) row.name = translated.name;
+        }),
+      ];
+      let cursor = 0;
+      await Promise.all(Array.from({ length: Math.min(4, tasks.length) }, async () => {
+        while (cursor < tasks.length) {
+          const task = tasks[cursor++];
+          try { await task(); }
+          catch (error) { console.error('[Menu] Dịch bù thất bại:', error.message); }
+        }
+      }));
+    }
+
     const withImages = await Promise.all(items.rows.map(refreshMenuImageUrl));
-    const clean = withImages.map(({ image_key, image_url_expires_at, ...item }) => item);
+    const clean = withImages.map(({
+      image_key, image_url_expires_at, source_name, source_description,
+      translation_is_manual, name_translated, description_translated, ...item
+    }) => item);
     res.json({
       language: useLang,
       vatRate: QR_MENU_VAT_RATE,
-      categories: categories.rows,
+      categories: categories.rows.map(({ source_name, translated, ...category }) => category),
       // Món ưu đãi tách riêng để cổng khách dựng slider đầu trang mà không phải
       // tự đoán nhóm nào là nhóm ưu đãi.
       promoItems: clean.filter((item) => item.is_promo),
@@ -9313,7 +9477,8 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
     // mon, so luong va tien - them mot dong chu ke lai y het chi la noi hai lan.
     // Phia nhan vien van can no: no la dong xem truoc trong danh sach chat va la
     // noi dung cua thong bao day.
-    const summary = items.map((item) => `${item.name} x${item.quantity}${item.note ? ` (${item.note})` : ''}`).join(', ');
+    const staffItems = await orderItemsForStaffSummary(items, owner.detected_language);
+    const summary = staffItems.map((item) => `${item.name} x${item.quantity}${item.note ? ` (${item.note})` : ''}`).join(', ');
     const text = `[Đặt món] Khách vừa đặt: ${summary}. Tạm tính ${formatVnd(totalAmount)}.`;
     await db.query(
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
@@ -9328,7 +9493,9 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
     broadcastAdminEvent('order_update', { sessionId, orderId, status: 'pending_confirm' });
     void deliverPosEvent(orderId, 'order.created');
 
-    res.status(201).json({ success: true, order: created.rows[0] });
+    const responseLanguage = invoiceLanguageFor(owner, req.body?.language);
+    const localizedOrder = await localizeOrderForVisitor(created.rows[0], responseLanguage);
+    res.status(201).json({ success: true, order: localizedOrder, language: responseLanguage });
   } catch (error) {
     console.error('Customer place order error:', error);
     res.status(500).json({ error: 'Không gửi được đơn đặt món.' });
@@ -9445,7 +9612,8 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
 
     // Cung chi danh cho nhan vien - cau "Vui long xac nhan lai" von noi voi Sale,
     // khong phai voi khach. Khach thay the don da doi noi dung la du.
-    const text = `[Đặt món] Khách đã cập nhật đơn (${items.map((item) => `${item.name} x${item.quantity}${item.note ? ` (${item.note})` : ''}`).join(', ')}). Vui lòng xác nhận lại.`;
+    const staffItems = await orderItemsForStaffSummary(items, session.detected_language);
+    const text = `[Đặt món] Khách đã cập nhật đơn (${staffItems.map((item) => `${item.name} x${item.quantity}${item.note ? ` (${item.note})` : ''}`).join(', ')}). Vui lòng xác nhận lại.`;
     await db.query(
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
        VALUES ($1, 'system', $2, $2, 'vi', 'staff')`,
@@ -9453,7 +9621,9 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
     );
     broadcastAdminEvent('order_update', { sessionId, orderId: order.id, status: 'pending_confirm' });
     void deliverPosEvent(order.id, 'order.updated');
-    res.json({ success: true, order: updated.rows[0] });
+    const responseLanguage = invoiceLanguageFor(session, req.body?.language);
+    const localizedOrder = await localizeOrderForVisitor(updated.rows[0], responseLanguage);
+    res.json({ success: true, order: localizedOrder, language: responseLanguage });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('Revise customer order error:', error);
