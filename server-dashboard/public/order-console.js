@@ -83,7 +83,7 @@
                     <i class="ri-edit-2-line"></i> <span data-edit-label>Chỉnh sửa</span>
                 </button>
                 <button type="button" class="order-btn is-confirm" data-order-confirm="${order.id}">
-                    <i class="ri-check-line"></i> Xác nhận &amp; báo bếp
+                    <i class="ri-check-line"></i> Xác nhận
                 </button>
             </div>`;
 

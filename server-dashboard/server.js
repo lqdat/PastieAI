@@ -9832,16 +9832,28 @@ app.put('/api/admin/orders/:orderId/notes', checkAdminAuth, requireWorkingHours,
 
 // --- Phương thức thanh toán khả dụng -----------------------------------------
 
-// Ba phương thức trả ngay luôn có. Superadmin chọn đúng MỘT phương thức trả chậm
-// cho từng Agent: cộng vào tiền phòng HOẶC thanh toán sau. Không bao giờ trả cả
-// hai nút về client.
+async function resolveAgentIdForSession(sessionId) {
+  const owner = await resolveMenuOwner(sessionId);
+  if (owner?.agent_id) return owner.agent_id;
+  if (owner?.project_id) {
+    const row = await db.query(
+      `SELECT id FROM admins WHERE project_id = $1 AND role = 'agent' AND is_active = TRUE ORDER BY id ASC LIMIT 1`,
+      [owner.project_id]
+    );
+    if (row.rows[0]?.id) return row.rows[0].id;
+  }
+  return null;
+}
+
+// Ba phương thức trả ngay luôn có. Superadmin hoặc Agent chọn đúng MỘT phương thức trả chậm:
+// cộng vào tiền phòng HOẶC thanh toán sau. Không bao giờ trả cả hai nút về client.
 async function paymentMethodsForSession(sessionId, language) {
   const ids = ['cash', 'bank_qr', 'card'];
-  const owner = await resolveMenuOwner(sessionId);
-  if (owner?.agent_id) {
+  const agentId = await resolveAgentIdForSession(sessionId);
+  if (agentId) {
     const row = await db.query(
       'SELECT deferred_payment_mode, allow_room_charge FROM admins WHERE id = $1',
-      [owner.agent_id]
+      [agentId]
     );
     const deferred = row.rows[0]?.deferred_payment_mode
       || (row.rows[0]?.allow_room_charge ? 'room_charge' : 'none');
@@ -9851,11 +9863,11 @@ async function paymentMethodsForSession(sessionId, language) {
 }
 
 async function deferredPaymentForSession(sessionId) {
-  const owner = await resolveMenuOwner(sessionId);
-  if (!owner?.agent_id) return 'none';
+  const agentId = await resolveAgentIdForSession(sessionId);
+  if (!agentId) return 'none';
   const row = await db.query(
     'SELECT deferred_payment_mode, allow_room_charge FROM admins WHERE id = $1',
-    [owner.agent_id]
+    [agentId]
   );
   const mode = row.rows[0]?.deferred_payment_mode
     || (row.rows[0]?.allow_room_charge ? 'room_charge' : 'none');
@@ -9936,9 +9948,81 @@ app.get('/api/chats/:sessionId/payment-methods', async (req, res) => {
   }
 });
 
+// Agent / Admin lấy thiết lập phương thức thanh toán trả chậm
+app.get('/api/agent/deferred-payment', checkAdminAuth, async (req, res) => {
+  try {
+    let agentId = null;
+    if (req.admin.role === 'agent') {
+      agentId = req.admin.id;
+    } else if (req.query.agent_id && req.admin.role === 'superadmin') {
+      agentId = parseInt(req.query.agent_id, 10);
+    } else if (req.admin.project_id) {
+      const r = await db.query(
+        `SELECT id FROM admins WHERE project_id = $1 AND role = 'agent' AND is_active = TRUE ORDER BY id ASC LIMIT 1`,
+        [req.admin.project_id]
+      );
+      agentId = r.rows[0]?.id || req.admin.id;
+    } else {
+      agentId = req.admin.id;
+    }
+
+    const row = await db.query(
+      `SELECT id, full_name, deferred_payment_mode, allow_room_charge FROM admins WHERE id = $1`,
+      [agentId]
+    );
+    if (!row.rows[0]) {
+      return res.json({ mode: 'none', agent_id: agentId });
+    }
+    const mode = row.rows[0].deferred_payment_mode || (row.rows[0].allow_room_charge ? 'room_charge' : 'none');
+    res.json({ mode, agent_id: agentId, full_name: row.rows[0].full_name });
+  } catch (error) {
+    console.error('Get deferred payment error:', error);
+    res.status(500).json({ error: 'Không tải được thiết lập thanh toán.' });
+  }
+});
+
+// Agent / Admin cập nhật thiết lập phương thức thanh toán trả chậm
+app.put('/api/agent/deferred-payment', checkAdminAuth, async (req, res) => {
+  const mode = String(req.body?.mode || 'none');
+  if (!['none', 'room_charge', 'pay_later'].includes(mode)) {
+    return res.status(400).json({ error: 'mode phải là none, room_charge hoặc pay_later.' });
+  }
+  try {
+    let agentId = null;
+    if (req.admin.role === 'agent') {
+      agentId = req.admin.id;
+    } else if (req.body.agent_id && req.admin.role === 'superadmin') {
+      agentId = parseInt(req.body.agent_id, 10);
+    } else if (req.admin.project_id) {
+      const r = await db.query(
+        `SELECT id FROM admins WHERE project_id = $1 AND role = 'agent' AND is_active = TRUE ORDER BY id ASC LIMIT 1`,
+        [req.admin.project_id]
+      );
+      agentId = r.rows[0]?.id || req.admin.id;
+    } else {
+      agentId = req.admin.id;
+    }
+
+    const updated = await db.query(
+      `UPDATE admins
+          SET deferred_payment_mode = $2,
+              allow_room_charge = ($2 = 'room_charge')
+        WHERE id = $1
+        RETURNING id, full_name, deferred_payment_mode`,
+      [agentId, mode]
+    );
+    res.json({ success: true, mode, agent: updated.rows[0] });
+  } catch (error) {
+    console.error('Update deferred payment error:', error);
+    res.status(500).json({ error: 'Không lưu được thiết lập thanh toán.' });
+  }
+});
+
 // Superadmin chọn phương thức trả chậm mặc định cho một Agent.
 app.put('/api/admin/agents/:id/deferred-payment', checkAdminAuth, async (req, res) => {
-  if (req.admin.role !== 'superadmin') return res.status(403).json({ error: 'Chỉ superadmin đổi được thiết lập này.' });
+  if (req.admin.role !== 'superadmin' && (req.admin.role !== 'agent' || req.admin.id !== Number(req.params.id))) {
+    return res.status(403).json({ error: 'Không có quyền đổi thiết lập này.' });
+  }
   const mode = String(req.body?.mode || 'none');
   if (!['none', 'room_charge', 'pay_later'].includes(mode)) {
     return res.status(400).json({ error: 'mode phải là none, room_charge hoặc pay_later.' });

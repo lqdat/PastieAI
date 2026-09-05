@@ -370,6 +370,27 @@
 
                 <!-- Thực đơn: chỉ Agent quản lý dự án QR -->
                 <section class="org-pane hide" data-org-pane="menu">
+                    <!-- Cấu hình phương thức thanh toán bổ sung cho khách -->
+                    <div class="menu-payment-config-card" style="margin-bottom:14px; padding:12px 16px; border-radius:12px; background:var(--panel-bg, #ffffff); border:1px solid var(--panel-border, #f0dde8); display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <i class="ri-secure-payment-line" style="font-size:22px; color:var(--accent-color, #d2127e);"></i>
+                            <div>
+                                <strong style="font-size:13px; color:var(--text-primary, #2d2035); display:block;">Phương thức thanh toán cho khách:</strong>
+                                <span style="font-size:12px; color:var(--text-secondary, #776a7e);">(Mặc định luôn có Tiền mặt, Chuyển khoản QR, Thẻ)</span>
+                            </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <select id="menu-deferred-payment-select" style="font-size:12.5px; padding:6px 10px; border-radius:8px; border:1px solid var(--panel-border, #e0cee0); background:var(--bg-input, #ffffff); color:var(--text-primary, #2d2035); font-weight:600; cursor:pointer;">
+                                <option value="none">Chỉ trả ngay (Tiền mặt, QR, Thẻ)</option>
+                                <option value="room_charge">Cộng vào tiền phòng (Room charge)</option>
+                                <option value="pay_later">Thanh toán sau (Pay later)</option>
+                            </select>
+                            <button type="button" id="menu-deferred-payment-save-btn" class="pane-add" style="font-size:12px; padding:6px 12px; margin:0; height:auto;">
+                                <i class="ri-save-line"></i> <span>Lưu</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="org-list-header">
                         <h4>Các món trong thực đơn</h4>
                         <span id="menu-count-badge" class="org-count-badge">0 món</span>
