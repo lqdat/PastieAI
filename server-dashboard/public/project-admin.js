@@ -1121,8 +1121,14 @@ async function openAccountDevices(adminId) {
                         <small>Đăng ký: ${escapeHtml(deviceTimeLabel(device.first_seen))}</small>
                     </div>
                     ${isActive
-                        ? `<button type="button" class="device-revoke" data-revoke="${device.id}"><i class="ri-logout-box-r-line"></i> Thu hồi</button>`
-                        : '<span class="device-revoked-tag">Đã thu hồi</span>'}
+                        ? `<span class="device-row-actions">
+                             <button type="button" class="device-revoke" data-remove="${device.id}"><i class="ri-delete-bin-line"></i> Gỡ</button>
+                             <button type="button" class="device-block" data-block="${device.id}"><i class="ri-forbid-line"></i> Chặn</button>
+                           </span>`
+                        : `<span class="device-row-actions">
+                             <span class="device-revoked-tag">Đã chặn</span>
+                             <button type="button" class="device-allow" data-allow="${device.id}"><i class="ri-check-line"></i> Bỏ chặn</button>
+                           </span>`}
                 </div>`;
 
             body.innerHTML = `
@@ -1135,36 +1141,63 @@ async function openAccountDevices(adminId) {
                     Lần đổi gần nhất: ${escapeHtml(deviceTimeLabel(data.lastChangeAt))}
                 </p>
                 ${active.length ? active.map((d) => row(d, true)).join('') : '<p class="device-empty">Chưa có máy nào đang đăng ký.</p>'}
-                ${revoked.length ? `<p class="device-group-label">Đã thu hồi (${revoked.length})</p>${revoked.map((d) => row(d, false)).join('')}` : ''}
-                <button type="button" class="device-reset"><i class="ri-refresh-line"></i> Gỡ tất cả &amp; xoá thời gian chờ</button>`;
+                ${revoked.length ? `<p class="device-group-label">Đã chặn (${revoked.length})</p>${revoked.map((d) => row(d, false)).join('')}` : ''}
+                <p class="device-hint">
+                    <strong>Gỡ</strong> xoá máy khỏi danh sách và trả lại một suất — máy đó đăng nhập lại được bình thường.
+                    <strong>Chặn</strong> cấm hẳn máy đó, dùng khi máy bị mất; bỏ chặn được bất cứ lúc nào.
+                </p>
+                <button type="button" class="device-reset"><i class="ri-refresh-line"></i> Xoá sạch danh sách &amp; thời gian chờ</button>`;
         } catch (error) {
             body.innerHTML = `<p class="device-error">${escapeHtml(error.message)}</p>`;
         }
     }
 
+    // Ba việc khác nhau, ba lời xác nhận khác nhau — trước đây gộp làm một nên
+    // người bấm không biết mình vừa dọn chỗ hay vừa cấm vĩnh viễn một cái máy.
+    const act = async (url, method, confirmText, doneText, failText) => {
+        if (confirmText && !(await pastieConfirm(confirmText))) return;
+        try {
+            const res = await authFetch(url, { method });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || failText);
+            showToast(doneText, 'success');
+            await load();
+        } catch (error) { showToast(error.message, 'error'); }
+    };
+
     body.addEventListener('click', async (event) => {
-        const revokeBtn = event.target.closest('[data-revoke]');
-        if (revokeBtn) {
-            const ok = await pastieConfirm('Thu hồi thiết bị này? Phiên đăng nhập trên máy đó sẽ bị đóng ngay.');
-            if (!ok) return;
-            try {
-                const res = await authFetch(`${API_BASE}/api/superadmin/accounts/${adminId}/devices/${revokeBtn.dataset.revoke}`, { method: 'DELETE' });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data?.error || 'Không thu hồi được thiết bị.');
-                showToast('Đã thu hồi thiết bị.', 'success');
-                await load();
-            } catch (error) { showToast(error.message, 'error'); }
+        const base = `${API_BASE}/api/superadmin/accounts/${adminId}/devices`;
+
+        const removeBtn = event.target.closest('[data-remove]');
+        if (removeBtn) {
+            await act(`${base}/${removeBtn.dataset.remove}`, 'DELETE',
+                'Gỡ thiết bị này khỏi tài khoản? Phiên trên máy đó đóng ngay, nhưng máy vẫn đăng nhập lại được và suất trong hạn mức được trả lại.',
+                'Đã gỡ thiết bị.', 'Không gỡ được thiết bị.');
+            return;
+        }
+        const blockBtn = event.target.closest('[data-block]');
+        if (blockBtn) {
+            await act(`${base}/${blockBtn.dataset.block}/block`, 'POST',
+                'CHẶN thiết bị này? Máy đó sẽ không đăng nhập được nữa cho tới khi anh bỏ chặn. Chỉ dùng khi máy bị mất.',
+                'Đã chặn thiết bị.', 'Không chặn được thiết bị.');
+            return;
+        }
+        const allowBtn = event.target.closest('[data-allow]');
+        if (allowBtn) {
+            await act(`${base}/${allowBtn.dataset.allow}/allow`, 'POST',
+                'Bỏ chặn thiết bị này? Máy đó đăng nhập lại được ngay.',
+                'Đã bỏ chặn thiết bị.', 'Không bỏ chặn được thiết bị.');
             return;
         }
         if (event.target.closest('.device-reset')) {
             // Reset là cửa sau lách hạn mức nếu dùng bừa — hỏi cho rõ trước.
-            const ok = await pastieConfirm('Gỡ TẤT CẢ thiết bị của tài khoản này và xoá thời gian chờ đổi máy? Người dùng sẽ phải đăng nhập lại từ đầu.');
+            const ok = await pastieConfirm('Xoá SẠCH danh sách thiết bị của tài khoản này và xoá thời gian chờ đổi máy? Người dùng đăng nhập lại là máy được ghi nhận lại từ đầu.');
             if (!ok) return;
             try {
                 const res = await authFetch(`${API_BASE}/api/superadmin/accounts/${adminId}/devices/reset`, { method: 'POST' });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data?.error || 'Không reset được thiết bị.');
-                showToast('Đã gỡ toàn bộ thiết bị.', 'success');
+                showToast('Đã xoá sạch danh sách thiết bị.', 'success');
                 await load();
             } catch (error) { showToast(error.message, 'error'); }
         }

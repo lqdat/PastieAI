@@ -578,7 +578,14 @@ const emailKeyOf = (req) => String(req.body?.email || req.body?.username || '').
 
 const limitLoginIp = rateLimit('login-ip', 20, 10 * 60 * 1000);
 const limitLoginEmail = rateLimit('login-email', 8, 10 * 60 * 1000, emailKeyOf);
-const limitOtpSendIp = rateLimit('otp-send-ip', 10, 10 * 60 * 1000);
+// Đếm theo IP thì CẢ QUÁN chung một hạn mức: quán ra Internet bằng một địa chỉ,
+// nên 10 lượt/10 phút là trần chung cho toàn bộ khách trong nhà — khách thứ 11
+// không đăng nhập được dù email của họ hoàn toàn sạch. Đúng cái bẫy đã gỡ cho
+// tin nhắn chat, chỉ là đường OTP bị bỏ sót.
+//
+// Hàng rào thật nằm ở trần theo TỪNG EMAIL bên dưới. Trần theo IP giữ lại chỉ
+// để chặn bot rải hàng nghìn địa chỉ khác nhau, nên nới rất rộng.
+const limitOtpSendIp = rateLimit('otp-send-ip', 300, 10 * 60 * 1000);
 // Gửi OTP tốn tiền email thật, siết chặt hơn theo địa chỉ nhận.
 const limitOtpSendEmail = rateLimit('otp-send-email', 6, 10 * 60 * 1000, emailKeyOf);
 const limitOtpVerifyIp = rateLimit('otp-verify-ip', 30, 10 * 60 * 1000);
@@ -904,7 +911,8 @@ async function checkDeviceAllowed(admin, req) {
       return {
         ok: false,
         code: 'DEVICE_REVOKED',
-        error: 'Thiết bị này đã bị gỡ khỏi tài khoản. Liên hệ quản trị viên để đăng ký lại.',
+        error: 'Thiết bị này đã bị CHẶN khỏi tài khoản. Quản trị viên phải bỏ chặn '
+          + 'trong mục Thiết bị thì mới đăng nhập lại được trên máy này.',
       };
     }
     await db.query(
@@ -8291,7 +8299,13 @@ app.delete('/api/admin/me/devices/:deviceRowId', checkAdminAuth, async (req, res
       return res.status(400).json({ error: 'Không thể gỡ thiết bị bạn đang dùng. Hãy gỡ từ thiết bị khác.' });
     }
 
-    await db.query(`UPDATE admin_devices SET status = 'revoked' WHERE id = $1`, [row.rows[0].id]);
+    // XOÁ hẳn dòng, không đánh dấu 'revoked'.
+    //
+    // Đánh dấu revoked thì dòng vẫn nằm đó, và checkDeviceAllowed tìm thấy nó
+    // TRƯỚC khi xét hạn mức nên trả về DEVICE_REVOKED ngay — máy vừa gỡ không
+    // bao giờ đăng ký lại được, kể cả khi tài khoản còn thừa chỗ. "Gỡ" phải trả
+    // lại một suất; muốn cấm hẳn một máy thì dùng "Chặn" ở dưới.
+    await db.query('DELETE FROM admin_devices WHERE id = $1', [row.rows[0].id]);
     // Gỡ thiết bị KHÔNG tính là "đổi thiết bị" nên không chạm cooldown — người
     // dùng chủ động dọn chỗ là việc nên khuyến khích, không nên phạt.
     await db.query('DELETE FROM admin_sessions WHERE admin_id = $1 AND device_id = $2',
@@ -8342,10 +8356,10 @@ app.delete('/api/superadmin/accounts/:adminId/devices/:deviceRowId', checkAdminA
       [deviceRowId, adminId]
     );
     if (!device.rows[0]) return res.status(404).json({ error: 'Không tìm thấy thiết bị của tài khoản này.' });
-    await db.query(`UPDATE admin_devices SET status = 'revoked' WHERE id = $1`, [deviceRowId]);
+    await db.query('DELETE FROM admin_devices WHERE id = $1', [deviceRowId]);
     await db.query('DELETE FROM admin_sessions WHERE admin_id = $1 AND device_id = $2',
       [adminId, device.rows[0].device_id]);
-    console.log(`[License] Superadmin ${req.admin.username} thu hồi thiết bị ${device.rows[0].label || deviceRowId} của admin id=${adminId}`);
+    console.log(`[License] Superadmin ${req.admin.username} gỡ thiết bị ${device.rows[0].label || deviceRowId} của admin id=${adminId}`);
     res.json({ success: true });
   } catch (error) {
     console.error('Superadmin revoke device error:', error);
@@ -8359,7 +8373,13 @@ app.post('/api/superadmin/accounts/:adminId/devices/reset', checkAdminAuth, asyn
   if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được reset thiết bị.' });
   const adminId = Number(req.params.adminId);
   try {
-    await db.query(`UPDATE admin_devices SET status = 'revoked' WHERE admin_id = $1`, [adminId]);
+    // XOÁ SẠCH danh sách, không phải đánh dấu revoked toàn bộ.
+    //
+    // Bản cũ chạy UPDATE ... SET status='revoked' WHERE admin_id = $1, tức là
+    // thu hồi TẤT CẢ máy của người đó. Nhân viên bấm đăng nhập lại trên chính
+    // điện thoại của mình liền nhận DEVICE_REVOKED — nút tên "reset" nhưng làm
+    // đúng điều ngược lại: khoá sạch thay vì mở sạch.
+    await db.query('DELETE FROM admin_devices WHERE admin_id = $1', [adminId]);
     await db.query('UPDATE admins SET last_device_change_at = NULL WHERE id = $1', [adminId]);
     await db.query('DELETE FROM admin_sessions WHERE admin_id = $1', [adminId]);
     console.log(`[License] Superadmin ${req.admin.username} (id=${req.admin.id}) reset thiết bị của admin id=${adminId}`);
@@ -8367,6 +8387,75 @@ app.post('/api/superadmin/accounts/:adminId/devices/reset', checkAdminAuth, asyn
   } catch (error) {
     console.error('Reset devices error:', error);
     res.status(500).json({ error: 'Không reset được thiết bị.' });
+  }
+});
+
+// CHẶN / BỎ CHẶN một thiết bị — khác hẳn với "Gỡ" ở trên.
+//
+//   Gỡ   (DELETE .../devices/:id)  xoá dòng, TRẢ LẠI một suất trong hạn mức.
+//                                  Dùng khi đổi máy, nghỉ việc, thêm nhầm.
+//   Chặn (POST   .../devices/:id/block) giữ dòng và đặt status='revoked' để
+//                                  checkDeviceAllowed từ chối vĩnh viễn.
+//                                  Dùng khi máy bị mất cắp.
+//
+// Trước đây hai việc này là một, nên "gỡ" cũng khoá luôn máy khỏi tài khoản mà
+// không có đường quay lại — không endpoint nào bỏ được cờ revoked.
+app.post('/api/superadmin/accounts/:adminId/devices/:deviceRowId/block', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được chặn thiết bị.' });
+  const adminId = Number(req.params.adminId);
+  const deviceRowId = Number(req.params.deviceRowId);
+  try {
+    const device = await db.query(
+      `SELECT id, device_id, label FROM admin_devices WHERE id = $1 AND admin_id = $2`,
+      [deviceRowId, adminId]
+    );
+    if (!device.rows[0]) return res.status(404).json({ error: 'Không tìm thấy thiết bị của tài khoản này.' });
+    await db.query(`UPDATE admin_devices SET status = 'revoked' WHERE id = $1`, [deviceRowId]);
+    await db.query('DELETE FROM admin_sessions WHERE admin_id = $1 AND device_id = $2',
+      [adminId, device.rows[0].device_id]);
+    console.log(`[License] Superadmin ${req.admin.username} CHẶN thiết bị ${device.rows[0].label || deviceRowId} của admin id=${adminId}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Superadmin block device error:', error);
+    res.status(500).json({ error: 'Không chặn được thiết bị.' });
+  }
+});
+
+app.post('/api/superadmin/accounts/:adminId/devices/:deviceRowId/allow', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được bỏ chặn thiết bị.' });
+  const adminId = Number(req.params.adminId);
+  const deviceRowId = Number(req.params.deviceRowId);
+  try {
+    const device = await db.query(
+      `SELECT id, label, status FROM admin_devices WHERE id = $1 AND admin_id = $2`,
+      [deviceRowId, adminId]
+    );
+    if (!device.rows[0]) return res.status(404).json({ error: 'Không tìm thấy thiết bị của tài khoản này.' });
+
+    // Bỏ chặn là đưa một máy trở lại danh sách đang hoạt động, nên phải xét hạn
+    // mức như một thiết bị mới — nếu không, chặn rồi bỏ chặn là cách lách trần.
+    const info = await db.query(
+      `SELECT a.device_limit,
+              (SELECT COUNT(*)::int FROM admin_devices d
+                WHERE d.admin_id = a.id AND d.status = 'active') AS active_count
+         FROM admins a WHERE a.id = $1`,
+      [adminId]
+    );
+    const row = info.rows[0] || {};
+    const limit = Number.isFinite(row.device_limit) && row.device_limit !== null
+      ? row.device_limit : DEVICE_LIMIT_DEFAULT;
+    if (device.rows[0].status !== 'active' && row.active_count >= limit) {
+      return res.status(409).json({
+        error: `Tài khoản đã dùng đủ ${limit} thiết bị. Hãy gỡ bớt một máy khác trước khi bỏ chặn máy này.`,
+      });
+    }
+
+    await db.query(`UPDATE admin_devices SET status = 'active', last_seen = NOW() WHERE id = $1`, [deviceRowId]);
+    console.log(`[License] Superadmin ${req.admin.username} BỎ CHẶN thiết bị ${device.rows[0].label || deviceRowId} của admin id=${adminId}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Superadmin allow device error:', error);
+    res.status(500).json({ error: 'Không bỏ chặn được thiết bị.' });
   }
 });
 

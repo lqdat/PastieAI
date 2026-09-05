@@ -1233,3 +1233,24 @@
    Trước đây mọi thẻ inline bên trong (b, code) đều thành flex item và bị dàn
    ngang — câu văn vỡ làm ba mảnh, PG_POOL_MAX nhảy sang một cột riêng. */
 .mon-note > span { min-width: 0; }
+
+
+/* Hai nút trên một hàng thiết bị: Gỡ (trả lại suất) và Chặn (cấm hẳn). Màu phải
+   khác nhau rõ — cùng màu đỏ thì người bấm nhầm việc nặng thành việc nhẹ. */
+.device-row-actions { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.device-block,
+.device-allow {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 10px; border-radius: 7px; font-size: 11.5px; font-weight: 650;
+    background: transparent; cursor: pointer; white-space: nowrap;
+}
+.device-block { border: 1px solid rgba(239,68,68,.35); color: #ef4444; }
+.device-block:hover { background: rgba(239,68,68,.1); }
+.device-allow { border: 1px solid rgba(16,185,129,.35); color: #059669; }
+.device-allow:hover { background: rgba(16,185,129,.1); }
+.device-hint {
+    margin: 12px 0 8px; padding: 10px 12px; border-radius: 8px;
+    background: rgba(148,163,184,.1); color: var(--text-muted);
+    font-size: 11.5px; line-height: 1.6;
+}
+.device-hint strong { color: var(--text-secondary); }

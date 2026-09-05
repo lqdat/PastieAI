@@ -4533,6 +4533,26 @@ button {
     padding-left: 0;
     border-left: 0;
 }
+/* Tên Agent dài: xuống TỐI ĐA 2 hàng rồi mới cắt bằng "…".
+   Quy tắc gốc đang là white-space: nowrap + ellipsis, tức là cắt ngay giữa
+   hàng đầu — "Hộ Kinh Doanh Đan Trinh Pa…" dù bên dưới còn nguyên chỗ trống.
+   -webkit-line-clamp cắt theo SỐ HÀNG, nên phải bỏ nowrap thì chữ mới có cơ
+   hội xuống hàng để mà đếm. */
+.dashboard-header.sale-header .agent-identity-label {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    /* Chừa chỗ cho cụm nút bên phải, nếu không hàng thứ hai sẽ chạy xuống dưới
+       nút và trông như bị nút đè lên. */
+    padding-right: 12px;
+}
+/* Header cao thêm một chút để chứa được hai hàng mà logo vẫn đủ chỗ ở dưới. */
+.dashboard-header.sale-header { min-height: 96px; }
 /* Nút nằm HÀNG TRÊN, không căn giữa theo chiều cao header nữa. */
 .dashboard-header.sale-header .header-right {
     align-self: flex-start;
@@ -4567,4 +4587,8 @@ button {
         flex-direction: column;
         align-items: flex-start;
     }
+    /* Mobile hẹp nên tên gần như luôn tràn: vẫn 2 hàng rồi mới "…", và header
+       phải cao thêm đúng bằng một hàng chữ, nếu không hàng thứ hai đè lên logo. */
+    .dashboard-header.sale-header { min-height: calc(124px + env(safe-area-inset-top)); }
+    .dashboard-header.sale-header .agent-identity-label { padding-right: 0; }
 }
