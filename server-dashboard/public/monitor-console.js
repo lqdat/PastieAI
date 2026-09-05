@@ -31,8 +31,15 @@
         return 'is-ok';
     }
 
-    function tile(label, value, sub, cls) {
-        return `<div class="mon-tile ${cls || ''}">
+    // Dùng thuộc tính title của trình duyệt, không tự vẽ tooltip.
+    //
+    // Các ô nằm trong một khung có overflow-y: auto. Tooltip tự vẽ bằng CSS sẽ bị
+    // khung đó CẮT MẤT khi ô nằm sát mép trên — đúng lúc cần đọc nhất. title thì
+    // trình duyệt vẽ ở lớp trên cùng, không bao giờ bị cắt, và đọc được bằng trình
+    // đọc màn hình.
+    function tile(label, value, sub, cls, tip) {
+        const t = tip ? ` title="${escapeHtml(tip)}"` : '';
+        return `<div class="mon-tile ${cls || ''}${tip ? ' has-tip' : ''}"${t}>
             <span class="mon-tile-label">${label}</span>
             <strong class="mon-tile-value">${value}</strong>
             ${sub ? `<small class="mon-tile-sub">${sub}</small>` : ''}
@@ -53,27 +60,35 @@
         $('monitor-health').innerHTML = `
             <div class="mon-grid">
                 ${tile('Khách đang online', num(d.live?.customersOnline),
-                    `có gọi máy chủ trong ${d.live?.windowSeconds || 60} giây qua`, 'is-hero')}
+                    `có gọi máy chủ trong ${d.live?.windowSeconds || 60} giây qua`, 'is-hero',
+                    'Số phiên chat có gọi tới máy chủ trong 60 giây qua — khách đang thật sự mở trang. Khác với \'Phiên đang mở\' bên dưới: một phiên có thể còn mở trong database dù khách đã rời đi từ hôm qua.')}
                 ${tile('Request mỗi giây', t.perSecond ?? 0,
-                    `${num(t.requests)} lượt trong 60 giây`, '')}
+                    `${num(t.requests)} lượt trong 60 giây`, '',
+                    'Số lượt gọi máy chủ trung bình mỗi giây trong 60 giây qua. Mỗi khách đang mở trang tạo ra khoảng 0,6 lượt/giây, nên con số này chia cho 0,6 xấp xỉ số khách đang xem.')}
                 ${tile('Độ trễ p95', `${t.p95 ?? 0}ms`,
-                    `p50 ${t.p50 ?? 0}ms · p99 ${t.p99 ?? 0}ms`, tone(t.p95 || 0, 500, 1500))}
+                    `p50 ${t.p50 ?? 0}ms · p99 ${t.p99 ?? 0}ms`, tone(t.p95 || 0, 500, 1500),
+                    '95 trong 100 lượt gọi nhanh hơn con số này. Dùng p95 thay vì trung bình vì trung bình đẹp vẫn có thể che một nhóm khách đang chờ rất lâu. Dưới 500ms là tốt, trên 1,5 giây là khách cảm nhận được.')}
                 ${tile('Tỉ lệ lỗi', `${((t.errorRate || 0) * 100).toFixed(1)}%`,
-                    '4xx và 5xx trong 60 giây', tone((t.errorRate || 0) * 100, 2, 10))}
+                    '4xx và 5xx trong 60 giây', tone((t.errorRate || 0) * 100, 2, 10),
+                    'Phần trăm lượt gọi trả về mã 4xx hoặc 5xx trong 60 giây qua. Vài phần trăm là bình thường (khách mở lại phiên đã đóng). Tăng vọt thì xem log máy chủ ngay.')}
             </div>
 
-            ${t.truncated ? `<p class="mon-note"><i class="ri-information-line"></i>
+            ${t.truncated ? `<p class="mon-note"><i class="ri-information-line"></i><span>
                 Lưu lượng cao nên vùng đệm chỉ giữ được vài giây gần nhất — con số "60 giây" ở trên
-                thực chất là ${num(t.requests)} lượt mới nhất.</p>` : ''}
+                thực chất là ${num(t.requests)} lượt mới nhất.</span></p>` : ''}
 
             <h4 class="mon-heading">Máy chủ</h4>
             <div class="mon-grid">
                 ${tile('Độ trễ vòng lặp', `${p.loopLagMs ?? 0}ms`,
-                    'Node một luồng — số này dâng là có việc chặn tất cả', tone(p.loopLagMs || 0, 50, 200))}
-                ${tile('Bộ nhớ', `${p.rssMb ?? 0} MB`, `heap ${p.heapUsedMb ?? 0}/${p.heapTotalMb ?? 0} MB`, '')}
-                ${tile('Đã chạy', duration(p.uptimeSeconds), `Node ${p.nodeVersion || '—'}`, '')}
+                    'Node một luồng — số này dâng là có việc chặn tất cả', tone(p.loopLagMs || 0, 50, 200),
+                    'Thời gian một việc nhỏ phải đợi tới lượt chạy. Node chạy một luồng, nên số này dâng nghĩa là có việc nặng đang chặn tất cả những người khác. Dưới 50ms là khoẻ, trên 200ms là có vấn đề.')}
+                ${tile('Bộ nhớ', `${p.rssMb ?? 0} MB`, `heap ${p.heapUsedMb ?? 0}/${p.heapTotalMb ?? 0} MB`, '',
+                    'RSS là toàn bộ bộ nhớ tiến trình đang giữ; heap là phần JavaScript thật sự dùng. Heap tăng đều mà không bao giờ tụt xuống là dấu hiệu rò rỉ bộ nhớ.')}
+                ${tile('Đã chạy', duration(p.uptimeSeconds), `Node ${p.nodeVersion || '—'}`, '',
+                    'Thời gian từ lần khởi động gần nhất. Con số này bất ngờ tụt về vài phút nghĩa là máy chủ vừa bị khởi động lại — có thể do deploy, hoặc do hết bộ nhớ mà bị hệ thống giết.')}
                 ${tile('Pool database', `${num(db.total)}/${db.max ?? '?'}`,
-                    `rảnh ${num(db.idle)} · đang chờ ${num(db.waiting)}`, poolTone)}
+                    `rảnh ${num(db.idle)} · đang chờ ${num(db.waiting)}`, poolTone,
+                    'Số kết nối database đang mở trên tổng số tối đa. \'Đang chờ\' lớn hơn 0 kéo dài nghĩa là request đang xếp hàng chờ kết nối — đây là lý do phổ biến nhất của \'CPU vẫn nhàn mà trang vẫn chậm\'.')}
             </div>
 
             <h4 class="mon-heading">Dữ liệu</h4>
@@ -81,17 +96,21 @@
                 ${tile('Phiên đang mở', num(c.sessions_active),
                     c.sessions_overdue > 0
                         ? `<b class="mon-flag">${num(c.sessions_overdue)} phiên đã quá hạn mà chưa đóng</b>`
-                        : 'đều còn trong hạn', c.sessions_overdue > 0 ? 'is-warn' : '')}
-                ${tile('Tin nhắn 5 phút qua', num(c.messages_5m), '', '')}
-                ${tile('Đơn đang mở', num(c.orders_open), 'chờ xác nhận hoặc chờ thanh toán', '')}
+                        : 'đều còn trong hạn', c.sessions_overdue > 0 ? 'is-warn' : '',
+                    'Số phiên còn trạng thái đang hoạt động trong database, kể cả phiên khách đã bỏ đi mà chưa hết hạn. Nếu có phiên quá hạn mà chưa đóng, chỗ này sẽ báo đỏ.')}
+                ${tile('Tin nhắn 5 phút qua', num(c.messages_5m), '', '',
+                    'Tổng số tin nhắn mới của toàn hệ thống trong 5 phút gần nhất, tính cả tin của khách lẫn của nhân viên. Dùng để ước lượng mức bận thật sự.')}
+                ${tile('Đơn đang mở', num(c.orders_open), 'chờ xác nhận hoặc chờ thanh toán', '',
+                    'Đơn đang chờ Sale xác nhận hoặc đã ra bill mà khách chưa chọn cách trả. Con số này dâng lên rồi không tụt nghĩa là có đơn đang bị bỏ quên.')}
                 ${tile('POS chưa gửi được', num(c.pos_pending), 'đã thử ít nhất một lần',
-                    (c.pos_pending || 0) > 0 ? 'is-warn' : '')}
+                    (c.pos_pending || 0) > 0 ? 'is-warn' : '',
+                    'Sự kiện đã thử gửi sang phần mềm tính tiền nhưng chưa thành công. Lớn hơn 0 kéo dài nghĩa là URL webhook sai, hoặc máy bên kia đang tắt — đơn vẫn an toàn trong database và sẽ gửi lại.')}
             </div>
 
-            <p class="mon-note"><i class="ri-lightbulb-line"></i>
+            <p class="mon-note"><i class="ri-lightbulb-line"></i><span>
                 <b>Cách đọc khi thấy chậm:</b> độ trễ p95 cao mà độ trễ vòng lặp thấp và pool không ai chờ
                 → nghẽn ở đường truyền, không phải ở máy chủ. Pool có người chờ → nâng
-                <code>PG_POOL_MAX</code>. Độ trễ vòng lặp cao → có truy vấn hoặc tác vụ nặng đang chặn.</p>`;
+                <code>PG_POOL_MAX</code>. Độ trễ vòng lặp cao → có truy vấn hoặc tác vụ nặng đang chặn.</span></p>`;
     }
 
     function renderOps(d) {
@@ -107,12 +126,16 @@
 
         $('monitor-ops').innerHTML = `
             <div class="mon-grid">
-                ${tile('Cuộc chat đang mở', num(totals.open), `${agents.length} Agent`, 'is-hero')}
+                ${tile('Cuộc chat đang mở', num(totals.open), `${agents.length} Agent`, 'is-hero',
+                    'Tổng số cuộc trò chuyện đang hoạt động của tất cả Agent. Bấm sang tab Sức khoẻ để xem bao nhiêu trong số đó là khách đang thật sự online.')}
                 ${tile('Chưa ai nhận', num(totals.unclaimed),
                     totals.unclaimed > 0 ? 'khách đang ngồi đợi' : 'không ai bị bỏ quên',
-                    totals.unclaimed > 0 ? 'is-bad' : 'is-ok')}
-                ${tile('Đơn đang xử lý', num(totals.orders), 'chờ xác nhận + chờ thanh toán', '')}
-                ${tile('Doanh thu hôm nay', money(totals.revenue), 'đơn đã thu tiền', '')}
+                    totals.unclaimed > 0 ? 'is-bad' : 'is-ok',
+                    'Khách đã nhắn nhưng chưa Sale nào nhận cuộc. Đây là con số đáng nhìn nhất của tab này — mọi số liệu khác đẹp mà chỗ này lớn hơn 0 thì vẫn đang có người ngồi đợi.')}
+                ${tile('Đơn đang xử lý', num(totals.orders), 'chờ xác nhận + chờ thanh toán', '',
+                    'Đơn chờ Sale xác nhận cộng đơn đã ra bill chưa chọn cách trả, của tất cả Agent.')}
+                ${tile('Doanh thu hôm nay', money(totals.revenue), 'đơn đã thu tiền', '',
+                    'Tổng tiền các đơn đã được nhân viên xác nhận là đã thu, tính từ 0 giờ hôm nay. Đơn mới ra bill chưa thu tiền thì chưa tính vào đây.')}
             </div>
 
             ${waiting.length ? `
@@ -126,7 +149,7 @@
                             </div>
                             <span class="mon-wait-time">${duration(w.waiting_seconds)}</span>
                         </div>`).join('')}
-                </div>` : '<p class="mon-note"><i class="ri-check-line"></i> Mọi cuộc trò chuyện đều đã có người nhận.</p>'}
+                </div>` : '<p class="mon-note"><i class="ri-check-line"></i><span>Mọi cuộc trò chuyện đều đã có người nhận.</span></p>'}
 
             <h4 class="mon-heading">Theo từng Agent</h4>
             ${agents.length ? `

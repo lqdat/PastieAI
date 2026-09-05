@@ -595,6 +595,15 @@ async function verifyAuthAndInit() {
 function showLogin() {
     loginModal.classList.remove('hide');
     mainDashboard.classList.add('hide');
+    // ĐƯA FORM VỀ BƯỚC ĐẦU.
+    //
+    // Không làm việc này thì màn đăng nhập mở lại ở đúng trạng thái lúc bị đá ra:
+    // bước nhập OTP, sáu ô còn nguyên mã cũ, đồng hồ "Gửi lại sau 4:28" vẫn chạy.
+    // Người dùng thấy một mã OTP đã hết hiệu lực và không có đường quay lại ô
+    // email — trông như hệ thống treo.
+    //
+    // Hàm này đã có sẵn cho nút "Đổi email"; chỉ là chưa ai gọi nó ở đây.
+    if (typeof handleChangeOtpEmail === 'function') handleChangeOtpEmail();
     if (adminEventSource) {
         adminEventSource.close();
         adminEventSource = null;

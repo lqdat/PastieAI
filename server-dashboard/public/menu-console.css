@@ -1219,3 +1219,17 @@
         border-radius: 24px 24px 0 0;
     }
 }
+
+/* Ô có lời giải thích: con trỏ đổi dạng và nhãn gạch chân chấm, để người dùng
+   biết là có thứ để đọc. Không có dấu hiệu thì không ai nghĩ tới việc rê chuột. */
+.mon-tile.has-tip { cursor: help; }
+.mon-tile.has-tip .mon-tile-label {
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--panel-border);
+}
+
+/* Khối ghi chú: chỉ có icon và span là flex item.
+   Trước đây mọi thẻ inline bên trong (b, code) đều thành flex item và bị dàn
+   ngang — câu văn vỡ làm ba mảnh, PG_POOL_MAX nhảy sang một cột riêng. */
+.mon-note > span { min-width: 0; }

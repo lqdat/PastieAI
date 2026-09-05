@@ -1415,6 +1415,112 @@ async function listAvailableSales(groupId, queryRunner = db) {
     .map((row) => row.id);
 }
 
+// ── Lời chào khi khách quét mã QR ────────────────────────────────────────────
+
+// Đoán tên từ địa chỉ email — và CHỈ đoán khi thật sự tự tin.
+//
+// Chào sai tên còn tệ hơn không chào. Nên hàm này thà trả về rỗng còn hơn đoán
+// bừa: gặp hộp thư dùng chung (info@, support@), gặp chuỗi có vẻ là mã máy sinh,
+// hay gặp thứ không giống tên người thì nó im lặng, và lời chào bỏ phần tên đi.
+const EMAIL_ROLE_WORDS = new Set([
+  'info', 'admin', 'contact', 'support', 'sales', 'hello', 'hi', 'mail', 'email',
+  'noreply', 'no-reply', 'donotreply', 'test', 'tester', 'user', 'guest', 'demo',
+  'abc', 'xyz', 'sale', 'booking', 'order', 'help', 'team', 'office', 'me',
+]);
+
+function nameFromEmail(email) {
+  const local = String(email || '').split('@')[0].split('+')[0].trim().toLowerCase();
+  if (!local || local.length < 2 || local.length > 40) return '';
+  if (EMAIL_ROLE_WORDS.has(local)) return '';
+
+  const parts = local.split(/[._\-]+/).filter(Boolean);
+  if (!parts.length || parts.length > 4) return '';
+
+  const words = [];
+  for (const raw of parts) {
+    // Bỏ chữ số ở cuối: "dat1990" vẫn là "Dat", nhưng "user01" thì phần chữ là
+    // "user" — một từ trong danh sách dùng chung nên vẫn bị loại ở dưới.
+    const word = raw.replace(/\d+$/, '');
+    if (!word) continue;                       // toàn số: bỏ qua mảnh này
+    if (!/^[a-zà-ỹ]+$/i.test(word)) return ''; // còn ký tự lạ hoặc số ở giữa: không đoán
+    if (word.length < 2) return '';            // một chữ cái: nhiều khả năng là viết tắt
+    if (EMAIL_ROLE_WORDS.has(word)) return '';
+    // "usertest01" sau khi cắt số thành "usertest" — không nằm trong danh sách
+    // dùng chung nhưng rõ ràng không phải tên người. Chặn theo TIỀN TỐ: tên thật
+    // hiếm khi bắt đầu bằng mấy chữ này, mà đoán trượt thì chỉ mất phần tên,
+    // còn đoán bừa thì thành "Chào anh Usertest".
+    if (/^(user|test|guest|demo|temp|admin|abc|xxx|qwe|asd|null|none)/.test(word)) return '';
+    words.push(word[0].toUpperCase() + word.slice(1));
+  }
+  if (!words.length || words.join(' ').length > 30) return '';
+  return words.join(' ');
+}
+
+// Lời chào do CƠ SỞ nói, không phải do trợ lý ảo — khách vừa quét mã ở bàn của
+// quán thì người chào phải là quán. Có tên bàn để khách yên tâm là mình quét
+// đúng chỗ, và biết nhân viên sẽ tìm mình ở đâu.
+function buildQrGreeting({ lang, guestName, venueName, placeLabel }) {
+  const venue = String(venueName || '').trim();
+  const place = String(placeLabel || '').trim();
+  const name = String(guestName || '').trim();
+
+  const T = {
+    vi: {
+      hi: name ? `Xin chào ${name}!` : 'Xin chào!',
+      at: place ? ` tại ${place}` : '',
+      body: (v, at) => `${v ? v + ' r' : 'R'}ất vui được đón bạn${at}. Bạn cần gì cứ nhắn ngay tại đây nhé.`,
+    },
+    en: {
+      hi: name ? `Hi ${name}!` : 'Hello!',
+      at: place ? ` You're at ${place}.` : '',
+      body: (v, at) => `Welcome to ${v || 'our place'}.${at} Message us right here whenever you need anything.`,
+    },
+    ru: {
+      hi: name ? `Здравствуйте, ${name}!` : 'Здравствуйте!',
+      at: place ? ` Вы за столиком ${place}.` : '',
+      body: (v, at) => `Добро пожаловать в ${v || 'наше заведение'}.${at} Пишите нам прямо здесь, если что-то понадобится.`,
+    },
+    zh: {
+      hi: name ? `${name}，您好！` : '您好！',
+      at: place ? `您在${place}。` : '',
+      body: (v, at) => `欢迎光临${v || '本店'}。${at}有任何需要，随时在这里留言。`,
+    },
+    ko: {
+      hi: name ? `${name}님, 안녕하세요!` : '안녕하세요!',
+      at: place ? ` ${place} 좌석입니다.` : '',
+      body: (v, at) => `${v || '저희 매장'}에 오신 것을 환영합니다.${at} 필요하신 것이 있으면 여기로 메시지를 남겨 주세요.`,
+    },
+  };
+  const t = T[String(lang || 'vi').toLowerCase()] || T.vi;
+  return `${t.hi} ${t.body(venue, t.at)}`.replace(/\s+/g, ' ').trim();
+}
+
+// Chèn lời chào, một lần duy nhất cho mỗi phiên.
+//
+// Kiểm "phiên đã có tin nào chưa" thay vì tin vào chỗ gọi: hàm này được gọi từ
+// hai lối vào khác nhau (đăng nhập OTP và nối lại định danh), và sẽ còn lối thứ
+// ba. Chào hai lần trông như hệ thống lỗi.
+async function sendQrWelcome({ sessionId, lang, guestName, venueName, placeLabel }) {
+  try {
+    const existing = await db.query('SELECT 1 FROM messages WHERE session_id = $1 LIMIT 1', [sessionId]);
+    if (existing.rowCount) return null;
+    const text = buildQrGreeting({ lang, guestName, venueName, placeLabel });
+    const language = String(lang || 'vi').toLowerCase();
+    // Ghi sẵn cả bản dịch bằng chính nó: câu này đã đúng ngôn ngữ khách chọn,
+    // không cần dịch lại và cũng không nên tốn một lượt gọi AI cho nó.
+    await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
+       VALUES ($1, 'system', $2, $2, $3)`,
+      [sessionId, text, language]
+    );
+    return text;
+  } catch (error) {
+    // Không chào được thì thôi, không được làm hỏng việc đăng nhập của khách.
+    console.error('[QR] Không gửi được lời chào:', error.message);
+    return null;
+  }
+}
+
 async function resolveQrChatAccount(projectId, qrCode, queryRunner = db) {
   if (!qrCode) return null;
   const result = await queryRunner.query(
@@ -1907,7 +2013,19 @@ app.post('/api/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, async (req, r
       ru: `Привет, ${finalName}! 👋 Я Pat из Pastie 🌴 Чем могу помочь?`,
       zh: `您好，${finalName}！👋 我是 Pastie 的小助手 Pat 🌴 有什么可以帮您？`,
     };
-    if (qrAccount?.ai_enabled !== false) {
+    if (qrAccount) {
+      // Khách quét mã ở bàn của quán thì người chào phải là QUÁN, không phải một
+      // trợ lý ảo không rõ của ai. Chào cả khi Agent tắt AI: lời chào là phép
+      // lịch sự của cơ sở, không phải tính năng của chatbot.
+      await sendQrWelcome({
+        sessionId,
+        lang: finalLang,
+        guestName: finalName && finalName !== 'Khách hàng' ? finalName : nameFromEmail(email),
+        venueName: qrAccount.owner_name,
+        placeLabel: qrAccount.label || qrAccount.group_name,
+      });
+    } else if (qrAccount?.ai_enabled !== false) {
+      // Luồng cũ (widget, không qua mã QR) vẫn do Pat chào như trước.
       const greetingText = greetings[finalLang] || greetings['vi'];
       await db.query(
         `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'ai', $2, $2, $3)`,
@@ -4539,6 +4657,19 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
       fullName: customer.rows[0]?.full_name || 'Khách hàng',
       authProvider: identity.auth_provider, qrAccountId: account.id,
     }).catch(() => {});
+
+    // Lối này trước đây KHÔNG chào gì cả: khách đã có định danh, quét mã ở một
+    // bàn khác và rơi thẳng vào một khung chat trống trơn. Không có gì cho biết
+    // họ đang nói chuyện với ai, ở đâu.
+    await sendQrWelcome({
+      sessionId,
+      lang: 'vi',
+      guestName: customer.rows[0]?.full_name && customer.rows[0].full_name !== 'Khách hàng'
+        ? customer.rows[0].full_name
+        : nameFromEmail(identity.email),
+      venueName: account.owner_name,
+      placeLabel: account.label || account.group_name,
+    });
     broadcastAdminEvent('session_update', { sessionId });
 
     res.json({ authenticated: true, sessionId, continued: false, movedQr: false,
