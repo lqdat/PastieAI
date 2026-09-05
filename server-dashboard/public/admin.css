@@ -3113,6 +3113,14 @@ button {
     background: var(--surface-neutral, rgba(0, 0, 0, 0.04));
     overflow-x: auto;
     scrollbar-width: none;
+    /* KHÔNG ĐƯỢC CO LẠI.
+       .org-card là flex cột có chiều cao trần. Khi khung nội dung bên dưới dài
+       hơn chỗ còn lại, trình duyệt đi bóp những phần tử co được — và dải tab là
+       một trong số đó. Nó bị ép còn 10px trong khi các nút bên trong giữ nguyên
+       chiều cao, nên chúng tràn ra ngoài và bị danh sách bên dưới đè lên: nhìn
+       như tab bị cắt mất một nửa.
+       Chỉ lộ ra khi thực đơn đủ dài để phải cuộn — với vài món thì không thấy. */
+    flex: 0 0 auto;
 }
 .org-tabs::-webkit-scrollbar { display: none; }
 .org-tab {

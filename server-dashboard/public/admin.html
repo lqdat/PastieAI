@@ -133,6 +133,9 @@
             </div>
             <div class="header-right">
                 <!-- Nút riêng cho Superadmin: Quản lý đội ngũ trực tiếp theo project -->
+                <button id="monitor-btn" class="header-quick-btn hide" type="button" title="Theo dõi hệ thống theo thời gian thực">
+                    <i class="ri-pulse-line"></i>
+                </button>
                 <button id="superadmin-team-btn" class="header-quick-btn hide" type="button" title="Quản lý nhân viên &amp; Đội ngũ theo từng project">
                     <i class="ri-team-line"></i><span>Quản lý đội ngũ</span>
                 </button>
@@ -1005,6 +1008,36 @@
         </div>
     </div>
 
+    <!-- Trang theo dõi hệ thống (chỉ Superadmin) -->
+    <div id="monitor-modal" class="modal-overlay hide">
+        <div class="login-box glass-panel admin-management-box">
+            <div class="brand-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
+                    <div class="brand-logo admin-mgmt-brand-icon"><i class="ri-pulse-line"></i></div>
+                    <div>
+                        <h2 style="margin: 0; font-size: 16px; font-weight: 700;">Theo dõi hệ thống</h2>
+                        <small id="monitor-stamp" class="monitor-stamp">—</small>
+                    </div>
+                </div>
+                <button id="monitor-close-top-btn" class="icon-btn"><i class="ri-close-line"></i></button>
+            </div>
+
+            <div class="org-tabs staff-tabs" role="tablist">
+                <button type="button" class="org-tab is-active" data-monitor-tab="health" role="tab"><i class="ri-heart-pulse-line"></i> <span>Sức khoẻ</span></button>
+                <button type="button" class="org-tab" data-monitor-tab="ops" role="tab"><i class="ri-store-2-line"></i> <span>Vận hành</span></button>
+            </div>
+
+            <div style="overflow-y: auto; flex: 1; min-height: 0;">
+                <div data-monitor-pane="health"><div id="monitor-health"></div></div>
+                <div data-monitor-pane="ops" class="hide"><div id="monitor-ops"></div></div>
+            </div>
+
+            <div class="modal-sticky-footer">
+                <button id="monitor-close-btn" class="secondary-btn"><i class="ri-close-line"></i> Đóng</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Admin Management Modal -->
     <div id="admin-management-modal" class="modal-overlay hide">
         <div class="login-box glass-panel admin-management-box">
@@ -1300,6 +1333,7 @@
     <script src="project-admin.js?v=r80"></script>
     <script src="menu-console.js?v=r80"></script>
     <script src="order-console.js?v=r80"></script>
+    <script src="monitor-console.js?v=r80"></script>
     <script src="admin.js?v=r80"></script>
 </body>
 </html>

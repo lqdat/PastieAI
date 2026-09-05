@@ -842,6 +842,10 @@ function updateAgentHeaderUI() {
     // Nút quản lý đội ngũ riêng cho Superadmin (hiển thị trực tiếp ra header, phân theo project)
     const isSuperadmin = CURRENT_ADMIN?.role === 'superadmin';
     document.getElementById('superadmin-team-btn')?.classList.toggle('hide', !isSuperadmin);
+    // Trang theo dõi đọc được số liệu của TOÀN hệ thống — mọi Agent, mọi doanh
+    // thu. Cùng một điều kiện quyền với nút quản lý nhân viên, và endpoint phía
+    // máy chủ cũng tự kiểm lại: ẩn nút không phải là chặn.
+    document.getElementById('monitor-btn')?.classList.toggle('hide', !isSuperadmin);
 
     // Ẩn ô chọn ngôn ngữ giao diện với Agent/Sale của dự án QR. Console của họ
     // chỉ dùng tiếng Việt, còn ngôn ngữ hội thoại đã tự nhận diện theo khách —

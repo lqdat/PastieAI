@@ -22,6 +22,80 @@ const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 
+// ── Đo lưu lượng cho trang theo dõi ──────────────────────────────────────────
+//
+// Ba thứ cần biết khi máy chủ có vẻ chậm, mà nhìn từ ngoài không đoán được:
+// bao nhiêu request mỗi giây, chậm cỡ nào, và bao nhiêu phần trăm hỏng.
+//
+// Ghi vào một vòng đệm cố định 3.000 mục thay vì mảng nở ra mãi: ở mức tải cao
+// nhất tôi đo được (gần 900 request/giây) thì đây vẫn là hơn 3 giây gần nhất,
+// đủ để nhìn, mà bộ nhớ thì không bao giờ vượt quá chỗ đã cấp.
+const TRAFFIC_RING = 3000;
+const traffic = { at: new Array(TRAFFIC_RING), ms: new Array(TRAFFIC_RING), bad: new Array(TRAFFIC_RING), i: 0, n: 0 };
+
+// "Đang online" đếm theo PHIÊN CÓ GỌI API trong 60 giây gần nhất — đó là định
+// nghĩa thật của "khách đang mở máy", chứ không phải đếm dòng status='active'
+// trong database (phiên mở từ hôm qua vẫn active dù khách đã đi từ lâu).
+const liveSessions = new Map();   // sessionId -> mốc thời gian gọi gần nhất
+const LIVE_WINDOW_MS = 60 * 1000;
+
+app.use((req, res, next) => {
+  const started = process.hrtime.bigint();
+  res.on('finish', () => {
+    const slot = traffic.i % TRAFFIC_RING;
+    traffic.at[slot] = Date.now();
+    traffic.ms[slot] = Number(process.hrtime.bigint() - started) / 1e6;
+    traffic.bad[slot] = res.statusCode >= 400;
+    traffic.i++;
+    if (traffic.n < TRAFFIC_RING) traffic.n++;
+
+    const sid = req.params?.sessionId || (req.path.match(/^\/api\/chats\/([^/]+)/) || [])[1];
+    if (sid) liveSessions.set(sid, Date.now());
+  });
+  next();
+});
+
+// Dọn phiên đã nguội. Không dọn thì Map cứ phình theo tổng số phiên từng ghé qua.
+setInterval(() => {
+  const cutoff = Date.now() - LIVE_WINDOW_MS;
+  for (const [id, at] of liveSessions) if (at < cutoff) liveSessions.delete(id);
+}, 30000).unref?.();
+
+// Độ trễ vòng lặp sự kiện: Node chạy một luồng, nên con số này mới nói được
+// "máy chủ có đang bị nghẽn không". CPU cao mà độ trễ thấp thì vẫn khoẻ; độ trễ
+// dâng lên nghĩa là có việc gì đó đang chặn tất cả những người khác.
+let loopLagMs = 0;
+(function measureLoopLag() {
+  const t = process.hrtime.bigint();
+  setTimeout(() => {
+    loopLagMs = Math.max(0, Number(process.hrtime.bigint() - t) / 1e6 - 500);
+    measureLoopLag();
+  }, 500).unref?.();
+})();
+
+function trafficSummary(windowMs) {
+  const cutoff = Date.now() - windowMs;
+  const durations = [];
+  let bad = 0;
+  for (let k = 0; k < traffic.n; k++) {
+    if (traffic.at[k] >= cutoff) {
+      durations.push(traffic.ms[k]);
+      if (traffic.bad[k]) bad++;
+    }
+  }
+  durations.sort((a, b) => a - b);
+  const at = (p) => (durations.length ? durations[Math.min(durations.length - 1, Math.ceil((p / 100) * durations.length) - 1)] : 0);
+  return {
+    requests: durations.length,
+    perSecond: +(durations.length / (windowMs / 1000)).toFixed(1),
+    p50: Math.round(at(50)), p95: Math.round(at(95)), p99: Math.round(at(99)),
+    errorRate: durations.length ? +(bad / durations.length).toFixed(4) : 0,
+    // Vòng đệm đầy nghĩa là cửa sổ thật ngắn hơn cửa sổ yêu cầu — nói ra để
+    // không ai đọc nhầm "60 giây" khi thực tế chỉ có 3 giây dữ liệu.
+    truncated: traffic.n >= TRAFFIC_RING && durations.length >= TRAFFIC_RING,
+  };
+}
+
 // ── Anti-spam: rate limit AI calls per session ────────────────────────────────
 const aiRateLimit = new Map(); // sessionId → { count, windowStart }
 const AI_RATE_MAX = 10;        // max AI responses per window
@@ -8134,6 +8208,120 @@ app.put('/api/superadmin/accounts/:adminId/device-limit', checkAdminAuth, async 
 // Chỉ để con người xem và tự quyết — KHÔNG tự động khoá. Agent thật cũng đổi
 // mạng (nhà → quán cà phê → 4G) và dùng cả laptop lẫn điện thoại; khoá nhầm một
 // khách hàng thật thiệt hại hơn nhiều so với một tài khoản bị dùng chung.
+// ── Trang theo dõi của Superadmin ────────────────────────────────────────────
+
+app.get('/api/superadmin/monitor/health', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được xem.' });
+  try {
+    const mem = process.memoryUsage();
+    const now = Date.now();
+    let live = 0;
+    for (const at of liveSessions.values()) if (now - at < LIVE_WINDOW_MS) live++;
+
+    // Một truy vấn duy nhất cho mọi con số của database. Trang này tự tải lại 5
+    // giây một lần; bắn năm câu lệnh riêng mỗi lượt thì chính trang theo dõi lại
+    // thành thứ làm máy chủ chậm đi.
+    const counts = await db.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM sessions WHERE status = 'active') AS sessions_active,
+        (SELECT COUNT(*)::int FROM sessions WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= NOW()) AS sessions_overdue,
+        (SELECT COUNT(*)::int FROM messages WHERE created_at > NOW() - INTERVAL '5 minutes') AS messages_5m,
+        (SELECT COUNT(*)::int FROM chat_orders WHERE status IN ('pending_confirm','awaiting_payment')) AS orders_open,
+        (SELECT COUNT(*)::int FROM pos_deliveries WHERE delivered_at IS NULL AND attempts > 0) AS pos_pending
+    `).catch(() => ({ rows: [{}] }));
+
+    res.json({
+      at: new Date().toISOString(),
+      process: {
+        uptimeSeconds: Math.round(process.uptime()),
+        heapUsedMb: +(mem.heapUsed / 1048576).toFixed(1),
+        heapTotalMb: +(mem.heapTotal / 1048576).toFixed(1),
+        rssMb: +(mem.rss / 1048576).toFixed(1),
+        loopLagMs: +loopLagMs.toFixed(1),
+        nodeVersion: process.version,
+      },
+      // Pool cạn là nguyên nhân số một của "CPU nhàn mà vẫn chậm": request nằm
+      // xếp hàng chờ kết nối. waiting > 0 kéo dài là dấu hiệu phải nâng
+      // PG_POOL_MAX hoặc tách bớt truy vấn nặng.
+      db: { total: db.pool.totalCount, idle: db.pool.idleCount, waiting: db.pool.waitingCount, max: db.pool.options?.max ?? null },
+      traffic: { last60s: trafficSummary(60000), last10s: trafficSummary(10000) },
+      live: { customersOnline: live, windowSeconds: LIVE_WINDOW_MS / 1000 },
+      counts: counts.rows[0] || {},
+    });
+  } catch (error) {
+    console.error('Monitor health error:', error);
+    res.status(500).json({ error: 'Không đọc được tình trạng hệ thống.' });
+  }
+});
+
+app.get('/api/superadmin/monitor/operations', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được xem.' });
+  try {
+    // Gộp theo Agent. Cột "chờ chưa ai nhận" là cột đáng nhìn nhất: khách đang
+    // ngồi đợi mà không ai trả lời thì mọi con số còn lại đều không quan trọng.
+    const rows = await db.query(`
+      WITH agent_sessions AS (
+        SELECT COALESCE(g.agent_id, q.owner_admin_id) AS agent_id, s.*
+          FROM sessions s
+          LEFT JOIN agent_groups g ON g.id = s.group_id
+          LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+         WHERE s.status = 'active'
+      )
+      SELECT a.id AS agent_id,
+             COALESCE(a.full_name, a.username) AS agent_name,
+             a.project_id,
+             COUNT(s.id)::int AS chats_open,
+             COUNT(s.id) FILTER (WHERE s.claimed_by_admin_id IS NULL)::int AS chats_unclaimed,
+             (SELECT COUNT(*)::int FROM admins x
+               WHERE x.managed_by_admin_id = a.id AND x.role = 'sale' AND x.is_active) AS sales_active,
+             (SELECT COUNT(*)::int FROM chat_orders o
+                JOIN agent_sessions os ON os.id = o.session_id
+               WHERE os.agent_id = a.id AND o.status = 'pending_confirm') AS orders_waiting,
+             (SELECT COUNT(*)::int FROM chat_orders o
+                JOIN agent_sessions os ON os.id = o.session_id
+               WHERE os.agent_id = a.id AND o.status = 'awaiting_payment') AS orders_billed,
+             (SELECT COALESCE(SUM(o.total_amount), 0)::bigint FROM chat_orders o
+                JOIN sessions s2 ON s2.id = o.session_id
+                LEFT JOIN agent_groups g2 ON g2.id = s2.group_id
+                LEFT JOIN qr_chat_accounts q2 ON q2.id = s2.qr_account_id
+               WHERE COALESCE(g2.agent_id, q2.owner_admin_id) = a.id
+                 AND o.status = 'paid' AND o.paid_at >= date_trunc('day', NOW())) AS revenue_today,
+             (SELECT COUNT(*)::int FROM chat_orders o
+                JOIN sessions s3 ON s3.id = o.session_id
+                LEFT JOIN agent_groups g3 ON g3.id = s3.group_id
+                LEFT JOIN qr_chat_accounts q3 ON q3.id = s3.qr_account_id
+               WHERE COALESCE(g3.agent_id, q3.owner_admin_id) = a.id
+                 AND o.status = 'paid' AND o.paid_at >= date_trunc('day', NOW())) AS orders_paid_today
+        FROM admins a
+        LEFT JOIN agent_sessions s ON s.agent_id = a.id
+       WHERE a.role = 'agent'
+       GROUP BY a.id, a.full_name, a.username, a.project_id
+       ORDER BY chats_unclaimed DESC, chats_open DESC, agent_name ASC
+    `);
+
+    // Khách đang chờ lâu nhất — con số tóm tắt không nói được ai đang bị bỏ quên.
+    const waiting = await db.query(`
+      SELECT s.id, s.visitor_name, s.created_at,
+             COALESCE(g.name, q.label, '—') AS place,
+             COALESCE(ag.full_name, ag.username) AS agent_name,
+             EXTRACT(EPOCH FROM (NOW() - COALESCE(
+               (SELECT MAX(m.created_at) FROM messages m WHERE m.session_id = s.id AND m.sender = 'visitor'),
+               s.created_at)))::int AS waiting_seconds
+        FROM sessions s
+        LEFT JOIN agent_groups g ON g.id = s.group_id
+        LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+        LEFT JOIN admins ag ON ag.id = COALESCE(g.agent_id, q.owner_admin_id)
+       WHERE s.status = 'active' AND s.claimed_by_admin_id IS NULL
+       ORDER BY waiting_seconds DESC LIMIT 12
+    `);
+
+    res.json({ at: new Date().toISOString(), agents: rows.rows, waiting: waiting.rows });
+  } catch (error) {
+    console.error('Monitor operations error:', error);
+    res.status(500).json({ error: 'Không đọc được toàn cảnh vận hành.' });
+  }
+});
+
 app.get('/api/superadmin/license/suspicious', checkAdminAuth, async (req, res) => {
   if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được xem.' });
   const days = Math.min(90, Math.max(1, Number.parseInt(req.query.days, 10) || 30));
