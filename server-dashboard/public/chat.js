@@ -1579,6 +1579,9 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
     adminMessages.forEach(msg => {
         const wrapper = document.createElement('div');
         wrapper.className = `message-wrapper ${msg.sender}`;
+        // Mốc thời gian đi kèm ngay trong DOM: thẻ đơn và hoá đơn dựa vào đây để
+        // chen vào đúng chỗ của mình trong dòng hội thoại.
+        stampChatTime(wrapper, msg.created_at);
 
         const locale = currentLang === 'vi' ? 'vi-VN' : currentLang === 'zh' ? 'zh-CN' : currentLang === 'ru' ? 'ru-RU' : 'en-US';
         const timeStr = new Date(msg.created_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
@@ -1635,18 +1638,59 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
 }
 
 
-// Hiển thị hóa đơn ở cuối luồng chat của Agent: xem trước co theo bề ngang,
+// ── Chen thẻ đơn / hoá đơn vào ĐÚNG CHỖ theo thời gian ──────────────────────
+//
+// Trước đây thẻ đơn và hoá đơn luôn được appendChild sau khi vẽ xong tin nhắn,
+// nên chúng vĩnh viễn nằm cuối khung chat. Hệ quả: mọi tin nhắn gửi SAU khi đặt
+// món lại hiện TRƯỚC thẻ đơn — nhìn vào tưởng khách đặt món sau cùng, trong khi
+// thực tế đơn có trước cả đoạn trao đổi bên dưới. Với Sale thì đây không phải
+// chuyện thẩm mỹ: đọc sai thứ tự là xác nhận nhầm đơn.
+//
+// Nay mỗi phần tử mang theo mốc thời gian của chính nó, và thẻ đơn tự tìm chỗ
+// của mình giữa các tin nhắn.
+function stampChatTime(node, when) {
+    const stamp = new Date(when || 0).getTime();
+    if (Number.isFinite(stamp) && stamp > 0) node.dataset.ts = String(stamp);
+    return node;
+}
+
+function insertIntoChatFlow(node, when, container) {
+    const host = container || chatMessagesContainer;
+    if (!host) return;
+    const stamp = new Date(when || 0).getTime();
+    // Không có mốc thời gian đáng tin thì giữ nguyên hành vi cũ — đặt cuối còn
+    // hơn đặt bừa lên đầu.
+    if (!Number.isFinite(stamp) || stamp <= 0) return void host.appendChild(node);
+    node.dataset.ts = String(stamp);
+    const after = Array.from(host.children).find((el) => {
+        const ts = Number(el.dataset?.ts);
+        return Number.isFinite(ts) && ts > stamp;
+    });
+    if (after) host.insertBefore(node, after);
+    else host.appendChild(node);
+}
+window.insertIntoChatFlow = insertIntoChatFlow;
+
+// Hiển thị hóa đơn trong luồng chat của Agent: xem trước co theo bề ngang,
 // bấm vào mở PDF ở tab mới. Agent cần thấy đúng thứ khách đang nhìn.
 function renderAdminInvoice() {
     if (!adminOrder) return;
+    // Đơn CHƯA XÁC NHẬN thì chưa có hoá đơn nào cả. Trước đây khối này vẫn hiện
+    // với dòng chữ "HÓA ĐƠN ĐÃ GỬI KHÁCH" kèm nhãn trạng thái thô
+    // "pending_confirm" — nói sai với Sale hai lần trong một khung: bill chưa
+    // gửi, và khách chưa nhận được gì.
+    if (adminOrder.status === 'pending_confirm') return;
     const invoice = adminOrder.invoice || {};
     const preview = invoice.svgDataUrl || '';
     const pdf = invoice.pdfUrl || invoice.pdfDataUrl || '';
     if (!preview && !pdf) return;
 
     const statusLabels = {
+        pending_confirm: 'Chờ xác nhận',
         awaiting_payment: 'Chờ thanh toán',
         paid: 'Đã thanh toán',
+        rejected: 'Đã từ chối',
+        superseded: 'Đã thay bằng đơn mới',
     };
     const methodLabels = { cash: 'Tiền mặt', bank_qr: 'Chuyển khoản QR', card: 'Thẻ' };
     const statusText = statusLabels[adminOrder.status] || adminOrder.status || '';
@@ -1667,7 +1711,12 @@ function renderAdminInvoice() {
             ${pdf ? `<button type="button" class="attachment-preview-trigger admin-invoice-open" data-preview-url="${escapeHtml(pdf)}" data-preview-type="document" data-preview-title="Hóa đơn"><i class="ri-file-pdf-2-line"></i> Mở PDF</button>` : ''}
         </div>
     `;
-    chatMessagesContainer.appendChild(wrapper);
+    // Mốc của hoá đơn là lúc GỬI BILL cho khách, không phải lúc tạo đơn: giữa
+    // hai mốc đó thường có cả một đoạn khách hỏi thêm món.
+    insertIntoChatFlow(
+        wrapper,
+        adminOrder.bill_sent_at || adminOrder.confirmed_at || adminOrder.updated_at || adminOrder.created_at
+    );
 }
 
 

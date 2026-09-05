@@ -11,8 +11,15 @@
 (function () {
     'use strict';
 
-    let noteDraft = new Map();   // menuItemId -> ghi chú đang gõ, chưa lưu
+    // "mã đơn::mã món" -> ghi chú đang gõ, chưa lưu.
+    //
+    // Khoá phải có MÃ ĐƠN. Chỉ dùng mã món thì ghi chú chưa lưu của đơn này sẽ
+    // hiện sang đơn khác có cùng món — Sale nhảy qua lại giữa hai cuộc chat là
+    // thấy "ít cay" mọc ở bàn không ai gõ.
+    let noteDraft = new Map();
+    const draftKey = (orderId, itemKey) => `${orderId}::${itemKey}`;
     let busyOrderId = null;
+    let editingOrderId = null;   // thẻ nào đang mở ô ghi chú
 
     const money = (value) => `${(Number(value) || 0).toLocaleString('vi-VN')} ₫`;
 
@@ -43,7 +50,8 @@
             <div class="order-lines">
                 ${items.map((line, index) => {
                     const key = line.menuItemId != null ? String(line.menuItemId) : String(index);
-                    const note = noteDraft.has(key) ? noteDraft.get(key) : (line.note || '');
+                    const draft = draftKey(order.id, key);
+                    const note = noteDraft.has(draft) ? noteDraft.get(draft) : (line.note || '');
                     return `
                     <div class="order-line" data-line="${escapeHtml(key)}">
                         <div class="order-line-main">
@@ -51,6 +59,7 @@
                             <span class="order-qty">×${Number(line.quantity || 0)}</span>
                             <span class="order-line-total">${money(line.lineTotal)}</span>
                         </div>
+                        ${note ? `<p class="order-line-note"><i class="ri-sticky-note-line"></i> ${escapeHtml(note)}</p>` : ''}
                         <input type="text" class="order-note" data-note-for="${escapeHtml(key)}"
                                maxlength="300" value="${escapeHtml(note)}"
                                placeholder="Ghi chú cho bếp: không hành, ít cay…">
@@ -70,18 +79,29 @@
             </p>
 
             <div class="order-actions">
-                <button type="button" class="order-btn is-reject" data-order-reject="${order.id}">
-                    <i class="ri-close-line"></i> Từ chối
-                </button>
-                <button type="button" class="order-btn is-note" data-order-save-notes="${order.id}">
-                    <i class="ri-sticky-note-line"></i> Lưu ghi chú
+                <button type="button" class="order-btn is-note" data-order-edit="${order.id}">
+                    <i class="ri-edit-2-line"></i> <span data-edit-label>Chỉnh sửa</span>
                 </button>
                 <button type="button" class="order-btn is-confirm" data-order-confirm="${order.id}">
                     <i class="ri-check-line"></i> Xác nhận &amp; báo bếp
                 </button>
             </div>`;
 
-        container.appendChild(wrapper);
+        // Danh sách tin nhắn được vẽ lại vài giây một lần. Không nhớ thẻ nào đang
+        // mở thì ô ghi chú tự đóng lại ngay giữa lúc Sale đang gõ.
+        if (editingOrderId === order.id) {
+            wrapper.classList.add('is-editing');
+            setEditLabel(wrapper, 'Xong');
+        }
+
+        // Thẻ đơn thuộc về thời điểm khách bấm đặt, không phải cuối khung chat.
+        // Dùng created_at chứ không phải updated_at: Sale lưu ghi chú cũng làm
+        // updated_at nhảy, mà thẻ thì không nên tự trôi xuống dưới vì chuyện đó.
+        if (typeof window.insertIntoChatFlow === 'function') {
+            window.insertIntoChatFlow(wrapper, order.created_at, container);
+        } else {
+            container.appendChild(wrapper);
+        }
     }
 
     function collectNotes(orderId) {
@@ -108,7 +128,11 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ notes }),
         });
-        noteDraft.clear();
+        // Chỉ xoá bản nháp của ĐƠN NÀY. Xoá sạch cả Map thì ghi chú Sale đang gõ
+        // dở ở cuộc chat khác cũng bay theo.
+        for (const key of [...noteDraft.keys()]) {
+            if (key.startsWith(`${orderId}::`)) noteDraft.delete(key);
+        }
         if (!quiet) showToast('Đã lưu ghi chú.', 'success');
     }
 
@@ -202,21 +226,46 @@
     document.addEventListener('click', (event) => {
         const confirmBtn = event.target.closest('[data-order-confirm]');
         if (confirmBtn) return void confirmOrder(confirmBtn.dataset.orderConfirm);
-        const rejectBtn = event.target.closest('[data-order-reject]');
-        if (rejectBtn) return void rejectOrder(rejectBtn.dataset.orderReject);
-        const noteBtn = event.target.closest('[data-order-save-notes]');
-        if (noteBtn) {
-            return void saveNotes(noteBtn.dataset.orderSaveNotes)
-                .catch((error) => showToast(error.message, 'error'));
-        }
+        const editBtn = event.target.closest('[data-order-edit]');
+        if (editBtn) return void toggleEdit(editBtn.dataset.orderEdit);
     });
+
+    // "Chỉnh sửa" mở ô ghi chú của từng món; bấm lần nữa ("Xong") thì lưu rồi
+    // đóng lại. Xác nhận vẫn tự lưu ghi chú trước, nên không ai mất chữ vì quên
+    // bấm Xong.
+    function toggleEdit(orderId) {
+        const card = document.querySelector(`[data-order-card="${orderId}"]`);
+        if (!card) return;
+        const opening = !card.classList.contains('is-editing');
+        if (opening) {
+            editingOrderId = orderId;
+            card.classList.add('is-editing');
+            setEditLabel(card, 'Xong');
+            card.querySelector('.order-note')?.focus();
+            return;
+        }
+        editingOrderId = null;
+        card.classList.remove('is-editing');
+        setEditLabel(card, 'Chỉnh sửa');
+        void saveNotes(orderId).catch((error) => showToast(error.message, 'error'));
+    }
+
+    function setEditLabel(card, text) {
+        const label = card.querySelector('[data-edit-label]');
+        if (label) label.textContent = text;
+    }
 
     // Giữ chữ Sale đang gõ khi danh sách tin nhắn được vẽ lại giữa chừng — không
     // giữ thì mỗi lần có tin mới đến là mất hết ghi chú chưa lưu.
     document.addEventListener('input', (event) => {
         const note = event.target.closest('[data-note-for]');
-        if (note) noteDraft.set(note.dataset.noteFor, note.value);
+        if (!note) return;
+        const orderId = note.closest('[data-order-card]')?.dataset.orderCard;
+        if (orderId) noteDraft.set(draftKey(orderId, note.dataset.noteFor), note.value);
     });
 
-    window.OrderConsole = { renderPending };
+    // Thẻ đơn chỉ còn hai nút theo yêu cầu: Chỉnh sửa và Xác nhận. Từ chối đơn
+    // KHÔNG còn lối vào trên giao diện, nhưng hàm và endpoint vẫn còn nguyên và
+    // xuất ra đây, để lúc cần gắn lại (menu phụ, phím tắt) là có sẵn.
+    window.OrderConsole = { renderPending, reject: rejectOrder };
 })();

@@ -3908,6 +3908,25 @@ button {
     }
 }
 
+/* Sale header hierarchy: managing Agent first, signed-in Sale second. */
+.agent-identity.sale-identity .agent-identity-label {
+    color: var(--accent-color);
+    font-size: 17px;
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+}
+.agent-identity.sale-identity .agent-display-name {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+}
+@media (max-width: 720px) {
+    .agent-identity.sale-identity .agent-identity-label { font-size: 16px; }
+    .agent-identity.sale-identity .agent-display-name { font-size: 12.5px; }
+}
+
 /* --- Hộp "Quản lý nhân viên" -------------------------------------------------
    Trước đây chiều cao đặt inline `max-height: 92vh` ngay trên thẻ. Style inline
    luôn thắng stylesheet (trừ khi có !important), nên quy tắc 92dvh dành cho

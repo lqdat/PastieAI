@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r79">
-    <link rel="stylesheet" href="menu-console.css?v=r79">
+    <link rel="stylesheet" href="admin.css?v=r80">
+    <link rel="stylesheet" href="menu-console.css?v=r80">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -1016,7 +1016,16 @@
                 <button id="admin-mgmt-close-top-btn" class="icon-btn"><i class="ri-close-line"></i></button>
             </div>
 
+            <!-- Hai tab: Dự án và Nhân sự. Dùng lại .org-tabs của console Agent
+                 để hai màn hình không có hai kiểu tab khác nhau. Tab Dự án chỉ
+                 hiện với Superadmin; còn lại thì cả dải tab tự ẩn. -->
+            <div class="org-tabs staff-tabs hide" id="admin-mgmt-tabs" role="tablist">
+                <button type="button" class="org-tab" data-staff-tab="projects" role="tab"><i class="ri-folder-3-line"></i> <span>Dự án</span></button>
+                <button type="button" class="org-tab is-active" data-staff-tab="people" role="tab"><i class="ri-team-line"></i> <span>Nhân sự</span></button>
+            </div>
+
             <div style="overflow-y: auto; flex: 1; min-height: 0;">
+              <div data-staff-pane="projects" class="hide">
                 <!-- Quản lý dự án (multi-project - chỉ Superadmin) -->
                 <div class="admin-mgmt-section admin-project-management">
                     <div class="admin-mgmt-section-head">
@@ -1024,12 +1033,14 @@
                         <div class="project-create-controls">
                             <input type="text" id="project-new-name" placeholder="Tên project...">
                             <input type="url" id="project-new-link" placeholder="https://website.com">
-                            <button id="project-add-btn" class="primary-btn" style="width: auto; padding: 8px 12px; font-size: 12px; white-space: nowrap;"><i class="ri-add-line"></i> Thêm</button>
+                            <button id="project-add-btn" class="primary-btn" style="width: auto; padding: 8px 12px; font-size: 12px; white-space: nowrap;"><i class="ri-add-line"></i> Thêm dự án</button>
                         </div>
                     </div>
                     <div id="project-list"></div>
                 </div>
+              </div>
 
+              <div data-staff-pane="people">
                 <section id="account-project-context" class="admin-mgmt-section account-project-context" aria-label="Project đang quản lý">
                     <div>
                         <span class="account-section-kicker">PHẠM VI</span>
@@ -1069,11 +1080,14 @@
                 <div class="admin-management-grid" style="display: grid; text-align: left;">
                     <!-- Left panel: List -->
                     <div class="admin-users-panel" style="padding-right: 18px; display: flex; flex-direction: column; min-height: 0;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div class="admin-list-head">
                             <h3 style="font-size: 13.5px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px;">
                                 <i class="ri-user-line" style="color: var(--accent-color);"></i> <span id="admin-list-heading">Danh sách nhân viên</span>
                             </h3>
-                            <span id="admin-user-count-badge" style="background: var(--surface-neutral); color: var(--text-secondary); padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 700;">0 nhân viên</span>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span id="admin-user-count-badge" style="background: var(--surface-neutral); color: var(--text-secondary); padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 700;">0 nhân viên</span>
+                                <button type="button" class="pane-add" id="admin-add-toggle" data-addbox-toggle="staff"><i class="ri-user-add-line"></i> <span>Thêm nhân viên</span></button>
+                            </div>
                         </div>
                         <div id="admin-list-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; max-height: 380px;">
                             <!-- Dynamically populated -->
@@ -1081,7 +1095,7 @@
                     </div>
 
                     <!-- Right panel: Form -->
-                    <div class="admin-user-form-panel" style="display: flex; flex-direction: column; padding: 16px 18px; overflow-y: auto; max-height: 460px;">
+                    <div class="admin-user-form-panel hide" data-addbox="staff" style="display: flex; flex-direction: column; padding: 16px 18px; overflow-y: auto; max-height: 460px;">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
                             <h3 id="admin-form-title" style="font-size: 13.5px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px;">
                                 <i class="ri-user-add-line" style="color: var(--accent-color);"></i> Thêm nhân viên
@@ -1110,6 +1124,9 @@
                             <div class="form-group" id="admin-form-role-group" style="margin: 0;">
                                 <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Vai trò (Role)</label>
                                 <select id="admin-form-role" style="width:100%;">
+                                    <!-- Thiếu lựa chọn này là gốc của "không sửa được Sale": mở sửa
+                                         một Sale thì select nhận giá trị không tồn tại rồi rỗng đi. -->
+                                    <option value="sale">Sale (Nhân viên tư vấn, thuộc một Agent)</option>
                                     <option value="agent">Agent (Tư vấn viên trực chat / Quản lý Sale)</option>
                                     <option value="project_admin">Project Admin (Quản trị dự án)</option>
                                     <option value="superadmin">Quản trị viên tối cao (Super-Admin)</option>
@@ -1142,6 +1159,7 @@
                         </form>
                     </div>
                 </div>
+              </div>
             </div>
             <div class="modal-sticky-footer" id="admin-mgmt-footer">
                 <button id="admin-mgmt-close-btn" class="secondary-btn"><i class="ri-close-line"></i> Đóng</button>
@@ -1275,13 +1293,13 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r79"></script>
-    <script src="core.js?v=r79"></script>
-    <script src="chat.js?v=r79"></script>
-    <script src="org-console.js?v=r79"></script>
-    <script src="project-admin.js?v=r79"></script>
-    <script src="menu-console.js?v=r79"></script>
-    <script src="order-console.js?v=r79"></script>
-    <script src="admin.js?v=r79"></script>
+    <script src="config.js?v=r80"></script>
+    <script src="core.js?v=r80"></script>
+    <script src="chat.js?v=r80"></script>
+    <script src="org-console.js?v=r80"></script>
+    <script src="project-admin.js?v=r80"></script>
+    <script src="menu-console.js?v=r80"></script>
+    <script src="order-console.js?v=r80"></script>
+    <script src="admin.js?v=r80"></script>
 </body>
 </html>

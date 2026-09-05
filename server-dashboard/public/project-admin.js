@@ -485,6 +485,22 @@ function applyAdminMgmtFocus() {
 }
 
 
+// Chuyen giua hai tab Du an / Nhan su.
+function setStaffTab(name) {
+    document.querySelectorAll('[data-staff-tab]').forEach((tab) => {
+        tab.classList.toggle('is-active', tab.dataset.staffTab === name);
+    });
+    document.querySelectorAll('[data-staff-pane]').forEach((pane) => {
+        pane.classList.toggle('hide', pane.dataset.staffPane !== name);
+    });
+}
+window.setStaffTab = setStaffTab;
+
+document.addEventListener('click', (event) => {
+    const tab = event.target.closest('[data-staff-tab]');
+    if (tab) setStaffTab(tab.dataset.staffTab);
+});
+
 function openAdminMgmt() {
     if (adminMgmtModal) adminMgmtModal.classList.remove('hide');
 
@@ -515,15 +531,9 @@ function openAdminMgmt() {
             roleSelect.value = 'agent';
             roleSelect.disabled = true;
         }
-        if (isAgent) {
-            if (adminUserForm) adminUserForm.closest('.admin-user-form-panel')?.classList.add('hide');
-        } else {
-            adminUserForm?.closest('.admin-user-form-panel')?.classList.remove('hide');
-        }
     } else {
         if (projectMgmtBox) projectMgmtBox.classList.remove('hide');
         if (projectFormGroup) projectFormGroup.classList.remove('hide');
-        adminUserForm?.closest('.admin-user-form-panel')?.classList.remove('hide');
 
         if (adminFormProject) {
             adminFormProject.innerHTML = '<option value="">— Tất cả dự án (toàn quyền) —</option>';
@@ -535,6 +545,20 @@ function openAdminMgmt() {
             });
         }
     }
+
+    // Tab Du an chi co nghia voi Superadmin. Voi cac vai tro khac chi con mot
+    // tab, ma mot dai tab chi co mot nut thi chi to chiem cho.
+    const tabs = document.getElementById('admin-mgmt-tabs');
+    const projectTab = document.querySelector('[data-staff-tab="projects"]');
+    projectTab?.classList.toggle('hide', !isSuper);
+    tabs?.classList.toggle('hide', !isSuper);
+    setStaffTab(isSuper ? 'projects' : 'people');
+
+    // Nut "Them nhan vien" thay cho viec hien san ca cai form. Agent khong duoc
+    // tao tai khoan nen giau luon nut, thay vi giau form roi de nut tro toi mot
+    // cai hop khong bao gio mo.
+    document.getElementById('admin-add-toggle')?.classList.toggle('hide', isAgent);
+    window.toggleAddBox?.('staff', false);
 
     applyAdminMgmtFocus();
     loadAdminUsers();
@@ -579,7 +603,39 @@ async function loadAdminUsers() {
             'gradient-5': 'linear-gradient(135deg,#0ea5e9,#2563eb)'
         };
 
-        adminListContainer.innerHTML = visibleUsers.map(u => {
+        // XEP THANH CAY, khong phai danh sach phang.
+        //
+        // Truoc day moi tai khoan la mot dong ngang hang, Sale chi duoc thut vao
+        // 12px bang style noi dong. Nhin vao khong biet Sale nao thuoc Agent nao
+        // - ma do la thu quan trong nhat cua man hinh nay: han muc Sale, quyen
+        // doc hoi thoai, phan cong deu chay theo duong cha-con ay.
+        //
+        // managed_by_admin_id la duong day that; manager_name chi la nhan hien
+        // ra. Gom theo id, khong gom theo ten - hai Agent trung ten la lap tuc
+        // sai, ma ten thi doi duoc bat cu luc nao.
+        const byId = new Map(visibleUsers.map((u) => [Number(u.id), u]));
+        const childrenOf = new Map();
+        const roots = [];
+        for (const u of visibleUsers) {
+            const parentId = Number(u.managed_by_admin_id);
+            if (u.role === 'sale' && parentId && byId.has(parentId)) {
+                if (!childrenOf.has(parentId)) childrenOf.set(parentId, []);
+                childrenOf.get(parentId).push(u);
+            } else {
+                // Sale mo coi (Agent quan ly khong nam trong pham vi dang xem)
+                // van phai hien - giau di thi khong ai sua duoc no nua.
+                roots.push(u);
+            }
+        }
+        const ordered = [];
+        for (const root of roots) {
+            ordered.push({ user: root, depth: 0 });
+            for (const child of childrenOf.get(Number(root.id)) || []) {
+                ordered.push({ user: child, depth: 1 });
+            }
+        }
+
+        adminListContainer.innerHTML = ordered.map(({ user: u, depth }) => {
             const isSelf = CURRENT_ADMIN && Number(CURRENT_ADMIN.id) === Number(u.id);
             const isCreatedByMe = CURRENT_ADMIN && u.created_by_admin_id && Number(u.created_by_admin_id) === Number(CURRENT_ADMIN.id);
             const bgGradient = avatarGradients[u.avatar_url] || avatarGradients['gradient-1'];
@@ -608,9 +664,13 @@ async function loadAdminUsers() {
             }
 
             const canDelete = !isSelf && (CURRENT_ADMIN.role === 'superadmin' || isCreatedByMe);
+            // Thiet bi la chuyen giay phep: chi Superadmin xem va thu hoi duoc,
+            // dung theo dung quyen ma endpoint /api/superadmin/... doi hoi.
+            const canManageDevices = CURRENT_ADMIN.role === 'superadmin';
 
             return `
-                <div class="admin-user-card ${isSelf ? 'is-self' : ''} ${u.role === 'sale' ? 'is-sale-card' : ''}" style="${u.role === 'sale' ? 'margin-left: 12px; border-left: 3px solid #6366f1;' : ''}">
+                <div class="admin-user-card ${isSelf ? 'is-self' : ''} ${depth ? 'is-child' : ''}" data-admin-row="${u.id}">
+                    ${depth ? '<span class="admin-user-branch" aria-hidden="true"></span>' : ''}
                     <div class="admin-user-info">
                         <div class="admin-user-avatar" style="background: ${bgGradient};">
                             ${initial}
@@ -636,6 +696,7 @@ async function loadAdminUsers() {
                     </div>
                     <div class="admin-user-actions">
                         <button onclick="editAdminUser(${u.id})" class="icon-btn" title="Chỉnh sửa" style="width:28px; height:28px; font-size:13px; background:rgba(99,102,241,0.12); color:#818cf8; border:1px solid rgba(99,102,241,0.25); border-radius:6px; cursor:pointer;"><i class="ri-edit-line"></i></button>
+                        ${canManageDevices ? `<button onclick="openAccountDevices(${u.id})" class="icon-btn" title="Thiết bị đã đăng ký" style="width:28px; height:28px; font-size:13px; background:rgba(16,185,129,0.12); color:#34d399; border:1px solid rgba(16,185,129,0.25); border-radius:6px; cursor:pointer;"><i class="ri-computer-line"></i></button>` : ''}
                         ${canDelete ? `<button onclick="deleteAdminUser(${u.id})" class="icon-btn" title="Xóa tài khoản" style="width:28px; height:28px; font-size:13px; background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); border-radius:6px; cursor:pointer;"><i class="ri-delete-bin-line"></i></button>` : ''}
                     </div>
                 </div>
@@ -648,9 +709,31 @@ async function loadAdminUsers() {
 }
 
 
+// Dong "Thuoc Agent" trong form sua. Chi de doc: doi cha con phai lam o console
+// cua Agent, noi con biet han muc Sale con lai bao nhieu.
+function renderAdminFormManager(user) {
+    const roleGroup = document.getElementById('admin-form-role-group');
+    if (!roleGroup) return;
+    let row = document.getElementById('admin-form-manager-row');
+    if (!user || user.role !== 'sale') { row?.remove(); return; }
+    if (!row) {
+        row = document.createElement('div');
+        row.id = 'admin-form-manager-row';
+        row.className = 'form-group admin-form-manager';
+        roleGroup.insertAdjacentElement('afterend', row);
+    }
+    const manager = user.manager_name || user.manager_username || 'Chưa gán';
+    row.innerHTML = `
+        <label>Thuộc Agent</label>
+        <p class="admin-form-manager-value"><i class="ri-user-star-line"></i> ${escapeHtml(manager)}</p>
+        <small>Đổi Agent quản lý phải làm trong console của Agent, nơi còn thấy hạn mức Sale.</small>`;
+}
+
 function resetAdminForm() {
     if (!adminUserForm) return;
     adminUserForm.reset();
+    renderAdminFormManager(null);
+    if (adminFormRole) adminFormRole.disabled = false;
     if (adminFormId) adminFormId.value = '';
     if (adminFormEmail) {
         adminFormEmail.readOnly = false;
@@ -674,6 +757,8 @@ function resetAdminForm() {
 
 
 async function editAdminUser(id) {
+    // Form gap lai theo mac dinh, nen bam Sua ma khong mo ra thi khong thay gi.
+    window.toggleAddBox?.('staff', true);
     try {
         const res = await authFetch(`${API_BASE}/api/admin/users`);
         const users = await res.json();
@@ -689,8 +774,19 @@ async function editAdminUser(id) {
         }
         if (adminFormRole) {
             adminFormRole.value = u.role;
-            if (CURRENT_ADMIN?.role === 'project_admin') adminFormRole.disabled = true;
+            // Sale: khoa o vai tro lai.
+            //
+            // Duong day Sale -> Agent nam o managed_by_admin_id, ma endpoint sua
+            // tai khoan khong nhan truong do. Neu de doi vai tro tu do, mot Sale
+            // co the thanh Agent trong khi van con tro toi Agent cu - han muc va
+            // quyen doc hoi thoai tu do lech nhau, khong ai nhin ra.
+            //
+            // Sua ten, khoa/mo, doi avatar thi van lam duoc binh thuong.
+            adminFormRole.disabled = u.role === 'sale' || CURRENT_ADMIN?.role === 'project_admin';
         }
+        // Ai la Agent quan ly - chi de doc, vi day chinh la thu man hinh cu
+        // khong noi ra duoc.
+        renderAdminFormManager(u);
         if (adminFormSaleLimitGroup) adminFormSaleLimitGroup.style.display = u.role === 'agent' ? 'block' : 'none';
         if (adminFormProject) adminFormProject.value = u.project_id || '';
         // Đổ lại hạn mức Sale đang có. Bỏ bước này thì ô luôn trống, và lần bấm
@@ -946,3 +1042,115 @@ async function exportReportCSV() {
         }
     }
 }
+
+
+// ── Thiết bị đã đăng ký của một tài khoản ────────────────────────────────────
+//
+// Mở từ chính dòng nhân viên, không phải từ một tab riêng: khi cần thu hồi máy
+// cho ai đó thì mình đang nhìn đúng dòng của người đó, đi tìm lại tên trong một
+// danh sách thứ hai chỉ tổ bấm nhầm sang tài khoản bên cạnh.
+//
+// Ba việc backend đã có sẵn: xem danh sách, thu hồi một máy, và reset sạch kèm
+// xoá thời gian chờ đổi máy.
+function deviceTimeLabel(value) {
+    if (!value) return '—';
+    const time = new Date(value);
+    if (Number.isNaN(time.getTime())) return '—';
+    return time.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+async function openAccountDevices(adminId) {
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay device-overlay';
+    overlay.innerHTML = `
+        <div class="confirm-card device-card" role="dialog" aria-modal="true" aria-label="Thiết bị đã đăng ký">
+            <div class="device-head">
+                <h3><i class="ri-computer-line"></i> Thiết bị đã đăng ký</h3>
+                <button type="button" class="icon-btn device-close" title="Đóng"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="device-body"><p class="device-loading"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p></div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (event) => { if (event.key === 'Escape') close(); };
+    overlay.querySelector('.device-close').addEventListener('click', close);
+    overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); });
+    document.addEventListener('keydown', onKey);
+
+    const body = overlay.querySelector('.device-body');
+
+    async function load() {
+        body.innerHTML = '<p class="device-loading"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+        try {
+            const res = await authFetch(`${API_BASE}/api/superadmin/accounts/${adminId}/devices`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'Không tải được danh sách thiết bị.');
+
+            // Máy đã thu hồi vẫn còn trong bảng. Trộn chung với máy đang dùng thì
+            // con số "3/2 máy" hiện ra vô nghĩa — tách hẳn hai nhóm.
+            const all = Array.isArray(data.devices) ? data.devices : [];
+            const active = all.filter((d) => d.status !== 'revoked');
+            const revoked = all.filter((d) => d.status === 'revoked');
+            const limit = data.limit == null ? '∞' : data.limit;
+
+            const row = (device, isActive) => `
+                <div class="device-row${isActive ? '' : ' is-revoked'}">
+                    <div class="device-row-main">
+                        <strong>${escapeHtml(device.label || device.device_id || 'Không rõ')}</strong>
+                        <small>Lần cuối: ${escapeHtml(deviceTimeLabel(device.last_seen))}${device.last_ip ? ` · ${escapeHtml(device.last_ip)}` : ''}</small>
+                        <small>Đăng ký: ${escapeHtml(deviceTimeLabel(device.first_seen))}</small>
+                    </div>
+                    ${isActive
+                        ? `<button type="button" class="device-revoke" data-revoke="${device.id}"><i class="ri-logout-box-r-line"></i> Thu hồi</button>`
+                        : '<span class="device-revoked-tag">Đã thu hồi</span>'}
+                </div>`;
+
+            body.innerHTML = `
+                <div class="device-summary">
+                    <span><strong>${escapeHtml(data.account?.full_name || data.account?.username || '')}</strong></span>
+                    <span class="device-count">${active.length}/${limit} máy đang dùng</span>
+                </div>
+                <p class="device-cooldown">
+                    Đổi máy phải cách nhau ${Number(data.cooldownDays || 0)} ngày.
+                    Lần đổi gần nhất: ${escapeHtml(deviceTimeLabel(data.lastChangeAt))}
+                </p>
+                ${active.length ? active.map((d) => row(d, true)).join('') : '<p class="device-empty">Chưa có máy nào đang đăng ký.</p>'}
+                ${revoked.length ? `<p class="device-group-label">Đã thu hồi (${revoked.length})</p>${revoked.map((d) => row(d, false)).join('')}` : ''}
+                <button type="button" class="device-reset"><i class="ri-refresh-line"></i> Gỡ tất cả &amp; xoá thời gian chờ</button>`;
+        } catch (error) {
+            body.innerHTML = `<p class="device-error">${escapeHtml(error.message)}</p>`;
+        }
+    }
+
+    body.addEventListener('click', async (event) => {
+        const revokeBtn = event.target.closest('[data-revoke]');
+        if (revokeBtn) {
+            const ok = await pastieConfirm('Thu hồi thiết bị này? Phiên đăng nhập trên máy đó sẽ bị đóng ngay.');
+            if (!ok) return;
+            try {
+                const res = await authFetch(`${API_BASE}/api/superadmin/accounts/${adminId}/devices/${revokeBtn.dataset.revoke}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data?.error || 'Không thu hồi được thiết bị.');
+                showToast('Đã thu hồi thiết bị.', 'success');
+                await load();
+            } catch (error) { showToast(error.message, 'error'); }
+            return;
+        }
+        if (event.target.closest('.device-reset')) {
+            // Reset là cửa sau lách hạn mức nếu dùng bừa — hỏi cho rõ trước.
+            const ok = await pastieConfirm('Gỡ TẤT CẢ thiết bị của tài khoản này và xoá thời gian chờ đổi máy? Người dùng sẽ phải đăng nhập lại từ đầu.');
+            if (!ok) return;
+            try {
+                const res = await authFetch(`${API_BASE}/api/superadmin/accounts/${adminId}/devices/reset`, { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data?.error || 'Không reset được thiết bị.');
+                showToast('Đã gỡ toàn bộ thiết bị.', 'success');
+                await load();
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+    });
+
+    await load();
+}
+window.openAccountDevices = openAccountDevices;
