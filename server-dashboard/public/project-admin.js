@@ -399,6 +399,10 @@ function updateAdminFormRoleVisibility() {
     if (adminFormSaleLimitGroup) {
         adminFormSaleLimitGroup.style.display = isAgent ? 'block' : 'none';
     }
+    const adminFormDeferredGroup = document.getElementById('admin-form-deferred-group');
+    if (adminFormDeferredGroup) {
+        adminFormDeferredGroup.style.display = isAgent ? 'block' : 'none';
+    }
 }
 
 
@@ -752,6 +756,11 @@ function resetAdminForm() {
         if (adminFormRole) { adminFormRole.value = 'agent'; adminFormRole.disabled = false; }
     }
 
+    const adminFormDeferred = document.getElementById('admin-form-deferred');
+    if (adminFormDeferred) adminFormDeferred.value = 'none';
+    const adminFormDeferredGroup = document.getElementById('admin-form-deferred-group');
+    if (adminFormDeferredGroup) adminFormDeferredGroup.style.display = 'block';
+
     renderAdminAvatarPicker();
 }
 
@@ -788,6 +797,14 @@ async function editAdminUser(id) {
         // khong noi ra duoc.
         renderAdminFormManager(u);
         if (adminFormSaleLimitGroup) adminFormSaleLimitGroup.style.display = u.role === 'agent' ? 'block' : 'none';
+        const adminFormDeferred = document.getElementById('admin-form-deferred');
+        if (adminFormDeferred) {
+            adminFormDeferred.value = u.deferred_payment_mode || (u.allow_room_charge ? 'room_charge' : 'none');
+        }
+        const adminFormDeferredGroup = document.getElementById('admin-form-deferred-group');
+        if (adminFormDeferredGroup) {
+            adminFormDeferredGroup.style.display = u.role === 'agent' ? 'block' : 'none';
+        }
         if (adminFormProject) adminFormProject.value = u.project_id || '';
         // Đổ lại hạn mức Sale đang có. Bỏ bước này thì ô luôn trống, và lần bấm
         // "Cập nhật" kế tiếp sẽ âm thầm xoá hạn mức thành "không giới hạn".
@@ -846,6 +863,8 @@ async function handleAdminUserSubmit(e) {
     //               không được gộp thành cùng một giá trị.
     if (effectiveRole === 'agent') {
         payload.sale_limit = (adminFormSaleLimit?.value ?? '').trim();
+        const adminFormDeferred = document.getElementById('admin-form-deferred');
+        payload.deferred_payment_mode = adminFormDeferred?.value || 'none';
     }
     try {
         const url = id ? `${API_BASE}/api/admin/users/${id}` : `${API_BASE}/api/admin/users`;

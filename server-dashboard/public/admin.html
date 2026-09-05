@@ -262,6 +262,13 @@
                                  — xem openOrgModal(). -->
                             <label id="org-agent-project-field" class="hide">Dự án QR *<select id="org-agent-project"></select></label>
                             <label>Giới hạn Sale<input type="number" id="org-agent-sale-limit" min="0" step="1" placeholder="Không giới hạn"></label>
+                            <label>Trả chậm cho khách (chỉ 1 trong 2)
+                                <select id="org-agent-defer-create">
+                                    <option value="none">Không có (Chỉ trả ngay: Tiền mặt, QR, Thẻ)</option>
+                                    <option value="room_charge">Cộng vào tiền phòng (Room charge)</option>
+                                    <option value="pay_later">Thanh toán sau (Pay later)</option>
+                                </select>
+                            </label>
                         </div>
                         <button type="submit" class="org-submit"><i class="ri-user-add-line"></i> Thêm Agent</button>
                     </form>
@@ -370,27 +377,6 @@
 
                 <!-- Thực đơn: chỉ Agent quản lý dự án QR -->
                 <section class="org-pane hide" data-org-pane="menu">
-                    <!-- Cấu hình phương thức thanh toán bổ sung cho khách -->
-                    <div class="menu-payment-config-card" style="margin-bottom:14px; padding:12px 16px; border-radius:12px; background:var(--panel-bg, #ffffff); border:1px solid var(--panel-border, #f0dde8); display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <i class="ri-secure-payment-line" style="font-size:22px; color:var(--accent-color, #d2127e);"></i>
-                            <div>
-                                <strong style="font-size:13px; color:var(--text-primary, #2d2035); display:block;">Phương thức thanh toán cho khách:</strong>
-                                <span style="font-size:12px; color:var(--text-secondary, #776a7e);">(Mặc định luôn có Tiền mặt, Chuyển khoản QR, Thẻ)</span>
-                            </div>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <select id="menu-deferred-payment-select" style="font-size:12.5px; padding:6px 10px; border-radius:8px; border:1px solid var(--panel-border, #e0cee0); background:var(--bg-input, #ffffff); color:var(--text-primary, #2d2035); font-weight:600; cursor:pointer;">
-                                <option value="none">Chỉ trả ngay (Tiền mặt, QR, Thẻ)</option>
-                                <option value="room_charge">Cộng vào tiền phòng (Room charge)</option>
-                                <option value="pay_later">Thanh toán sau (Pay later)</option>
-                            </select>
-                            <button type="button" id="menu-deferred-payment-save-btn" class="pane-add" style="font-size:12px; padding:6px 12px; margin:0; height:auto;">
-                                <i class="ri-save-line"></i> <span>Lưu</span>
-                            </button>
-                        </div>
-                    </div>
-
                     <div class="org-list-header">
                         <h4>Các món trong thực đơn</h4>
                         <span id="menu-count-badge" class="org-count-badge">0 món</span>
@@ -1191,6 +1177,16 @@
                                 <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Hạn mức số Sale cấp phép cho Agent</label>
                                 <input type="number" id="admin-form-sale-limit" min="0" step="1" placeholder="Để trống = Không giới hạn" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;">
                                 <small style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;">Số lượng tài khoản Sale tối đa mà Agent này được tạo.</small>
+                            </div>
+
+                            <div class="form-group" id="admin-form-deferred-group" style="margin: 0;">
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Phương thức trả chậm cho khách (chỉ 1 trong 2)</label>
+                                <select id="admin-form-deferred" style="width:100%;">
+                                    <option value="none">Không có (Chỉ trả ngay: Tiền mặt, QR, Thẻ)</option>
+                                    <option value="room_charge">Cộng vào tiền phòng (Room charge)</option>
+                                    <option value="pay_later">Thanh toán sau (Pay later)</option>
+                                </select>
+                                <small style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;">Chỉ áp dụng cho tài khoản Agent. Chỉ chọn 1 trong 2: Cộng vào tiền phòng hoặc Thanh toán sau.</small>
                             </div>
 
                             <div class="form-group" style="margin: 0;">

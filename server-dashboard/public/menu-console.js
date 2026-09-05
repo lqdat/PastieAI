@@ -66,7 +66,6 @@
             render();
             scheduleTranslationPoll();
             void loadPos();
-            void loadDeferredPayment();
 
             // Báo lỗi cho ĐÚNG phần hỏng, phần còn lại vẫn dùng được bình thường.
             if (catResult.status === 'rejected') {
@@ -721,48 +720,6 @@
             const picker = event.target.closest('[data-image-for]');
             if (picker) void uploadImage(picker.dataset.imageFor, picker.files?.[0]);
         });
-
-        $('menu-deferred-payment-save-btn')?.addEventListener('click', () => void saveDeferredPayment());
-        $('menu-deferred-payment-select')?.addEventListener('change', () => void saveDeferredPayment());
-    }
-
-    async function loadDeferredPayment() {
-        const select = $('menu-deferred-payment-select');
-        if (!select) return;
-        try {
-            const data = await orgFetch('/api/agent/deferred-payment');
-            if (data && data.mode) {
-                select.value = data.mode;
-            }
-        } catch (e) {
-            console.warn('Load deferred payment error:', e);
-        }
-    }
-
-    async function saveDeferredPayment() {
-        const select = $('menu-deferred-payment-select');
-        const btn = $('menu-deferred-payment-save-btn');
-        if (!select) return;
-        const mode = select.value || 'none';
-        if (btn) btn.disabled = true;
-        try {
-            await orgFetch('/api/agent/deferred-payment', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode }),
-            });
-            const labelMap = {
-                none: 'Chỉ trả ngay (Tiền mặt, QR, Thẻ)',
-                room_charge: 'Cộng vào tiền phòng (Room charge)',
-                pay_later: 'Thanh toán sau (Pay later)',
-            };
-            showToast(`Đã lưu phương thức thanh toán: ${labelMap[mode] || mode}`, 'success');
-        } catch (error) {
-            showToast(error.message || 'Không lưu được thiết lập thanh toán.', 'error');
-            void loadDeferredPayment();
-        } finally {
-            if (btn) btn.disabled = false;
-        }
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);

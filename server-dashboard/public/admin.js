@@ -1506,6 +1506,7 @@ document.getElementById('org-agent-form')?.addEventListener('submit', async (eve
                 email: document.getElementById('org-agent-email').value.trim(),
                 projectId: document.getElementById('org-agent-project').value,
                 saleLimit: document.getElementById('org-agent-sale-limit').value,
+                deferredPaymentMode: document.getElementById('org-agent-defer-create')?.value || 'none',
             }),
         });
         event.target.reset();

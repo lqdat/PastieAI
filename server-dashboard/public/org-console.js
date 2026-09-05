@@ -347,12 +347,12 @@ async function loadOrgAgents() {
                     <button type="button" class="org-device-btn" data-agent-devices="${agent.id}" data-agent-name="${escapeHtml(agent.full_name || agent.username)}">
                         <i class="ri-device-line"></i> Thiết bị
                     </button>
-                    <label class="org-defer">
-                        <span>Trả chậm</span>
-                        <select data-agent-defer="${agent.id}" title="Nút thanh toán chậm hiện cho khách của Agent này">
-                            <option value="none"${agent.deferred_payment_mode === 'none' || !agent.deferred_payment_mode ? ' selected' : ''}>Không có</option>
-                            <option value="room_charge"${agent.deferred_payment_mode === 'room_charge' ? ' selected' : ''}>Cộng tiền phòng</option>
-                            <option value="pay_later"${agent.deferred_payment_mode === 'pay_later' ? ' selected' : ''}>Thanh toán sau</option>
+                    <label class="org-defer" style="display:flex; flex-direction:column; gap:2px;">
+                        <span style="font-size:11px; font-weight:700; color:var(--text-secondary);">Trả chậm (chỉ 1 trong 2)</span>
+                        <select data-agent-defer="${agent.id}" title="Chỉ chọn 1 trong 2: Cộng vào tiền phòng hoặc Thanh toán sau">
+                            <option value="none"${agent.deferred_payment_mode === 'none' || !agent.deferred_payment_mode ? ' selected' : ''}>Không có (Chỉ trả ngay)</option>
+                            <option value="room_charge"${agent.deferred_payment_mode === 'room_charge' ? ' selected' : ''}>Cộng tiền phòng (Room charge)</option>
+                            <option value="pay_later"${agent.deferred_payment_mode === 'pay_later' ? ' selected' : ''}>Thanh toán sau (Pay later)</option>
                         </select>
                     </label>
                     <button type="button" class="org-toggle" data-agent-toggle="${agent.id}" data-active="${agent.is_active}">

@@ -5005,7 +5005,7 @@ app.get('/api/admin/users', checkAdminAuth, async (req, res) => {
     const result = isSuperAdmin(req.admin)
       ? await db.query(`
         SELECT a.id, a.username, a.role, a.full_name, a.avatar_url, a.is_active, a.project_id, 
-               a.created_by_admin_id, a.managed_by_admin_id, a.sale_limit, a.created_at,
+               a.created_by_admin_id, a.managed_by_admin_id, a.sale_limit, a.deferred_payment_mode, a.allow_room_charge, a.created_at,
                m.full_name AS manager_name, m.username AS manager_username,
                (SELECT COUNT(*)::int FROM admins s WHERE s.managed_by_admin_id = a.id AND s.role = 'sale') AS used_sales_count
         FROM admins a
@@ -5022,7 +5022,7 @@ app.get('/api/admin/users', checkAdminAuth, async (req, res) => {
       `)
       : isProjectAdmin(req.admin) ? await db.query(
         `SELECT a.id, a.username, a.role, a.full_name, a.avatar_url, a.is_active, a.project_id, 
-                a.created_by_admin_id, a.managed_by_admin_id, a.sale_limit, a.created_at,
+                a.created_by_admin_id, a.managed_by_admin_id, a.sale_limit, a.deferred_payment_mode, a.allow_room_charge, a.created_at,
                 m.full_name AS manager_name, m.username AS manager_username,
                 (SELECT COUNT(*)::int FROM admins s WHERE s.managed_by_admin_id = a.id AND s.role = 'sale') AS used_sales_count
          FROM admins a
@@ -5032,7 +5032,7 @@ app.get('/api/admin/users', checkAdminAuth, async (req, res) => {
         [req.admin.id, req.admin.project_id]
       ) : await db.query(
         `SELECT a.id, a.username, a.role, a.full_name, a.avatar_url, a.is_active, a.project_id, 
-                a.created_by_admin_id, a.managed_by_admin_id, a.sale_limit, a.created_at,
+                a.created_by_admin_id, a.managed_by_admin_id, a.sale_limit, a.deferred_payment_mode, a.allow_room_charge, a.created_at,
                 m.full_name AS manager_name, m.username AS manager_username,
                 (SELECT COUNT(*)::int FROM admins s WHERE s.managed_by_admin_id = a.id AND s.role = 'sale') AS used_sales_count
          FROM admins a
@@ -5087,11 +5087,14 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
       ? Math.max(0, parseInt(sale_limit, 10))
       : null;
 
+    const rawDeferred = req.body?.deferred_payment_mode || req.body?.deferredPaymentMode;
+    const deferredMode = (effectiveRole === 'agent' && ['room_charge', 'pay_later'].includes(rawDeferred)) ? rawDeferred : 'none';
+
     const insertRes = await db.query(
-      `INSERT INTO admins (username, password_hash, full_name, role, avatar_url, project_id, created_by_admin_id, is_active, sale_limit)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8) 
-       RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, created_at`,
-      [username, passwordHash, full_name.trim(), effectiveRole, avatar, scope, creatorId, saleLimit]
+      `INSERT INTO admins (username, password_hash, full_name, role, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, deferred_payment_mode, allow_room_charge)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9, ($9 = 'room_charge')) 
+       RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, deferred_payment_mode, allow_room_charge, created_at`,
+      [username, passwordHash, full_name.trim(), effectiveRole, avatar, scope, creatorId, saleLimit, deferredMode]
     );
 
     res.status(201).json({
@@ -5161,6 +5164,11 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
       ? (sale_limit === '' || sale_limit === null ? null : Math.max(0, parseInt(sale_limit, 10)))
       : currentAdmin.sale_limit;
 
+    const rawDeferred = req.body?.deferred_payment_mode || req.body?.deferredPaymentMode;
+    const updatedDeferred = (updatedRole === 'agent' && rawDeferred !== undefined)
+      ? (['room_charge', 'pay_later'].includes(rawDeferred) ? rawDeferred : 'none')
+      : (currentAdmin.deferred_payment_mode || (currentAdmin.allow_room_charge ? 'room_charge' : 'none'));
+
     // Do not allow deactivating themselves
     if (Number(id) === Number(req.admin.id) && !updatedIsActive) {
       return res.status(400).json({ error: 'Bạn không thể tự vô hiệu hóa tài khoản của chính mình.' });
@@ -5168,10 +5176,11 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
 
     const updateRes = await db.query(
       `UPDATE admins
-       SET username = $1, full_name = $2, role = $3, avatar_url = $4, is_active = $5, project_id = $6, sale_limit = $7
-       WHERE id = $8 
-       RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, created_at`,
-      [updatedUsername, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, updatedProject, updatedSaleLimit, id]
+       SET username = $1, full_name = $2, role = $3, avatar_url = $4, is_active = $5, project_id = $6, sale_limit = $7,
+           deferred_payment_mode = $8, allow_room_charge = ($8 = 'room_charge')
+       WHERE id = $9 
+       RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, deferred_payment_mode, allow_room_charge, created_at`,
+      [updatedUsername, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, updatedProject, updatedSaleLimit, updatedDeferred, id]
     );
 
     res.json({
@@ -7717,13 +7726,15 @@ app.post('/api/superadmin/agents', checkAdminAuth, async (req, res) => {
     const limit = saleLimit === undefined || saleLimit === null || saleLimit === ''
       ? null
       : Math.max(0, Number.parseInt(saleLimit, 10));
+    const rawDeferred = req.body?.deferredPaymentMode || req.body?.deferred_payment_mode;
+    const deferredMode = ['room_charge', 'pay_later'].includes(rawDeferred) ? rawDeferred : 'none';
     const passwordHash = await hashPassword(randomUUID());
     const created = await db.query(
-      `INSERT INTO admins (username, password_hash, full_name, role, project_id, managed_by_admin_id, sale_limit, is_active)
-       VALUES ($1, $2, $3, 'agent', $4, $5, $6, TRUE)
-       RETURNING id, username, full_name, role, project_id, sale_limit, is_active, created_at`,
+      `INSERT INTO admins (username, password_hash, full_name, role, project_id, managed_by_admin_id, sale_limit, is_active, deferred_payment_mode, allow_room_charge)
+       VALUES ($1, $2, $3, 'agent', $4, $5, $6, TRUE, $7, ($7 = 'room_charge'))
+       RETURNING id, username, full_name, role, project_id, sale_limit, is_active, deferred_payment_mode, allow_room_charge, created_at`,
       [username, passwordHash, String(fullName).trim().slice(0, 255), projectId, req.admin.id,
-       Number.isFinite(limit) ? limit : null]
+       Number.isFinite(limit) ? limit : null, deferredMode]
     );
 
     // Bàn giao dữ liệu QR cũ chưa có chủ (Sale và QR còn lơ lửng sau migration)
@@ -7752,16 +7763,23 @@ app.put('/api/superadmin/agents/:agentId', checkAdminAuth, async (req, res) => {
       : (saleLimit === null || saleLimit === '' ? null
         : (Number.isFinite(Number.parseInt(saleLimit, 10)) ? Math.max(0, Number.parseInt(saleLimit, 10)) : null));
 
+    const rawDeferred = req.body?.deferredPaymentMode || req.body?.deferred_payment_mode;
+    const nextDeferred = rawDeferred === undefined ? undefined
+      : (['room_charge', 'pay_later'].includes(rawDeferred) ? rawDeferred : 'none');
+
     const updated = await db.query(
       `UPDATE admins
           SET full_name = COALESCE($2, full_name),
               project_id = COALESCE($3, project_id),
               is_active = COALESCE($4, is_active),
-              sale_limit = CASE WHEN $6::boolean THEN $5::int ELSE sale_limit END
+              sale_limit = CASE WHEN $6::boolean THEN $5::int ELSE sale_limit END,
+              deferred_payment_mode = CASE WHEN $8::boolean THEN $7::varchar ELSE deferred_payment_mode END,
+              allow_room_charge = CASE WHEN $8::boolean THEN ($7 = 'room_charge') ELSE allow_room_charge END
         WHERE id = $1
-        RETURNING id, username, full_name, role, project_id, sale_limit, is_active`,
+        RETURNING id, username, full_name, role, project_id, sale_limit, is_active, deferred_payment_mode, allow_room_charge`,
       [agentId, fullName ? String(fullName).trim().slice(0, 255) : null, projectId || null,
-       typeof isActive === 'boolean' ? isActive : null, nextLimit ?? null, nextLimit !== undefined]
+       typeof isActive === 'boolean' ? isActive : null, nextLimit ?? null, nextLimit !== undefined,
+       nextDeferred ?? 'none', nextDeferred !== undefined]
     );
     // Khóa tài khoản thì đóng luôn mọi phiên đang mở, không đợi token hết hạn.
     if (isActive === false) await db.query('DELETE FROM admin_sessions WHERE admin_id = $1', [agentId]);
@@ -9954,7 +9972,7 @@ app.get('/api/agent/deferred-payment', checkAdminAuth, async (req, res) => {
     let agentId = null;
     if (req.admin.role === 'agent') {
       agentId = req.admin.id;
-    } else if (req.query.agent_id && req.admin.role === 'superadmin') {
+    } else if (req.query.agent_id && isSuperAdmin(req.admin)) {
       agentId = parseInt(req.query.agent_id, 10);
     } else if (req.admin.project_id) {
       const r = await db.query(
@@ -9981,17 +9999,18 @@ app.get('/api/agent/deferred-payment', checkAdminAuth, async (req, res) => {
   }
 });
 
-// Agent / Admin cập nhật thiết lập phương thức thanh toán trả chậm
+// Chỉ Superadmin mới được sửa thiết lập phương thức thanh toán trả chậm của Agent
 app.put('/api/agent/deferred-payment', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Chỉ Superadmin mới có quyền thiết lập phương thức trả chậm cho Agent.' });
+  }
   const mode = String(req.body?.mode || 'none');
   if (!['none', 'room_charge', 'pay_later'].includes(mode)) {
     return res.status(400).json({ error: 'mode phải là none, room_charge hoặc pay_later.' });
   }
   try {
     let agentId = null;
-    if (req.admin.role === 'agent') {
-      agentId = req.admin.id;
-    } else if (req.body.agent_id && req.admin.role === 'superadmin') {
+    if (req.body.agent_id) {
       agentId = parseInt(req.body.agent_id, 10);
     } else if (req.admin.project_id) {
       const r = await db.query(
@@ -10020,8 +10039,8 @@ app.put('/api/agent/deferred-payment', checkAdminAuth, async (req, res) => {
 
 // Superadmin chọn phương thức trả chậm mặc định cho một Agent.
 app.put('/api/admin/agents/:id/deferred-payment', checkAdminAuth, async (req, res) => {
-  if (req.admin.role !== 'superadmin' && (req.admin.role !== 'agent' || req.admin.id !== Number(req.params.id))) {
-    return res.status(403).json({ error: 'Không có quyền đổi thiết lập này.' });
+  if (!isSuperAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Chỉ Superadmin mới có quyền thiết lập phương thức trả chậm cho Agent.' });
   }
   const mode = String(req.body?.mode || 'none');
   if (!['none', 'room_charge', 'pay_later'].includes(mode)) {
