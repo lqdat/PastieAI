@@ -9143,6 +9143,120 @@ async function resolveMenuOwner(sessionId) {
   return result.rows[0] || null;
 }
 
+// ── Lịch sử các đoạn chat đã đóng (cổng khách) ──────────────────────────────
+//
+// Mỗi lần quét mã QR là một phiên chat độc lập, và phiên tự đóng sau 15 phút.
+// Khách ăn xong quay lại hỏi "hồi nãy tôi gọi mấy món" thì trước đây không còn
+// đường nào xem lại — tin nhắn vẫn nằm trong database nhưng cổng khách trả 410.
+//
+// PHẠM VI: cùng EMAIL và cùng CƠ SỞ (agent sở hữu mã QR), trong 30 ngày.
+//   - Buộc theo email chứ không theo mã QR: khách đổi bàn giữa bữa vẫn là một
+//     người, mà mã QR thì nằm trên bàn nên ai ngồi vào cũng quét được.
+//   - Buộc theo cơ sở: quán A không có lý do gì được biết khách từng ăn quán B.
+//   - 30 ngày: đủ để tra lại đơn cũ mà không biến cổng khách thành kho lưu trữ
+//     hiện sẵn trên một màn hình ở nơi công cộng.
+//
+// Quyền: sessionId là UUIDv4 do máy chủ cấp và chỉ khách có — dùng chính nó làm
+// khoá, đúng như mọi route khác của cổng khách. Không nhận email từ client.
+const QR_HISTORY_DAYS = Number(process.env.QR_HISTORY_DAYS || 30);
+
+async function qrHistoryScope(sessionId) {
+  const result = await db.query(
+    `SELECT s.id, s.visitor_email, s.project_id, s.qr_account_id,
+            COALESCE(g.agent_id, q.owner_admin_id) AS agent_id
+       FROM sessions s
+       LEFT JOIN agent_groups g ON g.id = s.group_id
+       LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+      WHERE s.id = $1`,
+    [sessionId]
+  );
+  const row = result.rows[0];
+  if (!row || !row.visitor_email || !row.agent_id) return null;
+  return row;
+}
+
+app.get('/api/chats/:sessionId/history', async (req, res) => {
+  try {
+    const scope = await qrHistoryScope(req.params.sessionId);
+    if (!scope) return res.json({ sessions: [] });
+
+    // Chỉ liệt kê phiên ĐÃ ĐÓNG và KHÁC phiên đang mở: phiên hiện tại đã nằm
+    // ngay trong khung chat rồi, hiện lại trong danh sách lịch sử là thừa.
+    const rows = await db.query(
+      `SELECT s.id, s.created_at, s.status, q.label AS qr_label,
+              (SELECT COUNT(*)::int FROM messages m
+                WHERE m.session_id = s.id AND ${visitorMessageFilter('m.')}) AS message_count,
+              (SELECT MAX(m.created_at) FROM messages m WHERE m.session_id = s.id) AS last_at,
+              (SELECT o.total_amount FROM chat_orders o
+                WHERE o.session_id = s.id AND o.status = 'paid'
+                ORDER BY o.updated_at DESC LIMIT 1) AS paid_total
+         FROM sessions s
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+        WHERE LOWER(s.visitor_email) = LOWER($1)
+          AND COALESCE(g.agent_id, q.owner_admin_id) = $2
+          AND s.id <> $3
+          AND s.status = 'closed'
+          AND s.created_at > NOW() - ($4 || ' days')::interval
+        ORDER BY s.created_at DESC
+        LIMIT 50`,
+      [scope.visitor_email, scope.agent_id, scope.id, String(QR_HISTORY_DAYS)]
+    );
+
+    // Phiên rỗng (khách quét rồi thoát ngay) chỉ làm rối danh sách.
+    res.json({
+      days: QR_HISTORY_DAYS,
+      sessions: rows.rows.filter((row) => row.message_count > 0),
+    });
+  } catch (error) {
+    console.error('QR history list error:', error);
+    res.status(500).json({ error: 'Không tải được lịch sử trò chuyện.' });
+  }
+});
+
+app.get('/api/chats/:sessionId/history/:pastSessionId', async (req, res) => {
+  try {
+    const scope = await qrHistoryScope(req.params.sessionId);
+    if (!scope) return res.status(404).json({ error: 'Không tìm thấy phiên chat.' });
+
+    // Kiểm lại quyền TRÊN CHÍNH phiên cũ, không tin vào danh sách vừa trả về:
+    // nơi gọi có thể đổi id trên URL để đọc chat của người khác.
+    const past = await db.query(
+      `SELECT s.id FROM sessions s
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+        WHERE s.id = $1
+          AND LOWER(s.visitor_email) = LOWER($2)
+          AND COALESCE(g.agent_id, q.owner_admin_id) = $3
+          AND s.created_at > NOW() - ($4 || ' days')::interval`,
+      [req.params.pastSessionId, scope.visitor_email, scope.agent_id, String(QR_HISTORY_DAYS)]
+    );
+    if (!past.rows[0]) return res.status(404).json({ error: 'Không tìm thấy đoạn trò chuyện này.' });
+
+    const visitorLang = req.query.lang ? String(req.query.lang) : null;
+    const result = await db.query(
+      `SELECT * FROM messages
+        WHERE session_id = $1 AND ${visitorMessageFilter()}
+        ORDER BY created_at ASC
+        LIMIT 300`,
+      [past.rows[0].id]
+    );
+    const messages = result.rows;
+    const cache = await preloadTranslations(messages, visitorLang);
+    await Promise.all(messages.map(async (msg) => {
+      msg.translated_text = await getOrTranslateMessage(msg, visitorLang, cache);
+      if (msg.attachment_key) {
+        msg.attachment_url = await cachedPresignedUrl(msg.attachment_key).catch(() => msg.attachment_url);
+      }
+    }));
+    // readOnly để cổng khách không dựng ô nhập tin cho một phiên đã đóng.
+    res.json({ readOnly: true, messages });
+  } catch (error) {
+    console.error('QR history read error:', error);
+    res.status(500).json({ error: 'Không tải được đoạn trò chuyện.' });
+  }
+});
+
 // ── Kết nối phần mềm tính tiền (POS) ────────────────────────────────────────
 // Payload dùng snake_case cố định và có schema_version để đối tác nâng cấp mà
 // không phải đoán cấu trúc. Mỗi event có khóa idempotency order:event:version.
