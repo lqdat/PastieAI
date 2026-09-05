@@ -321,6 +321,36 @@ function handleGoogleAuthTrigger() {
 }
 
 
+// Bị chặn vì gửi OTP quá nhiều lần: đếm lùi tới lúc được gửi lại.
+//
+// Một đồng hồ duy nhất cho cả màn đăng nhập, dừng ngay khi người dùng đổi
+// email hoặc form được dọn — nếu không, hai lần bị chặn liên tiếp sẽ để lại
+// hai setInterval cùng ghi vào một ô chữ và số nhảy loạn.
+let loginRetryInterval = null;
+function stopLoginRetryCountdown() {
+    if (loginRetryInterval) { clearInterval(loginRetryInterval); loginRetryInterval = null; }
+}
+function startLoginRetryCountdown(seconds) {
+    stopLoginRetryCountdown();
+    const sendBtn = document.getElementById('send-admin-otp-btn');
+    let remaining = Math.max(1, Math.ceil(seconds));
+    const tick = () => {
+        const m = Math.floor(remaining / 60);
+        const s = remaining % 60;
+        setLoginError(`Đã gửi mã quá nhiều lần. Thử lại sau ${m}:${s < 10 ? '0' : ''}${s}.`);
+        if (sendBtn) sendBtn.disabled = true;
+        if (remaining <= 0) {
+            stopLoginRetryCountdown();
+            setLoginError('');
+            if (sendBtn) sendBtn.disabled = false;
+        }
+        remaining--;
+    };
+    tick();
+    loginRetryInterval = setInterval(tick, 1000);
+}
+
+
 // Bắt đầu đếm ngược 5 phút OTP
 function startOtpCountdown(seconds = 300) {
     if (adminOtpCountdownInterval) clearInterval(adminOtpCountdownInterval);
@@ -446,6 +476,12 @@ async function handleSendAdminOtp(e) {
 
             startOtpCountdown(300);
             clearAdminOtpDigits();
+        } else if (res.status === 429) {
+            // Máy chủ trả về số giây còn lại ở header Retry-After. In thẳng
+            // "thử lại sau 418 giây" thì người dùng phải tự nhẩm, và con số
+            // đứng im nên trông như màn hình bị treo — đếm lùi cho thấy nó
+            // đang chạy và bao giờ thì hết.
+            startLoginRetryCountdown(Number(res.headers.get('Retry-After')) || 600);
         } else {
             setLoginError(data.error || 'Không thể gửi mã OTP.');
         }
@@ -508,6 +544,7 @@ async function handleVerifyAdminOtp(e) {
 
 function handleChangeOtpEmail() {
     if (adminOtpCountdownInterval) clearInterval(adminOtpCountdownInterval);
+    stopLoginRetryCountdown();
     document.getElementById('otp-step-verify')?.classList.add('hide');
     document.getElementById('otp-step-email')?.classList.remove('hide');
     // Trả tiêu đề về đúng bản dịch của ngôn ngữ đang chọn, thay vì viết cứng một
@@ -829,6 +866,10 @@ function updateAgentHeaderUI() {
     const visibleName = ownName;
 
     if (identityEl) identityEl.classList.toggle('sale-identity', isSaleView);
+    // Header của Sale có bố cục riêng: nút ở hàng trên bên phải, logo ở góc
+    // phải dưới. Đặt class trên chính thẻ <header> để CSS không phải suy ra
+    // vai trò từ một thẻ con nằm sâu bên trong.
+    document.querySelector('.dashboard-header')?.classList.toggle('sale-header', isSaleView);
     if (labelEl) {
         labelEl.textContent = isSaleView ? managerName : '';
         labelEl.title = isSaleView ? managerName : '';

@@ -4503,3 +4503,68 @@ button {
 .self-device-remove:hover { border-color: #ef4444; color: #ef4444; }
 .self-devices-empty { margin: 0; padding: 14px; color: var(--text-muted); font-size: 12px; text-align: center; }
 .self-devices-note { margin: 10px 0 0; color: var(--text-muted); font-size: 11.5px; line-height: 1.5; }
+
+
+/* --- Header của Sale: hai cột ------------------------------------------------
+   Bố cục yêu cầu:
+       [ tên Agent quản lý          ]   [ các nút          ]
+       [ tên Sale                   ]              [ logo  ]
+   Cột trái rộng hơn cột phải; logo bỏ chỗ cũ bên trái để xuống góc phải dưới.
+
+   Logo dùng position:absolute thay vì đổi cấu trúc HTML. Đổi HTML thì header
+   của Agent, Superadmin và Project admin cũng đổi theo — ba giao diện đó đang
+   đúng, không có lý do gì bắt chúng chịu rủi ro vì một yêu cầu của riêng Sale.
+   Absolute cũng làm logo rời khỏi luồng flex, nên khoảng gap 30px của
+   .header-left tự biến mất mà không phải ghi đè. */
+.dashboard-header.sale-header {
+    height: auto;
+    min-height: 88px;
+    align-items: stretch;
+    padding-block: 10px;
+}
+.dashboard-header.sale-header .header-left {
+    /* Chiếm hết phần còn lại: cột trái luôn rộng hơn cụm nút bên phải. */
+    flex: 1 1 auto;
+    min-width: 0;
+    align-items: center;
+    gap: 0;
+}
+.dashboard-header.sale-header .agent-identity {
+    padding-left: 0;
+    border-left: 0;
+}
+/* Nút nằm HÀNG TRÊN, không căn giữa theo chiều cao header nữa. */
+.dashboard-header.sale-header .header-right {
+    align-self: flex-start;
+    align-items: flex-start;
+}
+/* Logo xuống góc phải dưới. */
+.dashboard-header.sale-header .logo {
+    position: absolute;
+    right: 24px;
+    bottom: 9px;
+    margin: 0;
+    pointer-events: none;
+}
+.dashboard-header.sale-header .logo-img { width: 26px; height: 26px; }
+.dashboard-header.sale-header .logo .pastie-chat-wordmark { font-size: 15px; }
+
+@media (max-width: 720px) {
+    /* Trên mobile .header-right vốn đã position:absolute ở góc trên phải, nên
+       chỉ cần nới đáy header để logo có chỗ đứng dưới cụm nút đó. */
+    .dashboard-header.sale-header {
+        height: auto;
+        min-height: calc(104px + env(safe-area-inset-top));
+        padding-bottom: 34px;
+    }
+    .dashboard-header.sale-header .logo { right: 12px; bottom: 8px; }
+    .dashboard-header.sale-header .logo-img { width: 24px; height: 24px; }
+    .dashboard-header.sale-header .logo .pastie-chat-wordmark { font-size: 14px; }
+    /* Chừa chỗ cho cụm nút ở hàng trên; hàng dưới (logo) không chắn chữ vì chữ
+       kết thúc trước đó. */
+    .dashboard-header.sale-header .header-left { padding-right: 96px; }
+    .dashboard-header.sale-header .agent-identity {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

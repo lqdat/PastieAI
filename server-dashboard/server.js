@@ -580,7 +580,7 @@ const limitLoginIp = rateLimit('login-ip', 20, 10 * 60 * 1000);
 const limitLoginEmail = rateLimit('login-email', 8, 10 * 60 * 1000, emailKeyOf);
 const limitOtpSendIp = rateLimit('otp-send-ip', 10, 10 * 60 * 1000);
 // Gửi OTP tốn tiền email thật, siết chặt hơn theo địa chỉ nhận.
-const limitOtpSendEmail = rateLimit('otp-send-email', 3, 10 * 60 * 1000, emailKeyOf);
+const limitOtpSendEmail = rateLimit('otp-send-email', 6, 10 * 60 * 1000, emailKeyOf);
 const limitOtpVerifyIp = rateLimit('otp-verify-ip', 30, 10 * 60 * 1000);
 const limitOtpVerifyEmail = rateLimit('otp-verify-email', 10, 10 * 60 * 1000, emailKeyOf);
 // Gửi tin nhắn: mỗi tin có thể kéo theo một lượt gọi LLM.
