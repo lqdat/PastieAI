@@ -742,6 +742,21 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
       );
     `);
 
+    // Ghi chú món của Sale ("ít cay", "không hành") là chữ tự do, không nằm
+    // trong thực đơn nên không có sẵn bản dịch. Cache theo NỘI DUNG chứ không
+    // theo đơn: cùng một quán thì vài chục câu ghi chú lặp đi lặp lại suốt
+    // ngày, cache theo đơn là dịch lại từ đầu cho mỗi khách.
+    await query(`
+      CREATE TABLE IF NOT EXISTS qr_note_translations (
+        note_hash CHAR(40) NOT NULL,
+        lang VARCHAR(10) NOT NULL,
+        source_text TEXT NOT NULL,
+        translated_text TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (note_hash, lang)
+      );
+    `);
+
     // Khách tự đặt món nên đơn hàng có thêm một trạng thái TRƯỚC awaiting_payment:
     //   pending_confirm  -> khách vừa đặt, chờ Sale xác nhận
     //   awaiting_payment -> Sale đã xác nhận, hoá đơn phát ra

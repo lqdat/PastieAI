@@ -3661,6 +3661,46 @@ async function getChatOrderForVisitor(sessionId) {
   return result.rows[0] || null;
 }
 
+// Dịch ghi chú món của Sale, cache theo NỘI DUNG.
+//
+// Ghi chú là chữ tự do nên không có sẵn bản dịch như tên món. Cache theo nội
+// dung vì một quán chỉ dùng đi dùng lại vài chục câu ("ít cay", "không hành",
+// "để sốt riêng") — cache theo đơn là mỗi khách lại tốn một lượt gọi dịch cho
+// đúng câu đó.
+async function translateNoteText(text, language) {
+  const source = String(text || '').trim();
+  const target = String(language || '').toLowerCase().slice(0, 2);
+  if (!source || !MENU_LANGS.includes(target) || target === MENU_SOURCE_LANG) return source;
+
+  const hash = crypto.createHash('sha1').update(source).digest('hex');
+  try {
+    const hit = await db.query(
+      'SELECT translated_text FROM qr_note_translations WHERE note_hash = $1 AND lang = $2',
+      [hash, target]
+    );
+    if (hit.rows[0]) return hit.rows[0].translated_text;
+  } catch (error) {
+    console.error('[Ghi chú] Không đọc được cache dịch:', error.message);
+    return source;
+  }
+
+  try {
+    const out = await gemini.translateText(source, target, { sourceLang: MENU_SOURCE_LANG });
+    // Nhà cung cấp dịch chết thì trả lại nguyên văn và KHÔNG cache — cache bản
+    // gốc là khoá vĩnh viễn câu đó ở tiếng Việt.
+    if (!out || out.provider === 'none' || !out.translatedText) return source;
+    await db.query(
+      `INSERT INTO qr_note_translations (note_hash, lang, source_text, translated_text)
+       VALUES ($1, $2, $3, $4) ON CONFLICT (note_hash, lang) DO NOTHING`,
+      [hash, target, source, out.translatedText]
+    ).catch(() => {});
+    return out.translatedText;
+  } catch (error) {
+    console.error('[Ghi chú] Không dịch được:', error.message);
+    return source;
+  }
+}
+
 async function localizeOrderForVisitor(order, language) {
   const target = String(language || '').toLowerCase().slice(0, 2);
   const items = Array.isArray(order?.items) ? order.items : [];
@@ -3669,16 +3709,32 @@ async function localizeOrderForVisitor(order, language) {
   }
 
   const ids = [...new Set(items.map((item) => Number(item?.menuItemId)).filter(Number.isInteger))];
-  if (ids.length === 0) return order;
-  const translated = await db.query(
-    `SELECT item_id, name FROM qr_menu_item_translations
-      WHERE item_id = ANY($1::int[]) AND lang = $2 AND NULLIF(name, '') IS NOT NULL`,
-    [ids, target]
-  );
+  const translated = ids.length
+    ? await db.query(
+        `SELECT item_id, name FROM qr_menu_item_translations
+          WHERE item_id = ANY($1::int[]) AND lang = $2 AND NULLIF(name, '') IS NOT NULL`,
+        [ids, target]
+      )
+    : { rows: [] };
   const names = new Map(translated.rows.map((row) => [Number(row.item_id), row.name]));
+
+  // Ghi chú của Sale cũng phải dịch. Trước đây chỉ TÊN MÓN được dịch, nên khách
+  // Hàn thấy tên món tiếng Hàn kèm một dòng ghi chú tiếng Việt ngay dưới.
+  // Dịch song song và gom theo nội dung: hai món cùng ghi "ít cay" chỉ tốn một
+  // lượt tra cache.
+  const notes = [...new Set(items.map((item) => String(item?.note || '').trim()).filter(Boolean))];
+  const noteMap = new Map();
+  await Promise.all(notes.map(async (note) => {
+    noteMap.set(note, await translateNoteText(note, target));
+  }));
+
   return {
     ...order,
-    items: items.map((item) => ({ ...item, name: names.get(Number(item.menuItemId)) || item.name })),
+    items: items.map((item) => ({
+      ...item,
+      name: names.get(Number(item.menuItemId)) || item.name,
+      note: noteMap.get(String(item.note || '').trim()) || item.note,
+    })),
   };
 }
 
@@ -3929,7 +3985,19 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
   }
 
   void deliverPosEvent(order.id, 'payment.selected');
-  res.json({ success: true, order: updated.rows[0] });
+  // KHÔNG trả về updated.rows[0].
+  //
+  // Đó là dòng thô của chat_orders: không có hoá đơn đã dựng (svgDataUrl,
+  // pdfDataUrl) mà GET /order mới sinh ra, và tên món cũng chưa dịch. Cổng
+  // khách nhận về rồi setOrder đè lên bản đầy đủ đang hiển thị, nên bill vừa
+  // xem xong biến mất ngay khi khách chọn phương thức thanh toán — đúng lỗi
+  // "bill cũ bị mất". Tệ hơn: nếu hoá đơn do POS gửi kèm sẵn pdfUrl thì bộ so
+  // sánh ở cổng khách coi hai bản là "giống nhau" và giữ luôn dòng thô, bill
+  // không quay lại nữa.
+  //
+  // Trả về đúng những gì route này thật sự biết. Cổng khách hỏi lại GET /order
+  // ngay sau đó để lấy bản đã dựng đầy đủ.
+  res.json({ success: true, paymentMethod: method });
 });
 
 app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireWorkingHours, async (req, res) => {

@@ -178,7 +178,8 @@ function normalizeInvoiceItems(items) {
     const unitPrice = toNumber(item.unitPrice ?? item.unit_price ?? item.price ?? 0);
     const discount = toNumber(item.discount ?? item.discountAmount ?? item.discount_amount ?? 0);
     const lineTotal = item.lineTotal ?? item.line_total ?? item.total ?? (unitPrice * quantity - discount);
-    return { name, quantity, unitPrice, discount, lineTotal: toNumber(lineTotal) };
+    const note = String(item.note ?? item.notes ?? '').trim();
+    return { name, note, quantity, unitPrice, discount, lineTotal: toNumber(lineTotal) };
   });
 }
 
@@ -215,12 +216,24 @@ function buildInvoiceData(invoice, language) {
   };
 }
 
+// Múi giờ của QUÁN, không phải của máy chủ.
+//
+// Máy chủ trên Railway chạy theo UTC. toLocaleString không có timeZone thì lấy
+// múi giờ của tiến trình, nên hoá đơn xuất lúc 20:15 giờ Việt Nam in ra 13:15 —
+// và với mọi đơn sau 7 giờ tối thì NGÀY cũng lùi lại một hôm. Đó là lỗi "sai
+// giờ và ngày bill".
+const INVOICE_TIMEZONE = process.env.INVOICE_TIMEZONE || process.env.WORK_TIMEZONE || 'Asia/Ho_Chi_Minh';
+
 function formatIssuedAt(issuedAt, language) {
   const date = new Date(issuedAt);
   if (Number.isNaN(date.getTime())) return '';
   const locale = { vi: 'vi-VN', en: 'en-GB', ru: 'ru-RU', zh: 'zh-CN', ko: 'ko-KR' }[normalizeLanguage(language)] || 'vi-VN';
   try {
-    return date.toLocaleString(locale, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleString(locale, {
+      timeZone: INVOICE_TIMEZONE,
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    });
   } catch {
     return date.toISOString().slice(0, 16).replace('T', ' ');
   }
@@ -313,7 +326,18 @@ function createInvoicePdfDataUrl(invoice, language) {
       doc.text(String(item.quantity), xQty, y, { width: colQtyW, align: 'right' });
       if (hasDiscount) doc.text(item.discount ? money(item.discount) : '—', xDiscount, y, { width: colDiscountW, align: 'right' });
       doc.text(money(item.lineTotal), xTotal, y, { width: colTotalW, align: 'right' });
-      doc.y = y + Math.max(nameHeight, 12) + 7;
+      // Ghi chú của Sale ("ít cay", "không hành") in ngay dưới tên món: đó là
+      // thứ bếp và khách cần đối chiếu, mà hoá đơn lại là bản duy nhất khách
+      // giữ lại được. Chữ nhỏ và nhạt hơn để không tranh chỗ với tên món.
+      let noteHeight = 0;
+      if (item.note) {
+        const noteY = y + nameHeight + 2;
+        doc.fontSize(8.5).fillColor('#6f6070');
+        noteHeight = doc.heightOfString(item.note, { width: colNameW }) + 2;
+        doc.text(item.note, xName, noteY, { width: colNameW });
+        doc.fontSize(10).fillColor('#222');
+      }
+      doc.y = y + Math.max(nameHeight, 12) + noteHeight + 7;
     });
 
     doc.moveTo(left, doc.y).lineTo(right, doc.y).strokeColor('#e6cede').stroke();
@@ -477,6 +501,12 @@ function createInvoiceSvg(invoice, language) {
     if (hasDiscount) text(item.discount ? money(item.discount) : '—', xDiscountEnd, y, { size: 12.5, anchor: 'end' });
     text(money(item.lineTotal), xTotalEnd, y, { size: 12.5, anchor: 'end' });
     y += 22;
+    // Ảnh xem trước phải khớp với PDF tải về, nếu không khách sẽ tưởng hai bản
+    // là hai hoá đơn khác nhau.
+    if (item.note) {
+      text(truncateToWidth(item.note, 10, colNameW - 8), xName, y - 6, { size: 10, fill: '#6f6070' });
+      y += 13;
+    }
   });
 
   y -= 4; line(y); y += 24;
