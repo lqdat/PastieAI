@@ -505,7 +505,31 @@ const limitOtpSendEmail = rateLimit('otp-send-email', 3, 10 * 60 * 1000, emailKe
 const limitOtpVerifyIp = rateLimit('otp-verify-ip', 30, 10 * 60 * 1000);
 const limitOtpVerifyEmail = rateLimit('otp-verify-email', 10, 10 * 60 * 1000, emailKeyOf);
 // Gửi tin nhắn: mỗi tin có thể kéo theo một lượt gọi LLM.
-const limitChatMessage = rateLimit('chat-message', 30, 60 * 1000);
+// Thao tác của khách: đếm theo PHIÊN CHAT, không theo IP.
+//
+// Cả một khách sạn đi ra internet bằng MỘT địa chỉ. Đếm theo IP thì 30 thao tác
+// mỗi phút là hạn mức chung cho toàn bộ khách trong nhà: 15 người mỗi người gõ
+// 2 tin là người thứ 16 nhận "Bạn thao tác quá nhanh" dù họ mới gõ tin đầu tiên.
+// Đúng vào giờ đông nhất. Khách sạn là ca xấu nhất vì gần như ai cũng dùng WiFi
+// nhà.
+//
+// sessionId do máy chủ cấp, khách không tự bịa ra được, và mỗi phiên là đúng
+// một người — nên nó mới là thứ đáng đếm. Vẫn giữ một tầng theo IP nhưng nới
+// rộng, để chặn kẻ tạo hàng loạt phiên rồi rải thao tác qua từng phiên một.
+const sessionKeyOf = (req) => {
+  const id = req.params?.sessionId || req.body?.sessionId || req.body?.session_id;
+  if (id) return `s:${String(id)}`;
+  // Nối lại phiên thì chưa có sessionId — lúc đó mã QR là thứ gần nhất với "một
+  // khách": mỗi bàn một mã, mà một bàn là một nhóm khách. Đếm theo mã vẫn tách
+  // được các bàn khác nhau trên cùng WiFi.
+  const code = req.params?.code;
+  if (code) return `q:${String(code)}`;
+  return `ip:${clientIpOf(req)}`;
+};
+const limitChatMessage = rateLimit('chat-message', 30, 60 * 1000, sessionKeyOf);
+// Tầng thứ hai, theo IP, đủ rộng để một khách sạn đông khách không chạm tới
+// nhưng vẫn chặn được máy tự động bắn hàng nghìn request từ một chỗ.
+const limitChatMessageIp = rateLimit('chat-message-ip', 600, 60 * 1000);
 
 
 // Cryptographically secure password hashing using Node's native PBKDF2
@@ -1950,7 +1974,7 @@ async function blockStaffOutOfHours(req, res, sender, sessionId = null) {
   }
 }
 
-app.post('/api/chats/message', limitChatMessage, async (req, res) => {
+app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req, res) => {
   const { sessionId, sender, text, targetLang, visitorLang, adminLang } = req.body;
 
   if (!sessionId || !sender || !text || !targetLang) {
@@ -2957,6 +2981,33 @@ app.post('/api/chats/session/request-agent', async (req, res) => {
 //
 // Truy vấn vốn đã trúng PRIMARY KEY (message_id, target_lang) — vấn đề không
 // phải là index mà là số lượt đi về giữa Node và Postgres.
+// Link đính kèm ký sẵn: nhớ lại thay vì ký lại mỗi lượt hỏi.
+//
+// Trước đây mỗi lượt hỏi đều ký lại TỪNG tệp đính kèm trong 50 tin gần nhất.
+// Một cuộc chat có 10 tấm ảnh, 200 khách online là 2.000 phép ký SigV4 mỗi 3,5
+// giây — thuần CPU, chỉ để tạo lại đúng chuỗi vừa tạo.
+//
+// Link sống 6 giờ; nhớ lại 5 giờ để luôn còn hạn khi trao cho khách. Map có
+// trần để một máy chủ chạy lâu ngày không phình bộ nhớ.
+const signedUrlCache = new Map();
+const SIGNED_URL_CACHE_MAX = 5000;
+const SIGNED_URL_TTL_MS = 5 * 3600 * 1000;
+
+async function cachedPresignedUrl(key) {
+  const hit = signedUrlCache.get(key);
+  if (hit && hit.expiresAt > Date.now()) return hit.url;
+  const url = await s3.getPresignedUrl(key, 6 * 3600);
+  if (url) {
+    // Hết chỗ thì bỏ mục cũ nhất. Map giữ đúng thứ tự chèn nên phần tử đầu
+    // tiên chính là mục vào sớm nhất.
+    if (signedUrlCache.size >= SIGNED_URL_CACHE_MAX) {
+      signedUrlCache.delete(signedUrlCache.keys().next().value);
+    }
+    signedUrlCache.set(key, { url, expiresAt: Date.now() + SIGNED_URL_TTL_MS });
+  }
+  return url;
+}
+
 async function preloadTranslations(messages, targetLang) {
   const cache = new Map();
   if (!targetLang) return cache;
@@ -3077,6 +3128,26 @@ const visitorMessageFilter = (prefix = '') => `
     OR ${prefix}original_text ILIKE 'The conversation has been assigned to:%'
   ))`;
 
+// Dấu vân của một cuộc hội thoại: tin mới nhất là tin nào, và có tất cả bao
+// nhiêu tin. Hai con số này đủ để biết "có gì thay đổi không" mà không phải đọc
+// một dòng nội dung nào — chạy trên đúng chỉ mục idx_messages_session_created.
+//
+// MAX(id) bắt tin mới; COUNT(*) bắt cả trường hợp tin bị xoá, vì xoá thì MAX
+// không đổi.
+//
+// Vì sao dấu vân này ĐỦ TIN CẬY: bản dịch được sinh ngay trong lượt trả về đầu
+// tiên của mỗi tin (getOrTranslateMessage dịch rồi lưu ngay trong request đó),
+// nên không có chuyện nội dung một tin đổi về sau mà dấu vân không đổi theo.
+async function conversationFingerprint(sessionId) {
+  const result = await db.query(
+    `SELECT COALESCE(MAX(id), 0) AS max_id, COUNT(*)::int AS n
+       FROM messages WHERE session_id = $1`,
+    [sessionId]
+  );
+  const row = result.rows[0] || { max_id: 0, n: 0 };
+  return `${row.max_id}.${row.n}`;
+}
+
 app.get('/api/chats/:sessionId/messages', async (req, res) => {
   const { sessionId } = req.params;
   const visitorLang = req.query.visitorLang || '';
@@ -3095,6 +3166,24 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
     }
 
     const session = sessionRes.rows[0];
+
+    // ĐƯỜNG TẮT CHO LƯỢT HỎI KHÔNG CÓ GÌ MỚI.
+    //
+    // Cổng khách hỏi lại mỗi 3,5 giây; phần lớn những lượt ấy không có tin nào
+    // mới. Trước đây mỗi lượt vẫn đọc 50 dòng, nạp bản dịch, ký lại link đính
+    // kèm và đóng gói ~29 KB JSON — rồi khách nhận về đúng thứ họ đang có.
+    //
+    // Nay: một truy vấn trên chỉ mục, so dấu vân, hết. Khách nào chưa gửi dấu
+    // vân (bản cũ, hoặc lần tải đầu) thì vẫn đi đường cũ — không phá tương thích.
+    const known = String(req.query.known || '').trim();
+    if (known) {
+      const fingerprint = await conversationFingerprint(sessionId);
+      if (fingerprint === known) {
+        res.setHeader('X-Conversation', fingerprint);
+        return res.status(200).json({ unchanged: true, fingerprint });
+      }
+    }
+
     const email = (session.visitor_email || '').trim();
     const phone = (session.visitor_phone || '').trim();
     let result;
@@ -3154,10 +3243,13 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
       msg.translated_text = await getOrTranslateMessage(msg, visitorLang, translationCache);
       // Presigned S3 URLs expire — always hand back a fresh one instead of a stale cached value.
       if (msg.attachment_key) {
-        msg.attachment_url = await s3.getPresignedUrl(msg.attachment_key, 6 * 3600).catch(() => msg.attachment_url);
+        msg.attachment_url = await cachedPresignedUrl(msg.attachment_key).catch(() => msg.attachment_url);
       }
     }));
 
+    // Gửi kèm dấu vân để lượt hỏi sau chỉ cần so một chuỗi.
+    const fingerprint = await conversationFingerprint(sessionId);
+    res.setHeader('X-Conversation', fingerprint);
     res.json(messages);
   } catch (error) {
     console.error('Fetch visitor messages error:', error);
@@ -3496,6 +3588,16 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   const sessionRes = await db.query('SELECT detected_language FROM sessions WHERE id = $1', [req.params.sessionId]);
   const language = invoiceLanguageFor(sessionRes.rows[0], req.query.lang);
 
+  // Đường tắt như bên tin nhắn. Quan trọng: chỗ này nằm SAU
+  // maybeAutoSelectDeferredPayment ở trên — đồng hồ 2 phút vẫn phải chạy mỗi
+  // lượt hỏi, chỉ phần đóng gói hoá đơn mới được bỏ qua. Đặt trước là đơn quá
+  // hạn sẽ không bao giờ được chốt.
+  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${language}`;
+  if (String(req.query.known || '').trim() === orderPrint) {
+    res.setHeader('X-Order-Print', orderPrint);
+    return res.status(200).json({ unchanged: true, fingerprint: orderPrint });
+  }
+
   // CACHE PDF HOÁ ĐƠN.
   //
   // Portal khách gọi endpoint này mỗi 3,5 giây. Trước đây mỗi lượt gọi đều dựng
@@ -3532,7 +3634,9 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
     }
   }
 
+  res.setHeader('X-Order-Print', orderPrint);
   res.json({
+    fingerprint: orderPrint,
     order: { ...order, invoice },
     paymentMethods: (await paymentMethodsForSession(req.params.sessionId, language)).map((entry) => entry.id),
     paymentMethodLabels: invoiceHelper.PAYMENT_METHOD_I18N[language] || invoiceHelper.PAYMENT_METHOD_I18N.vi,
@@ -4288,7 +4392,7 @@ app.get('/api/admin/projects', checkAdminAuth, async (req, res) => {
 //        có thể quay lại hỏi tiếp bên cũ.
 //
 // Hết hạn định danh thì trả authenticated:false và cổng khách hiện lại màn OTP.
-app.post('/api/qr-chat/:code/resume', limitChatMessage, async (req, res) => {
+app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, async (req, res) => {
   try {
     const account = await resolveQrChatAccount('qr-concierge', String(req.params.code || ''));
     if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
@@ -5386,7 +5490,7 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
       msg.translated_text = await getOrTranslateMessage(msg, targetLang, translationCache);
       // Presigned S3 URLs expire — always hand back a fresh one instead of a stale cached value.
       if (msg.attachment_key) {
-        msg.attachment_url = await s3.getPresignedUrl(msg.attachment_key, 6 * 3600).catch(() => msg.attachment_url);
+        msg.attachment_url = await cachedPresignedUrl(msg.attachment_key).catch(() => msg.attachment_url);
       }
     }));
 
@@ -8796,7 +8900,7 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
 });
 
 // Khách gửi món, số lượng và ghi chú; giá luôn tự tra từ DB.
-app.post('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) => {
+app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage, async (req, res) => {
   const sessionId = req.params.sessionId;
   const lines = Array.isArray(req.body?.items) ? req.body.items : [];
   if (lines.length === 0) return res.status(400).json({ error: 'Chưa chọn món nào.' });
@@ -8915,7 +9019,7 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) 
 // Khách mở lại menu từ bill và xác nhận danh sách mới. Nếu bill cũ đã được
 // Sale xác nhận thì hoàn tồn cũ trong cùng transaction trước khi đưa đơn về
 // trạng thái chờ xác nhận; Sale luôn phải duyệt lại bản mới.
-app.put('/api/chats/:sessionId/menu/order', limitChatMessage, async (req, res) => {
+app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage, async (req, res) => {
   const sessionId = req.params.sessionId;
   const lines = Array.isArray(req.body?.items) ? req.body.items : [];
   if (!lines.length) return res.status(400).json({ error: 'Đơn hàng phải có ít nhất một món.' });
