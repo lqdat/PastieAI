@@ -4194,9 +4194,14 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
     // Ghi phương thức lên chính bản bill đó, để tấm bill khách đang xem khớp
     // với thứ họ vừa chọn thay vì mâu thuẫn với nó.
     await db.query(
-      `UPDATE chat_order_bills SET payment_method = $2
-        WHERE order_id = $1 AND version = $3`,
-      [order.id, method, Number(order.version || 1)]
+      // Ghi lên MỌI bản của đơn, không chỉ bản đang mở.
+      //
+      // Lọc theo version thì chỉ cần đơn được sửa thêm một lần sau khi bill lưu
+      // là câu lệnh không trúng dòng nào, và tờ hoá đơn nằm lại vĩnh viễn không
+      // có dòng "Thanh toán". Các bản đều là bản của CÙNG một đơn, nên phương
+      // thức trả tiền đúng cho tất cả.
+      `UPDATE chat_order_bills SET payment_method = $2 WHERE order_id = $1`,
+      [order.id, method]
     ).catch((error) => console.error('[Bill] Không ghi được phương thức:', error.message));
 
     await sendOrderThankYou(req.params.sessionId, method, { autoSelected: false, orderCode: order.order_code });
@@ -5735,7 +5740,7 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
     const updateRes = await db.query(
       `UPDATE admins
        SET username = $1, full_name = $2, role = $3, avatar_url = $4, is_active = $5, project_id = $6, sale_limit = $7,
-           deferred_payment_mode = $8, allow_room_charge = ($8 = 'room_charge')
+           deferred_payment_mode = $8::varchar, allow_room_charge = ($8::text = 'room_charge')
        WHERE id = $9 
        RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, deferred_payment_mode, allow_room_charge, created_at`,
       [updatedUsername, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, updatedProject, updatedSaleLimit, updatedDeferred, id]
@@ -10883,9 +10888,9 @@ async function maybeAutoSelectDeferredPayment(order) {
   if (!updated.rows[0]) return null;
 
   await db.query(
-    `UPDATE chat_order_bills SET payment_method = $2
-      WHERE order_id = $1 AND version = $3`,
-    [order.id, method, Number(order.version || 1)]
+    // Mọi bản của đơn, xem lý do ở route khách tự chọn phương thức.
+    `UPDATE chat_order_bills SET payment_method = $2 WHERE order_id = $1`,
+    [order.id, method]
   ).catch((error) => console.error('[Bill] Không ghi được phương thức mặc định:', error.message));
 
   const label = invoiceHelper.paymentMethodLabel(method, 'vi');
@@ -11145,8 +11150,8 @@ app.put('/api/agent/deferred-payment', checkAdminAuth, async (req, res) => {
 
     const updated = await db.query(
       `UPDATE admins
-          SET deferred_payment_mode = $2,
-              allow_room_charge = ($2 = 'room_charge')
+          SET deferred_payment_mode = $2::varchar,
+              allow_room_charge = ($2::text = 'room_charge')
         WHERE id = $1
         RETURNING id, full_name, deferred_payment_mode`,
       [agentId, mode]
@@ -11170,8 +11175,8 @@ app.put('/api/admin/agents/:id/deferred-payment', checkAdminAuth, async (req, re
   try {
     const updated = await db.query(
       `UPDATE admins
-          SET deferred_payment_mode = $2,
-              allow_room_charge = ($2 = 'room_charge')
+          SET deferred_payment_mode = $2::varchar,
+              allow_room_charge = ($2::text = 'room_charge')
         WHERE id = $1 AND role = 'agent'
         RETURNING id, full_name, deferred_payment_mode`,
       [Number(req.params.id), mode]

@@ -1437,6 +1437,12 @@ async function loadBillsForAdmin(sessionId) {
         const response = await fetch(`${API_BASE}/api/chats/${sessionId}/bills?lang=${currentLang}`);
         adminBills = response.ok ? ((await response.json()).bills || []) : [];
     } catch { adminBills = []; }
+    // Vẽ lại ngay khi bill về, không phụ thuộc vào việc ai chạy trước ai.
+    //
+    // Trước đây hoá đơn chỉ được vẽ trong loadMessages(): tuỳ luồng mở chat của
+    // từng vai trò mà bill về trước hay sau lượt vẽ, nên có tài khoản thấy có
+    // tài khoản không. Hàm vẽ đã tự dọn bản cũ nên gọi thêm một lần vô hại.
+    if (sessionId === currentSessionId) renderAdminSavedBills();
 }
 
 
@@ -1444,6 +1450,10 @@ async function loadBillsForAdmin(sessionId) {
 // BỎ QUA bản mới nhất của đơn đang hiển thị: renderAdminInvoice() đã vẽ đúng
 // bản đó rồi, vẽ thêm là hiện hai lần cùng một tờ hoá đơn.
 function renderAdminSavedBills() {
+    // Dọn bản vẽ trước: hàm này có thể được gọi nhiều lần cho cùng một phiên
+    // (một lần sau khi vẽ tin nhắn, một lần khi bill về). Không dọn là mỗi lượt
+    // gọi thêm một tờ hoá đơn nữa vào khung chat.
+    chatMessagesContainer?.querySelectorAll('.admin-invoice-block.is-archived').forEach((node) => node.remove());
     if (!Array.isArray(adminBills) || adminBills.length === 0) return;
     // Hiện ĐỦ các bản bill theo thứ tự khách nhận được, cùng mã, khác món và
     // tiền. Chỉ bỏ đúng BẢN MỚI NHẤT của đơn đang mở, vì renderAdminInvoice()
