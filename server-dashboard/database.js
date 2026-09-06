@@ -669,6 +669,12 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
       );
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_admin_devices_admin ON admin_devices(admin_id, status);`);
+    // Một MÁY, nhiều trình duyệt: mỗi trình duyệt có mã riêng, gom hết vào
+    // device_ids của cùng một hàng. machine_hash là vân tay phần cứng + hệ điều
+    // hành (không có tên trình duyệt) dùng để nhận ra máy cũ khi mã bị mất.
+    await query(`ALTER TABLE admin_devices ADD COLUMN IF NOT EXISTS machine_hash VARCHAR(64);`);
+    await query(`ALTER TABLE admin_devices ADD COLUMN IF NOT EXISTS device_ids TEXT[] DEFAULT ARRAY[]::text[];`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_admin_devices_machine ON admin_devices(admin_id, machine_hash);`);
 
     // device_limit NULL = dùng mặc định toàn hệ thống (DEVICE_LIMIT_DEFAULT).
     // last_device_change_at phục vụ cooldown: đây mới là thứ chặn kiểu chuyền

@@ -148,7 +148,20 @@ function pastieConfirm(message, options = {}) {
 
 
 function getDeviceId() {
-    let id = localStorage.getItem('pastie_device_id');
+    // Cookie do MÁY CHỦ đặt sống lâu hơn localStorage: iOS Safari xoá
+    // localStorage sau 7 ngày không mở trang, và tab Riêng tư không lưu gì —
+    // mất mã là máy cũ bị tính thành máy mới, đúng lỗi "tự nhiên hết suất".
+    // Ba chỗ lưu tự vá cho nhau: cookie ⟷ localStorage.
+    let id = '';
+    try {
+        id = (document.cookie.match(/(?:^|;\s*)pastie_did=([^;]+)/) || [])[1] || '';
+        if (id) id = decodeURIComponent(id);
+    } catch { id = ''; }
+    if (id) {
+        try { localStorage.setItem('pastie_device_id', id); } catch {}
+        return id;
+    }
+    id = localStorage.getItem('pastie_device_id');
     if (!id) {
         id = 'dev_' + ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
             (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
@@ -189,11 +202,48 @@ function getDeviceFingerprint() {
 // Quan trọng: đăng nhập dùng fetch thuần chứ không qua authFetch (lúc đó chưa có
 // token), nên nếu không thêm ở đây thì server không nhận được device_id và lớp 2
 // license sẽ không bao giờ kích hoạt — kiểm tra luôn cho qua vì tưởng client cũ.
+// Vân tay của MÁY, không phải của trình duyệt.
+//
+// Cố tình KHÔNG lấy tên và phiên bản trình duyệt: mục đích là Safari và Chrome
+// trên cùng một chiếc iPhone cho ra CÙNG một giá trị, để máy chủ nhận ra đó vẫn
+// là một máy. Chỉ lấy phần cứng (màn hình, tỉ lệ điểm ảnh, số nhân, RAM) và hệ
+// điều hành cùng múi giờ.
+//
+// Hai máy cùng đời, cùng múi giờ sẽ trùng vân tay — nên máy chủ chỉ dùng nó để
+// GOM khi máy cũ đã im hơn 10 phút, không dùng để nhận dạng.
+function getMachineFingerprint() {
+    try {
+        const ua = navigator.userAgent || '';
+        const os = (ua.match(/\((?:[^)]*?)(iPhone OS [\d_]+|Android [\d.]+|Mac OS X [\d_]+|Windows NT [\d.]+)[^)]*\)/) || [])[1] || '';
+        const parts = [
+            os,
+            navigator.platform || '',
+            `${screen.width}x${screen.height}`,
+            String(window.devicePixelRatio || ''),
+            String(screen.colorDepth || ''),
+            Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+            String(navigator.hardwareConcurrency || ''),
+            String(navigator.deviceMemory || ''),
+            String(navigator.maxTouchPoints || ''),
+        ].join('|');
+        let hash = 0x811c9dc5;
+        for (let i = 0; i < parts.length; i += 1) {
+            hash ^= parts.charCodeAt(i);
+            hash = Math.imul(hash, 0x01000193) >>> 0;
+        }
+        return 'm' + hash.toString(16).padStart(8, '0');
+    } catch {
+        return '';
+    }
+}
+
+
 function deviceHeaders(extra = {}) {
     return {
         ...extra,
         'X-Device-Id': getDeviceId(),
         'X-Device-Fp': getDeviceFingerprint(),
+        'X-Machine-Fp': getMachineFingerprint(),
     };
 }
 
@@ -204,7 +254,8 @@ function authFetch(url, options = {}) {
         ...(options.headers || {}),
         'Authorization': `Bearer ${token}`,
         'X-Device-Id': getDeviceId(),
-        'X-Device-Fp': getDeviceFingerprint()
+        'X-Device-Fp': getDeviceFingerprint(),
+        'X-Machine-Fp': getMachineFingerprint()
     };
     return fetch(url, { ...options, headers }).then(res => {
         if (res.status === 401) {
@@ -1199,7 +1250,8 @@ async function loadMyDevices() {
             <article class="self-device${device.is_current ? ' is-current' : ''}">
                 <i class="${/iPhone|Android/i.test(device.label || '') ? 'ri-smartphone-line' : 'ri-computer-line'}"></i>
                 <div class="self-device-main">
-                    <strong>${escapeHtml(device.label || 'Thiết bị')}${device.is_current ? ' <span class="self-device-badge">đang dùng</span>' : ''}</strong>
+                    <strong>Thiết bị ${escapeHtml(String(device.device_id || device.id || '').slice(-12).toUpperCase())}${device.is_current ? ' <span class="self-device-badge">đang dùng</span>' : ''}</strong>
+                    <small>Nhãn tham khảo: ${escapeHtml(device.label || 'Không xác định')}</small>
                     <small>Lần cuối: ${escapeHtml(formatDeviceTime(device.last_seen))}</small>
                 </div>
                 ${device.is_current ? '' : `<button type="button" class="self-device-remove" data-device-remove="${device.id}" title="Gỡ thiết bị"><i class="ri-delete-bin-line"></i></button>`}
@@ -1210,9 +1262,9 @@ async function loadMyDevices() {
             // bị chặn đăng nhập thì họ sẽ nghĩ hệ thống hỏng.
             note.textContent = active.length >= data.limit
                 ? `Đã dùng hết ${data.limit} thiết bị. Gỡ bớt một thiết bị cũ trước khi đăng nhập từ máy mới. `
-                  + `Mỗi ${data.cooldownDays} ngày chỉ được đăng ký thêm thiết bị mới một lần.`
+                  + `Mỗi ${data.cooldownDays} ngày chỉ được đăng ký thêm thiết bị mới một lần. Hệ thống tính theo mã thiết bị, không theo IP hoặc trình duyệt.`
                 : `Tài khoản được dùng tối đa ${data.limit} thiết bị. `
-                  + `Mỗi ${data.cooldownDays} ngày chỉ được đăng ký thêm thiết bị mới một lần.`;
+                  + `Mỗi ${data.cooldownDays} ngày chỉ được đăng ký thêm thiết bị mới một lần. Đổi Wi-Fi/4G/5G không tạo thiết bị mới.`;
         }
     } catch (error) {
         list.innerHTML = `<p class="self-devices-empty">${escapeHtml(error.message)}</p>`;

@@ -1259,12 +1259,15 @@ async function openAccountDevices(adminId) {
             const revoked = all.filter((d) => d.status === 'revoked');
             const limit = data.limit == null ? '∞' : data.limit;
 
-            const row = (device, isActive) => `
+            const row = (device, isActive) => {
+                const shortDeviceId = String(device.device_id || '').slice(-12).toUpperCase();
+                return `
                 <div class="device-row${isActive ? '' : ' is-revoked'}">
                     <div class="device-row-main">
-                        <strong>${escapeHtml(device.label || device.device_id || 'Không rõ')}</strong>
-                        <small>Lần cuối: ${escapeHtml(deviceTimeLabel(device.last_seen))}${device.last_ip ? ` · ${escapeHtml(device.last_ip)}` : ''}</small>
-                        <small>Đăng ký: ${escapeHtml(deviceTimeLabel(device.first_seen))}</small>
+                        <strong>Thiết bị ${escapeHtml(shortDeviceId || String(device.id || ''))}</strong>
+                        <small>Nhãn tham khảo: ${escapeHtml(device.label || 'Không xác định')}</small>
+                        <small>Lần cuối: ${escapeHtml(deviceTimeLabel(device.last_seen))} · Đăng ký: ${escapeHtml(deviceTimeLabel(device.first_seen))}</small>
+                        <small>IP truy cập gần nhất (chỉ nhật ký): ${escapeHtml(device.last_ip || 'Không ghi nhận')}</small>
                     </div>
                     ${isActive
                         ? `<span class="device-row-actions">
@@ -1276,6 +1279,7 @@ async function openAccountDevices(adminId) {
                              <button type="button" class="device-allow" data-allow="${device.id}"><i class="ri-check-line"></i> Bỏ chặn</button>
                            </span>`}
                 </div>`;
+            };
 
             body.innerHTML = `
                 <div class="device-summary">
@@ -1285,6 +1289,10 @@ async function openAccountDevices(adminId) {
                 <p class="device-cooldown">
                     Đổi máy phải cách nhau ${Number(data.cooldownDays || 0)} ngày.
                     Lần đổi gần nhất: ${escapeHtml(deviceTimeLabel(data.lastChangeAt))}
+                </p>
+                <p class="device-hint">
+                    Hạn mức được tính theo <strong>mã thiết bị do hệ thống cấp</strong>, không tính theo IP hoặc trình duyệt.
+                    Đổi Wi-Fi, 4G/5G hay địa điểm không tạo thêm thiết bị. IP chỉ được lưu trong nhật ký truy cập.
                 </p>
                 ${active.length ? active.map((d) => row(d, true)).join('') : '<p class="device-empty">Chưa có máy nào đang đăng ký.</p>'}
                 ${revoked.length ? `<p class="device-group-label">Đã chặn (${revoked.length})</p>${revoked.map((d) => row(d, false)).join('')}` : ''}

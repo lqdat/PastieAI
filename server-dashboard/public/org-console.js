@@ -395,14 +395,15 @@ async function loadAgentDevices(agentId, agentName = '') {
         document.getElementById('agent-devices-account').textContent = `${account.full_name || agentName || account.username || `Agent #${agentId}`} · ${account.username || ''}`;
         document.getElementById('agent-device-limit').value = data.limit || 2;
         const activeCount = (data.devices || []).filter((device) => device.status === 'active').length;
-        document.getElementById('agent-devices-help').textContent = `${activeCount}/${data.limit} thiết bị đang hoạt động. Lần đổi gần nhất: ${formatManagedDeviceTime(data.lastChangeAt)}. Thiết bị bị thu hồi sẽ đăng xuất ngay và phải đăng ký lại khi đăng nhập.`;
+        document.getElementById('agent-devices-help').textContent = `${activeCount}/${data.limit} thiết bị đang hoạt động. Hạn mức tính theo mã thiết bị do hệ thống cấp, không theo IP hoặc trình duyệt. Đổi Wi-Fi/4G/5G không tạo thiết bị mới. Lần đổi gần nhất: ${formatManagedDeviceTime(data.lastChangeAt)}.`;
         list.innerHTML = (data.devices || []).length ? data.devices.map((device) => `
             <article class="agent-device-row${device.status !== 'active' ? ' is-revoked' : ''}">
                 <span class="agent-device-icon"><i class="${/iphone|android|ipad|mobile/i.test(device.label || '') ? 'ri-smartphone-line' : 'ri-computer-line'}"></i></span>
                 <div class="agent-device-copy">
-                    <strong>${escapeHtml(device.label || 'Thiết bị')}</strong>
+                    <strong>Thiết bị ${escapeHtml(String(device.device_id || device.id || '').slice(-12).toUpperCase())}</strong>
+                    <small>Nhãn tham khảo: ${escapeHtml(device.label || 'Không xác định')}</small>
                     <small>Lần đầu: ${escapeHtml(formatManagedDeviceTime(device.first_seen))} · Lần cuối: ${escapeHtml(formatManagedDeviceTime(device.last_seen))}</small>
-                    <small>IP gần nhất: ${escapeHtml(device.last_ip || 'Không ghi nhận')} · ID: ${escapeHtml(String(device.device_id || '').slice(-12))}</small>
+                    <small>IP truy cập gần nhất (chỉ nhật ký): ${escapeHtml(device.last_ip || 'Không ghi nhận')}</small>
                 </div>
                 <span class="agent-device-status">${device.status === 'active' ? 'HOẠT ĐỘNG' : 'ĐÃ THU HỒI'}</span>
                 ${device.status === 'active' ? `<button type="button" class="agent-device-revoke" data-revoke-device="${device.id}" title="Thu hồi thiết bị"><i class="ri-logout-box-r-line"></i></button>` : ''}

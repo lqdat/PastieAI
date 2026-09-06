@@ -872,10 +872,40 @@ async function isDeviceRestrictedAdmin(admin) {
   return (await getQrProjectIds()).has(admin.project_id);
 }
 
+// Cookie do MÁY CHỦ đặt là chỗ lưu bền nhất mà web có.
+// localStorage trên iOS Safari bị xoá sau 7 ngày không mở trang (ITP), và tab
+// Riêng tư thì không lưu gì cả — đó là lý do một chiếc iPhone tự nhiên hiện
+// thành hai thiết bị. Cookie first-party do Set-Cookie của máy chủ đặt không
+// bị giới hạn 7 ngày ấy.
+const DEVICE_COOKIE = 'pastie_did';
+const DEVICE_COOKIE_MAX_AGE = 2 * 365 * 24 * 3600;
+function readCookie(req, name) {
+  const raw = String(req?.headers?.cookie || '');
+  for (const part of raw.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq < 0) continue;
+    if (part.slice(0, eq).trim() === name) return decodeURIComponent(part.slice(eq + 1).trim());
+  }
+  return '';
+}
+function rememberDeviceCookie(res, deviceId) {
+  if (!res || !deviceId || res.headersSent) return;
+  res.append('Set-Cookie',
+    // KHÔNG HttpOnly: bảng điều khiển phải đọc lại được để chép sang
+    // localStorage, và mã máy không phải bí mật — nó chỉ nói "vẫn là máy này",
+    // không cấp quyền gì. Điều làm cookie sống lâu là do MÁY CHỦ đặt, không
+    // phải HttpOnly: ITP chỉ cắt 7 ngày với cookie do JavaScript đặt.
+    `${DEVICE_COOKIE}=${encodeURIComponent(deviceId)}; Max-Age=${DEVICE_COOKIE_MAX_AGE}; Path=/; SameSite=Lax; Secure`);
+}
+
 function readDeviceHeaders(req) {
   return {
-    deviceId: String(req?.headers['x-device-id'] || '').slice(0, 64) || null,
+    deviceId: String(req?.headers['x-device-id'] || '').slice(0, 64)
+      || String(readCookie(req, DEVICE_COOKIE) || '').slice(0, 64) || null,
     fingerprint: String(req?.headers['x-device-fp'] || '').slice(0, 64) || null,
+    // Vân tay của MÁY: chỉ gồm phần cứng và hệ điều hành, KHÔNG có tên trình
+    // duyệt — để Safari và Chrome trên cùng một máy cho ra cùng một giá trị.
+    machineHash: String(req?.headers['x-machine-fp'] || '').slice(0, 64) || null,
     userAgent: String(req?.headers['user-agent'] || '').slice(0, 1000),
     clientIp: req?.headers['x-forwarded-for']?.split(',')[0]?.trim() || req?.socket?.remoteAddress || '',
   };
@@ -902,16 +932,20 @@ function describeDevice(userAgent) {
  * Kiểm tra thiết bị TRƯỚC KHI cấp token.
  * @returns {Promise<{ok: true} | {ok: false, error: string, code: string}>}
  */
-async function checkDeviceAllowed(admin, req) {
+async function checkDeviceAllowed(admin, req, res) {
   if (!(await isDeviceRestrictedAdmin(admin))) return { ok: true };
 
-  const { deviceId, fingerprint, userAgent, clientIp } = readDeviceHeaders(req);
+  const { deviceId, fingerprint, machineHash, userAgent, clientIp } = readDeviceHeaders(req);
   // Không có device_id (trình duyệt chặn localStorage, hoặc client cũ chưa cập
   // nhật): cho qua thay vì khoá người dùng ra ngoài. Thà bỏ lọt còn hơn chặn nhầm.
   if (!deviceId) return { ok: true };
+  rememberDeviceCookie(res, deviceId);
 
+  // Một MÁY có thể có nhiều mã: mỗi trình duyệt trên máy đó một mã, gom trong
+  // device_ids. Tìm theo cả mã chính lẫn các mã đã gom.
   const known = await db.query(
-    `SELECT id, status, fingerprint FROM admin_devices WHERE admin_id = $1 AND device_id = $2`,
+    `SELECT id, status, fingerprint FROM admin_devices
+      WHERE admin_id = $1 AND ($2 = device_id OR $2 = ANY(COALESCE(device_ids, ARRAY[]::text[])))`,
     [admin.id, deviceId]
   );
 
@@ -934,6 +968,41 @@ async function checkDeviceAllowed(admin, req) {
     return { ok: true };
   }
 
+  // Mã lạ nhưng vân tay MÁY trùng một thiết bị đã đăng ký: gần như chắc chắn là
+  // cùng một máy, chỉ khác trình duyệt (hoặc mã cũ đã bị iOS xoá). Gom mã mới
+  // vào máy đó, không tính thêm suất.
+  //
+  // Chốt chặn: máy đó không được đang có phiên SỐNG. Hai máy cùng đời, cùng múi
+  // giờ cho vân tay giống hệt nhau, nên nếu máy kia đang mở bảng điều khiển
+  // ngay lúc này thì đó là hai người thật đang chia nhau một tài khoản — đúng
+  // thứ hạn mức sinh ra để chặn. Dùng admin_sessions.last_seen_at vì nó được
+  // cập nhật ở MỌI request, còn admin_devices.last_seen chỉ đổi khi đăng nhập.
+  if (machineHash) {
+    const sameMachine = await db.query(
+      `SELECT d.id FROM admin_devices d
+        WHERE d.admin_id = $1 AND d.machine_hash = $2 AND d.status = 'active'
+          AND NOT EXISTS (
+            SELECT 1 FROM admin_sessions s
+             WHERE s.admin_id = d.admin_id
+               AND s.expires_at > NOW()
+               AND s.last_seen_at > NOW() - INTERVAL '10 minutes'
+               AND (s.device_id = d.device_id
+                    OR s.device_id = ANY(COALESCE(d.device_ids, ARRAY[]::text[]))))
+        ORDER BY d.last_seen DESC LIMIT 1`,
+      [admin.id, machineHash]
+    );
+    if (sameMachine.rows[0]) {
+      await db.query(
+        `UPDATE admin_devices
+            SET device_ids = array_append(COALESCE(device_ids, ARRAY[]::text[]), $2),
+                last_seen = NOW(), last_ip = $3, user_agent = $4
+          WHERE id = $1`,
+        [sameMachine.rows[0].id, deviceId, clientIp, userAgent]
+      );
+      return { ok: true };
+    }
+  }
+
   // Thiết bị lạ: xét hạn mức CHỈ bằng device_id do hệ thống cấp. clientIp,
   // userAgent và fingerprint là dữ liệu nhật ký/đối chiếu, không tham gia đếm.
   const info = await db.query(
@@ -949,7 +1018,7 @@ async function checkDeviceAllowed(admin, req) {
     : DEVICE_LIMIT_DEFAULT;
 
   if (row.active_count < limit) {
-    await registerDevice(admin.id, { deviceId, fingerprint, userAgent, clientIp }, false);
+    await registerDevice(admin.id, { deviceId, fingerprint, machineHash, userAgent, clientIp }, false);
     return { ok: true };
   }
 
@@ -978,13 +1047,14 @@ async function checkDeviceAllowed(admin, req) {
   };
 }
 
-async function registerDevice(adminId, { deviceId, fingerprint, userAgent, clientIp }, countsAsChange = true) {
+async function registerDevice(adminId, { deviceId, fingerprint, machineHash = null, userAgent, clientIp }, countsAsChange = true) {
   await db.query(
-    `INSERT INTO admin_devices (admin_id, device_id, fingerprint, label, user_agent, last_ip)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO admin_devices (admin_id, device_id, fingerprint, label, user_agent, last_ip, machine_hash)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (admin_id, device_id)
-     DO UPDATE SET status = 'active', last_seen = NOW(), last_ip = EXCLUDED.last_ip`,
-    [adminId, deviceId, fingerprint, describeDevice(userAgent), userAgent, clientIp]
+     DO UPDATE SET status = 'active', last_seen = NOW(), last_ip = EXCLUDED.last_ip,
+                   machine_hash = COALESCE(EXCLUDED.machine_hash, admin_devices.machine_hash)`,
+    [adminId, deviceId, fingerprint, describeDevice(userAgent), userAgent, clientIp, machineHash]
   );
   // Thiết bị ĐẦU TIÊN của tài khoản không tính là "đổi thiết bị" — nếu tính thì
   // agent mới nhận máy đã bị khoá cooldown ngay từ lần đăng nhập thứ hai.
@@ -4430,7 +4500,7 @@ app.post('/api/admin/login', limitLoginIp, limitLoginEmail, async (req, res) => 
 
     // Lớp 2 license: thiết bị lạ vượt hạn mức thì từ chối CẤP TOKEN, không khoá
     // tài khoản. Người dùng vẫn đăng nhập được từ thiết bị đã đăng ký.
-    const deviceCheck = await checkDeviceAllowed(admin, req);
+    const deviceCheck = await checkDeviceAllowed(admin, req, res);
     if (!deviceCheck.ok) return res.status(403).json({ error: deviceCheck.error, code: deviceCheck.code });
 
     // Create single active session token (8 hours)
@@ -4594,7 +4664,7 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null) 
 
   // Lớp 2 license: kiểm tra thiết bị trước khi cấp token. Ném lỗi thay vì trả
   // object, vì cả hai nơi gọi hàm này đều bắt lỗi theo error.status.
-  const deviceCheck = await checkDeviceAllowed(admin, req);
+  const deviceCheck = await checkDeviceAllowed(admin, req, res);
   if (!deviceCheck.ok) {
     const err = new Error(deviceCheck.error);
     err.status = 403;
@@ -4934,7 +5004,7 @@ app.post('/api/admin/sso', async (req, res) => {
     const ssoHoursError = await checkWorkingHours(admin);
     if (ssoHoursError) return res.status(403).json({ error: ssoHoursError, code: 'OUT_OF_HOURS' });
 
-    const ssoDeviceCheck = await checkDeviceAllowed(admin, req);
+    const ssoDeviceCheck = await checkDeviceAllowed(admin, req, res);
     if (!ssoDeviceCheck.ok) {
       return res.status(403).json({ error: ssoDeviceCheck.error, code: ssoDeviceCheck.code });
     }
