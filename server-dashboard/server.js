@@ -1533,11 +1533,18 @@ function buildQrGreeting({ lang, guestName, venueName, placeLabel }) {
 // Kiểm "phiên đã có tin nào chưa" thay vì tin vào chỗ gọi: hàm này được gọi từ
 // hai lối vào khác nhau (đăng nhập OTP và nối lại định danh), và sẽ còn lối thứ
 // ba. Chào hai lần trông như hệ thống lỗi.
-async function sendQrWelcome({ sessionId, lang, guestName, venueName, placeLabel }) {
+async function sendQrWelcome({ sessionId, lang, guestName, venueName, placeLabel, agentId = null }) {
   try {
     const existing = await db.query('SELECT 1 FROM messages WHERE session_id = $1 LIMIT 1', [sessionId]);
     if (existing.rowCount) return null;
-    const text = buildQrGreeting({ lang, guestName, venueName, placeLabel });
+    // Câu chào được ghép sẵn theo ngôn ngữ khách chọn rồi lưu thẳng, KHÔNG đi
+    // qua bước dịch — nên tên bàn và loại hình cơ sở phải được dịch ở ĐÂY, nếu
+    // không khách đọc tiếng Anh vẫn thấy "Bàn 10".
+    const [venue, place] = await Promise.all([
+      localizeVenueName(venueName, lang, agentId),
+      localizeQrText(placeLabel, lang, agentId),
+    ]);
+    const text = buildQrGreeting({ lang, guestName, venueName: venue, placeLabel: place });
     const language = String(lang || 'vi').toLowerCase();
     // Ghi sẵn cả bản dịch bằng chính nó: câu này đã đúng ngôn ngữ khách chọn,
     // không cần dịch lại và cũng không nên tốn một lượt gọi AI cho nó.
@@ -2057,6 +2064,7 @@ app.post('/api/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, async (req, r
         guestName: finalName && finalName !== 'Khách hàng' ? finalName : nameFromEmail(email),
         venueName: qrAccount.owner_name,
         placeLabel: qrAccount.label || qrAccount.group_name,
+        agentId: qrAccount.owner_admin_id,
       });
     } else if (qrAccount?.ai_enabled !== false) {
       // Luồng cũ (widget, không qua mã QR) vẫn do Pat chào như trước.
@@ -5058,6 +5066,13 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
     const identity = await touchQrIdentity(req.body?.identityToken, account.project_id);
     if (!identity) return res.json({ authenticated: false });
 
+    // Ngôn ngữ khách đang xem. Trước đây chỗ này viết cứng 'vi', nên khách quét
+    // mã ở bàn khác trong lúc đang đọc tiếng Anh vẫn bị chào bằng tiếng Việt và
+    // cả phiên mới cũng bị ghi là tiếng Việt.
+    const resumeLang = ['vi', 'en', 'ru', 'zh', 'ko']
+      .includes(String(req.body?.language || '').toLowerCase().slice(0, 2))
+      ? String(req.body.language).toLowerCase().slice(0, 2) : 'vi';
+
     const agentIdOfQr = await (async () => {
       if (!account.group_id) return account.owner_admin_id;
       const g = await db.query('SELECT agent_id FROM agent_groups WHERE id = $1', [account.group_id]);
@@ -5112,11 +5127,11 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
       `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified,
                              status, browser, device, client_ip, assigned_admin_id, qr_account_id,
                              expires_at, group_id, routing_status)
-       VALUES ($1, $2, $3, $4, 'vi', TRUE, 'active', $5, $6, $7, $8, $9, $10, $11, $12)`,
+       VALUES ($1, $2, $3, $4, $13, TRUE, 'active', $5, $6, $7, $8, $9, $10, $11, $12)`,
       [sessionId, account.project_id, customer.rows[0]?.full_name || 'Khách hàng', identity.email,
        browser, device, getClientIp(req), account.owner_admin_id, account.id,
        new Date(Date.now() + QR_CHAT_SESSION_MS), account.group_id || null,
-       account.group_id ? 'waiting' : null]
+       account.group_id ? 'waiting' : null, resumeLang]
     );
     await upsertCustomer({
       projectId: account.project_id, email: identity.email,
@@ -5129,12 +5144,13 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
     // họ đang nói chuyện với ai, ở đâu.
     await sendQrWelcome({
       sessionId,
-      lang: 'vi',
+      lang: resumeLang,
       guestName: customer.rows[0]?.full_name && customer.rows[0].full_name !== 'Khách hàng'
         ? customer.rows[0].full_name
         : nameFromEmail(identity.email),
       venueName: account.owner_name,
       placeLabel: account.label || account.group_name,
+      agentId: account.owner_admin_id,
     });
     notifyAdminRealtime('session_update', { sessionId, projectId: account.project_id });
 
