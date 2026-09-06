@@ -1601,6 +1601,34 @@ document.getElementById('org-qr-form')?.addEventListener('submit', async (event)
 //
 // Sau khi thêm thành công, form vẫn MỞ: người dùng thường nhập nhiều mục liên
 // tiếp, đóng lại sau mỗi lần là bắt họ bấm thêm một cú cho mỗi mục.
+//
+// Trong cửa sổ Quản lý, form mở thành một CỬA SỔ CON chứ không chèn vào giữa
+// danh sách: chèn vào danh sách thì mục đang xem bị đẩy đi mất, và trên điện
+// thoại form chiếm trọn màn hình nên người dùng không còn thấy mình đang ở thẻ
+// nào. Khối form được chuyển nguyên vẹn vào cửa sổ con rồi trả về chỗ cũ, nên
+// không có id nào bị nhân đôi và không trình xử lý nào phải gắn lại.
+const addBoxHome = new Map();
+function addBoxPortal(name, box, open) {
+    const modal = document.getElementById('addbox-modal');
+    const slot = document.getElementById('addbox-slot');
+    // Chỉ các form trong cửa sổ Quản lý mới có cửa sổ con này; những chỗ khác
+    // (form nhân sự của superadmin) vẫn mở tại chỗ như cũ.
+    if (!modal || !slot || !document.getElementById('org-modal')?.contains(box)) return false;
+    if (!addBoxHome.has(name)) addBoxHome.set(name, { parent: box.parentElement, next: box.nextElementSibling });
+    if (open) {
+        const label = document.querySelector(`[data-addbox-toggle="${name}"] span`)?.textContent;
+        const title = document.getElementById('addbox-title');
+        if (title) title.textContent = label?.trim() || 'Thêm mới';
+        slot.appendChild(box);
+        modal.classList.remove('hide');
+    } else {
+        modal.classList.add('hide');
+        const home = addBoxHome.get(name);
+        if (home?.parent && box.parentElement !== home.parent) home.parent.insertBefore(box, home.next);
+    }
+    return true;
+}
+
 function toggleAddBox(name, force) {
     const box = document.querySelector(`[data-addbox="${name}"]`);
     const button = document.querySelector(`[data-addbox-toggle="${name}"]`);
@@ -1608,11 +1636,26 @@ function toggleAddBox(name, force) {
     const open = force === undefined ? box.classList.contains('hide') : force;
     box.classList.toggle('hide', !open);
     button?.classList.toggle('is-open', open);
+    addBoxPortal(name, box, open);
     if (open) {
         // Con trỏ vào ô đầu tiên: mở form ra rồi còn phải đi tìm chỗ gõ là thừa một bước.
         box.querySelector('input:not([type="hidden"]), select, textarea')?.focus();
     }
 }
+
+// Đóng cửa sổ con: nút X, bấm ra nền tối, hoặc phím Esc.
+function closeAddBoxModal() {
+    const box = document.getElementById('addbox-slot')?.firstElementChild;
+    if (box?.dataset?.addbox) toggleAddBox(box.dataset.addbox, false);
+}
+document.getElementById('addbox-close')?.addEventListener('click', closeAddBoxModal);
+document.getElementById('addbox-modal')?.addEventListener('click', (event) => {
+    if (event.target.id === 'addbox-modal') closeAddBoxModal();
+});
+document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!document.getElementById('addbox-modal')?.classList.contains('hide')) closeAddBoxModal();
+});
 window.toggleAddBox = toggleAddBox;
 
 document.getElementById('org-modal')?.addEventListener('click', (event) => {

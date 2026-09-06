@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r89">
-    <link rel="stylesheet" href="menu-console.css?v=r89">
+    <link rel="stylesheet" href="admin.css?v=r90">
+    <link rel="stylesheet" href="menu-console.css?v=r90">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -117,11 +117,21 @@
                 </div>
                 <!-- Tên hiển thị của Agent / Sale -->
                 <div id="agent-identity" class="agent-identity hide">
-                    <span class="agent-identity-label hide" id="agent-identity-label"></span>
-                    <!-- Hai hàng: trên là tên Agent quản lý, dưới là tên Sale.
-                         Tài khoản Agent quản lý chỉ có một hàng (tên mình). -->
-                    <span id="agent-manager-name" class="agent-manager-name hide"></span>
-                    <span id="agent-display-name" class="agent-display-name"></span>
+                    <!-- Ô avatar giống hệt header của khách: cùng một khối nhận
+                         diện ở cả ba giao diện thì người dùng không phải học lại
+                         chỗ nhìn khi chuyển giữa Agent, Sale và cổng khách. -->
+                    <span class="agent-avatar-badge" id="agent-avatar-badge" aria-hidden="true">
+                        <span id="agent-avatar-char">P</span>
+                    </span>
+                    <span class="agent-identity-text">
+                        <span class="agent-identity-label hide" id="agent-identity-label"></span>
+                        <!-- Hai hàng: trên là tên Agent quản lý, dưới là tên Sale.
+                             Tài khoản Agent quản lý chỉ có một hàng (tên mình). -->
+                        <span id="agent-manager-name" class="agent-manager-name hide"></span>
+                        <span id="agent-display-name" class="agent-display-name"></span>
+                        <!-- Dòng phụ dưới tên: Agent thấy số Sale đang có. -->
+                        <span id="agent-identity-sub" class="agent-identity-sub hide"></span>
+                    </span>
                 </div>
                 <div class="project-selector" id="project-selector-wrap">
                     <i class="ri-filter-3-line"></i>
@@ -162,6 +172,18 @@
                 <button id="agent-push-btn" class="header-quick-btn header-quick-btn-push hide" type="button" title="Thông báo đẩy">
                     <i class="ri-notification-3-line" id="agent-push-icon"></i><span id="agent-push-label">Thông báo</span>
                 </button>
+
+                <!-- Agent/Sale có tới năm nút công cụ, xếp hết ra header thì
+                     hàng nút dài hơn cả tên cơ sở. Gom vào MỘT nút menu; các nút
+                     cũ được chuyển nguyên vẹn vào bảng thả xuống nên vẫn giữ id,
+                     nhãn và mọi trình xử lý sự kiện đã gắn. -->
+                <div class="header-menu-wrap hide" id="header-menu-wrap">
+                    <button type="button" class="header-quick-btn header-menu-btn" id="header-menu-btn"
+                            aria-haspopup="true" aria-expanded="false" title="Công cụ">
+                        <i class="ri-menu-line"></i><span>Công cụ</span>
+                    </button>
+                    <div class="header-menu-panel hide" id="header-menu-panel"></div>
+                </div>
 
                 <!-- Settings Dropdown (Superadmin & Project Admin) -->
                 <div class="settings-dropdown-wrapper" id="settings-dropdown-wrapper">
@@ -242,6 +264,20 @@
 
         <!-- Quản lý tổ chức: Agent (superadmin) / Sale / Nhóm / QR -->
         <div id="org-modal" class="modal-overlay hide">
+            <!-- Cửa sổ con cho các form "Thêm".
+                 Form KHÔNG được dựng lại ở đây: khi mở, chính khối [data-addbox]
+                 đang nằm trong danh sách được chuyển vào đây, rồi trả về chỗ cũ
+                 lúc đóng. Nhờ vậy mọi id, mọi trình xử lý submit và mọi chỗ điền
+                 sẵn dữ liệu khi bấm "Sửa" vẫn chạy y như cũ. -->
+            <div class="addbox-modal hide" id="addbox-modal">
+                <div class="addbox-card">
+                    <header class="addbox-head">
+                        <h3 id="addbox-title">Thêm mới</h3>
+                        <button type="button" class="icon-btn" id="addbox-close" aria-label="Đóng"><i class="ri-close-line"></i></button>
+                    </header>
+                    <div class="addbox-slot" id="addbox-slot"></div>
+                </div>
+            </div>
             <div class="org-card">
                 <header class="org-head">
                     <h2 id="org-title"><i class="ri-team-line" style="color:var(--accent-color);margin-right:6px;"></i>Quản lý Sale, nhóm, QR và thực đơn</h2>
@@ -1269,107 +1305,106 @@
 
     <!-- Report & Export Modal -->
     <div id="report-modal" class="modal-overlay hide">
-        <div class="login-box glass-panel report-modal-box" style="max-width: 860px; width: 92%; padding: 22px 24px;">
-            <div class="brand-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--panel-border);">
-                <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
-                    <div class="brand-logo" style="width: 36px; height: 36px; border-radius: 9px; background: rgba(99, 102, 241, 0.15); color: #818cf8; display: flex; align-items: center; justify-content: center; font-size: 20px;"><i class="ri-file-chart-line"></i></div>
-                    <div>
-                        <h2 style="margin: 0; font-size: 16px; font-weight: 700;">Báo cáo hoạt động &amp; Hiệu suất tư vấn</h2>
-                        <p style="margin: 0; font-size: 11.5px; color: var(--text-secondary);">Thống kê dữ liệu hội thoại, tốc độ phản hồi và năng suất Sale</p>
-                    </div>
+        <div class="report-card">
+            <header class="report-head">
+                <span class="report-head-icon"><i class="ri-file-chart-line"></i></span>
+                <div class="report-head-text">
+                    <h2>Báo cáo hoạt động &amp; Hiệu suất tư vấn</h2>
+                    <p>Thống kê hội thoại, tốc độ phản hồi và năng suất Sale</p>
                 </div>
-                <button id="report-modal-close-top" class="icon-btn" type="button" title="Đóng" style="width: 30px; height: 30px; font-size: 18px;"><i class="ri-close-line"></i></button>
-            </div>
+                <button id="report-modal-close-top" class="icon-btn" type="button" title="Đóng" aria-label="Đóng"><i class="ri-close-line"></i></button>
+            </header>
 
-            <!-- Filter Controls -->
-            <div class="report-filters" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 16px; background: rgba(0,0,0,0.18); padding: 12px 14px; border-radius: 12px; border: 1px solid var(--panel-border);">
-                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-                    <select id="report-date-preset" style="padding: 7px 12px; font-size: 12px; border-radius: 7px;">
+            <!-- Bộ lọc. Trước đây nền là rgba(0,0,0,.18) viết cứng — trên giao
+                 diện sáng nó thành một mảng xám đục che hết ba ô chọn. -->
+            <div class="report-filters">
+                <div class="report-filter-fields">
+                    <select id="report-date-preset" aria-label="Khoảng thời gian">
                         <option value="today">Hôm nay</option>
                         <option value="7days" selected>7 ngày qua</option>
                         <option value="30days">30 ngày qua</option>
                         <option value="all">Toàn thời gian</option>
                     </select>
-                    <select id="report-sale-filter" style="padding: 7px 12px; font-size: 12px; border-radius: 7px;">
-                        <option value="">— Tất cả nhân viên Sale —</option>
+                    <select id="report-sale-filter" aria-label="Nhân viên Sale">
+                        <option value="">Tất cả nhân viên Sale</option>
                     </select>
-                    <select id="report-status-filter" style="padding: 7px 12px; font-size: 12px; border-radius: 7px;">
-                        <option value="">— Tất cả trạng thái —</option>
+                    <select id="report-status-filter" aria-label="Trạng thái">
+                        <option value="">Tất cả trạng thái</option>
                         <option value="active">Đang hoạt động</option>
                         <option value="closed">Đã đóng</option>
                     </select>
                 </div>
-                <div style="display: flex; gap: 8px;">
-                    <button id="report-refresh-btn" type="button" class="secondary-btn" style="padding: 7px 14px; font-size: 12px;"><i class="ri-refresh-line"></i> Tải lại</button>
-                    <button id="report-export-csv-btn" type="button" class="primary-btn" style="padding: 7px 16px; font-size: 12px; background: linear-gradient(135deg, #10b981, #059669);"><i class="ri-file-excel-2-line"></i> Xuất Excel (CSV)</button>
+                <div class="report-filter-actions">
+                    <button id="report-refresh-btn" type="button" class="secondary-btn"><i class="ri-refresh-line"></i> <span>Tải lại</span></button>
+                    <button id="report-export-csv-btn" type="button" class="primary-btn report-export-btn"><i class="ri-file-excel-2-line"></i> <span>Xuất Excel</span></button>
                 </div>
             </div>
 
-            <!-- Metric Cards -->
-            <div class="report-metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px;">
-                <div class="report-metric-card" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 12px; padding: 12px 14px; text-align: left;">
-                    <div style="font-size: 11px; font-weight: 700; color: #a5b4fc; margin-bottom: 4px; text-transform: uppercase;">Tổng cuộc hội thoại</div>
-                    <div id="metric-total-sessions" style="font-size: 22px; font-weight: 800; color: var(--text-primary);">0</div>
+            <!-- Phần cuộn: bốn thẻ số liệu và hai bảng cùng nằm trong đây, nên
+                 nội dung dài không còn bị cắt cụt dưới đáy cửa sổ. -->
+            <div class="report-body">
+                <div class="report-metrics-grid">
+                    <div class="report-metric-card is-indigo">
+                        <span>Tổng cuộc hội thoại</span>
+                        <strong id="metric-total-sessions">0</strong>
+                    </div>
+                    <div class="report-metric-card is-green">
+                        <span>Khách hàng tiếp cận</span>
+                        <strong id="metric-total-visitors">0</strong>
+                    </div>
+                    <div class="report-metric-card is-amber">
+                        <span>Tin nhắn trao đổi</span>
+                        <strong id="metric-total-messages">0</strong>
+                    </div>
+                    <div class="report-metric-card is-pink">
+                        <span>Sale phản hồi</span>
+                        <strong id="metric-staff-messages">0</strong>
+                    </div>
                 </div>
-                <div class="report-metric-card" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 12px; padding: 12px 14px; text-align: left;">
-                    <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 4px; text-transform: uppercase;">Khách hàng tiếp cận</div>
-                    <div id="metric-total-visitors" style="font-size: 22px; font-weight: 800; color: var(--text-primary);">0</div>
-                </div>
-                <div class="report-metric-card" style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 12px; padding: 12px 14px; text-align: left;">
-                    <div style="font-size: 11px; font-weight: 700; color: #fbbf24; margin-bottom: 4px; text-transform: uppercase;">Tổng tin nhắn trao đổi</div>
-                    <div id="metric-total-messages" style="font-size: 22px; font-weight: 800; color: var(--text-primary);">0</div>
-                </div>
-                <div class="report-metric-card" style="background: rgba(236, 72, 153, 0.08); border: 1px solid rgba(236, 72, 153, 0.2); border-radius: 12px; padding: 12px 14px; text-align: left;">
-                    <div style="font-size: 11px; font-weight: 700; color: #f472b6; margin-bottom: 4px; text-transform: uppercase;">Tin nhắn Sale phản hồi</div>
-                    <div id="metric-staff-messages" style="font-size: 22px; font-weight: 800; color: var(--text-primary);">0</div>
-                </div>
-            </div>
 
-            <!-- Performance Tables -->
-            <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; text-align: left;">
-                <div>
-                    <h4 style="margin: 0 0 8px 0; font-size: 12.5px; font-weight: 700; color: var(--text-secondary);"><i class="ri-user-star-line"></i> Năng suất tư vấn theo nhân viên Sale</h4>
-                    <div id="report-sales-table-wrap" style="overflow-x: auto; border: 1px solid var(--panel-border); border-radius: 10px;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                <section class="report-section">
+                    <h4><i class="ri-user-star-line"></i> Năng suất tư vấn theo nhân viên Sale</h4>
+                    <div class="report-table-wrap" id="report-sales-table-wrap">
+                        <table class="report-table">
                             <thead>
-                                <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--panel-border);">
-                                    <th style="padding: 8px 12px; font-weight: 700;">Nhân viên Sale</th>
-                                    <th style="padding: 8px 12px; font-weight: 700;">Email</th>
-                                    <th style="padding: 8px 12px; font-weight: 700; text-align: center;">Số phiên tiếp nhận</th>
-                                    <th style="padding: 8px 12px; font-weight: 700; text-align: center;">Tin nhắn đã gửi</th>
+                                <tr>
+                                    <th>Nhân viên Sale</th>
+                                    <th>Email</th>
+                                    <th class="is-num">Phiên tiếp nhận</th>
+                                    <th class="is-num">Tin đã gửi</th>
                                 </tr>
                             </thead>
                             <tbody id="report-sales-tbody">
-                                <tr><td colspan="4" style="text-align: center; padding: 16px; color: var(--text-secondary);">Đang tải dữ liệu...</td></tr>
+                                <tr><td colspan="4" class="report-table-state">Đang tải dữ liệu…</td></tr>
                             </tbody>
                         </table>
                     </div>
-                </div>
+                </section>
 
-                <div>
-                    <h4 style="margin: 0 0 8px 0; font-size: 12.5px; font-weight: 700; color: var(--text-secondary);"><i class="ri-chat-history-line"></i> Nhật ký hội thoại gần đây</h4>
-                    <div id="report-sessions-table-wrap" style="overflow-x: auto; border: 1px solid var(--panel-border); border-radius: 10px; max-height: 220px;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 11.5px; text-align: left;">
+                <section class="report-section">
+                    <h4><i class="ri-chat-history-line"></i> Nhật ký hội thoại gần đây</h4>
+                    <div class="report-table-wrap" id="report-sessions-table-wrap">
+                        <table class="report-table is-compact">
                             <thead>
-                                <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--panel-border);">
-                                    <th style="padding: 8px 10px; font-weight: 700;">Thời gian</th>
-                                    <th style="padding: 8px 10px; font-weight: 700;">Khách hàng</th>
-                                    <th style="padding: 8px 10px; font-weight: 700;">Sale phụ trách</th>
-                                    <th style="padding: 8px 10px; font-weight: 700; text-align: center;">Tin nhắn</th>
-                                    <th style="padding: 8px 10px; font-weight: 700;">Trạng thái</th>
+                                <tr>
+                                    <th>Thời gian</th>
+                                    <th>Khách hàng</th>
+                                    <th>Sale phụ trách</th>
+                                    <th class="is-num">Tin nhắn</th>
+                                    <th>Trạng thái</th>
                                 </tr>
                             </thead>
                             <tbody id="report-sessions-tbody">
-                                <tr><td colspan="5" style="text-align: center; padding: 16px; color: var(--text-secondary);">Đang tải dữ liệu...</td></tr>
+                                <tr><td colspan="5" class="report-table-state">Đang tải dữ liệu…</td></tr>
                             </tbody>
                         </table>
                     </div>
-                </div>
+                </section>
             </div>
 
-            <div style="text-align: right; margin-top: 14px; border-top: 1px solid var(--panel-border); padding-top: 12px;">
-                <button id="report-modal-close-btn" class="secondary-btn" style="width: 100px; padding: 8px 12px; font-size: 12px;"><i class="ri-close-line"></i> Đóng</button>
-            </div>
+            <footer class="report-foot">
+                <button id="report-modal-close-btn" class="secondary-btn"><i class="ri-close-line"></i> Đóng</button>
+            </footer>
         </div>
     </div>
 
@@ -1393,15 +1428,15 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r89"></script>
-    <script src="core.js?v=r89"></script>
-    <script src="chat.js?v=r89"></script>
-    <script src="org-console.js?v=r89"></script>
-    <script src="project-admin.js?v=r89"></script>
-    <script src="menu-console.js?v=r89"></script>
-    <script src="order-console.js?v=r89"></script>
-    <script src="monitor-console.js?v=r89"></script>
-    <script src="cart-console.js?v=r89"></script>
-    <script src="admin.js?v=r89"></script>
+    <script src="config.js?v=r90"></script>
+    <script src="core.js?v=r90"></script>
+    <script src="chat.js?v=r90"></script>
+    <script src="org-console.js?v=r90"></script>
+    <script src="project-admin.js?v=r90"></script>
+    <script src="menu-console.js?v=r90"></script>
+    <script src="order-console.js?v=r90"></script>
+    <script src="monitor-console.js?v=r90"></script>
+    <script src="cart-console.js?v=r90"></script>
+    <script src="admin.js?v=r90"></script>
 </body>
 </html>

@@ -1118,12 +1118,15 @@ async function loadReportData() {
                     message: 'Trong khoảng thời gian đang chọn chưa có Sale nào tiếp nhận hội thoại. Thử mở rộng khoảng thời gian hoặc bỏ bớt bộ lọc.',
                 });
             } else {
+                // data-label để trên điện thoại mỗi hàng gập thành một thẻ có
+                // nhãn cột — bảng bốn cột trong khung 360px thì cột nào cũng bé
+                // như hạt gạo.
                 salesTbody.innerHTML = sales_breakdown.map(s => `
-                    <tr style="border-bottom: 1px solid var(--panel-border);">
-                        <td style="padding: 8px 12px; font-weight: 600;">${escapeHtml(s.sale_name)}</td>
-                        <td style="padding: 8px 12px; color: var(--text-secondary);">${escapeHtml(s.sale_email)}</td>
-                        <td style="padding: 8px 12px; text-align: center; font-weight: 700; color: #818cf8;">${s.sessions_count}</td>
-                        <td style="padding: 8px 12px; text-align: center; font-weight: 700; color: #10b981;">${s.staff_messages_count}</td>
+                    <tr>
+                        <td data-label="Nhân viên Sale" style="font-weight: 700;">${escapeHtml(s.sale_name)}</td>
+                        <td data-label="Email" style="color: var(--text-secondary);">${escapeHtml(s.sale_email)}</td>
+                        <td data-label="Phiên tiếp nhận" class="is-num"><span class="report-num-a">${s.sessions_count}</span></td>
+                        <td data-label="Tin đã gửi" class="is-num"><span class="report-num-b">${s.staff_messages_count}</span></td>
                     </tr>
                 `).join('');
             }
@@ -1139,12 +1142,12 @@ async function loadReportData() {
                 });
             } else {
                 sessionsTbody.innerHTML = sessions.map(s => `
-                    <tr style="border-bottom: 1px solid var(--panel-border);">
-                        <td style="padding: 6px 10px; color: var(--text-secondary); white-space: nowrap;">${new Date(s.created_at).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}</td>
-                        <td style="padding: 6px 10px; font-weight: 600;">${escapeHtml(s.visitor_name || 'Khách')}</td>
-                        <td style="padding: 6px 10px; color: #a5b4fc;">${escapeHtml(s.sale_name || 'Chưa nhận')}</td>
-                        <td style="padding: 6px 10px; text-align: center;">${s.total_messages || 0}</td>
-                        <td style="padding: 6px 10px;"><span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; ${s.status === 'active' ? 'background: rgba(16,185,129,0.15); color:#10b981;' : 'background: rgba(255,255,255,0.06); color:var(--text-secondary);'}">${s.status === 'active' ? 'Đang chat' : 'Đã đóng'}</span></td>
+                    <tr>
+                        <td data-label="Thời gian" style="color: var(--text-secondary); white-space: nowrap;">${new Date(s.created_at).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                        <td data-label="Khách hàng" style="font-weight: 700;">${escapeHtml(s.visitor_name || 'Khách')}</td>
+                        <td data-label="Sale phụ trách"><span class="report-num-a">${escapeHtml(s.sale_name || 'Chưa nhận')}</span></td>
+                        <td data-label="Tin nhắn" class="is-num">${s.total_messages || 0}</td>
+                        <td data-label="Trạng thái"><span class="report-pill${s.status === 'active' ? ' is-open' : ''}">${s.status === 'active' ? 'Đang chat' : 'Đã đóng'}</span></td>
                     </tr>
                 `).join('');
             }

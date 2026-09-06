@@ -3215,7 +3215,7 @@ button {
 .org-submit:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(236, 72, 153, 0.35); }
 
 /* List & Cards */
-.org-list-header { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; padding: 0 2px; }
+.org-list-header { display: flex; align-items: center; justify-content: flex-start; gap: 10px; flex-wrap: wrap; margin-top: 4px; padding: 0 2px; }
 .org-list-header h4 { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--text-primary); }
 .org-count-badge { padding: 2px 7px; border-radius: 999px; background: rgba(0, 0, 0, 0.05); color: var(--text-secondary); font-size: 10.5px; font-weight: 700; }
 .org-list { display: grid; gap: 6px; }
@@ -3372,7 +3372,8 @@ button {
 
 @media (max-width: 760px) {
     .org-card { padding: 16px; border-radius: 18px; max-height: 94vh; }
-    .org-head { flex-direction: column; gap: 10px; }
+    .org-head { flex-direction: row; align-items: flex-start; gap: 10px; }
+    .org-head h2 { flex: 1 1 auto; min-width: 0; }
     .org-form-row { grid-template-columns: 1fr; }
     .org-tab { font-size: 11.5px; padding: 7px 10px; }
     .org-hub-grid { grid-template-columns: 1fr; }
@@ -4591,4 +4592,237 @@ button {
        phải cao thêm đúng bằng một hàng chữ, nếu không hàng thứ hai đè lên logo. */
     .dashboard-header.sale-header { min-height: calc(136px + env(safe-area-inset-top)); }
     .dashboard-header.sale-header .agent-identity-label { padding-right: 0; }
+}
+
+
+/* ── Khối nhận diện trên header: avatar + tên + dòng phụ ──────────────────
+   Cùng một khối với header của cổng khách và của Sale. Đặt cuối tệp và dùng
+   selector đủ mạnh (.dashboard-header .agent-identity...) vì các media query
+   phía trên đang đặt flex-direction: column cho chính khối này — hồi đó nó chỉ
+   có chữ, giờ có thêm ô avatar nên cột phải nằm ở lớp trong. */
+.agent-identity,
+.dashboard-header .agent-identity,
+.dashboard-header .agent-identity.sale-identity,
+.dashboard-header.sale-header .agent-identity {
+    flex-direction: row;
+    align-items: center;
+    gap: 11px;
+}
+.agent-identity-text {
+    display: flex; flex-direction: column; justify-content: center;
+    gap: 2px; min-width: 0;
+}
+.agent-avatar-badge {
+    position: relative;
+    flex: 0 0 auto;
+    display: grid; place-items: center;
+    width: 44px; height: 44px; border-radius: 14px;
+    background: linear-gradient(140deg, #f472b6, #c026a4);
+    color: #fff; font-size: 19px; font-weight: 800; line-height: 1;
+    box-shadow: 0 6px 16px rgba(192, 38, 164, .22);
+}
+/* Chấm "đang trực" ở góc, giống cổng khách. */
+.agent-avatar-badge::after {
+    content: ""; position: absolute; right: -2px; bottom: -2px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #10b981; box-shadow: 0 0 0 2px var(--panel-bg, #fff);
+}
+.agent-identity-sub {
+    display: inline-flex; align-items: center; gap: 5px;
+    color: var(--text-secondary); font-size: 11.5px; font-weight: 600; line-height: 1.2;
+}
+.agent-identity-sub i { font-size: 13px; color: var(--accent-color); }
+@media (max-width: 720px) {
+    .agent-avatar-badge { width: 38px; height: 38px; font-size: 16px; border-radius: 12px; }
+    .agent-identity-sub { font-size: 10.5px; }
+}
+
+/* ── Một nút "Công cụ" thay cho năm nút rời ───────────────────────────────
+   Các nút cũ được CHUYỂN vào bảng này, nên ở đây chỉ tả lại dáng của chúng khi
+   đã nằm trong bảng: một hàng đầy chiều ngang, icon trái, nhãn luôn hiện (kể cả
+   trên mobile — media query phía trên ẩn nhãn của .header-quick-btn để tiết
+   kiệm chỗ trên header, nhưng trong bảng thì nhãn mới là thứ để đọc). */
+.header-menu-wrap { position: relative; }
+.header-menu-panel {
+    position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+    display: flex; flex-direction: column; gap: 3px;
+    min-width: 232px; padding: 7px;
+    border-radius: 14px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-bg, #fff);
+    box-shadow: 0 18px 44px rgba(28, 12, 30, .18);
+}
+.header-menu-panel .header-menu-item {
+    width: 100%; justify-content: flex-start; gap: 10px;
+    padding: 10px 12px; border-radius: 10px; border: 0; background: transparent;
+    font-size: 13px; font-weight: 650;
+}
+.header-menu-panel .header-menu-item span { display: inline !important; }
+.header-menu-panel .header-menu-item i { font-size: 17px; }
+.header-menu-panel .header-menu-item:hover { background: rgba(0, 0, 0, .05); }
+@media (max-width: 720px) {
+    .header-menu-panel { min-width: min(272px, calc(100vw - 24px)); }
+}
+
+
+/* ── Cửa sổ con "Thêm mới" trong màn Quản lý ──────────────────────────────
+   Nằm bên trong #org-modal nên các trình xử lý sự kiện ủy quyền trên cửa sổ ấy
+   vẫn bắt được form; z-index cao hơn .org-card để nổi lên trên danh sách. */
+.addbox-modal {
+    position: absolute; inset: 0; z-index: 40;
+    display: flex; align-items: center; justify-content: center;
+    padding: 18px;
+    background: rgba(18, 8, 20, .45);
+    backdrop-filter: blur(3px);
+}
+.addbox-modal.hide { display: none; }
+.addbox-card {
+    width: min(620px, 100%); max-height: 88vh;
+    display: flex; flex-direction: column;
+    border-radius: 18px; overflow: hidden;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-bg, #fff);
+    box-shadow: 0 26px 60px rgba(26, 10, 28, .3);
+}
+.addbox-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 16px; border-bottom: 1px solid var(--panel-border);
+}
+.addbox-head h3 { margin: 0; font-size: 15px; font-weight: 800; color: var(--text-primary); }
+.addbox-slot { padding: 14px 16px 18px; overflow-y: auto; }
+/* Trong cửa sổ con, form đã có khung riêng rồi: bỏ khung lồng khung. */
+.addbox-slot .org-form { padding: 0; border: 0; background: transparent; }
+@media (max-width: 620px) {
+    .addbox-modal { padding: 0; }
+    .addbox-card { width: 100%; height: 100%; max-height: 100%; border-radius: 0; border: 0; }
+}
+
+
+/* ── Cửa sổ Báo cáo ───────────────────────────────────────────────────────
+   Bản cũ tô màu bằng style viết thẳng trong HTML theo bảng màu TỐI: nền lọc
+   rgba(0,0,0,.18), đầu bảng rgba(255,255,255,.04). Trên giao diện sáng thành
+   một mảng xám và một hàng tiêu đề gần như vô hình. Ở đây dùng biến chủ đề. */
+.report-card {
+    display: flex; flex-direction: column;
+    width: min(880px, 94vw); max-height: min(92vh, 900px);
+    border-radius: 20px; overflow: hidden;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-bg, #fff);
+    box-shadow: 0 28px 70px rgba(26, 10, 28, .28);
+    text-align: left;
+}
+.report-head {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 16px 18px; border-bottom: 1px solid var(--panel-border);
+}
+.report-head-icon {
+    flex: 0 0 auto; display: grid; place-items: center;
+    width: 38px; height: 38px; border-radius: 11px;
+    background: rgba(99, 102, 241, .14); color: #6366f1; font-size: 19px;
+}
+.report-head-text { flex: 1 1 auto; min-width: 0; }
+.report-head-text h2 { margin: 0; font-size: 15.5px; font-weight: 800; color: var(--text-primary); }
+.report-head-text p { margin: 2px 0 0; font-size: 11.5px; color: var(--text-secondary); }
+
+.report-filters {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 10px; margin: 14px 18px 0; padding: 11px 12px;
+    border-radius: 13px;
+    border: 1px solid var(--panel-border);
+    background: var(--surface-neutral, rgba(0, 0, 0, .03));
+}
+.report-filter-fields { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.report-filters select {
+    height: 36px; padding: 0 30px 0 11px; border-radius: 9px;
+    border: 1px solid var(--panel-border); background-color: var(--panel-bg, #fff);
+    color: var(--text-primary); font: inherit; font-size: 12.5px; font-weight: 600;
+}
+.report-filter-actions { display: flex; gap: 8px; }
+.report-filters button { padding: 8px 14px; font-size: 12.5px; border-radius: 10px; }
+.report-export-btn { background: linear-gradient(135deg, #10b981, #059669); border: 0; color: #fff; }
+
+.report-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 18px 18px; }
+.report-metrics-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px; margin-bottom: 16px;
+}
+.report-metric-card {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 12px 14px; border-radius: 14px; border: 1px solid transparent;
+}
+.report-metric-card span { font-size: 10.5px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
+.report-metric-card strong { font-size: 24px; font-weight: 800; color: var(--text-primary); line-height: 1; }
+.report-metric-card.is-indigo { background: rgba(99, 102, 241, .1); border-color: rgba(99, 102, 241, .22); }
+.report-metric-card.is-indigo span { color: #6366f1; }
+.report-metric-card.is-green { background: rgba(16, 185, 129, .1); border-color: rgba(16, 185, 129, .22); }
+.report-metric-card.is-green span { color: #059669; }
+.report-metric-card.is-amber { background: rgba(245, 158, 11, .12); border-color: rgba(245, 158, 11, .24); }
+.report-metric-card.is-amber span { color: #b45309; }
+.report-metric-card.is-pink { background: rgba(236, 72, 153, .1); border-color: rgba(236, 72, 153, .22); }
+.report-metric-card.is-pink span { color: #db2777; }
+
+.report-section + .report-section { margin-top: 16px; }
+.report-section h4 {
+    display: flex; align-items: center; gap: 6px;
+    margin: 0 0 8px; font-size: 12.5px; font-weight: 800; color: var(--text-secondary);
+}
+.report-table-wrap { border: 1px solid var(--panel-border); border-radius: 12px; overflow: hidden; }
+.report-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.report-table th, .report-table td { padding: 9px 12px; text-align: left; }
+.report-table.is-compact th, .report-table.is-compact td { padding: 7px 10px; font-size: 12px; }
+.report-table thead th {
+    background: var(--surface-neutral, rgba(0, 0, 0, .04));
+    color: var(--text-secondary); font-weight: 800; font-size: 11px;
+    white-space: nowrap;
+}
+.report-table tbody tr { border-top: 1px solid var(--panel-border); }
+.report-table .is-num { text-align: center; }
+.report-table-state { text-align: center; padding: 18px; color: var(--text-secondary); }
+.report-num-a { font-weight: 800; color: #6366f1; }
+.report-num-b { font-weight: 800; color: #059669; }
+.report-pill {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 800;
+    background: var(--surface-neutral, rgba(0, 0, 0, .06)); color: var(--text-secondary);
+}
+.report-pill.is-open { background: rgba(16, 185, 129, .16); color: #059669; }
+
+.report-foot {
+    display: flex; justify-content: flex-end;
+    padding: 12px 18px; border-top: 1px solid var(--panel-border);
+}
+
+/* Trên điện thoại, bảng bốn cột trong khung 360px co lại còn vài chục pixel mỗi
+   cột — đúng cái "hiển thị rất nhỏ" đang gặp. Đổi mỗi hàng thành một thẻ, nhãn
+   cột lấy từ data-label. */
+@media (max-width: 620px) {
+    .report-card { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+    .report-filters { margin: 12px 12px 0; }
+    .report-filter-fields, .report-filter-actions { width: 100%; }
+    .report-filters select, .report-filters button { flex: 1 1 46%; }
+    .report-body { padding: 12px; }
+    .report-metrics-grid { grid-template-columns: 1fr 1fr; }
+    .report-metric-card strong { font-size: 20px; }
+
+    .report-table-wrap { border: 0; }
+    .report-table, .report-table tbody, .report-table tr, .report-table td { display: block; width: 100%; }
+    .report-table thead { display: none; }
+    .report-table tbody tr {
+        border: 1px solid var(--panel-border); border-radius: 12px;
+        margin-bottom: 8px; padding: 4px 2px; background: var(--panel-bg, #fff);
+    }
+    .report-table td {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        padding: 6px 12px; text-align: right;
+    }
+    .report-table td::before {
+        content: attr(data-label);
+        flex: 0 0 auto; color: var(--text-secondary);
+        font-size: 11px; font-weight: 700; text-align: left;
+    }
+    .report-table td.is-num { text-align: right; }
+    /* Hàng trạng thái (đang tải / rỗng / lỗi) trải hết chiều ngang, không
+       gập thành cặp nhãn–giá trị như hàng dữ liệu. */
+    .report-table td[colspan] { display: block; text-align: center; }
+    .report-table td[colspan]::before { content: none; }
 }

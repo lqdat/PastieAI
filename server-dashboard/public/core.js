@@ -941,7 +941,102 @@ function updateAgentHeaderUI() {
     document.getElementById('agent-push-btn')?.classList.toggle('hide', !isAgentRole || inIframe || pushHeaderHidden);
 
     if (isAgentRole) document.getElementById('manage-admins-btn')?.classList.add('hide');
+
+    // Ô avatar: chữ cái đầu của tên đang hiện to.
+    const avatarChar = document.getElementById('agent-avatar-char');
+    if (avatarChar) {
+        const src = (isSaleView ? managerName : visibleName) || 'P';
+        avatarChar.textContent = src.trim().charAt(0).toUpperCase() || 'P';
+    }
+    document.getElementById('agent-avatar-badge')?.classList.toggle('hide', !visibleName);
+
+    // Dòng phụ dưới tên. Sale: tên của chính mình đã nằm ở hàng dưới rồi nên
+    // dòng này để trống; Agent quản lý: số Sale đang có.
+    const subEl = document.getElementById('agent-identity-sub');
+    if (subEl && !isSaleView) subEl.classList.toggle('hide', !subEl.textContent);
+    if (subEl && isSaleView) subEl.classList.add('hide');
+    if (isAgentManagerRole()) void refreshAgentSaleCount();
+
+    layoutHeaderQuickMenu(isAgentRole);
 }
+
+
+// Số Sale hiện có của Agent, hiện ngay dưới tên cơ sở trên header.
+// Đếm một lần rồi dùng lại: con số này chỉ đổi khi Agent tự thêm hoặc xoá Sale,
+// và chính chỗ đó gọi lại hàm với force = true.
+let agentSaleCountLoaded = false;
+async function refreshAgentSaleCount(force) {
+    if (agentSaleCountLoaded && !force) return;
+    const subEl = document.getElementById('agent-identity-sub');
+    if (!subEl) return;
+    try {
+        const res = await authFetch(`${API_BASE}/api/agent/sales`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const n = Array.isArray(data) ? data.length : 0;
+        agentSaleCountLoaded = true;
+        subEl.innerHTML = `<i class="ri-user-shared-line"></i> ${n} nhân viên Sale`;
+        subEl.classList.remove('hide');
+    } catch (e) {
+        // Không có số thì thôi, không hiện dòng rỗng.
+    }
+}
+window.refreshAgentSaleCount = refreshAgentSaleCount;
+
+
+// Gom các nút công cụ của Agent/Sale vào một bảng thả xuống.
+//
+// CHUYỂN CHÍNH các nút cũ vào bảng chứ không dựng nút mới: mọi id, nhãn và
+// trình xử lý sự kiện đã gắn ở nơi khác vẫn còn nguyên, kể cả các chỗ gọi
+// classList.toggle('hide', ...) để ẩn nút theo vai trò.
+const HEADER_MENU_BTN_IDS = [
+    'org-manage-btn', 'order-cart-btn', 'sale-menu-btn', 'agent-qr-btn',
+    'report-modal-btn', 'agent-account-btn', 'agent-push-btn',
+];
+const headerBtnHome = new Map();
+function layoutHeaderQuickMenu(grouped) {
+    const wrap = document.getElementById('header-menu-wrap');
+    const panel = document.getElementById('header-menu-panel');
+    if (!wrap || !panel) return;
+
+    for (const id of HEADER_MENU_BTN_IDS) {
+        const btn = document.getElementById(id);
+        if (!btn) continue;
+        // Nhớ chỗ cũ ngay lần đầu, để còn trả về đúng vị trí cho các vai trò khác.
+        if (!headerBtnHome.has(id)) headerBtnHome.set(id, { parent: btn.parentElement, next: btn.nextElementSibling });
+        if (grouped) {
+            btn.classList.add('header-menu-item');
+            if (btn.parentElement !== panel) panel.appendChild(btn);
+        } else {
+            btn.classList.remove('header-menu-item');
+            const home = headerBtnHome.get(id);
+            if (home?.parent && btn.parentElement !== home.parent) home.parent.insertBefore(btn, home.next);
+        }
+    }
+    wrap.classList.toggle('hide', !grouped);
+    if (!grouped) closeHeaderQuickMenu();
+}
+
+function closeHeaderQuickMenu() {
+    document.getElementById('header-menu-panel')?.classList.add('hide');
+    document.getElementById('header-menu-btn')?.setAttribute('aria-expanded', 'false');
+}
+
+document.addEventListener('click', (event) => {
+    const trigger = event.target.closest('#header-menu-btn');
+    const panel = document.getElementById('header-menu-panel');
+    if (!panel) return;
+    if (trigger) {
+        const open = panel.classList.contains('hide');
+        panel.classList.toggle('hide', !open);
+        document.getElementById('header-menu-btn')?.setAttribute('aria-expanded', String(open));
+        return;
+    }
+    // Bấm vào một mục trong bảng cũng đóng bảng: mục nào cũng mở một cửa sổ
+    // khác, để bảng mở chồng lên trên là che mất thứ vừa mở.
+    if (!panel.classList.contains('hide')) closeHeaderQuickMenu();
+});
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeHeaderQuickMenu(); });
 
 
 function getBrowserIcon(browser) {
