@@ -3214,6 +3214,50 @@ async function cachedPresignedUrl(key) {
   return url;
 }
 
+// Những cái tên KHÔNG được dịch trong một phiên chat.
+//
+// Gồm phần TÊN RIÊNG của tên cơ sở (loại hình như "Hộ Kinh Doanh" vẫn dịch —
+// xem splitVenueName), tên bàn/mã QR, và tên nhân viên đang phụ trách. Đây là
+// những chữ mà khách phải đối chiếu được với tấm biển ngoài cửa, với cái bảng
+// số trên bàn và với người đang đứng trước mặt họ.
+//
+// Cache ngắn: mỗi tin nhắn cần dịch là một lần hỏi, mà tên cơ sở thì gần như
+// không bao giờ đổi. 5 phút là đủ để một lần đổi tên kịp lan ra.
+const protectedNameCache = new Map();
+const PROTECTED_NAMES_TTL_MS = 5 * 60 * 1000;
+
+async function protectedNamesForSession(sessionId) {
+  if (!sessionId) return [];
+  const hit = protectedNameCache.get(sessionId);
+  if (hit && hit.expiresAt > Date.now()) return hit.names;
+  let names = [];
+  try {
+    const result = await db.query(
+      `SELECT owner.full_name AS venue_name, q.label AS qr_label, g.name AS group_name,
+              sale.full_name AS sale_name
+         FROM sessions s
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN admins owner ON owner.id = COALESCE(g.agent_id, q.owner_admin_id)
+         LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
+        WHERE s.id = $1`,
+      [sessionId]
+    );
+    const row = result.rows[0] || {};
+    // Chỉ lấy phần tên riêng của tên cơ sở; loại hình vẫn để máy dịch.
+    const venue = gemini.splitVenueName(row.venue_name).propel;
+    names = [venue, row.qr_label, row.group_name, row.sale_name]
+      .map((name) => String(name || '').trim())
+      .filter((name) => name.length >= 2);
+  } catch (error) {
+    // Không tra được thì dịch bình thường, đừng chặn cả đường tin nhắn.
+    console.error('[Dịch] Không lấy được danh sách tên cần giữ:', error.message);
+  }
+  if (protectedNameCache.size > 2000) protectedNameCache.delete(protectedNameCache.keys().next().value);
+  protectedNameCache.set(sessionId, { names, expiresAt: Date.now() + PROTECTED_NAMES_TTL_MS });
+  return names;
+}
+
 async function preloadTranslations(messages, targetLang) {
   const cache = new Map();
   if (!targetLang) return cache;
@@ -3240,7 +3284,7 @@ async function preloadTranslations(messages, targetLang) {
  * @param {Map<number,string>} [preloaded] Cache đã nạp sẵn bởi preloadTranslations.
  *   Có nó thì bỏ hẳn được câu SELECT riêng cho từng tin.
  */
-async function getOrTranslateMessage(msg, targetLang, preloaded) {
+async function getOrTranslateMessage(msg, targetLang, preloaded, protect) {
   // Attachment messages carry a fixed placeholder caption ("[Đính kèm] ...") —
   // translating it every time would just waste Gemini calls for no benefit.
   if (msg.attachment_key) return msg.translated_text || msg.original_text;
@@ -3288,7 +3332,7 @@ async function getOrTranslateMessage(msg, targetLang, preloaded) {
   try {
     // Ngôn ngữ nguồn đã lưu sẵn trên tin nhắn thì truyền vào để bỏ hẳn một lượt
     // gọi phát hiện ngôn ngữ mỗi lần dịch lại sang ngôn ngữ khác.
-    const translatePromise = gemini.translateText(msg.original_text, targetLangCode, { sourceLang: msg.language });
+    const translatePromise = gemini.translateText(msg.original_text, targetLangCode, { sourceLang: msg.language, protect });
     // Ngưỡng này phải lớn hơn timeout của Gemini (mặc định 2500ms) cộng thời
     // gian gọi NMT dự phòng, nếu không sẽ cắt ngang đúng lúc bản dự phòng sắp trả về.
     const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Translate timeout')), 4500));
@@ -3443,10 +3487,11 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
 
     // Nạp cache dịch một lượt cho cả danh sách, thay vì mỗi tin một truy vấn.
     const translationCache = await preloadTranslations(messages, visitorLang);
+    const protectedNames = await protectedNamesForSession(sessionId);
 
     // Dịch song song các tin nhắn nếu ngôn ngữ khách hàng được chỉ định
     await Promise.all(messages.map(async (msg) => {
-      msg.translated_text = await getOrTranslateMessage(msg, visitorLang, translationCache);
+      msg.translated_text = await getOrTranslateMessage(msg, visitorLang, translationCache, protectedNames);
       // Presigned S3 URLs expire — always hand back a fresh one instead of a stale cached value.
       if (msg.attachment_key) {
         msg.attachment_url = await cachedPresignedUrl(msg.attachment_key).catch(() => msg.attachment_url);
@@ -3667,12 +3712,16 @@ async function getChatOrderForVisitor(sessionId) {
 // dung vì một quán chỉ dùng đi dùng lại vài chục câu ("ít cay", "không hành",
 // "để sốt riêng") — cache theo đơn là mỗi khách lại tốn một lượt gọi dịch cho
 // đúng câu đó.
-async function translateNoteText(text, language) {
+async function translateNoteText(text, language, protect) {
   const source = String(text || '').trim();
   const target = String(language || '').toLowerCase().slice(0, 2);
   if (!source || !MENU_LANGS.includes(target) || target === MENU_SOURCE_LANG) return source;
 
-  const hash = crypto.createHash('sha1').update(source).digest('hex');
+  // Khoá cache gồm CẢ danh sách tên được giữ: cùng một câu ghi chú nhưng hai
+  // quán tên khác nhau sẽ ra hai bản dịch khác nhau, dùng chung là sai.
+  const hash = crypto.createHash('sha1')
+    .update(source + '\u0000' + (Array.isArray(protect) ? protect.join('|') : ''))
+    .digest('hex');
   try {
     const hit = await db.query(
       'SELECT translated_text FROM qr_note_translations WHERE note_hash = $1 AND lang = $2',
@@ -3685,7 +3734,7 @@ async function translateNoteText(text, language) {
   }
 
   try {
-    const out = await gemini.translateText(source, target, { sourceLang: MENU_SOURCE_LANG });
+    const out = await gemini.translateText(source, target, { sourceLang: MENU_SOURCE_LANG, protect });
     // Nhà cung cấp dịch chết thì trả lại nguyên văn và KHÔNG cache — cache bản
     // gốc là khoá vĩnh viễn câu đó ở tiếng Việt.
     if (!out || out.provider === 'none' || !out.translatedText) return source;
@@ -3724,8 +3773,9 @@ async function localizeOrderForVisitor(order, language) {
   // lượt tra cache.
   const notes = [...new Set(items.map((item) => String(item?.note || '').trim()).filter(Boolean))];
   const noteMap = new Map();
+  const protect = await protectedNamesForSession(order.session_id);
   await Promise.all(notes.map(async (note) => {
-    noteMap.set(note, await translateNoteText(note, target));
+    noteMap.set(note, await translateNoteText(note, target, protect));
   }));
 
   return {
@@ -5810,10 +5860,11 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
     const messages = result.rows.reverse();
 
     const translationCache = await preloadTranslations(messages, targetLang);
+    const protectedNames = await protectedNamesForSession(sessionId);
 
     // Dịch song song các tin nhắn theo ngôn ngữ được khóa của cuộc trò chuyện
     await Promise.all(messages.map(async (msg) => {
-      msg.translated_text = await getOrTranslateMessage(msg, targetLang, translationCache);
+      msg.translated_text = await getOrTranslateMessage(msg, targetLang, translationCache, protectedNames);
       // Presigned S3 URLs expire — always hand back a fresh one instead of a stale cached value.
       if (msg.attachment_key) {
         msg.attachment_url = await cachedPresignedUrl(msg.attachment_key).catch(() => msg.attachment_url);
@@ -8740,7 +8791,7 @@ async function orderItemsForStaffSummary(items, sourceLanguage) {
   }
 }
 
-async function translateMenuItemToLanguage(itemId, name, description, lang) {
+async function translateMenuItemToLanguage(itemId, name, description, lang, protect) {
   const target = String(lang || '').toLowerCase();
   if (!MENU_LANGS.includes(target) || target === MENU_SOURCE_LANG) {
     return { name, description };
@@ -8758,7 +8809,7 @@ async function translateMenuItemToLanguage(itemId, name, description, lang) {
   }
 
   const sourceTexts = [name, ...(description ? [description] : [])];
-  const outputs = await gemini.translateTexts(sourceTexts, target, { sourceLang: MENU_SOURCE_LANG });
+  const outputs = await gemini.translateTexts(sourceTexts, target, { sourceLang: MENU_SOURCE_LANG, protect });
   const nameOut = outputs[0];
   const descriptionOut = description ? outputs[1] : null;
 
@@ -8784,7 +8835,18 @@ async function translateMenuItemToLanguage(itemId, name, description, lang) {
   return translated;
 }
 
-async function translateMenuCategoryToLanguage(categoryId, name, lang) {
+// Tên riêng của cơ sở, dùng khi dịch thực đơn. Món hay đặt theo tên quán
+// ("Gỏi cá Đan Trinh") nên phần tên đó cũng không được dịch.
+async function venueNamesForAgent(agentId) {
+  if (!agentId) return [];
+  try {
+    const result = await db.query('SELECT full_name FROM admins WHERE id = $1', [agentId]);
+    const propel = gemini.splitVenueName(result.rows[0]?.full_name).propel;
+    return propel && propel.length >= 2 ? [propel] : [];
+  } catch { return []; }
+}
+
+async function translateMenuCategoryToLanguage(categoryId, name, lang, protect) {
   const target = String(lang || '').toLowerCase();
   if (!MENU_LANGS.includes(target) || target === MENU_SOURCE_LANG) return { name };
 
@@ -8794,7 +8856,7 @@ async function translateMenuCategoryToLanguage(categoryId, name, lang) {
   );
   if (manual.rows[0]?.is_manual) return { name: manual.rows[0].name || name };
 
-  const out = await gemini.translateText(name, target, { sourceLang: MENU_SOURCE_LANG });
+  const out = await gemini.translateText(name, target, { sourceLang: MENU_SOURCE_LANG, protect });
   if (!out || out.provider === 'none') return null;
   const translated = out.translatedText || name;
   await db.query(
@@ -8815,11 +8877,12 @@ async function translateMenuCategoryToLanguage(categoryId, name, lang) {
 //
 // Bản dịch Agent đã tự sửa (is_manual = TRUE) KHÔNG bị ghi đè — nếu không thì
 // mỗi lần sửa giá là xoá sạch công sức sửa tay.
-async function translateMenuItem(itemId, name, description) {
+async function translateMenuItem(itemId, name, description, agentId) {
   const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
+  const protect = await venueNamesForAgent(agentId);
   await Promise.all(targets.map(async (lang) => {
     try {
-      await translateMenuItemToLanguage(itemId, name, description, lang);
+      await translateMenuItemToLanguage(itemId, name, description, lang, protect);
     } catch (error) {
       // Dịch hỏng thì món vẫn phải lưu được — khách sẽ thấy tên tiếng Việt gốc.
       console.error(`[Menu] Không dịch được món ${itemId} sang ${lang}:`, error.message);
@@ -8831,11 +8894,12 @@ async function translateMenuItem(itemId, name, description) {
 //
 // Thiếu hàm này thì khách chọn tiếng Hàn sẽ thấy tên món đã dịch nằm dưới một
 // thanh nhóm vẫn còn tiếng Việt — nửa nọ nửa kia trên cùng một màn hình.
-async function translateMenuCategory(categoryId, name) {
+async function translateMenuCategory(categoryId, name, agentId) {
   const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
+  const protect = await venueNamesForAgent(agentId);
   await Promise.all(targets.map(async (lang) => {
     try {
-      await translateMenuCategoryToLanguage(categoryId, name, lang);
+      await translateMenuCategoryToLanguage(categoryId, name, lang, protect);
     } catch (error) {
       console.error(`[Menu] Không dịch được nhóm ${categoryId} sang ${lang}:`, error.message);
     }
@@ -8878,7 +8942,7 @@ async function ensurePromoCategory(agentId, projectId) {
      ON CONFLICT DO NOTHING RETURNING *`,
     [agentId, projectId, PROMO_CATEGORY_NAME]
   );
-  if (created.rows[0]) { void translateMenuCategory(created.rows[0].id, PROMO_CATEGORY_NAME); return created.rows[0]; }
+  if (created.rows[0]) { void translateMenuCategory(created.rows[0].id, PROMO_CATEGORY_NAME, agentId); return created.rows[0]; }
   // Hai request song song cùng tạo: cái thua đọc lại cái thắng vừa ghi.
   const again = await db.query(
     'SELECT * FROM qr_menu_categories WHERE agent_id = $1 AND is_promo LIMIT 1', [agentId]
@@ -8930,7 +8994,7 @@ app.post('/api/agent/menu/categories', checkAdminAuth, async (req, res) => {
        RETURNING *`,
       [req.admin.id, req.admin.project_id, name]
     );
-    void translateMenuCategory(created.rows[0].id, name);
+    void translateMenuCategory(created.rows[0].id, name, req.admin.id);
     res.status(201).json({ success: true, category: created.rows[0] });
   } catch (error) {
     console.error('Create menu category error:', error);
@@ -8954,7 +9018,7 @@ app.put('/api/agent/menu/categories/:id', checkAdminAuth, async (req, res) => {
     if (!updated.rows[0]) return res.status(404).json({ error: 'Không tìm thấy danh mục.' });
     // Chỉ dịch lại khi TÊN đổi. Đổi thứ tự hay bật/tắt nhóm mà cũng gọi AI thì
     // mỗi lần kéo thả sắp xếp là một loạt lượt gọi vô ích.
-    if (name && String(name).trim()) void translateMenuCategory(updated.rows[0].id, updated.rows[0].name);
+    if (name && String(name).trim()) void translateMenuCategory(updated.rows[0].id, updated.rows[0].name, req.admin.id);
     res.json({ success: true, category: updated.rows[0] });
   } catch (error) {
     console.error('Update menu category error:', error);
@@ -9053,7 +9117,7 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 
     // Dịch ngay lúc lưu, nhưng KHÔNG bắt Agent chờ: trả về món trước, dịch chạy
     // nền. Agent bấm "Lưu" xong thấy món hiện ra ngay, bản dịch đến sau vài giây.
-    void translateMenuItem(item.id, cleanName, description);
+    void translateMenuItem(item.id, cleanName, description, req.admin.id);
 
     res.status(201).json({ success: true, item });
   } catch (error) {
@@ -9113,7 +9177,7 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
     // cần gọi AI — đây là thao tác hằng ngày, dịch lại mỗi lần là đốt tiền vô ích.
     const textChanged = (cleanName && cleanName !== current.rows[0].name)
       || (description !== undefined && String(description || '') !== String(current.rows[0].description || ''));
-    if (textChanged) void translateMenuItem(item.id, item.name, item.description);
+    if (textChanged) void translateMenuItem(item.id, item.name, item.description, req.admin.id);
 
     res.json({ success: true, item, retranslated: textChanged });
   } catch (error) {
@@ -9645,7 +9709,7 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
           }
         }),
         ...missingCategories.map((row) => async () => {
-          const translated = await translateMenuCategoryToLanguage(row.id, row.source_name, useLang);
+          const translated = await translateMenuCategoryToLanguage(row.id, row.source_name, useLang, await venueNamesForAgent(owner.agent_id));
           if (translated) row.name = translated.name;
         }),
       ];

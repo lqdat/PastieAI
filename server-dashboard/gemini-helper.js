@@ -125,6 +125,89 @@ const LANGUAGE_NAMES = {
 
 const normalizeLangCode = (value) => String(value || '').trim().toLowerCase().slice(0, 2);
 
+// ── Giữ tên riêng không bị dịch ─────────────────────────────────────────────
+//
+// Máy dịch coi "Đan Trinh" là chữ thường và dịch nó ra thứ khác, nên khách nước
+// ngoài đọc được một cái tên quán không tồn tại — và họ không có cách nào đối
+// chiếu lại với tấm biển ngoài cửa.
+//
+// Cách làm: thay mỗi tên bằng một MÃ GIỮ CHỖ trước khi dịch, rồi trả lại nguyên
+// văn sau khi dịch. Mã phải là thứ máy dịch không nhận ra là từ của ngôn ngữ
+// nào — chuỗi chữ hoa + số không có nguyên âm thường thì gần như luôn được giữ
+// nguyên.
+//
+// KHÔNG tin tưởng mù quáng: sau khi dịch phải KIỂM lại xem còn đủ mã không.
+// Máy dịch thỉnh thoảng nuốt hoặc tách mã ra, và một câu trả về "ZQX0ZQX" đập
+// vào mắt khách còn tệ hơn một cái tên bị dịch sai. Thiếu mã thì bỏ hẳn lớp bảo
+// vệ và dùng bản dịch thường.
+const PROTECT_TOKEN = (index) => `ZQX${index}ZQX`;
+
+// Tên cơ sở tách làm HAI phần.
+//
+// "Hộ Kinh Doanh Đan Trinh Pastie" gồm một phần LOẠI HÌNH ("Hộ Kinh Doanh") và
+// một phần TÊN RIÊNG ("Đan Trinh Pastie"). Loại hình nên dịch — khách Hàn đọc
+// "Hộ Kinh Doanh" thì không hiểu đó là hộ kinh doanh cá thể. Tên riêng thì
+// không được dịch, vì nó phải khớp với tấm biển ngoài cửa và với hoá đơn.
+//
+// Chỉ nhận diện theo DANH SÁCH loại hình cố định, không đoán. Đoán sai ở đây là
+// cắt nhầm tên quán làm đôi, mà tên quán thì hiện ở mọi màn hình.
+const VENUE_PREFIXES = [
+  'hộ kinh doanh cá thể', 'hộ kinh doanh',
+  'công ty tnhh mtv', 'công ty tnhh một thành viên', 'công ty tnhh', 'công ty cổ phần', 'công ty',
+  'doanh nghiệp tư nhân', 'chi nhánh',
+  'nhà hàng', 'khách sạn', 'quán ăn', 'quán cà phê', 'quán cafe', 'quán',
+  'homestay', 'resort', 'villa', 'nhà nghỉ', 'tiệm', 'cửa hàng',
+];
+
+/**
+ * @returns {{ prefix: string, propel: string }} prefix có thể dịch, propel giữ nguyên.
+ */
+function splitVenueName(name) {
+  const raw = String(name || '').trim();
+  if (!raw) return { prefix: '', propel: '' };
+  const lower = raw.toLowerCase();
+  // Loại hình dài khớp trước: "công ty tnhh" phải thắng "công ty".
+  for (const prefix of [...VENUE_PREFIXES].sort((a, b) => b.length - a.length)) {
+    if (lower.startsWith(prefix + ' ')) {
+      return { prefix: raw.slice(0, prefix.length), propel: raw.slice(prefix.length).trim() };
+    }
+  }
+  // Không nhận ra loại hình thì giữ nguyên CẢ tên — thà không dịch gì còn hơn
+  // cắt nhầm một cái tên thành hai nửa vô nghĩa.
+  return { prefix: '', propel: raw };
+}
+
+function protectNames(text, names) {
+  const list = (Array.isArray(names) ? names : [])
+    .map((name) => String(name || '').trim())
+    .filter((name) => name.length >= 2)
+    // Tên dài thay trước, nếu không "Đan Trinh" bị "Đan" ăn mất một nửa.
+    .sort((a, b) => b.length - a.length);
+  if (list.length === 0) return { text, restore: (out) => out, ok: () => true };
+
+  const used = [];
+  let masked = String(text || '');
+  for (const name of list) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(escaped, 'gi');
+    if (!pattern.test(masked)) continue;
+    const token = PROTECT_TOKEN(used.length);
+    masked = masked.replace(pattern, token);
+    used.push({ token, name });
+  }
+  if (used.length === 0) return { text, restore: (out) => out, ok: () => true };
+
+  return {
+    text: masked,
+    // Máy dịch có thể đổi hoa thường hoặc chèn khoảng trắng quanh mã.
+    ok: (out) => used.every((entry) => new RegExp(entry.token, 'i').test(String(out || ''))),
+    restore: (out) => used.reduce(
+      (acc, entry) => acc.replace(new RegExp(entry.token, 'gi'), entry.name),
+      String(out || '')
+    ),
+  };
+}
+
 function withTimeout(promise, ms, label) {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -260,9 +343,24 @@ async function translateManyWithNmt(texts, targetLang) {
  * @param {{ sourceLang?: string }} [options] - Truyền sourceLang khi đã biết
  *        ngôn ngữ nguồn để bỏ hẳn một lượt gọi phát hiện ngôn ngữ.
  */
+/**
+ * @param {{ sourceLang?: string, protect?: string[] }} [options]
+ *   protect: danh sách tên riêng phải giữ nguyên (tên cơ sở, tên bàn, tên nhân
+ *   viên). Xem protectNames ở trên.
+ */
 async function translateText(text, targetLang, options = {}) {
   const sourceText = String(text || '').trim();
   if (!sourceText) return { translatedText: sourceText, detectedLang: 'unknown', provider: 'none' };
+
+  const guard = protectNames(sourceText, options.protect);
+  if (guard.text !== sourceText) {
+    // Dịch bản đã che tên. Hỏng lớp bảo vệ thì dịch lại bản gốc — thà tên bị
+    // dịch còn hơn khách nhìn thấy mã giữ chỗ.
+    const masked = await translateText(guard.text, targetLang, { sourceLang: options.sourceLang });
+    if (masked.provider !== 'none' && guard.ok(masked.translatedText)) {
+      return { ...masked, translatedText: guard.restore(masked.translatedText) };
+    }
+  }
 
   const knownSource = normalizeLangCode(options.sourceLang);
   const useGemini = TRANSLATION_PROVIDER === 'gemini' && !!ai;
@@ -300,6 +398,13 @@ async function translateTexts(texts, targetLang, options = {}) {
 
   const useGemini = TRANSLATION_PROVIDER === 'gemini' && !!ai;
   if (useGemini) {
+    return Promise.all(sourceTexts.map((text) => translateText(text, targetLang, options)));
+  }
+
+  // Đường dịch theo lô đi thẳng tới NMT nên KHÔNG đi qua lớp giữ tên riêng.
+  // Có tên cần giữ thì dịch từng chuỗi qua translateText — chậm hơn, nhưng
+  // nhanh mà sai tên quán thì không dùng được.
+  if (Array.isArray(options.protect) && options.protect.length > 0) {
     return Promise.all(sourceTexts.map((text) => translateText(text, targetLang, options)));
   }
 
@@ -490,6 +595,8 @@ async function detectLanguage(text) {
 }
 
 module.exports = {
+  protectNames,
+  splitVenueName,
   translateText,
   translateTexts,
   analyzeSession,
