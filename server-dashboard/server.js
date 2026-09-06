@@ -3603,6 +3603,8 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
       }
     }));
 
+    await swapOrderIdsForCodes(sessionId, messages);
+
     // Gửi kèm dấu vân để lượt hỏi sau chỉ cần so một chuỗi.
     const fingerprint = await conversationFingerprint(sessionId);
     res.setHeader('X-Conversation', fingerprint);
@@ -4434,9 +4436,9 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
   // không biết quán đã ghi nhận tiền, và Sale trực cũng không thấy gì trong
   // khung chat mình đang mở. Một khách gọi thêm nhiều lần trong bữa nên câu
   // báo bắt buộc phải nêu mã đơn.
-  const paidText = `[Thanh toán] Đơn ${order.order_code} đã được xác nhận ĐÃ THANH TOÁN`
-    + `${order.payment_method ? ` (${invoiceHelper.paymentMethodLabel(order.payment_method, 'vi')})` : ''}`
-    + `. Cảm ơn quý khách!`;
+  const paidText = `[Thanh toán] Cửa hàng đã nhận đủ tiền`
+    + `${order.payment_method ? ` bằng ${invoiceHelper.paymentMethodLabel(order.payment_method, 'vi')}` : ''}`
+    + `. Cảm ơn quý khách! (mã đơn ${order.order_code})`;
   const paidMsg = await db.query(
     `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id, system_kind)
      VALUES ($1, 'agent', $2, $2, 'vi', $3, 'order_paid') RETURNING id`,
@@ -6267,6 +6269,10 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
         msg.attachment_url = await cachedPresignedUrl(msg.attachment_key).catch(() => msg.attachment_url);
       }
     }));
+
+    // Sale và Agent cũng phải thấy MÃ ĐƠN, không phải UUID: họ là người đối
+    // chiếu tin nhắn với tờ hoá đơn nhiều nhất.
+    await swapOrderIdsForCodes(req.params.sessionId, messages);
 
     res.json(messages);
   } catch (error) {
@@ -9818,6 +9824,7 @@ app.get('/api/chats/:sessionId/history/:pastSessionId', async (req, res) => {
     // đường nào xem lại, vì màn này chỉ trả tin nhắn.
     const bills = await loadSessionBills(past.rows[0].id, invoiceLanguageFor(null, visitorLang))
       .catch((error) => { console.error('QR history bills error:', error.message); return []; });
+    await swapOrderIdsForCodes(past.rows[0].id, messages);
     // readOnly để cổng khách không dựng ô nhập tin cho một phiên đã đóng.
     res.json({ readOnly: true, messages, bills });
   } catch (error) {
@@ -10702,6 +10709,33 @@ async function deferredPaymentForSession(sessionId) {
 //
 // Mot cho duy nhat quyet dinh cau chu, vi hai loi vao (khach bam / het 2 phut)
 // deu ket thuc o day.
+// Tin nhắn CŨ còn nhắc tới đơn bằng UUID kỹ thuật (36 ký tự) vì hồi đó chưa có
+// mã đơn. Khách và cả Sale đều không đối chiếu được với tờ hoá đơn ghi
+// "BILL-260906-0007".
+//
+// Không sửa được bằng một câu UPDATE: nội dung tin nhắn được mã hoá khi lưu, nên
+// REPLACE của Postgres chỉ chạm vào chuỗi đã mã hoá. Thay ngay lúc ĐỌC — rẻ,
+// không phải giải mã lại cả bảng, và tin mới thì vốn đã ghi thẳng mã đơn.
+async function swapOrderIdsForCodes(sessionId, messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return messages;
+  const orders = await db.query(
+    `SELECT id, order_code FROM chat_orders
+      WHERE session_id = $1 AND NULLIF(order_code, '') IS NOT NULL`,
+    [sessionId]
+  ).catch(() => ({ rows: [] }));
+  if (!orders.rows.length) return messages;
+  for (const message of messages) {
+    for (const { id, order_code: code } of orders.rows) {
+      for (const field of ['original_text', 'translated_text']) {
+        if (typeof message[field] === 'string' && message[field].includes(id)) {
+          message[field] = message[field].split(id).join(code);
+        }
+      }
+    }
+  }
+  return messages;
+}
+
 async function sendOrderThankYou(sessionId, method, { autoSelected, orderCode } = {}) {
   const label = invoiceHelper.paymentMethodLabel(method, 'vi');
   // Nêu MÃ ĐƠN: một khách gọi thêm nhiều lần trong bữa, câu không nói rõ đơn nào
@@ -10710,10 +10744,13 @@ async function sendOrderThankYou(sessionId, method, { autoSelected, orderCode } 
   // Câu cũ nói "đơn đã hoàn tất" — sai, vì lúc này quán mới bắt đầu làm. Đây
   // cũng chính là chỗ đúng để nói "đang chuẩn bị", thay cho tin nhắn cũ gửi
   // ngay lúc Sale xác nhận (khi đó khách còn sửa đơn được).
-  const code = orderCode ? ` ${orderCode}` : '';
+  // Mã đơn để trong ngoặc ở CUỐI câu: khách đọc câu trước, chỉ cần tới mã khi
+  // đối chiếu với tờ hoá đơn. Mở đầu bằng một chuỗi mã máy thì câu nào cũng
+  // giống câu nào.
+  const code = orderCode ? ` (mã đơn ${orderCode})` : '';
   const text = autoSelected
-    ? `Đơn${code} đã được xác nhận theo phương thức ${label} (do chưa có lựa chọn sau 2 phút). Cửa hàng đang chuẩn bị. Cảm ơn quý khách!`
-    : `Đơn${code} đã được xác nhận, thanh toán bằng ${label}. Cửa hàng đang chuẩn bị. Cảm ơn quý khách!`;
+    ? `Cảm ơn quý khách! Hết 2 phút chờ nên đơn được ghi nhận theo phương thức ${label}. Cửa hàng đang chuẩn bị món, quý khách vui lòng đợi ít phút${code}.`
+    : `Cảm ơn quý khách! Đơn đã được ghi nhận, thanh toán bằng ${label}. Cửa hàng đang chuẩn bị món, quý khách vui lòng đợi ít phút${code}.`;
   await db.query(
     `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
      VALUES ($1, 'system', $2, $2, 'vi')`,
