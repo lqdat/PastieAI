@@ -410,19 +410,21 @@ function updateAdminFormRoleVisibility() {
 //
 // Chép tay thì người dùng chọn được một loại hình mà splitVenueName của máy chủ
 // không nhận ra, và phần tên riêng sẽ bị máy dịch dịch mất.
-// Viết hoa chữ cái đầu MỖI TỪ, không dùng \b.
+// Viết hoa CHỮ CÁI ĐẦU của cả cụm, không phải đầu mỗi từ.
+// "hộ kinh doanh" → "Hộ kinh doanh", đúng cách viết tiếng Việt.
 //
-// `\b` trong JavaScript vẫn dựa trên \w = [A-Za-z0-9_] kể cả khi bật cờ u, nên
-// mọi chữ cái có dấu đều bị coi là ranh giới từ: /\b\p{L}/gu biến "hộ kinh
-// doanh" thành "HỘ Kinh Doanh", "nhà hàng" thành "NhÀ HÀNg". Cắt theo khoảng
-// trắng rồi chỉ nâng đúng ký tự đầu là hết chuyện.
+// Không dùng /\b\p{L}/gu: `\b` trong JavaScript vẫn dựa trên
+// \w = [A-Za-z0-9_] kể cả khi bật cờ u, nên mọi chữ cái có dấu đều bị coi là
+// ranh giới từ — nó từng biến "nhà hàng" thành "NhÀ HÀNg".
+//
+// Viết tắt thì giữ nguyên chữ hoa: "công ty tnhh" → "Công ty TNHH".
 const VENUE_ACRONYMS = new Set(['tnhh', 'mtv', 'cp', 'dv', 'tm']);
 function titleCaseVi(text) {
-    return String(text || '').trim().split(/\s+/).filter(Boolean).map((word) => (
-        VENUE_ACRONYMS.has(word.toLowerCase())
-            ? word.toUpperCase()
-            : word.charAt(0).toLocaleUpperCase('vi') + word.slice(1)
-    )).join(' ');
+    const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+    return words.map((word, index) => {
+        if (VENUE_ACRONYMS.has(word.toLowerCase())) return word.toUpperCase();
+        return index === 0 ? word.charAt(0).toLocaleUpperCase('vi') + word.slice(1) : word;
+    }).join(' ');
 }
 
 let VENUE_PREFIXES = [];

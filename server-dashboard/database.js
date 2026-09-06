@@ -536,14 +536,18 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // Hàm viết hoa cũ dùng /\b\p{L}/gu, mà `\b` trong JavaScript vẫn dựa trên
     // \w = [A-Za-z0-9_] kể cả khi bật cờ u — nên mọi chữ cái có dấu đều bị coi
     // là ranh giới từ: "hộ kinh doanh" đã được lưu thành "HỘ Kinh Doanh",
-    // "nhà hàng" thành "NhÀ HÀNg". Tên riêng phía sau KHÔNG bị đụng tới.
+    // "nhà hàng" thành "NhÀ HÀNg". Migration này cũng hạ luôn dạng viết hoa
+    // từng chữ ("Hộ Kinh Doanh") về đúng cách viết tiếng Việt: chỉ hoa chữ cái
+    // đầu cụm. Tên riêng phía sau KHÔNG bị đụng tới.
     try {
       const { VENUE_PREFIXES } = require('./gemini-helper');
       const acronyms = new Set(['tnhh', 'mtv', 'cp', 'dv', 'tm']);
+      // Viết hoa CHỮ CÁI ĐẦU của cả cụm, không phải đầu mỗi từ:
+      // "hộ kinh doanh" → "Hộ kinh doanh". Viết tắt giữ nguyên chữ hoa.
       const titleCase = (text) => String(text || '').trim().split(/\s+/).filter(Boolean)
-        .map((word) => (acronyms.has(word.toLowerCase())
+        .map((word, index) => (acronyms.has(word.toLowerCase())
           ? word.toUpperCase()
-          : word.charAt(0).toLocaleUpperCase('vi') + word.slice(1)))
+          : (index === 0 ? word.charAt(0).toLocaleUpperCase('vi') + word.slice(1) : word)))
         .join(' ');
       const admins = await query("SELECT id, full_name FROM admins WHERE NULLIF(full_name, '') IS NOT NULL");
       const prefixes = [...(VENUE_PREFIXES || [])].sort((a, b) => b.length - a.length);
