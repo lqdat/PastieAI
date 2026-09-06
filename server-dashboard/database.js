@@ -31,7 +31,85 @@ pool.on('error', (err) => {
 });
 
 // SQL query runner helper
-const query = (text, params) => pool.query(text, params);
+// Giải mã TẬP TRUNG ở đây, không rải ra 27 chỗ đọc tin nhắn trong server.js.
+//
+// Mỗi chỗ đọc tự giải mã thì chỉ cần quên một chỗ là khách nhìn thấy chuỗi
+// "pcv1:..." giữa khung chat. Đặt ở đây thì mọi truy vấn đều đi qua, kể cả
+// những chỗ viết sau này.
+//
+// An toàn khi gọi thừa: decryptText trả nguyên văn với chuỗi không có tiền tố,
+// nên dòng cũ chưa mã hoá và mọi cột khác đều không bị đụng tới.
+const { encryptText, decryptText, isEncrypted, ENABLED: ENCRYPTION_ON } = require('./crypto-helper');
+
+// Chỉ những cột THẬT SỰ chứa nội dung tin nhắn. Quét mù mọi cột thì một ngày
+// nào đó sẽ có cột khác vô tình bắt đầu bằng "pcv1:" và bị bóp méo.
+const ENCRYPTED_COLUMNS = new Set(['original_text', 'translated_text']);
+
+function decryptRows(result) {
+  const rows = result?.rows;
+  if (!Array.isArray(rows) || rows.length === 0) return result;
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    for (const column of ENCRYPTED_COLUMNS) {
+      if (isEncrypted(row[column])) row[column] = decryptText(row[column]);
+    }
+  }
+  return result;
+}
+
+// Mã hoá TẬP TRUNG luôn ở chiều ghi, cùng lý do với chiều đọc.
+//
+// Nội dung tin nhắn được ghi ở 26 chỗ khác nhau trong server.js. Sửa tay từng
+// chỗ thì chỉ cần bỏ sót một chỗ là có tin nằm plaintext trong database, mà
+// mình lại đang nói với khách là đã mã hoá — tệ hơn là không mã hoá gì. Đặt ở
+// đây thì mọi câu lệnh đều đi qua, kể cả câu viết sau này.
+//
+// Cách tìm: đọc DANH SÁCH CỘT của câu INSERT rồi ghép với danh sách giá trị.
+// Cột nào nằm trong ENCRYPTED_COLUMNS và nhận đúng một tham số $n thì mã hoá
+// tham số đó. Không đoán theo thứ tự, không đoán theo tên biến.
+const INSERT_RE = /insert\s+into\s+(messages|message_translations)\s*\(([^)]*)\)\s*values\s*\(([^)]*)\)/i;
+const UPDATE_RE = /update\s+(messages|message_translations)\s+set\s+([\s\S]*?)(?:\s+where\s|\s*$)/i;
+
+function paramsToEncrypt(sql) {
+  const flat = String(sql || '');
+  const targets = new Set();
+
+  const insert = flat.match(INSERT_RE);
+  if (insert) {
+    const columns = insert[2].split(',').map((c) => c.trim().toLowerCase());
+    const values = insert[3].split(',').map((v) => v.trim());
+    columns.forEach((column, index) => {
+      if (!ENCRYPTED_COLUMNS.has(column)) return;
+      const match = /^\$(\d+)$/.exec(values[index] || '');
+      // Giá trị viết cứng trong SQL (không phải $n) thì không mã hoá được ở đây.
+      // Báo ra thay vì lặng lẽ để nó nằm plaintext.
+      if (match) targets.add(Number(match[1]));
+      else console.warn(`[Bảo mật] Cột ${column} nhận giá trị không phải tham số, không mã hoá được:`, values[index]);
+    });
+  }
+
+  const update = flat.match(UPDATE_RE);
+  if (update) {
+    for (const assign of update[2].split(',')) {
+      const m = /^\s*([a-z_]+)\s*=\s*\$(\d+)\s*$/i.exec(assign);
+      if (m && ENCRYPTED_COLUMNS.has(m[1].toLowerCase())) targets.add(Number(m[2]));
+    }
+  }
+  return targets;
+}
+
+function encryptParams(text, params) {
+  if (!ENCRYPTION_ON || !Array.isArray(params) || params.length === 0) return params;
+  const flat = String(text || '');
+  // Lối tắt: phần lớn truy vấn không đụng tới hai bảng này.
+  if (!/messages/i.test(flat)) return params;
+  const targets = paramsToEncrypt(flat);
+  if (targets.size === 0) return params;
+  return params.map((value, index) =>
+    (targets.has(index + 1) && typeof value === 'string' ? encryptText(value) : value));
+}
+
+const query = (text, params) => pool.query(text, encryptParams(text, params)).then(decryptRows);
 
 
 // Gom Sale chưa có chủ về Agent quản lý (KHÔNG tự tạo nhóm mặc định)
@@ -370,6 +448,14 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // khac nhau - hong ngay khi ai do sua mot chu trong cau. Cot nay noi thang
     // y dinh luc GHI, thay vi doan lai luc DOC.
     await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS visible_to VARCHAR(20) NOT NULL DEFAULT 'all';`);
+    // Đánh dấu LOẠI tin hệ thống, thay cho việc dò chuỗi trong nội dung.
+    // Nội dung được mã hoá khi lưu nên mọi phép LIKE trên original_text đều
+    // ngừng khớp; cột này là cách hỏi "đã gửi loại tin đó chưa" mà không cần
+    // đọc nội dung.
+    await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS system_kind VARCHAR(40);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_messages_system_kind
+                   ON messages(session_id, system_kind, created_at DESC)
+                 WHERE system_kind IS NOT NULL;`);
 
     // Danh dau lai nhung tin da ghi TRUOC khi co cot nay.
     //

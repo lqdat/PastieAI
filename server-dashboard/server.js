@@ -2293,13 +2293,20 @@ app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req,
         const availableSales = await listAvailableSales(sessionRes.rows[0].group_id);
         if (availableSales.length === 0) {
           const recentOffHours = await db.query(
-            `SELECT id FROM messages WHERE session_id = $1 AND sender = 'system' AND original_text LIKE '%khung giờ làm việc%' AND created_at > NOW() - INTERVAL '6 hours' LIMIT 1`,
+            // Dò bằng CỘT ĐÁNH DẤU, không dò bằng nội dung.
+            //
+            // Bản cũ tìm chuỗi 'khung giờ làm việc' trong original_text. Nội
+            // dung giờ được mã hoá khi lưu nên LIKE không bao giờ khớp nữa, và
+            // khách sẽ nhận lại câu báo ngoài giờ ở MỌI tin nhắn họ gửi.
+            `SELECT id FROM messages WHERE session_id = $1 AND system_kind = 'off_hours'
+               AND created_at > NOW() - INTERVAL '6 hours' LIMIT 1`,
             [sessionId]
           );
           if (recentOffHours.rows.length === 0) {
             const offHoursMsg = `Cảm ơn bạn đã liên hệ! Hiện tại đã hết khung giờ làm việc của nhân viên tư vấn. Tin nhắn của bạn đã được lưu lại và nhân viên ca trực tiếp theo sẽ phản hồi ngay khi vào ca.`;
             const sysMsgRes = await db.query(
-              `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, 'vi') RETURNING *`,
+              `INSERT INTO messages (session_id, sender, original_text, translated_text, language, system_kind)
+               VALUES ($1, 'system', $2, $2, 'vi', 'off_hours') RETURNING *`,
               [sessionId, offHoursMsg]
             );
             notifyAdminRealtime('new_message', { sessionId, projectId: sessionRes.rows[0].project_id, sender: 'system', messageId: sysMsgRes.rows[0]?.id });
