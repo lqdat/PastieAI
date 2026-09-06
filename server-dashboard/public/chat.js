@@ -1411,9 +1411,12 @@ async function selectSession(sessionId) {
         </div>
     `;
 
-    // Load messages & orders
-    await loadMessages(sessionId);
+    // Đơn và hoá đơn phải có TRƯỚC khi vẽ tin nhắn: loadMessages() chính là nơi
+    // vẽ chúng vào dòng hội thoại. Tải sau thì lượt vẽ đầu tiên không có gì để
+    // vẽ, và đoạn chat đã đóng thì không còn lượt vẽ nào nữa — đúng lỗi "mở
+    // đoạn chat cũ không thấy hoá đơn đâu".
     await Promise.all([loadOrderForAdmin(sessionId), loadBillsForAdmin(sessionId)]);
+    await loadMessages(sessionId);
 
     // Không còn cần polling 2s/lần: tin nhắn mới được server đẩy tức thì qua SSE Event Stream
     if (messagePollInterval) clearInterval(messagePollInterval);
@@ -1472,7 +1475,10 @@ function renderAdminSavedBills() {
         wrapper.innerHTML = `
             <div class="admin-invoice-head">
                 <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> Hóa đơn đã gửi khách${label ? ` · ${escapeHtml(label)}` : ''}</span>
-                <span class="admin-invoice-status ${bill.orderStatus === 'paid' ? 'is-paid' : 'is-waiting'}">${escapeHtml(bill.orderStatus === 'paid' ? 'Đã thanh toán' : 'Đã lưu')}</span>
+                <span class="admin-invoice-status ${bill.orderStatus === 'paid' ? 'is-paid' : 'is-waiting'}">${escapeHtml(
+                    bill.orderStatus === 'paid' ? 'Đã thanh toán'
+                    : ['superseded', 'rejected', 'cancelled'].includes(String(bill.orderStatus || '')) ? 'Bản trước khi sửa'
+                    : 'Đã lưu')}</span>
             </div>
             ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(pdf || preview)}" data-preview-type="document" data-preview-title="Hóa đơn"><img src="${escapeHtml(preview)}" alt="Hóa đơn"></button>` : ''}
             <div class="admin-invoice-meta">
@@ -1765,6 +1771,11 @@ function renderAdminInvoice() {
     // "pending_confirm" — nói sai với Sale hai lần trong một khung: bill chưa
     // gửi, và khách chưa nhận được gì.
     if (adminOrder.status === 'pending_confirm') return;
+    // Đơn đã bị thay bằng bản mới (hoặc bị từ chối) không phải tờ đang có hiệu
+    // lực: nó là một BẢN CŨ và đã được vẽ trong danh sách bill đã lưu. Vẽ lại ở
+    // đây là hiện một tờ hoá đơn mang nhãn "Đã thay bằng đơn mới" như thể nó
+    // vẫn còn giá trị.
+    if (['superseded', 'rejected', 'cancelled'].includes(String(adminOrder.status || ''))) return;
     const invoice = adminOrder.invoice || {};
     const preview = invoice.svgDataUrl || '';
     const pdf = invoice.pdfUrl || invoice.pdfDataUrl || '';

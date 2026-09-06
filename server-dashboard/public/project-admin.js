@@ -440,7 +440,7 @@ function splitVenueName(fullName) {
 
 function updateVenueNamePreview() {
     const type = document.getElementById('admin-form-venue-type')?.value || '';
-    const name = (adminFormFullName?.value || '').trim();
+    const name = (adminFormFullname?.value || '').trim();
     const preview = document.getElementById('admin-form-name-preview');
     if (!preview) return;
     preview.textContent = type && name
@@ -934,7 +934,7 @@ async function editAdminUser(id) {
         const parts = splitVenueName(u.full_name || '');
         const venueType = document.getElementById('admin-form-venue-type');
         if (venueType) venueType.value = parts.prefix.toLowerCase();
-        if (adminFormFullName) adminFormFullName.value = parts.name;
+        if (adminFormFullname) adminFormFullname.value = parts.name;
         updateVenueNamePreview();
         pendingAvatarFile = null;
         renderAdminAvatarPreview(u.avatar_url || 'gradient-1', parts.name || u.username);
@@ -994,7 +994,7 @@ async function handleAdminUserSubmit(e) {
     // trước và splitVenueName tách lại đúng chỗ mình vừa ghép — không phải đoán.
     {
         const type = (document.getElementById('admin-form-venue-type')?.value || '').trim();
-        const bare = (adminFormFullName?.value || '').trim();
+        const bare = (adminFormFullname?.value || '').trim();
         if (type && bare) {
             const title = type.replace(/\b\p{L}/gu, (c) => c.toUpperCase());
             payload.full_name = `${title} ${bare}`;

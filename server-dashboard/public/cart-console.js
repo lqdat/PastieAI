@@ -173,12 +173,17 @@
                 body.innerHTML = '<p class="cart-empty">Chưa có đơn hàng nào.</p>';
                 return;
             }
-            // Gom theo CƠ SỞ. Superadmin nhìn đơn của nhiều cơ sở cùng lúc, một
-            // danh sách phẳng thì không biết đơn nào của quán nào; Agent chỉ có
-            // một cơ sở nên chỉ thấy đúng một nhóm, không vướng gì.
+            // Gom nhóm theo NGƯỜI ĐANG NHÌN, không theo một quy tắc cố định:
+            //   Superadmin — theo CƠ SỞ, vì họ nhìn đơn của nhiều quán cùng lúc.
+            //   Agent, Sale — theo ĐOẠN HỘI THOẠI, vì cả màn hình vốn chỉ có một
+            //                 cơ sở; thứ họ cần tách là "bàn nào, khách nào".
+            const byVenue = CURRENT_ADMIN?.role === 'superadmin';
             const groups = new Map();
             for (const order of orders) {
-                const key = order.agent_name || 'Chưa xác định cơ sở';
+                const key = byVenue
+                    ? (order.agent_name || 'Chưa xác định cơ sở')
+                    : [order.qr_label || order.group_name || 'Chưa rõ chỗ ngồi',
+                       order.visitor_name || order.visitor_email || 'Khách'].join(' · ');
                 if (!groups.has(key)) groups.set(key, []);
                 groups.get(key).push(order);
             }
@@ -197,8 +202,8 @@
                         <span class="cart-status ${state.cls}">${state.label}</span>
                     </div>
                     <div class="cart-row-meta">
-                        <span>${escapeHtml(order.qr_label || order.group_name || '—')}</span>
-                        <span>${escapeHtml(order.visitor_name || order.visitor_email || 'Khách')}</span>
+                        ${byVenue ? `<span>${escapeHtml(order.qr_label || order.group_name || '—')}</span>
+                        <span>${escapeHtml(order.visitor_name || order.visitor_email || 'Khách')}</span>` : ''}
                         ${order.sale_name ? `<span>NV: ${escapeHtml(order.sale_name)}</span>` : ''}
                         ${closed}
                     </div>
