@@ -531,6 +531,38 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
       console.error('[Migration] Không đánh dấu được tin guest_only:', error.message);
     }
 
+    // Migration: sửa lại chữ hoa của LOẠI HÌNH trong tên cơ sở đã lưu.
+    //
+    // Hàm viết hoa cũ dùng /\b\p{L}/gu, mà `\b` trong JavaScript vẫn dựa trên
+    // \w = [A-Za-z0-9_] kể cả khi bật cờ u — nên mọi chữ cái có dấu đều bị coi
+    // là ranh giới từ: "hộ kinh doanh" đã được lưu thành "HỘ Kinh Doanh",
+    // "nhà hàng" thành "NhÀ HÀNg". Tên riêng phía sau KHÔNG bị đụng tới.
+    try {
+      const { VENUE_PREFIXES } = require('./gemini-helper');
+      const acronyms = new Set(['tnhh', 'mtv', 'cp', 'dv', 'tm']);
+      const titleCase = (text) => String(text || '').trim().split(/\s+/).filter(Boolean)
+        .map((word) => (acronyms.has(word.toLowerCase())
+          ? word.toUpperCase()
+          : word.charAt(0).toLocaleUpperCase('vi') + word.slice(1)))
+        .join(' ');
+      const admins = await query("SELECT id, full_name FROM admins WHERE NULLIF(full_name, '') IS NOT NULL");
+      const prefixes = [...(VENUE_PREFIXES || [])].sort((a, b) => b.length - a.length);
+      let fixed = 0;
+      for (const row of admins.rows) {
+        const raw = String(row.full_name || '');
+        const lower = raw.toLowerCase();
+        const hit = prefixes.find((prefix) => lower.startsWith(prefix + ' '));
+        if (!hit) continue;
+        const next = titleCase(raw.slice(0, hit.length)) + raw.slice(hit.length);
+        if (next === raw) continue;
+        await query('UPDATE admins SET full_name = $2 WHERE id = $1', [row.id, next]);
+        fixed += 1;
+      }
+      if (fixed) console.log(`[Migration] Đã sửa chữ hoa loại hình cơ sở cho ${fixed} tài khoản.`);
+    } catch (error) {
+      console.error('[Migration] Không sửa được chữ hoa loại hình:', error.message);
+    }
+
     // Migration: File attachments (images/videos/documents) on chat messages.
     // attachment_key is the S3 object key (used to delete the file later);
     // attachment_url is a cached direct/presigned URL for convenience.

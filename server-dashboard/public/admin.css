@@ -5077,3 +5077,20 @@ button {
 
 /* "Khách chưa nhắn gì" là ghi chú của hệ thống, không phải lời khách nói. */
 .session-card-preview.is-empty { font-style: italic; opacity: .65; }
+
+
+/* ── Tiêu đề form nhân sự ─────────────────────────────────────────────────
+   Tiêu đề mang cả tên cơ sở đầy đủ ("Sửa nhân viên: Hộ Kinh Doanh Đan Trinh
+   Pastie"). Thẻ h3 vốn là flex một hàng, nên trên màn hẹp chuỗi này đẩy vỡ hàng
+   tiêu đề và tràn ra ngoài khung. Cho nó xuống hàng và cắt sau 2 hàng. */
+#admin-form-title { align-items: flex-start; min-width: 0; line-height: 1.35; }
+#admin-form-title > i { flex: 0 0 auto; margin-top: 2px; }
+.admin-form-title-text { min-width: 0; overflow-wrap: anywhere; }
+.admin-form-title-name {
+    display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden;
+    font-weight: 800; color: var(--accent-color);
+}
+@media (max-width: 620px) {
+    #admin-form-title { font-size: 12.5px; }
+}

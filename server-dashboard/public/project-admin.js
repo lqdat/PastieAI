@@ -410,6 +410,21 @@ function updateAdminFormRoleVisibility() {
 //
 // Chép tay thì người dùng chọn được một loại hình mà splitVenueName của máy chủ
 // không nhận ra, và phần tên riêng sẽ bị máy dịch dịch mất.
+// Viết hoa chữ cái đầu MỖI TỪ, không dùng \b.
+//
+// `\b` trong JavaScript vẫn dựa trên \w = [A-Za-z0-9_] kể cả khi bật cờ u, nên
+// mọi chữ cái có dấu đều bị coi là ranh giới từ: /\b\p{L}/gu biến "hộ kinh
+// doanh" thành "HỘ Kinh Doanh", "nhà hàng" thành "NhÀ HÀNg". Cắt theo khoảng
+// trắng rồi chỉ nâng đúng ký tự đầu là hết chuyện.
+const VENUE_ACRONYMS = new Set(['tnhh', 'mtv', 'cp', 'dv', 'tm']);
+function titleCaseVi(text) {
+    return String(text || '').trim().split(/\s+/).filter(Boolean).map((word) => (
+        VENUE_ACRONYMS.has(word.toLowerCase())
+            ? word.toUpperCase()
+            : word.charAt(0).toLocaleUpperCase('vi') + word.slice(1)
+    )).join(' ');
+}
+
 let VENUE_PREFIXES = [];
 
 async function loadVenuePrefixes() {
@@ -420,9 +435,8 @@ async function loadVenuePrefixes() {
         const data = await res.json();
         VENUE_PREFIXES = Array.isArray(data.prefixes) ? data.prefixes : [];
     } catch { VENUE_PREFIXES = []; }
-    const title = (text) => String(text || '').replace(/\b\p{L}/gu, (c) => c.toUpperCase());
     // Gợi ý, không ép: người dùng gõ được loại hình ngoài danh sách.
-    list.innerHTML = VENUE_PREFIXES.map((prefix) => `<option value="${escapeHtml(title(prefix))}"></option>`).join('');
+    list.innerHTML = VENUE_PREFIXES.map((prefix) => `<option value="${escapeHtml(titleCaseVi(prefix))}"></option>`).join('');
 }
 
 // Tách một tên đầy đủ thành loại hình + tên riêng, dùng ĐÚNG danh sách của máy
@@ -444,7 +458,7 @@ function updateVenueNamePreview() {
     const preview = document.getElementById('admin-form-name-preview');
     if (!preview) return;
     preview.textContent = type && name
-        ? `Tên đầy đủ: ${type} ${name} — khách nước ngoài thấy loại hình đã dịch, "${name}" giữ nguyên.`
+        ? `Tên đầy đủ: ${titleCaseVi(type)} ${name} — khách nước ngoài thấy loại hình đã dịch, "${name}" giữ nguyên.`
         : '';
 }
 document.getElementById('admin-form-venue-type')?.addEventListener('input', updateVenueNamePreview);
@@ -939,7 +953,11 @@ async function editAdminUser(id) {
         pendingAvatarFile = null;
         renderAdminAvatarPreview(u.avatar_url || 'gradient-1', parts.name || u.username);
         if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'flex';
-        if (adminFormTitle) adminFormTitle.innerHTML = `<i class="ri-edit-line" style="color:#ec4899;"></i> Sửa nhân viên: ${escapeHtml(u.full_name || u.username)}`;
+        // Tên cơ sở đầy đủ dài hơn hẳn "Sửa nhân viên": bọc riêng để cắt được
+        // sau 2 hàng, nếu không nó đẩy vỡ cả hàng tiêu đề trên màn hẹp.
+        if (adminFormTitle) adminFormTitle.innerHTML = `<i class="ri-edit-line" style="color:#ec4899;"></i>`
+            + `<span class="admin-form-title-text">Sửa nhân viên: `
+            + `<b class="admin-form-title-name">${escapeHtml(u.full_name || u.username)}</b></span>`;
         if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-save-line"></i> Cập nhật';
         if (adminFormCancelBtn) adminFormCancelBtn.style.display = 'inline-flex';
     } catch(e) { console.error('Error in editAdminUser:', e); }
@@ -996,8 +1014,7 @@ async function handleAdminUserSubmit(e) {
         const type = (document.getElementById('admin-form-venue-type')?.value || '').trim();
         const bare = (adminFormFullname?.value || '').trim();
         if (type && bare) {
-            const title = type.replace(/\b\p{L}/gu, (c) => c.toUpperCase());
-            payload.full_name = `${title} ${bare}`;
+            payload.full_name = `${titleCaseVi(type)} ${bare}`;
         }
     }
     try {
