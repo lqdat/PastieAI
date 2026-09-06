@@ -9827,11 +9827,20 @@ app.get('/api/chats/:sessionId/history', async (req, res) => {
       [scope.visitor_email, scope.id, String(QR_HISTORY_DAYS)]
     );
 
+    // Tên cơ sở và nhãn QR trong danh sách cũng phải theo ngôn ngữ khách đang
+    // xem — đây là màn hình của KHÁCH, không phải bảng quản trị.
+    const lang = String(req.query.lang || '').toLowerCase().slice(0, 2);
+    const visible = rows.rows.filter((row) => row.message_count > 0);
+    await Promise.all(visible.map(async (row) => {
+      row.agent_name = await localizeVenueName(row.agent_name, lang, row.agent_id);
+      row.qr_label = await localizeQrText(row.qr_label, lang, row.agent_id);
+    }));
+
     res.json({
       days: QR_HISTORY_DAYS,
       customer: { name: scope.visitor_name || '', email: scope.visitor_email },
       // Phiên rỗng (khách quét rồi thoát ngay) chỉ làm rối danh sách.
-      sessions: rows.rows.filter((row) => row.message_count > 0),
+      sessions: visible,
     });
   } catch (error) {
     console.error('QR history list error:', error);
@@ -10945,7 +10954,10 @@ async function loadSessionBills(sessionId, language) {
       `SELECT b.id, b.order_id, b.version, b.invoice, b.items, b.total_amount,
               b.payment_method, b.created_at, o.status AS order_status, o.order_code,
               sale.full_name AS sale_name,
-              COALESCE(agent.full_name, manager.full_name) AS seller_name
+              COALESCE(agent.full_name, manager.full_name) AS seller_name,
+              -- Cần để dịch tên cơ sở và nhãn QR in trên hoá đơn.
+              COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id) AS agent_id,
+              q.label AS qr_label, g.name AS group_name
          FROM chat_order_bills b
          LEFT JOIN chat_orders o ON o.id = b.order_id
          LEFT JOIN sessions s ON s.id = b.session_id
@@ -10965,11 +10977,19 @@ async function loadSessionBills(sessionId, language) {
       const localized = await localizeOrderForVisitor(
         { session_id: sessionId, items: row.items }, language
       );
+      // Tên cơ sở và tên bàn in trên hoá đơn phải theo ngôn ngữ khách đang
+      // xem, giống hệt tên món — khách nước ngoài cầm tờ bill mà thấy "Bàn 10"
+      // thì không đối chiếu được với chỗ mình vừa ngồi.
+      const [sellerName, tableLabel] = await Promise.all([
+        localizeVenueName(row.seller_name || row.invoice?.sellerName || '', language, row.agent_id),
+        localizeQrText(row.qr_label || row.group_name || row.invoice?.tableLabel || '', language, row.agent_id),
+      ]);
       const invoice = await prepareInvoiceDelivery(
         {
           ...(row.invoice || {}),
           items: localized?.items || row.items,
-          sellerName: row.seller_name || row.invoice?.sellerName || '',
+          sellerName,
+          tableLabel,
           saleName: row.sale_name || row.invoice?.saleName || '',
           paymentMethod: row.payment_method || row.invoice?.paymentMethod || '',
         }, language

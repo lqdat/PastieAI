@@ -449,6 +449,45 @@ function approximateTextWidth(text, fontSize) {
   return units * fontSize;
 }
 
+// Xuống hàng theo TỪ, không cắt cụt bằng "…".
+//
+// Bản PDF (pdfkit) vốn đã tự xuống hàng theo bề rộng cột, còn bản xem trước SVG
+// thì cắt cụt — nên cùng một hoá đơn, khách thấy hai tên món khác nhau ở hai
+// nơi. Tên món dài là thứ khách cần đọc đủ nhất ("Combo gia đình 4 người — cơm,
+// canh, ba món mặn"), cắt đi là mất luôn phần phân biệt.
+function wrapToWidth(text, fontSize, maxWidth, maxLines = 3) {
+  const value = String(text ?? '').trim();
+  if (!value) return [];
+  const lines = [];
+  let current = '';
+  const flush = () => { if (current) { lines.push(current); current = ''; } };
+  for (const word of value.split(/\s+/)) {
+    const next = current ? `${current} ${word}` : word;
+    if (approximateTextWidth(next, fontSize) <= maxWidth) { current = next; continue; }
+    flush();
+    // Một TỪ dài hơn cả cột (tên không dấu cách, hoặc chữ CJK): cắt theo ký tự.
+    if (approximateTextWidth(word, fontSize) > maxWidth) {
+      let piece = '';
+      for (const char of word) {
+        if (approximateTextWidth(piece + char, fontSize) > maxWidth) { lines.push(piece); piece = ''; }
+        piece += char;
+      }
+      current = piece;
+    } else {
+      current = word;
+    }
+    if (lines.length >= maxLines) break;
+  }
+  flush();
+  if (lines.length > maxLines) {
+    // Quá dài thật thì mới cắt — và cắt ở hàng CUỐI, không phải hàng đầu.
+    const kept = lines.slice(0, maxLines);
+    kept[maxLines - 1] = truncateToWidth(kept[maxLines - 1] + ' …', fontSize, maxWidth);
+    return kept;
+  }
+  return lines;
+}
+
 function truncateToWidth(text, fontSize, maxWidth) {
   const value = String(text ?? '');
   if (approximateTextWidth(value, fontSize) <= maxWidth) return value;
@@ -534,17 +573,24 @@ function createInvoiceSvg(invoice, language) {
   y += 8; line(y); y += 20;
 
   data.items.forEach((item) => {
-    text(truncateToWidth(item.name, 10.5, colNameW - 8), xName, y, { size: 10.5 });
+    // Tên món xuống hàng như trong PDF; giá và số lượng vẫn ở hàng ĐẦU của món.
+    const nameLines = wrapToWidth(item.name, 10.5, colNameW - 8);
     text(money(item.unitPrice), xPriceEnd, y, { size: 10.5, anchor: 'end' });
     text(String(item.quantity), xQtyEnd, y, { size: 10.5, anchor: 'end' });
     if (hasDiscount) text(item.discount ? money(item.discount) : '—', xDiscountEnd, y, { size: 10.5, anchor: 'end' });
     text(money(item.lineTotal), xTotalEnd, y, { size: 10.5, anchor: 'end' });
-    y += 22;
+    nameLines.forEach((lineText, index) => {
+      text(lineText, xName, y + index * 14, { size: 10.5 });
+    });
+    y += 22 + Math.max(0, nameLines.length - 1) * 14;
     // Ảnh xem trước phải khớp với PDF tải về, nếu không khách sẽ tưởng hai bản
     // là hai hoá đơn khác nhau.
     if (item.note) {
-      text(truncateToWidth(item.note, 10, colNameW - 8), xName, y - 6, { size: 10, fill: '#6f6070' });
-      y += 13;
+      const noteLines = wrapToWidth(item.note, 10, colNameW - 8, 2);
+      noteLines.forEach((lineText, index) => {
+        text(lineText, xName, y - 6 + index * 12, { size: 10, fill: '#6f6070' });
+      });
+      y += 13 + Math.max(0, noteLines.length - 1) * 12;
     }
   });
 
