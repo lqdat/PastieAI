@@ -665,6 +665,21 @@ async function seedSuperAdmin() {
 setTimeout(seedSuperAdmin, 2500);
 
 // Serving admin dashboard statically from 'public' folder
+// Phiên bản của bộ tệp bảng điều khiển, đọc từ chính admin.html đã deploy.
+//
+// Shortcut trên màn hình chính chạy ở chế độ standalone: không có thanh địa chỉ,
+// không có nút tải lại, nên người dùng phải tắt hẳn app mới nhận được bản mới.
+// Có endpoint này thì trang tự biết mình đã cũ và tự mời tải lại.
+app.get('/api/app-version', (_req, res) => {
+  try {
+    const html = fs.readFileSync(path.join(__dirname, 'public', 'admin.html'), 'utf8');
+    res.set('Cache-Control', 'no-store');
+    res.json({ version: (html.match(/\?v=(r\d+)/) || [])[1] || 'unknown' });
+  } catch {
+    res.json({ version: 'unknown' });
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/privacy-policy', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
 app.get('/terms', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
@@ -4300,7 +4315,8 @@ app.get('/api/admin/menu/view', checkAdminAuth, async (req, res) => {
     if (!agentId) return res.json({ categories: [], items: [] });
 
     const items = await db.query(
-      `SELECT i.id, i.category_id, i.name, i.description, i.price, i.currency, i.image_url,
+      `SELECT i.id, i.category_id, i.name, i.description, i.price, i.currency,
+              i.image_url, i.image_key, i.image_url_expires_at,
               i.is_available,
               (i.stock_quantity IS NOT NULL AND i.stock_quantity <= 0) AS sold_out
          FROM qr_menu_items i
@@ -4308,6 +4324,12 @@ app.get('/api/admin/menu/view', checkAdminAuth, async (req, res) => {
         ORDER BY i.sort_order, i.id`,
       [agentId]
     );
+    // Ảnh món ký 7 ngày. Không gia hạn ở đây thì thực đơn của Sale hiện toàn ô
+    // trống trong khi thực đơn của khách vẫn có ảnh — cùng một món, hai bên
+    // nhìn thấy hai thứ khác nhau là chỗ dễ tư vấn sai nhất.
+    const withImages = await Promise.all(items.rows.map((item) => refreshMenuImageUrl(item)));
+    // image_key là chuyện nội bộ của kho ảnh, không đẩy ra ngoài.
+    items.rows = withImages.map(({ image_key, image_url_expires_at, ...rest }) => rest);
     const categories = await db.query(
       `SELECT id, name, sort_order, is_promo, is_active FROM qr_menu_categories
         WHERE agent_id = $1 ORDER BY is_promo DESC, sort_order, id`,

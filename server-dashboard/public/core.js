@@ -1052,6 +1052,54 @@ async function refreshAgentSaleCount(force) {
 window.refreshAgentSaleCount = refreshAgentSaleCount;
 
 
+// ── Tải lại ứng dụng khi chạy từ shortcut màn hình chính ──────────────────
+//
+// Ở chế độ standalone không có thanh địa chỉ nên cũng không có nút tải lại:
+// người dùng phải tắt hẳn app mới nhận được bản mới. Hai lối ra:
+//   1. Nút "Tải lại ứng dụng" trong bảng Công cụ — chủ động, lúc nào cũng dùng được.
+//   2. Tự dò phiên bản mỗi 5 phút rồi mời tải lại — để không ai phải nhớ.
+//
+// Tải lại bằng cách gắn thêm một tham số vào URL: location.reload() ở
+// standalone vẫn có thể lấy lại đúng bản HTML đang nằm trong cache.
+function reloadApp() {
+    const url = new URL(window.location.href);
+    url.searchParams.set('_r', String(Date.now()));
+    window.location.replace(url.toString());
+}
+window.reloadApp = reloadApp;
+
+// Phiên bản trang HIỆN ĐANG chạy, lấy từ chính đường dẫn script đã tải.
+function currentAppVersion() {
+    const src = document.querySelector('script[src*="admin.js?v="]')?.getAttribute('src') || '';
+    return (src.match(/[?&]v=(r\d+)/) || [])[1] || '';
+}
+
+async function checkAppVersion() {
+    const mine = currentAppVersion();
+    if (!mine) return;
+    try {
+        const res = await fetch(`${API_BASE}/api/app-version`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const { version } = await res.json();
+        if (!version || version === 'unknown' || version === mine) return;
+        document.getElementById('app-update-bar')?.classList.remove('hide');
+    } catch {
+        // Mất mạng thì thôi, lần sau kiểm lại. Không làm phiền người dùng.
+    }
+}
+
+document.getElementById('app-reload-btn')?.addEventListener('click', reloadApp);
+document.getElementById('app-update-reload')?.addEventListener('click', reloadApp);
+document.getElementById('app-update-dismiss')?.addEventListener('click', () => {
+    document.getElementById('app-update-bar')?.classList.add('hide');
+});
+// Kiểm khi mở app, mỗi 5 phút, và mỗi lần quay lại app từ nền — lúc quay lại
+// mới là lúc hay gặp bản mới nhất.
+setTimeout(checkAppVersion, 4000);
+setInterval(checkAppVersion, 5 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) void checkAppVersion(); });
+
+
 // Gom các nút công cụ của Agent/Sale vào một bảng thả xuống.
 //
 // CHUYỂN CHÍNH các nút cũ vào bảng chứ không dựng nút mới: mọi id, nhãn và
@@ -1071,6 +1119,7 @@ function layoutHeaderQuickMenu(grouped) {
         const btn = document.getElementById(id);
         if (!btn) continue;
         // Nhớ chỗ cũ ngay lần đầu, để còn trả về đúng vị trí cho các vai trò khác.
+        if (btn.classList.contains('header-menu-fixed')) continue;
         if (!headerBtnHome.has(id)) headerBtnHome.set(id, { parent: btn.parentElement, next: btn.nextElementSibling });
         if (grouped) {
             btn.classList.add('header-menu-item');

@@ -285,48 +285,106 @@
     let menuOverlay = null;
     const closeMenu = () => { menuOverlay?.remove(); menuOverlay = null; };
 
+    // Dựng theo ĐÚNG khuôn thực đơn của khách: ảnh món, nhóm món thành hàng
+    // thẻ lọc, mô tả và giá y hệt. Sale tư vấn cho khách đang nhìn màn hình kia,
+    // hai bên thấy hai bố cục khác nhau là chỗ dễ chỉ nhầm món nhất.
+    //
+    // Khác duy nhất: không có nút "+" và không có thanh giỏ hàng — Sale tra
+    // thông tin, không đặt hộ khách.
+    let menuState = { items: [], categories: new Map(), active: 'all', search: '' };
+
+    function menuViewCards() {
+        const term = menuState.search.trim().toLowerCase();
+        const list = menuState.items.filter((item) => {
+            if (menuState.active !== 'all' && String(item.category_id) !== menuState.active) return false;
+            if (!term) return true;
+            return `${item.name} ${item.description || ''}`.toLowerCase().includes(term);
+        });
+        if (list.length === 0) return '<p class="cart-empty">Không có món nào khớp.</p>';
+        return `<div class="staff-menu-grid">${list.map((item) => `
+            <article class="staff-menu-card${item.sold_out || !item.is_available ? ' is-out' : ''}">
+                <div class="staff-menu-thumb">
+                    ${item.image_url
+                        ? `<img src="${escapeHtml(item.image_url)}" alt="" loading="lazy">`
+                        : '<span aria-hidden="true">🍜</span>'}
+                </div>
+                <div class="staff-menu-copy">
+                    <strong>${escapeHtml(item.name)}</strong>
+                    ${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}
+                    <b>${money(item.price)}</b>
+                </div>
+                ${!item.is_available ? '<span class="staff-menu-tag">Đang tắt</span>'
+                  : item.sold_out ? '<span class="staff-menu-tag">Tạm hết</span>' : ''}
+            </article>`).join('')}</div>`;
+    }
+
+    function menuViewTabs() {
+        const tabs = [['all', 'Tất cả'], ...[...menuState.categories].map(([id, name]) => [String(id), name])];
+        return tabs.map(([key, label]) => `
+            <button type="button" class="staff-menu-tab${menuState.active === key ? ' is-active' : ''}"
+                    data-menu-cat="${escapeHtml(key)}">${escapeHtml(label)}</button>`).join('');
+    }
+
+    function paintMenuView() {
+        const tabs = menuOverlay?.querySelector('.staff-menu-tabs');
+        const list = menuOverlay?.querySelector('.staff-menu-list');
+        if (tabs) tabs.innerHTML = menuViewTabs();
+        if (list) list.innerHTML = menuViewCards();
+    }
+
     async function openMenuViewer() {
         closeMenu();
+        menuState = { items: [], categories: new Map(), active: 'all', search: '' };
         menuOverlay = document.createElement('div');
-        menuOverlay.className = 'cart-overlay';
+        menuOverlay.className = 'cart-overlay staff-menu-overlay';
         menuOverlay.innerHTML = `
-            <div class="admin-management-box cart-box">
-                <div class="admin-list-head">
-                    <h3><i class="ri-restaurant-line"></i> Thực đơn <small>(chỉ xem)</small></h3>
+            <div class="staff-menu-sheet">
+                <header class="staff-menu-hero">
+                    <div class="staff-menu-mark"><i class="ri-restaurant-2-line"></i></div>
+                    <div class="staff-menu-title">
+                        <h3>Thực đơn</h3>
+                        <span>Chỉ xem — dùng để tư vấn khách</span>
+                    </div>
                     <button type="button" class="icon-btn cart-close" title="Đóng"><i class="ri-close-line"></i></button>
+                </header>
+                <div class="staff-menu-search">
+                    <i class="ri-search-line"></i>
+                    <input type="search" placeholder="Tìm món…" aria-label="Tìm món">
                 </div>
-                <div class="cart-body"><p class="cart-loading"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p></div>
+                <nav class="staff-menu-tabs"></nav>
+                <div class="staff-menu-list"><p class="cart-loading"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p></div>
             </div>`;
         document.body.appendChild(menuOverlay);
         menuOverlay.addEventListener('click', (event) => {
-            if (event.target === menuOverlay || event.target.closest('.cart-close')) closeMenu();
+            if (event.target === menuOverlay || event.target.closest('.cart-close')) return void closeMenu();
+            const tab = event.target.closest('[data-menu-cat]');
+            if (tab) { menuState.active = tab.dataset.menuCat; paintMenuView(); }
         });
-        const body = menuOverlay.querySelector('.cart-body');
+        menuOverlay.querySelector('input[type="search"]')?.addEventListener('input', (event) => {
+            menuState.search = event.target.value || '';
+            const list = menuOverlay?.querySelector('.staff-menu-list');
+            if (list) list.innerHTML = menuViewCards();
+        });
+
+        const list = menuOverlay.querySelector('.staff-menu-list');
         try {
             const res = await authFetch(`${API_BASE}/api/admin/menu/view`);
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || 'Không tải được thực đơn.');
-            const items = Array.isArray(data.items) ? data.items : [];
-            if (items.length === 0) {
-                body.innerHTML = '<p class="cart-empty">Cơ sở chưa có món nào trong thực đơn.</p>';
+            menuState.items = Array.isArray(data.items) ? data.items : [];
+            // Chỉ liệt kê nhóm CÓ MÓN: một hàng thẻ lọc bấm vào ra danh sách
+            // rỗng thì thà đừng có thẻ đó.
+            const used = new Set(menuState.items.map((item) => String(item.category_id)));
+            for (const category of (data.categories || [])) {
+                if (used.has(String(category.id))) menuState.categories.set(category.id, category.name);
+            }
+            if (menuState.items.length === 0) {
+                list.innerHTML = '<p class="cart-empty">Cơ sở chưa có món nào trong thực đơn.</p>';
                 return;
             }
-            const byCategory = new Map((data.categories || []).map((c) => [c.id, c.name]));
-            body.innerHTML = `<div class="menu-view-list">${items.map((item) => `
-                <div class="menu-view-row${item.sold_out || !item.is_available ? ' is-out' : ''}">
-                    <div class="menu-view-main">
-                        <strong>${escapeHtml(item.name)}</strong>
-                        <small>${escapeHtml(byCategory.get(item.category_id) || 'Chưa phân nhóm')}</small>
-                        ${item.description ? `<small class="menu-view-desc">${escapeHtml(item.description)}</small>` : ''}
-                    </div>
-                    <div class="menu-view-side">
-                        <b>${money(item.price)}</b>
-                        ${!item.is_available ? '<span class="menu-view-tag">Đang tắt</span>'
-                          : item.sold_out ? '<span class="menu-view-tag">Tạm hết</span>' : ''}
-                    </div>
-                </div>`).join('')}</div>`;
+            paintMenuView();
         } catch (error) {
-            body.innerHTML = `<p class="cart-error">${escapeHtml(error.message)}</p>`;
+            list.innerHTML = `<p class="cart-error">${escapeHtml(error.message)}</p>`;
         }
     }
 
