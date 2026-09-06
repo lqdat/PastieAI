@@ -1473,8 +1473,16 @@ function nameFromEmail(email) {
 // quán thì người chào phải là quán. Có tên bàn để khách yên tâm là mình quét
 // đúng chỗ, và biết nhân viên sẽ tìm mình ở đâu.
 function buildQrGreeting({ lang, guestName, venueName, placeLabel }) {
-  const venue = String(venueName || '').trim();
-  const place = String(placeLabel || '').trim();
+  // Lời chào là câu ĐẦU TIÊN khách nước ngoài đọc, mà tên quán và tên bàn được
+  // chèn nguyên văn vào một câu đã dịch sẵn. Bỏ dấu để họ đọc và gõ lại được —
+  // cùng quy tắc với tên riêng trong tin nhắn.
+  //
+  // Tên của chính khách thì giữ nguyên: bóp méo tên một người rồi chào họ bằng
+  // cái tên đó là mất lịch sự hơn là để họ tự đọc.
+  const foreign = String(lang || 'vi').toLowerCase().slice(0, 2) !== 'vi';
+  const plain = (value) => (foreign ? gemini.removeVietnameseTones(value) : String(value || ''));
+  const venue = plain(venueName).trim();
+  const place = plain(placeLabel).trim();
   const name = String(guestName || '').trim();
 
   const T = {

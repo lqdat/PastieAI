@@ -140,6 +140,26 @@ const normalizeLangCode = (value) => String(value || '').trim().toLowerCase().sl
 // Máy dịch thỉnh thoảng nuốt hoặc tách mã ra, và một câu trả về "ZQX0ZQX" đập
 // vào mắt khách còn tệ hơn một cái tên bị dịch sai. Thiếu mã thì bỏ hẳn lớp bảo
 // vệ và dùng bản dịch thường.
+// Tên riêng giữ nguyên chữ, nhưng BỎ DẤU khi khách không đọc tiếng Việt.
+//
+// "Đan Trinh" với khách Hàn hay Nga là một chuỗi ký tự họ không gõ lại được,
+// không tra được, và trên nhiều thiết bị chữ "Đ" còn hiện ra ô vuông. "Dan
+// Trinh" thì đọc được, gõ lại được, và vẫn khớp với tấm biển ngoài cửa.
+//
+// Khách Việt thì giữ nguyên dấu — bỏ dấu cho người Việt là làm xấu đi.
+//
+// NFD tách được hầu hết nguyên âm có dấu, nhưng KHÔNG tách đ/Đ (nó là một chữ
+// cái riêng trong bảng chữ cái tiếng Việt, không phải d + dấu), nên phải thay
+// tay trước.
+function removeVietnameseTones(text) {
+  return String(text || '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFC');
+}
+
 const PROTECT_TOKEN = (index) => `ZQX${index}ZQX`;
 
 // Tên cơ sở tách làm HAI phần.
@@ -177,12 +197,17 @@ function splitVenueName(name) {
   return { prefix: '', propel: raw };
 }
 
-function protectNames(text, names) {
+/**
+ * @param {{ stripTones?: boolean }} [options] stripTones: trả tên về dạng không
+ *        dấu khi khôi phục (dùng cho mọi ngôn ngữ trừ tiếng Việt).
+ */
+function protectNames(text, names, options = {}) {
   const list = (Array.isArray(names) ? names : [])
     .map((name) => String(name || '').trim())
     .filter((name) => name.length >= 2)
     // Tên dài thay trước, nếu không "Đan Trinh" bị "Đan" ăn mất một nửa.
     .sort((a, b) => b.length - a.length);
+  const shown = (name) => (options.stripTones ? removeVietnameseTones(name) : name);
   if (list.length === 0) return { text, restore: (out) => out, ok: () => true };
 
   const used = [];
@@ -202,7 +227,7 @@ function protectNames(text, names) {
     // Máy dịch có thể đổi hoa thường hoặc chèn khoảng trắng quanh mã.
     ok: (out) => used.every((entry) => new RegExp(entry.token, 'i').test(String(out || ''))),
     restore: (out) => used.reduce(
-      (acc, entry) => acc.replace(new RegExp(entry.token, 'gi'), entry.name),
+      (acc, entry) => acc.replace(new RegExp(entry.token, 'gi'), shown(entry.name)),
       String(out || '')
     ),
   };
@@ -352,7 +377,9 @@ async function translateText(text, targetLang, options = {}) {
   const sourceText = String(text || '').trim();
   if (!sourceText) return { translatedText: sourceText, detectedLang: 'unknown', provider: 'none' };
 
-  const guard = protectNames(sourceText, options.protect);
+  const guard = protectNames(sourceText, options.protect, {
+    stripTones: normalizeLangCode(targetLang) !== 'vi',
+  });
   if (guard.text !== sourceText) {
     // Dịch bản đã che tên. Hỏng lớp bảo vệ thì dịch lại bản gốc — thà tên bị
     // dịch còn hơn khách nhìn thấy mã giữ chỗ.
@@ -596,6 +623,7 @@ async function detectLanguage(text) {
 
 module.exports = {
   protectNames,
+  removeVietnameseTones,
   splitVenueName,
   translateText,
   translateTexts,
