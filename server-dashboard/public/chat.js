@@ -779,8 +779,11 @@ function renderSessionsList(sessions) {
         const unread = unreadVisitor;
         const unreadBadge = unread > 0 ? `<span class="session-unread-badge">${unread > 99 ? '99+' : unread}</span>` : '';
 
-        const preview = session.last_message_preview
-            ? session.last_message_preview.substring(0, 45) + (session.last_message_preview.length > 45 ? '…' : '')
+        const rawPreview = session.last_message_preview && session.latest_order_id && session.latest_order_code
+            ? session.last_message_preview.split(session.latest_order_id).join(session.latest_order_code)
+            : session.last_message_preview;
+        const preview = rawPreview
+            ? rawPreview.substring(0, 45) + (rawPreview.length > 45 ? '…' : '')
             : '';
 
         const isMC = session.platform && session.platform !== 'widget';

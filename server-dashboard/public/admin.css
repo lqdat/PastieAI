@@ -4646,6 +4646,9 @@ button {
     height: auto;
     padding: 11px 18px;
     align-items: center;
+    border: 1px solid rgba(239, 43, 157, .12);
+    background: linear-gradient(110deg, rgba(255,255,255,.98), rgba(255,247,251,.98));
+    box-shadow: 0 5px 18px rgba(45, 26, 48, .055);
 }
 .dashboard-header.sale-header .header-left {
     flex: 1 1 auto;
@@ -4720,6 +4723,7 @@ button {
     position: static;
     align-self: center;
     align-items: center;
+    gap: 7px;
 }
 .dashboard-header.sale-header .header-menu-btn {
     width: 42px;
@@ -4730,11 +4734,34 @@ button {
     border-radius: 13px;
 }
 .dashboard-header.sale-header .header-menu-btn span { display: none; }
+.dashboard-header.sale-header #logout-btn,
+.dashboard-header.sale-header .header-menu-btn {
+    border: 1px solid rgba(239, 43, 157, .2);
+    background: #fff;
+    color: var(--accent-color);
+    box-shadow: 0 3px 12px rgba(45, 26, 48, .055);
+}
+.dashboard-header.sale-header #logout-btn {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    min-height: 42px;
+    border-radius: 13px;
+}
+.dashboard-header.sale-header #logout-btn:hover,
+.dashboard-header.sale-header .header-menu-btn:hover {
+    border-color: rgba(239, 43, 157, .42);
+    background: #fff4fa;
+}
 
 @media (max-width: 720px) {
     .dashboard-header.sale-header {
-        min-height: calc(70px + env(safe-area-inset-top));
+        min-height: calc(72px + env(safe-area-inset-top));
         padding: calc(9px + env(safe-area-inset-top)) 12px 9px;
+        border-left: 0;
+        border-right: 0;
+        border-top: 0;
+        border-radius: 0;
     }
     .dashboard-header.sale-header .header-left { padding-right: 8px; }
     .dashboard-header.sale-header .agent-avatar-badge { width: 42px; height: 42px; border-radius: 13px; }
@@ -4742,7 +4769,7 @@ button {
     .dashboard-header.sale-header .agent-identity.sale-identity .agent-identity-label,
     .dashboard-header.sale-header .agent-identity:not(.sale-identity) .agent-display-name {
         max-width: calc(100vw - 128px);
-        font-size: 16px;
+        font-size: 17px;
     }
     .dashboard-header.sale-header .agent-display-name,
     .dashboard-header.sale-header .agent-identity.sale-identity .agent-display-name {

@@ -5867,6 +5867,8 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
         mstat.last_message_at,
         mlast.original_text as last_message_preview,
         mlast.sender as last_message_sender,
+        latest_order.id as latest_order_id,
+        latest_order.order_code as latest_order_code,
         mstat.unread_visitor,
         COALESCE(rr.seen_message_count, -1) as seen_message_count
       FROM sessions s
@@ -5896,6 +5898,10 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
         SELECT original_text, sender FROM messages
          WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1
       ) mlast ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT id, order_code FROM chat_orders
+         WHERE session_id = s.id ORDER BY updated_at DESC LIMIT 1
+      ) latest_order ON TRUE
     `;
 
     // Chỉ hiện multichannel session khi đã chuyển sang agent (show_in_dashboard=true)
