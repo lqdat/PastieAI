@@ -5014,3 +5014,13 @@ button {
 /* Hoá đơn CŨ (bản đã lưu, không phải bill của đơn đang mở): viền nhạt hơn để
    Sale phân biệt được ngay đâu là tờ đang có hiệu lực. */
 .admin-invoice-block.is-archived { opacity: .92; border-style: dashed; }
+
+
+/* Dấu ổ khoá thay cho câu "Nội bộ · khách không thấy": viền và màu của bong
+   bóng đã nói lên điều đó rồi, thêm một dòng chữ hoa nữa là đọc hai lần cùng
+   một thông tin. Giữ title để rê chuột vẫn biết. */
+.staff-only-label { display: inline-flex; padding: 0; margin-bottom: 2px; font-size: 12px; }
+.staff-only-label i { margin: 0; }
+
+/* Ảnh cơ sở lấp đầy ô avatar; nền gradient chỉ còn là lớp lót khi chưa có ảnh. */
+.agent-avatar-badge img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; display: block; }

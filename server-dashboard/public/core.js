@@ -993,13 +993,30 @@ function updateAgentHeaderUI() {
 
     if (isAgentRole) document.getElementById('manage-admins-btn')?.classList.add('hide');
 
-    // Ô avatar: chữ cái đầu của tên đang hiện to.
+    // Ô avatar: ẢNH của cơ sở nếu Agent đã tải lên, không có thì lấy chữ cái
+    // đầu. Sale nhìn thấy ảnh của Agent quản lý mình, không phải ảnh của chính
+    // mình — header là để nhận ra ĐANG Ở CƠ SỞ NÀO.
+    const badge = document.getElementById('agent-avatar-badge');
     const avatarChar = document.getElementById('agent-avatar-char');
-    if (avatarChar) {
-        const src = (isSaleView ? managerName : visibleName) || 'P';
-        avatarChar.textContent = src.trim().charAt(0).toUpperCase() || 'P';
+    const avatarUrl = isSaleView
+        ? (CURRENT_ADMIN.manager_avatar_url || '')
+        : (CURRENT_ADMIN.avatar_url || '');
+    if (badge) {
+        const img = badge.querySelector('img');
+        if (/^https?:\/\/|^\//.test(String(avatarUrl))) {
+            if (avatarChar) avatarChar.classList.add('hide');
+            if (img) img.src = avatarUrl;
+            else badge.insertAdjacentHTML('afterbegin', `<img src="${avatarUrl}" alt="">`);
+        } else {
+            img?.remove();
+            if (avatarChar) {
+                avatarChar.classList.remove('hide');
+                const src = (isSaleView ? managerName : visibleName) || 'P';
+                avatarChar.textContent = src.trim().charAt(0).toUpperCase() || 'P';
+            }
+        }
     }
-    document.getElementById('agent-avatar-badge')?.classList.toggle('hide', !visibleName);
+    badge?.classList.toggle('hide', !visibleName);
 
     // Dòng phụ dưới tên. Sale: tên của chính mình đã nằm ở hàng dưới rồi nên
     // dòng này để trống; Agent quản lý: số Sale đang có.

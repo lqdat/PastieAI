@@ -1143,7 +1143,8 @@ async function checkAdminAuth(req, res, next) {
     const sessionRes = await db.query(
       `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.role, a.avatar_url, a.is_active, a.project_id, a.sale_limit,
               a.managed_by_admin_id,
-              m.full_name AS manager_name, m.username AS manager_username
+              m.full_name AS manager_name, m.username AS manager_username,
+              m.avatar_url AS manager_avatar_url
        FROM admin_sessions s
        JOIN admins a ON s.admin_id = a.id
        LEFT JOIN admins m ON m.id = a.managed_by_admin_id
@@ -1208,6 +1209,7 @@ async function checkAdminAuth(req, res, next) {
       // Tên Agent quản lý — header của Sale hiển thị "Agent · Sale" để người trực
       // chat luôn biết mình đang trực dưới quyền ai.
       manager_name: adminSession.manager_name || adminSession.manager_username || null,
+      manager_avatar_url: adminSession.manager_avatar_url || null,
       token: token
     };
 
@@ -1619,8 +1621,8 @@ async function sendQrWelcome({ sessionId, lang, guestName, venueName, placeLabel
     // Ghi sẵn cả bản dịch bằng chính nó: câu này đã đúng ngôn ngữ khách chọn,
     // không cần dịch lại và cũng không nên tốn một lượt gọi AI cho nó.
     await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
-       VALUES ($1, 'system', $2, $2, $3)`,
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, system_kind)
+       VALUES ($1, 'system', $2, $2, $3, 'guest_only')`,
       [sessionId, text, language]
     );
     return text;
@@ -4160,7 +4162,9 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
     const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [req.params.sessionId]);
     const session = sessionRes.rows[0];
     const label = invoiceHelper.paymentMethodLabel(method, 'vi');
-    const text = `[Thanh toán] Khách đã chọn phương thức: ${label}.`;
+    // Nêu mã đơn: một khách gọi thêm nhiều lần trong bữa thì câu không nói rõ
+    // đơn nào sẽ khiến Sale thu tiền nhầm tờ bill.
+    const text = `[Thanh toán] Đơn ${order.order_code || ''} — khách chọn trả bằng ${label}.`.replace('  ', ' ');
     // Cau nay noi VE khach, voi nhan vien - khach khong can doc lai chinh minh.
     const msgRes = await db.query(
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
@@ -6251,7 +6255,10 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
       `SELECT m.*, a.full_name as sender_admin_name, a.avatar_url as sender_admin_avatar 
        FROM messages m
        LEFT JOIN admins a ON m.sender_admin_id = a.id
-       WHERE m.session_id = $1 
+       WHERE m.session_id = $1
+         -- Lời chào và lời cảm ơn là câu nói VỚI KHÁCH. Sale mở khung chat ra
+         -- là để làm việc, không phải đọc lại phép lịch sự của hệ thống.
+         AND COALESCE(m.system_kind, '') <> 'guest_only'
        ORDER BY m.created_at DESC LIMIT $2 OFFSET $3`,
       [sessionId, limit, offset]
     );
@@ -10751,9 +10758,11 @@ async function sendOrderThankYou(sessionId, method, { autoSelected, orderCode } 
   const text = autoSelected
     ? `Cảm ơn quý khách! Hết 2 phút chờ nên đơn được ghi nhận theo phương thức ${label}. Cửa hàng đang chuẩn bị món, quý khách vui lòng đợi ít phút${code}.`
     : `Cảm ơn quý khách! Đơn đã được ghi nhận, thanh toán bằng ${label}. Cửa hàng đang chuẩn bị món, quý khách vui lòng đợi ít phút${code}.`;
+  // 'guest_only': lời chào và lời cảm ơn là câu nói VỚI KHÁCH. Sale và Agent
+  // không cần đọc lại chúng — với họ, khung chat chỉ nên còn việc phải làm.
   await db.query(
-    `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
-     VALUES ($1, 'system', $2, $2, 'vi')`,
+    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, system_kind)
+     VALUES ($1, 'system', $2, $2, 'vi', 'guest_only')`,
     [sessionId, text]
   ).catch((error) => console.error('[Order] Khong gui duoc loi cam on:', error.message));
 }

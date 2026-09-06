@@ -1692,7 +1692,7 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
             // System message
             innerHtml = `
                 <div class="message-bubble">
-                    ${staffOnly ? '<span class="staff-only-label"><i class="ri-lock-2-line"></i> Nội bộ · khách không thấy</span>' : ''}
+                    ${staffOnly ? '<span class="staff-only-label" title="Khách không nhìn thấy tin này"><i class="ri-lock-2-line"></i></span>' : ''}
                     <div class="original-text">${escapeHtml(readableOrderText(msg.original_text))}</div>
                 </div>
             `;
