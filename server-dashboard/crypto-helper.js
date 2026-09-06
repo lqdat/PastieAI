@@ -78,11 +78,16 @@ function decryptText(value) {
       decipher.final(),
     ]).toString('utf8');
   } catch (error) {
-    // Sai khoá, hoặc nội dung bị sửa. Không ném lỗi ra giữa luồng chat: trả về
-    // một dấu hiệu rõ ràng và ghi log, để một dòng hỏng không làm chết cả cuộc
-    // trò chuyện.
-    console.error('[Bảo mật] Không giải mã được một tin nhắn:', error.message);
-    return '';
+    // Sai khoá, nội dung bị sửa, hoặc đây vốn không phải bản mã của mình (một
+    // tin nhắn tình cờ bắt đầu bằng "pcv1:"). Trả lại NGUYÊN VĂN chứ không trả
+    // chuỗi rỗng: chuỗi rỗng thì tin nhắn thật của khách biến mất không dấu vết,
+    // còn trả nguyên văn thì tệ nhất là hiện ra một chuỗi rõ ràng vô nghĩa —
+    // không ai nhầm nó với một tin nhắn có thật.
+    //
+    // Không ném lỗi ra giữa luồng chat: một dòng hỏng không được làm chết cả
+    // cuộc trò chuyện.
+    console.error('[Bảo mật] Không giải mã được một giá trị:', error.message);
+    return value;
   }
 }
 

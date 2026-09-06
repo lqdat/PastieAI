@@ -41,17 +41,29 @@ pool.on('error', (err) => {
 // nên dòng cũ chưa mã hoá và mọi cột khác đều không bị đụng tới.
 const { encryptText, decryptText, isEncrypted, ENABLED: ENCRYPTION_ON } = require('./crypto-helper');
 
-// Chỉ những cột THẬT SỰ chứa nội dung tin nhắn. Quét mù mọi cột thì một ngày
-// nào đó sẽ có cột khác vô tình bắt đầu bằng "pcv1:" và bị bóp méo.
+// GHI: chỉ những CỘT thật sự chứa nội dung tin nhắn.
 const ENCRYPTED_COLUMNS = new Set(['original_text', 'translated_text']);
 
+// ĐỌC: giải mã theo TIỀN TỐ, không theo tên trường.
+//
+// Bản đầu chỉ giải mã hai trường tên 'original_text' và 'translated_text'. Nhưng
+// nhiều truy vấn đặt lại tên: `mlast.original_text as last_message_preview`,
+// `original_text as text`. Những chỗ đó lọt lưới, và danh sách chat của nhân
+// viên hiện ra nguyên chuỗi "pcv1:tizJjD2o0TOD..." thay vì tin nhắn cuối.
+//
+// Bám theo tên trường thì mỗi lần ai đó đặt một bí danh mới là lại lọt thêm một
+// chỗ, mà chỗ lọt chỉ lộ ra khi đã đập vào mắt người dùng. Tiền tố 'pcv1:' là
+// thứ tự nó mô tả nó, không phụ thuộc ai đặt tên cột thế nào.
+//
+// Rủi ro va chạm: khách gõ một tin bắt đầu đúng bằng "pcv1:" rồi base64. Cực
+// hiếm, và decryptText trả lại NGUYÊN VĂN khi giải mã thất bại nên không mất gì.
 function decryptRows(result) {
   const rows = result?.rows;
   if (!Array.isArray(rows) || rows.length === 0) return result;
   for (const row of rows) {
     if (!row || typeof row !== 'object') continue;
-    for (const column of ENCRYPTED_COLUMNS) {
-      if (isEncrypted(row[column])) row[column] = decryptText(row[column]);
+    for (const key of Object.keys(row)) {
+      if (isEncrypted(row[key])) row[key] = decryptText(row[key]);
     }
   }
   return result;
