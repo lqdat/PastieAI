@@ -102,6 +102,7 @@ function beginNewAdminSession(token) {
     adminOffset = 0;
     adminHasMore = true;
     adminOrder = null;
+    adminBills = [];
     adminOrderSignature = '';
     CURRENT_ADMIN = null;
     resetActiveChatUI();
@@ -1098,6 +1099,7 @@ async function selectSession(sessionId) {
     adminIsLoadingMore = false;
     // Hóa đơn thuộc về từng cuộc chat — không để sót hóa đơn của chat trước.
     adminOrder = null;
+    adminBills = [];
     adminOrderSignature = '';
     
     // Highlight in list
@@ -1411,7 +1413,7 @@ async function selectSession(sessionId) {
 
     // Load messages & orders
     await loadMessages(sessionId);
-    await loadOrderForAdmin(sessionId);
+    await Promise.all([loadOrderForAdmin(sessionId), loadBillsForAdmin(sessionId)]);
 
     // Không còn cần polling 2s/lần: tin nhắn mới được server đẩy tức thì qua SSE Event Stream
     if (messagePollInterval) clearInterval(messagePollInterval);
@@ -1422,6 +1424,63 @@ async function selectSession(sessionId) {
 // Hóa đơn dùng chung endpoint công khai với khách. Chỉ báo "có thay đổi" khi
 // trạng thái đơn thật sự khác, vì backend vẽ lại PDF mỗi lần gọi nên chuỗi
 // pdfDataUrl luôn khác — so sánh cả chuỗi đó sẽ khiến khung chat render lại liên tục.
+// Hoá đơn ĐÃ LƯU của phiên. Khác với /order ở chỗ route này đọc bảng
+// chat_order_bills nên vẫn trả về khi phiên đã đóng — /order chỉ tìm đơn của
+// phiên đang 'active', nên mở lại một đoạn chat cũ thì Sale và Agent không thấy
+// hoá đơn nào cả, dù bill vẫn nằm nguyên trong database.
+let adminBills = [];
+async function loadBillsForAdmin(sessionId) {
+    try {
+        const response = await fetch(`${API_BASE}/api/chats/${sessionId}/bills?lang=${currentLang}`);
+        adminBills = response.ok ? ((await response.json()).bills || []) : [];
+    } catch { adminBills = []; }
+}
+
+
+// Vẽ các bill đã lưu vào đúng chỗ của chúng trong dòng thời gian.
+// BỎ QUA bản mới nhất của đơn đang hiển thị: renderAdminInvoice() đã vẽ đúng
+// bản đó rồi, vẽ thêm là hiện hai lần cùng một tờ hoá đơn.
+function renderAdminSavedBills() {
+    if (!Array.isArray(adminBills) || adminBills.length === 0) return;
+    const liveId = adminOrder && adminOrder.status !== 'pending_confirm'
+        && (adminOrder.invoice?.svgDataUrl || adminOrder.invoice?.pdfUrl || adminOrder.invoice?.pdfDataUrl)
+        ? String(adminOrder.id) : '';
+    const newestOfOrder = new Map();
+    for (const bill of adminBills) {
+        const key = String(bill.orderId);
+        const seen = newestOfOrder.get(key);
+        if (!seen || Number(bill.version || 0) > Number(seen)) newestOfOrder.set(key, Number(bill.version || 0));
+    }
+    const methodLabels = { cash: 'Tiền mặt', bank_qr: 'Chuyển khoản QR', card: 'Thẻ', room_charge: 'Cộng vào tiền phòng', pay_later: 'Thanh toán sau' };
+
+    for (const bill of adminBills) {
+        if (liveId && String(bill.orderId) === liveId
+            && Number(bill.version || 0) === newestOfOrder.get(String(bill.orderId))) continue;
+        const preview = bill.invoice?.svgDataUrl || '';
+        const pdf = bill.invoice?.pdfUrl || bill.invoice?.pdfDataUrl || '';
+        if (!preview && !pdf) continue;
+        const methodText = bill.paymentMethod ? (methodLabels[bill.paymentMethod] || bill.paymentMethod) : '';
+        const totalText = new Intl.NumberFormat('vi-VN').format(Number(bill.totalAmount || 0));
+        const label = bill.invoice?.invoiceNo || bill.orderCode || '';
+        const wrapper = document.createElement('div');
+        wrapper.className = 'admin-invoice-block is-archived';
+        wrapper.innerHTML = `
+            <div class="admin-invoice-head">
+                <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> Hóa đơn đã gửi khách${label ? ` · ${escapeHtml(label)}` : ''}</span>
+                <span class="admin-invoice-status ${bill.orderStatus === 'paid' ? 'is-paid' : 'is-waiting'}">${escapeHtml(bill.orderStatus === 'paid' ? 'Đã thanh toán' : 'Đã lưu')}</span>
+            </div>
+            ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(pdf || preview)}" data-preview-type="document" data-preview-title="Hóa đơn"><img src="${escapeHtml(preview)}" alt="Hóa đơn"></button>` : ''}
+            <div class="admin-invoice-meta">
+                <span><strong>${escapeHtml(totalText)} ₫</strong></span>
+                ${methodText ? `<span><i class="ri-bank-card-line"></i> ${escapeHtml(methodText)}</span>` : ''}
+                ${pdf ? `<button type="button" class="attachment-preview-trigger admin-invoice-open" data-preview-url="${escapeHtml(pdf)}" data-preview-type="document" data-preview-title="Hóa đơn"><i class="ri-file-pdf-2-line"></i> Mở PDF</button>` : ''}
+            </div>
+        `;
+        insertIntoChatFlow(wrapper, bill.createdAt);
+    }
+}
+
+
 async function loadOrderForAdmin(sessionId) {
     try {
         const response = await fetch(`${API_BASE}/api/chats/${sessionId}/order?lang=${currentLang}&_=${Date.now()}`);
@@ -1644,6 +1703,7 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
     });
 
     renderAdminInvoice();
+    renderAdminSavedBills();
     // Đơn CHỜ XÁC NHẬN do order-console.js vẽ; đơn đã xác nhận thì hàm trên vẽ
     // hoá đơn. Hai trạng thái loại trừ nhau nên không chồng lên nhau.
     window.OrderConsole?.renderPending(adminOrder, chatMessagesContainer);
@@ -2256,6 +2316,7 @@ async function closeActiveSession() {
 
 function resetActiveChatUI() {
     adminOrder = null;
+    adminBills = [];
     adminOrderSignature = '';
     currentSessionId = null;
     if (messagePollInterval) clearInterval(messagePollInterval);

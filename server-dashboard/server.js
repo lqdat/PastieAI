@@ -9813,8 +9813,13 @@ app.get('/api/chats/:sessionId/history/:pastSessionId', async (req, res) => {
         msg.attachment_url = await cachedPresignedUrl(msg.attachment_key).catch(() => msg.attachment_url);
       }
     }));
+    // Hoá đơn của đoạn cũ: đây CHÍNH LÀ chỗ khách cần nó nhất — quay lại tra
+    // "hồi nãy tôi trả bao nhiêu". Trước đây bill vẫn được lưu nhưng không có
+    // đường nào xem lại, vì màn này chỉ trả tin nhắn.
+    const bills = await loadSessionBills(past.rows[0].id, invoiceLanguageFor(null, visitorLang))
+      .catch((error) => { console.error('QR history bills error:', error.message); return []; });
     // readOnly để cổng khách không dựng ô nhập tin cho một phiên đã đóng.
-    res.json({ readOnly: true, messages });
+    res.json({ readOnly: true, messages, bills });
   } catch (error) {
     console.error('QR history read error:', error);
     res.status(500).json({ error: 'Không tải được đoạn trò chuyện.' });
@@ -10839,12 +10844,10 @@ async function maybeAutoSelectDeferredPayment(order) {
 // KHÔNG đòi phiên còn 'active' như getChatOrderForVisitor: bill phải xem lại
 // được cả khi đoạn chat đã đóng — đó là chỗ khách cần nó nhất, lúc quay lại tra
 // "hồi nãy tôi trả bao nhiêu".
-app.get('/api/chats/:sessionId/bills', async (req, res) => {
-  try {
-    const language = invoiceLanguageFor(
-      (await db.query('SELECT detected_language FROM sessions WHERE id = $1', [req.params.sessionId])).rows[0],
-      req.query.lang
-    );
+// Hoá đơn đã lưu của MỘT phiên, dựng lại theo ngôn ngữ khách đang xem.
+// Dùng chung cho route /bills (phiên đang mở) và cho màn xem lại đoạn chat đã
+// đóng — cùng một cách dựng thì hoá đơn cũ trông y hệt lúc mới nhận.
+async function loadSessionBills(sessionId, language) {
     const rows = await db.query(
       `SELECT b.id, b.order_id, b.version, b.invoice, b.items, b.total_amount,
               b.payment_method, b.created_at, o.status AS order_status, o.order_code,
@@ -10861,13 +10864,13 @@ app.get('/api/chats/:sessionId/bills', async (req, res) => {
         WHERE b.session_id = $1
         ORDER BY b.created_at ASC, b.version ASC
         LIMIT 50`,
-      [req.params.sessionId]
+      [sessionId]
     );
     // Dựng hoá đơn theo ngôn ngữ khách đang chọn, giống route /order. Làm song
     // song vì một bữa có thể có vài bill và khách không nên chờ tuần tự.
     const bills = await Promise.all(rows.rows.map(async (row) => {
       const localized = await localizeOrderForVisitor(
-        { session_id: req.params.sessionId, items: row.items }, language
+        { session_id: sessionId, items: row.items }, language
       );
       const invoice = await prepareInvoiceDelivery(
         {
@@ -10884,6 +10887,16 @@ app.get('/api/chats/:sessionId/bills', async (req, res) => {
         orderStatus: row.order_status, createdAt: row.created_at, invoice,
       };
     }));
+  return bills;
+}
+
+app.get('/api/chats/:sessionId/bills', async (req, res) => {
+  try {
+    const language = invoiceLanguageFor(
+      (await db.query('SELECT detected_language FROM sessions WHERE id = $1', [req.params.sessionId])).rows[0],
+      req.query.lang
+    );
+    const bills = await loadSessionBills(req.params.sessionId, language);
     res.json({ language, bills });
   } catch (error) {
     console.error('List bills error:', error);

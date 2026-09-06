@@ -4686,7 +4686,7 @@ button {
     bottom: 7px;
     display: block;
     width: auto;
-    height: 24px;
+    height: 32px;
     object-fit: contain;
     pointer-events: none;
 }
@@ -4801,7 +4801,7 @@ button {
         border-radius: 0;
     }
     .dashboard-header.sale-header .header-left { padding-right: 8px; }
-    .dashboard-header.sale-header .staff-header-wordmark { right: 12px; bottom: 6px; height: 22px; }
+    .dashboard-header.sale-header .staff-header-wordmark { right: 12px; bottom: 6px; height: 28px; }
     .dashboard-header.sale-header .agent-avatar-badge { width: 42px; height: 42px; border-radius: 13px; }
     .dashboard-header.sale-header .agent-identity-label,
     .dashboard-header.sale-header .agent-identity.sale-identity .agent-identity-label,
@@ -5009,3 +5009,8 @@ button {
     .report-table td[colspan] { display: block; text-align: center; }
     .report-table td[colspan]::before { content: none; }
 }
+
+
+/* Hoá đơn CŨ (bản đã lưu, không phải bill của đơn đang mở): viền nhạt hơn để
+   Sale phân biệt được ngay đâu là tờ đang có hiệu lực. */
+.admin-invoice-block.is-archived { opacity: .92; border-style: dashed; }
