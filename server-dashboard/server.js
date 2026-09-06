@@ -4101,6 +4101,67 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
 //
 // KHÔNG trả stock_quantity: số tồn là chuyện nội bộ của Agent, Sale chỉ cần
 // biết món còn hay hết.
+// Danh sách LOẠI HÌNH cơ sở, phục vụ ô "Loại hình" trong form nhân sự.
+//
+// Lấy thẳng từ gemini-helper để form và máy chủ dùng CHUNG một danh sách. Chép
+// tay sang giao diện thì người dùng chọn được một loại hình mà splitVenueName
+// không nhận ra, và tên riêng sẽ bị dịch mất.
+app.get('/api/admin/venue-prefixes', checkAdminAuth, (req, res) => {
+  res.json({ prefixes: gemini.VENUE_PREFIXES || [] });
+});
+
+// Ảnh đại diện: tải lên và ký lại link.
+//
+// Ảnh này còn được dùng làm LOGO CƠ SỞ trên cổng khách (xem locationLogoUrl),
+// nên nó không chỉ là trang trí trong console.
+async function refreshAdminAvatarUrl(admin) {
+  if (!admin?.avatar_key) return admin;
+  const expires = admin.avatar_url_expires_at ? new Date(admin.avatar_url_expires_at).getTime() : 0;
+  if (admin.avatar_url && expires - Date.now() > 24 * 3600 * 1000) return admin;
+  try {
+    const url = await s3.getMenuImageUrl(admin.avatar_key);
+    if (!url) return admin;
+    const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
+    await db.query('UPDATE admins SET avatar_url = $2, avatar_url_expires_at = $3 WHERE id = $1',
+      [admin.id, url, expiresAt]);
+    return { ...admin, avatar_url: url, avatar_url_expires_at: expiresAt };
+  } catch (error) {
+    console.error('[Avatar] Không ký lại được link:', error.message);
+    return admin;
+  }
+}
+
+app.post('/api/superadmin/accounts/:adminId/avatar', checkAdminAuth, uploadAttachmentMiddleware, async (req, res) => {
+  const adminId = Number(req.params.adminId);
+  // Ai cũng đổi được ảnh của CHÍNH MÌNH; superadmin đổi được của người khác.
+  if (!isSuperAdmin(req.admin) && Number(req.admin.id) !== adminId) {
+    return res.status(403).json({ error: 'Bạn chỉ đổi được ảnh đại diện của chính mình.' });
+  }
+  if (!req.file) return res.status(400).json({ error: 'Chưa chọn ảnh.' });
+  if (!String(req.file.mimetype || '').startsWith('image/')) {
+    return res.status(400).json({ error: 'Chỉ nhận tệp ảnh.' });
+  }
+  try {
+    const found = await db.query('SELECT id, project_id, avatar_key FROM admins WHERE id = $1', [adminId]);
+    if (!found.rows[0]) return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
+
+    const key = s3.buildMenuImageKey(found.rows[0].project_id || 'system', adminId, req.file.originalname);
+    await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
+    const url = await s3.getMenuImageUrl(key);
+    const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
+    await db.query(
+      'UPDATE admins SET avatar_key = $2, avatar_url = $3, avatar_url_expires_at = $4 WHERE id = $1',
+      [adminId, key, url, expiresAt]
+    );
+    // Xoá ảnh cũ SAU khi ảnh mới đã lưu xong, không phải trước.
+    if (found.rows[0].avatar_key) void s3.deleteObject(found.rows[0].avatar_key).catch(() => {});
+    res.json({ success: true, avatarUrl: url });
+  } catch (error) {
+    console.error('Upload avatar error:', error);
+    res.status(500).json({ error: 'Không tải được ảnh lên.' });
+  }
+});
+
 app.get('/api/admin/menu/view', checkAdminAuth, async (req, res) => {
   try {
     // Sale xem thực đơn của Agent quản lý mình; Agent xem của chính mình.

@@ -406,21 +406,113 @@ function updateAdminFormRoleVisibility() {
 }
 
 
-function renderAdminAvatarPicker(selectedId = 'gradient-1') {
-    if (!adminAvatarPicker) return;
-    adminAvatarPicker.innerHTML = '';
-    ADMIN_AVATARS.forEach(avatar => {
-        const option = document.createElement('button');
-        option.type = 'button';
-        option.className = `avatar-picker-option${avatar.id === selectedId ? ' selected' : ''}`;
-        option.style.background = avatar.background;
-        option.title = `Avatar ${avatar.label}`;
-        option.setAttribute('aria-label', `Chọn avatar ${avatar.label}`);
-        option.addEventListener('click', () => renderAdminAvatarPicker(avatar.id));
-        adminAvatarPicker.appendChild(option);
-    });
-    if (adminFormAvatar) adminFormAvatar.value = selectedId;
+// Danh sách loại hình LẤY TỪ MÁY CHỦ, không chép tay.
+//
+// Chép tay thì người dùng chọn được một loại hình mà splitVenueName của máy chủ
+// không nhận ra, và phần tên riêng sẽ bị máy dịch dịch mất.
+let VENUE_PREFIXES = [];
+
+async function loadVenuePrefixes() {
+    const select = document.getElementById('admin-form-venue-type');
+    if (!select || VENUE_PREFIXES.length) return;
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/venue-prefixes`);
+        const data = await res.json();
+        VENUE_PREFIXES = Array.isArray(data.prefixes) ? data.prefixes : [];
+    } catch { VENUE_PREFIXES = []; }
+    const title = (text) => String(text || '').replace(/\b\p{L}/gu, (c) => c.toUpperCase());
+    for (const prefix of VENUE_PREFIXES) {
+        const option = document.createElement('option');
+        option.value = prefix;
+        option.textContent = title(prefix);
+        select.appendChild(option);
+    }
 }
+
+// Tách một tên đầy đủ thành loại hình + tên riêng, dùng ĐÚNG danh sách của máy
+// chủ. Loại hình dài khớp trước: "công ty tnhh" phải thắng "công ty".
+function splitVenueName(fullName) {
+    const raw = String(fullName || '').trim();
+    const lower = raw.toLowerCase();
+    for (const prefix of [...VENUE_PREFIXES].sort((a, b) => b.length - a.length)) {
+        if (lower.startsWith(prefix + ' ')) {
+            return { prefix: raw.slice(0, prefix.length), name: raw.slice(prefix.length).trim() };
+        }
+    }
+    return { prefix: '', name: raw };
+}
+
+function updateVenueNamePreview() {
+    const type = document.getElementById('admin-form-venue-type')?.value || '';
+    const name = (adminFormFullName?.value || '').trim();
+    const preview = document.getElementById('admin-form-name-preview');
+    if (!preview) return;
+    preview.textContent = type && name
+        ? `Tên đầy đủ: ${type} ${name} — khách nước ngoài thấy loại hình đã dịch, "${name}" giữ nguyên.`
+        : '';
+}
+document.getElementById('admin-form-venue-type')?.addEventListener('change', updateVenueNamePreview);
+document.getElementById('admin-form-fullname')?.addEventListener('input', updateVenueNamePreview);
+
+// Ảnh đại diện: xem trước + tải lên. Thay hẳn bộ năm ô màu gradient.
+//
+// avatar_url của tài khoản cũ đang giữ một mã kiểu 'gradient-1'. Không xoá dữ
+// liệu đó: chưa có ảnh thật thì vẫn vẽ gradient như trước, có ảnh thì vẽ ảnh.
+// Phân biệt bằng việc chuỗi có bắt đầu bằng http hay không.
+const AVATAR_GRADIENTS = {
+    'gradient-1': 'linear-gradient(135deg,#a78bfa,#7c3aed)',
+    'gradient-2': 'linear-gradient(135deg,#f472b6,#db2777)',
+    'gradient-3': 'linear-gradient(135deg,#34d399,#059669)',
+    'gradient-4': 'linear-gradient(135deg,#fbbf24,#d97706)',
+    'gradient-5': 'linear-gradient(135deg,#60a5fa,#2563eb)',
+};
+const isImageUrl = (value) => /^https?:\/\//i.test(String(value || ''));
+
+function renderAdminAvatarPreview(value, fallbackName) {
+    const box = document.getElementById('admin-avatar-preview');
+    if (!box) return;
+    if (isImageUrl(value)) {
+        box.style.background = 'none';
+        box.innerHTML = `<img src="${escapeHtml(value)}" alt="">`;
+    } else {
+        box.style.background = AVATAR_GRADIENTS[value] || AVATAR_GRADIENTS['gradient-1'];
+        box.innerHTML = `<span>${escapeHtml(String(fallbackName || '?').trim().charAt(0).toUpperCase() || '?')}</span>`;
+    }
+    if (adminFormAvatar) adminFormAvatar.value = value || '';
+}
+
+// Tài khoản CHƯA LƯU thì chưa có id để gắn ảnh vào. Giữ tệp lại, tải lên ngay
+// sau khi lưu xong — nếu không, người dùng chọn ảnh rồi bấm Lưu và ảnh im lặng
+// biến mất.
+let pendingAvatarFile = null;
+
+async function uploadAdminAvatar(adminId, file) {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await authFetch(`${API_BASE}/api/superadmin/accounts/${adminId}/avatar`, {
+        method: 'POST', body: form,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || 'Không tải được ảnh lên.');
+    return data.avatarUrl;
+}
+
+document.getElementById('admin-avatar-pick')?.addEventListener('click', () => {
+    document.getElementById('admin-avatar-file')?.click();
+});
+document.getElementById('admin-avatar-file')?.addEventListener('change', (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { showToast('Chỉ nhận tệp ảnh.', 'error'); return; }
+    if (file.size > 10 * 1024 * 1024) { showToast('Ảnh vượt quá 10MB.', 'error'); return; }
+    pendingAvatarFile = file;
+    // Xem trước ngay bằng chính tệp vừa chọn, không đợi tải lên xong: người dùng
+    // cần biết mình chọn đúng ảnh trước khi bấm Lưu.
+    const reader = new FileReader();
+    reader.onload = () => renderAdminAvatarPreview(String(reader.result || ''));
+    reader.readAsDataURL(file);
+    event.target.value = '';
+});
 
 
 function applyAdminMgmtFocus() {
@@ -676,7 +768,8 @@ async function loadAdminUsers() {
                 <div class="admin-user-card ${isSelf ? 'is-self' : ''} ${depth ? 'is-child' : ''}" data-admin-row="${u.id}">
                     ${depth ? '<span class="admin-user-branch" aria-hidden="true"></span>' : ''}
                     <div class="admin-user-info">
-                        <div class="admin-user-avatar" style="background: ${bgGradient};">
+                        <div class="admin-user-avatar"${isImageUrl(u.avatar_url) ? ` style="background:none;padding:0;overflow:hidden;"` : ` style="background: ${bgGradient};"`}>
+                            ${isImageUrl(u.avatar_url) ? `<img src="${escapeHtml(u.avatar_url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">` : ''}
                             ${initial}
                             <span class="online-dot ${u.is_active ? 'active' : 'inactive'}"></span>
                         </div>
@@ -756,13 +849,34 @@ function resetAdminForm() {
         if (adminFormRole) { adminFormRole.value = 'agent'; adminFormRole.disabled = false; }
     }
 
-    const adminFormDeferred = document.getElementById('admin-form-deferred');
-    if (adminFormDeferred) adminFormDeferred.value = 'none';
+    setDeferredMode('none');
     const adminFormDeferredGroup = document.getElementById('admin-form-deferred-group');
     if (adminFormDeferredGroup) adminFormDeferredGroup.style.display = 'block';
 
-    renderAdminAvatarPicker();
+    const venueType = document.getElementById('admin-form-venue-type');
+    if (venueType) venueType.value = '';
+    updateVenueNamePreview();
+    pendingAvatarFile = null;
+    renderAdminAvatarPreview('gradient-1');
+    void loadVenuePrefixes();
 }
+
+// Hai mục trả chậm LOẠI TRỪ NHAU: chọn mục này thì mục kia tự bỏ chọn. Dùng
+// checkbox thay radio vì phải bỏ chọn được cả hai (nghĩa là "không có").
+function setDeferredMode(mode) {
+    const room = document.getElementById('admin-form-pay-room');
+    const later = document.getElementById('admin-form-pay-later');
+    const hidden = document.getElementById('admin-form-deferred');
+    if (room) room.checked = mode === 'room_charge';
+    if (later) later.checked = mode === 'pay_later';
+    if (hidden) hidden.value = mode || 'none';
+}
+document.getElementById('admin-form-pay-room')?.addEventListener('change', (event) => {
+    setDeferredMode(event.target.checked ? 'room_charge' : 'none');
+});
+document.getElementById('admin-form-pay-later')?.addEventListener('change', (event) => {
+    setDeferredMode(event.target.checked ? 'pay_later' : 'none');
+});
 
 
 async function editAdminUser(id) {
@@ -797,9 +911,8 @@ async function editAdminUser(id) {
         // khong noi ra duoc.
         renderAdminFormManager(u);
         if (adminFormSaleLimitGroup) adminFormSaleLimitGroup.style.display = u.role === 'agent' ? 'block' : 'none';
-        const adminFormDeferred = document.getElementById('admin-form-deferred');
-        if (adminFormDeferred) {
-            adminFormDeferred.value = u.deferred_payment_mode || (u.allow_room_charge ? 'room_charge' : 'none');
+        {
+            setDeferredMode(u.deferred_payment_mode || (u.allow_room_charge ? 'room_charge' : 'none'));
         }
         const adminFormDeferredGroup = document.getElementById('admin-form-deferred-group');
         if (adminFormDeferredGroup) {
@@ -814,7 +927,15 @@ async function editAdminUser(id) {
             adminFormSaleLimit.value = (u.sale_limit === null || u.sale_limit === undefined) ? '' : String(u.sale_limit);
         }
         if (adminFormActive) adminFormActive.checked = u.is_active;
-        renderAdminAvatarPicker(u.avatar_url || 'gradient-1');
+        // Tách tên đầy đủ đang lưu thành loại hình + tên riêng để hai ô hiện đúng.
+        await loadVenuePrefixes();
+        const parts = splitVenueName(u.full_name || '');
+        const venueType = document.getElementById('admin-form-venue-type');
+        if (venueType) venueType.value = parts.prefix.toLowerCase();
+        if (adminFormFullName) adminFormFullName.value = parts.name;
+        updateVenueNamePreview();
+        pendingAvatarFile = null;
+        renderAdminAvatarPreview(u.avatar_url || 'gradient-1', parts.name || u.username);
         if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'flex';
         if (adminFormTitle) adminFormTitle.innerHTML = `<i class="ri-edit-line" style="color:#ec4899;"></i> Sửa nhân viên: ${escapeHtml(u.full_name || u.username)}`;
         if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-save-line"></i> Cập nhật';
@@ -866,6 +987,17 @@ async function handleAdminUserSubmit(e) {
         const adminFormDeferred = document.getElementById('admin-form-deferred');
         payload.deferred_payment_mode = adminFormDeferred?.value || 'none';
     }
+
+    // Ghép LOẠI HÌNH + TÊN RIÊNG thành full_name. Máy chủ vẫn lưu một chuỗi như
+    // trước và splitVenueName tách lại đúng chỗ mình vừa ghép — không phải đoán.
+    {
+        const type = (document.getElementById('admin-form-venue-type')?.value || '').trim();
+        const bare = (adminFormFullName?.value || '').trim();
+        if (type && bare) {
+            const title = type.replace(/\b\p{L}/gu, (c) => c.toUpperCase());
+            payload.full_name = `${title} ${bare}`;
+        }
+    }
     try {
         const url = id ? `${API_BASE}/api/admin/users/${id}` : `${API_BASE}/api/admin/users`;
         const method = id ? 'PUT' : 'POST';
@@ -875,8 +1007,19 @@ async function handleAdminUserSubmit(e) {
             body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (res.ok) { 
-            resetAdminForm(); 
+        if (res.ok) {
+            // Tải ảnh SAU khi lưu: tài khoản mới tới đây mới có id để gắn ảnh vào.
+            // Ảnh hỏng thì tài khoản vẫn đã lưu — báo riêng, đừng nuốt im lặng.
+            const savedId = id || data?.user?.id || data?.id;
+            if (pendingAvatarFile && savedId) {
+                try {
+                    await uploadAdminAvatar(savedId, pendingAvatarFile);
+                } catch (error) {
+                    showToast(`Đã lưu nhân viên nhưng chưa tải được ảnh: ${error.message}`, 'error');
+                }
+                pendingAvatarFile = null;
+            }
+            resetAdminForm();
             await loadAdminUsers(); 
             if (!id && data.qr?.chat_url) {
                 // Link QR cần đọc và sao chép được nên dùng hộp thoại có nút, không

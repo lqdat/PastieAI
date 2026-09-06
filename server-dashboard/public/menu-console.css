@@ -1336,3 +1336,36 @@
     .cart-overlay { padding: 0; align-items: flex-end; }
     .cart-box { width: 100%; max-height: 92vh; border-radius: 16px 16px 0 0; }
 }
+
+
+/* ── Form nhân sự: phương thức thanh toán và ảnh đại diện ─────────────── */
+.pay-method-list { display: flex; flex-direction: column; gap: 6px; }
+.pay-method-row {
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 12px; border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--panel-border); background: var(--panel-bg);
+    font-size: 12.5px; font-weight: 600; color: var(--text-primary);
+}
+.pay-method-row:hover { border-color: var(--accent-color); }
+.pay-method-row input { width: 16px; height: 16px; accent-color: var(--accent-color); cursor: pointer; }
+/* Ba phương thức trả ngay luôn bật: hiện ra cho thấy đủ danh sách, nhưng làm mờ
+   để không ai tưởng là tắt được. */
+.pay-method-row.is-fixed { opacity: .72; cursor: default; background: var(--surface-neutral); }
+.pay-method-row.is-fixed input { cursor: default; }
+
+.avatar-upload-row { display: flex; align-items: center; gap: 12px; }
+.avatar-upload-preview {
+    flex: 0 0 auto; width: 56px; height: 56px; border-radius: 14px;
+    display: grid; place-items: center; overflow: hidden;
+    color: #fff; font-size: 22px; font-weight: 800;
+}
+.avatar-upload-preview img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-upload-actions { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.avatar-upload-btn {
+    display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+    padding: 7px 13px; border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--panel-border); background: var(--panel-bg);
+    color: var(--text-primary); font: inherit; font-size: 12px; font-weight: 700;
+}
+.avatar-upload-btn:hover { border-color: var(--accent-color); color: var(--accent-color); }
+#admin-avatar-hint { color: var(--text-muted); font-size: 10.5px; }

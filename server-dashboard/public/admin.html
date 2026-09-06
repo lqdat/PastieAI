@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r88">
-    <link rel="stylesheet" href="menu-console.css?v=r88">
+    <link rel="stylesheet" href="admin.css?v=r89">
+    <link rel="stylesheet" href="menu-console.css?v=r89">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -1153,9 +1153,23 @@
                         <form id="admin-user-form" style="display: flex; flex-direction: column; gap: 12px;">
                             <input type="hidden" id="admin-form-id">
 
+                            <!-- Tách LOẠI HÌNH khỏi TÊN RIÊNG.
+                                 Máy chủ dịch loại hình ("Hộ Kinh Doanh" -> "Business
+                                 household") nhưng giữ nguyên tên riêng ("Đan Trinh").
+                                 Nhập chung một ô thì phải đoán chỗ cắt; nhập tách thì
+                                 chắc chắn đúng. Ô loại hình để trống cũng được — tài
+                                 khoản Sale và quản trị là tên người, không có loại hình. -->
+                            <div class="form-group" id="admin-form-venue-group" style="margin: 0;">
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Loại hình cơ sở</label>
+                                <select id="admin-form-venue-type" style="width:100%;">
+                                    <option value="">— Không có (tên người) —</option>
+                                </select>
+                            </div>
+
                             <div class="form-group" style="margin: 0;">
-                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Họ và tên *</label>
-                                <input type="text" id="admin-form-fullname" placeholder="Nguyễn Văn A..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;"><span id="admin-form-name-label">Họ và tên</span> *</label>
+                                <input type="text" id="admin-form-fullname" placeholder="Đan Trinh Pastie / Nguyễn Văn A..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
+                                <small id="admin-form-name-preview" style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;"></small>
                             </div>
 
                             <div class="form-group" style="margin: 0;">
@@ -1189,20 +1203,47 @@
                             </div>
 
                             <div class="form-group" id="admin-form-deferred-group" style="margin: 0;">
-                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Phương thức trả chậm cho khách (chỉ 1 trong 2)</label>
-                                <select id="admin-form-deferred" style="width:100%;">
-                                    <option value="none">Không có (Chỉ trả ngay: Tiền mặt, QR, Thẻ)</option>
-                                    <option value="room_charge">Cộng vào tiền phòng (Room charge)</option>
-                                    <option value="pay_later">Thanh toán sau (Pay later)</option>
-                                </select>
-                                <small style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;">Chỉ áp dụng cho tài khoản Agent. Chỉ chọn 1 trong 2: Cộng vào tiền phòng hoặc Thanh toán sau.</small>
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Phương thức thanh toán cho khách</label>
+                                <!-- Ba phương thức trả ngay LUÔN bật: không quán nào từ chối
+                                     tiền mặt hay chuyển khoản, nên cho tắt chỉ tạo ra một
+                                     trạng thái sai mà không ai cần. Hiện ra để người dùng
+                                     thấy đủ danh sách, khoá lại để khỏi nhầm là tắt được. -->
+                                <div class="pay-method-list">
+                                    <label class="pay-method-row is-fixed">
+                                        <input type="checkbox" checked disabled><span>Tiền mặt</span>
+                                    </label>
+                                    <label class="pay-method-row is-fixed">
+                                        <input type="checkbox" checked disabled><span>Chuyển khoản QR</span>
+                                    </label>
+                                    <label class="pay-method-row is-fixed">
+                                        <input type="checkbox" checked disabled><span>Thẻ</span>
+                                    </label>
+                                </div>
+                                <div class="pay-method-list" id="admin-form-deferred-group-inner" style="margin-top:8px;">
+                                    <label class="pay-method-row">
+                                        <input type="checkbox" id="admin-form-pay-room" value="room_charge"><span>Cộng vào tiền phòng</span>
+                                    </label>
+                                    <label class="pay-method-row">
+                                        <input type="checkbox" id="admin-form-pay-later" value="pay_later"><span>Thanh toán sau</span>
+                                    </label>
+                                </div>
+                                <input type="hidden" id="admin-form-deferred" value="none">
+                                <small style="display:block; margin-top:5px; color:var(--text-muted); font-size:10.5px;">Chỉ áp dụng cho tài khoản Agent. Hai mục dưới loại trừ nhau: chọn mục này thì mục kia tự bỏ chọn.</small>
                             </div>
 
-                            <div class="form-group" style="margin: 0;">
-                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Chọn màu đại diện Avatar</label>
-                                <div style="display: flex; gap: 9px; flex-wrap: wrap; margin-bottom: 2px;" id="admin-avatar-picker">
-                                    <!-- Gradient avatars options -->
+                            <!-- Ảnh đại diện thật thay cho năm ô màu. Ảnh này còn được
+                                 dùng làm LOGO CƠ SỞ trên cổng khách, nên nó không chỉ là
+                                 trang trí trong console. -->
+                            <div class="form-group" id="admin-form-avatar-group" style="margin: 0;">
+                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Ảnh đại diện</label>
+                                <div class="avatar-upload-row">
+                                    <div class="avatar-upload-preview" id="admin-avatar-preview"></div>
+                                    <div class="avatar-upload-actions">
+                                        <button type="button" class="avatar-upload-btn" id="admin-avatar-pick"><i class="ri-image-add-line"></i> Chọn ảnh</button>
+                                        <small id="admin-avatar-hint">PNG hoặc JPG, tối đa 10MB.</small>
+                                    </div>
                                 </div>
+                                <input type="file" id="admin-avatar-file" accept="image/*" hidden>
                                 <input type="hidden" id="admin-form-avatar">
                             </div>
 
@@ -1352,15 +1393,15 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r88"></script>
-    <script src="core.js?v=r88"></script>
-    <script src="chat.js?v=r88"></script>
-    <script src="org-console.js?v=r88"></script>
-    <script src="project-admin.js?v=r88"></script>
-    <script src="menu-console.js?v=r88"></script>
-    <script src="order-console.js?v=r88"></script>
-    <script src="monitor-console.js?v=r88"></script>
-    <script src="cart-console.js?v=r88"></script>
-    <script src="admin.js?v=r88"></script>
+    <script src="config.js?v=r89"></script>
+    <script src="core.js?v=r89"></script>
+    <script src="chat.js?v=r89"></script>
+    <script src="org-console.js?v=r89"></script>
+    <script src="project-admin.js?v=r89"></script>
+    <script src="menu-console.js?v=r89"></script>
+    <script src="order-console.js?v=r89"></script>
+    <script src="monitor-console.js?v=r89"></script>
+    <script src="cart-console.js?v=r89"></script>
+    <script src="admin.js?v=r89"></script>
 </body>
 </html>

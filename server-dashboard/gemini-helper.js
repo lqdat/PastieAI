@@ -622,6 +622,7 @@ async function detectLanguage(text) {
 }
 
 module.exports = {
+  VENUE_PREFIXES,
   protectNames,
   removeVietnameseTones,
   splitVenueName,

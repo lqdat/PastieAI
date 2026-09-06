@@ -945,6 +945,13 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // Chỉ khách sạn mới cộng được vào tiền phòng; nhà hàng lẻ thì không. Cờ này
     // do superadmin bật cho từng Agent, không phải Agent tự bật.
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS allow_room_charge BOOLEAN NOT NULL DEFAULT FALSE;`);
+    // Ảnh đại diện thật, thay cho việc chọn một trong năm màu gradient.
+    //
+    // Lưu KHOÁ S3 chứ không chỉ lưu URL: link ký sẵn có hạn, hết hạn là ảnh
+    // biến mất khỏi mọi màn hình mà không ai biết vì sao. Có khoá thì ký lại
+    // được bất cứ lúc nào.
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS avatar_key TEXT;`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS avatar_url_expires_at TIMESTAMP;`);
 
     // ── Định danh khách TÁCH KHỎI phiên chat ───────────────────────────────
     //
