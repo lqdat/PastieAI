@@ -783,9 +783,12 @@ function renderSessionsList(sessions) {
         const rawPreview = session.last_message_preview && session.latest_order_id && session.latest_order_code
             ? session.last_message_preview.split(session.latest_order_id).join(session.latest_order_code)
             : session.last_message_preview;
+        // Phiên mà khách chưa nói gì: máy chủ không trả tin cuối nào (câu chào
+        // không tính). Để trống là Sale tưởng danh sách lỗi — nói thẳng ra là
+        // khách chưa nhắn, vì đó chính là việc cần biết để chủ động hỏi trước.
         const preview = rawPreview
             ? rawPreview.substring(0, 45) + (rawPreview.length > 45 ? '…' : '')
-            : '';
+            : 'Khách chưa nhắn gì';
 
         const isMC = session.platform && session.platform !== 'widget';
 
@@ -841,7 +844,7 @@ function renderSessionsList(sessions) {
                     </div>
                 </div>
             </div>
-            ${preview ? `<div class="session-card-preview">${escapeHtml(preview)}</div>` : ''}
+            <div class="session-card-preview${rawPreview ? '' : ' is-empty'}">${escapeHtml(preview)}</div>
             <div class="session-meta-footer">
                 ${
                     (session.group_name || session.qr_label)

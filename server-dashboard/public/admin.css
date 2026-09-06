@@ -5074,3 +5074,6 @@ button {
     border: 0; background: transparent; cursor: pointer;
     color: var(--text-secondary); font-size: 15px; line-height: 1; padding: 4px;
 }
+
+/* "Khách chưa nhắn gì" là ghi chú của hệ thống, không phải lời khách nói. */
+.session-card-preview.is-empty { font-style: italic; opacity: .65; }

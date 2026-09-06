@@ -6112,9 +6112,16 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
                ) AS unread_visitor
           FROM messages WHERE session_id = s.id
       ) mstat ON TRUE
+      -- Tin cuối hiện trong danh sách chat KHÔNG được là câu nói-với-khách.
+      --
+      -- Lời chào và lời cảm ơn đã bị ẩn khỏi khung chat của Sale/Agent, nhưng
+      -- danh sách vẫn lấy tin cuối cùng bất kể loại — nên một phiên khách chưa
+      -- nhắn gì vẫn hiện nguyên câu chào như thể khách vừa nói câu đó.
       LEFT JOIN LATERAL (
         SELECT original_text, sender FROM messages
-         WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1
+         WHERE session_id = s.id
+           AND COALESCE(system_kind, '') <> 'guest_only'
+         ORDER BY created_at DESC LIMIT 1
       ) mlast ON TRUE
       LEFT JOIN LATERAL (
         SELECT id, order_code FROM chat_orders
