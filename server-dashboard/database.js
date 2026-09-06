@@ -1025,6 +1025,38 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // rồi trừ lại theo đơn mới — không thì mỗi lần sửa là kho hụt thêm một lần.
     // Phần mềm tính tiền bên ngoài cũng cần số này để biết bản nào mới hơn.
     await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1;`);
+    // Mã đơn là dữ liệu nghiệp vụ riêng, KHÔNG dùng UUID kỹ thuật để đưa cho
+    // khách/nhân viên. Lưu thẳng trong DB để hóa đơn, chat, POS và giỏ hàng luôn
+    // nói cùng một mã kể cả sau khi restart hay dựng lại PDF.
+    await query(`CREATE SEQUENCE IF NOT EXISTS chat_order_code_seq START WITH 100001;`);
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS order_code VARCHAR(40);`);
+    await query(`
+      UPDATE chat_orders
+         SET order_code = COALESCE(
+           CASE WHEN LENGTH(NULLIF(invoice->>'invoiceNo', '')) <= 40
+                THEN NULLIF(invoice->>'invoiceNo', '') END,
+           'BILL-' || TO_CHAR(COALESCE(created_at, CURRENT_TIMESTAMP), 'YYMMDD') || '-'
+             || LPAD(NEXTVAL('chat_order_code_seq')::text, 6, '0')
+         )
+       WHERE order_code IS NULL OR order_code = '';
+    `);
+    // Một POS cũ có thể từng ghi trùng invoiceNo. Giữ mã của dòng đầu, cấp mã
+    // mới cho các dòng trùng để migration không mắc kẹt ở unique index.
+    await query(`
+      WITH ranked AS (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY order_code ORDER BY created_at, id) AS rn
+          FROM chat_orders
+      )
+      UPDATE chat_orders o
+         SET order_code = 'BILL-' || TO_CHAR(COALESCE(o.created_at, CURRENT_TIMESTAMP), 'YYMMDD') || '-'
+           || LPAD(NEXTVAL('chat_order_code_seq')::text, 6, '0')
+        FROM ranked r
+       WHERE o.id = r.id AND r.rn > 1;
+    `);
+    await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_orders_order_code ON chat_orders(order_code);`);
+    await query(`ALTER TABLE chat_orders ALTER COLUMN order_code SET NOT NULL;`);
+    await query(`ALTER TABLE chat_orders ALTER COLUMN order_code SET DEFAULT
+      ('BILL-' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || '-' || LPAD(NEXTVAL('chat_order_code_seq')::text, 6, '0'));`);
     // Mốc thời gian hệ thống TỰ chọn phương thức thay khách, để còn đối chứng khi
     // có tranh cãi. NULL nghĩa là chính khách bấm.
     await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS payment_auto_selected_at TIMESTAMP;`);

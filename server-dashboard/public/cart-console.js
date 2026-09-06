@@ -45,7 +45,7 @@
                 <article class="cart-row ${state.cls}">
                     <div class="cart-row-head">
                         <button type="button" class="cart-code" data-open="${escapeHtml(order.session_id)}"
-                                title="Mở cuộc trò chuyện của đơn này">${escapeHtml(order.id)}</button>
+                                title="Mở cuộc trò chuyện của đơn này">${escapeHtml(order.order_code || order.id)}</button>
                         <span class="cart-status ${state.cls}">${state.label}</span>
                     </div>
                     <div class="cart-row-meta">
@@ -101,7 +101,9 @@
 
             const paid = event.target.closest('[data-paid]');
             if (paid) {
-                const ok = await pastieConfirm(`Xác nhận đã nhận tiền của đơn ${paid.dataset.paid}? Khách và nhân viên trực sẽ thấy thông báo trong cuộc trò chuyện.`);
+                const row = paid.closest('.cart-row');
+                const visibleCode = row?.querySelector('.cart-code')?.textContent?.trim() || paid.dataset.paid;
+                const ok = await pastieConfirm(`Xác nhận đã nhận tiền của đơn ${visibleCode}? Khách và nhân viên trực sẽ thấy thông báo trong cuộc trò chuyện.`);
                 if (!ok) return;
                 paid.disabled = true;
                 try {

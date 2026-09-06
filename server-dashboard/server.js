@@ -727,11 +727,20 @@ app.get('/api/qr-chat/:code', async (req, res) => {
   try {
     const account = await resolveQrChatAccount('qr-concierge', String(req.params.code || ''));
     if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
+    // Nhãn QR ("Bàn 10"), tên nhóm ("Lễ Tân") và LOẠI HÌNH trong tên cơ sở
+    // ("Hộ Kinh Doanh") đều là chữ thường, phải dịch. Riêng tên riêng của cơ sở
+    // ("Đan Trinh Pastie") giữ nguyên — xem localizeVenueName.
+    const lang = String(req.query.lang || '').toLowerCase().slice(0, 2);
+    const [agentName, groupName, label] = await Promise.all([
+      localizeVenueName(account.owner_name || 'Agent', lang, account.owner_admin_id),
+      localizeQrText(account.group_name || account.label || 'Tư vấn viên', lang, account.owner_admin_id),
+      localizeQrText(account.label || '', lang, account.owner_admin_id),
+    ]);
     res.json({
-      agentName: account.owner_name || 'Agent',
+      agentName,
       locationLogoUrl: /^https?:\/\//i.test(String(account.owner_avatar_url || '')) ? account.owner_avatar_url : null,
-      groupName: account.group_name || account.label || 'Tư vấn viên',
-      label: account.label || ''
+      groupName,
+      label
     });
   } catch (error) {
     console.error('[QR Concierge] Cannot read public QR metadata:', error.message);
@@ -3694,8 +3703,16 @@ function invoiceLanguageFor(session, requestedLanguage) {
   return invoiceHelper.normalizeLanguage(requestedLanguage || session?.detected_language || 'vi');
 }
 
-function buildSampleInvoice(orderId, session, items, totalAmount, charges = null) {
-  const invoiceNo = `BILL-${orderId.slice(0, 8).toUpperCase()}`;
+async function nextOrderCode(executor = db) {
+  const result = await executor.query(
+    `SELECT 'BILL-' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || '-'
+      || LPAD(NEXTVAL('chat_order_code_seq')::text, 6, '0') AS order_code`
+  );
+  return result.rows[0].order_code;
+}
+
+function buildSampleInvoice(orderId, session, items, totalAmount, charges = null, orderCode = null) {
+  const invoiceNo = orderCode || `BILL-${orderId.slice(0, 8).toUpperCase()}`;
   const rows = items.map((item) => `<tr><td>${escapeInvoiceHtml(item.name)}</td><td>${item.quantity}</td><td>${formatVnd(item.unitPrice)}</td><td>${formatVnd(item.lineTotal)}</td></tr>`).join('');
   const subtotal = Number(charges?.subtotal ?? items.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0));
   const vatRate = Number(charges?.vatRate || 0);
@@ -3835,14 +3852,15 @@ app.post('/api/admin/orders', checkAdminAuth, requireWorkingHours, async (req, r
   if (normalizedItems.some((item) => !item)) return res.status(400).json({ error: 'Sản phẩm cần có tên, số lượng và đơn giá hợp lệ.' });
   const totalAmount = normalizedItems.reduce((sum, item) => sum + item.lineTotal, 0);
   const orderId = randomUUID();
+  const orderCode = await nextOrderCode();
   // Lưu JSON có cấu trúc; PDF được vẽ lúc khách mở hóa đơn theo ngôn ngữ của khách.
-  const invoice = buildSampleInvoice(orderId, session, normalizedItems, totalAmount);
+  const invoice = buildSampleInvoice(orderId, session, normalizedItems, totalAmount, null, orderCode);
   let created;
   try {
     created = await db.query(
-      `INSERT INTO chat_orders (id, session_id, project_id, created_by_admin_id, total_amount, items, invoice)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [orderId, sessionId, session.project_id, req.admin.id, totalAmount, JSON.stringify(normalizedItems), JSON.stringify(invoice)]
+      `INSERT INTO chat_orders (id, order_code, session_id, project_id, created_by_admin_id, total_amount, items, invoice)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [orderId, orderCode, sessionId, session.project_id, req.admin.id, totalAmount, JSON.stringify(normalizedItems), JSON.stringify(invoice)]
     );
   } catch (error) {
     // Phien nay da co mot don dang mo - co the khach vua tu dat mon xong. Noi ro
@@ -3870,15 +3888,16 @@ app.post('/samplebill', checkAdminAuth, async (req, res) => {
 
   const items = [{ name: 'Nước suối', quantity: 2, unitPrice: 10000, lineTotal: 20000 }];
   const orderId = randomUUID();
+  const orderCode = await nextOrderCode();
   // Lưu JSON có cấu trúc; PDF được vẽ lúc khách mở hóa đơn theo ngôn ngữ của khách.
-  const invoice = buildSampleInvoice(orderId, session, items, 20000);
+  const invoice = buildSampleInvoice(orderId, session, items, 20000, null, orderCode);
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
     const orderRes = await client.query(
-      `INSERT INTO chat_orders (id, session_id, project_id, created_by_admin_id, total_amount, items, invoice)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [orderId, sessionId, session.project_id, req.admin.id, 20000, JSON.stringify(items), JSON.stringify(invoice)]
+      `INSERT INTO chat_orders (id, order_code, session_id, project_id, created_by_admin_id, total_amount, items, invoice)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [orderId, orderCode, sessionId, session.project_id, req.admin.id, 20000, JSON.stringify(items), JSON.stringify(invoice)]
     );
     // KHÔNG chèn tin nhắn mô tả hóa đơn nữa.
     //
@@ -4054,7 +4073,7 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
       [order.id, method, Number(order.version || 1)]
     ).catch((error) => console.error('[Bill] Không ghi được phương thức:', error.message));
 
-    await sendOrderThankYou(req.params.sessionId, method, { autoSelected: false, orderId: order.id });
+    await sendOrderThankYou(req.params.sessionId, method, { autoSelected: false, orderCode: order.order_code });
     if (session) {
       void notifyAgentMessage(session, text);
       await extendQrSessionOnActivity(session);
@@ -4207,7 +4226,7 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
     }
 
     const rows = await db.query(
-      `SELECT o.id, o.session_id, o.status, o.total_amount, o.payment_method,
+      `SELECT o.id, o.order_code, o.session_id, o.status, o.total_amount, o.payment_method,
               o.payment_selected_at, o.paid_at, o.created_at, o.updated_at, o.version,
               s.visitor_name, s.visitor_email, s.status AS session_status,
               q.label AS qr_label, g.name AS group_name,
@@ -4251,7 +4270,7 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
   // không biết quán đã ghi nhận tiền, và Sale trực cũng không thấy gì trong
   // khung chat mình đang mở. Một khách gọi thêm nhiều lần trong bữa nên câu
   // báo bắt buộc phải nêu mã đơn.
-  const paidText = `[Thanh toán] Đơn ${order.id} đã được xác nhận ĐÃ THANH TOÁN`
+  const paidText = `[Thanh toán] Đơn ${order.order_code} đã được xác nhận ĐÃ THANH TOÁN`
     + `${order.payment_method ? ` (${invoiceHelper.paymentMethodLabel(order.payment_method, 'vi')})` : ''}`
     + `. Cảm ơn quý khách!`;
   const paidMsg = await db.query(
@@ -9046,6 +9065,31 @@ async function venueNamesForAgent(agentId) {
   } catch { return []; }
 }
 
+// Nhãn do Agent tự đặt: "Bàn 10", "Lễ Tân", "Hồ bơi". Dịch qua đúng cái cache
+// theo NỘI DUNG đang dùng cho ghi chú món — cả cơ sở chỉ có vài chục nhãn và
+// dùng lại mãi, nên gần như luôn trúng cache, không tốn lượt gọi dịch.
+async function localizeQrText(text, lang, agentId) {
+  const source = String(text || '').trim();
+  if (!source) return source;
+  const target = String(lang || '').toLowerCase().slice(0, 2);
+  if (!target || target === MENU_SOURCE_LANG || !MENU_LANGS.includes(target)) return source;
+  return translateNoteText(source, target, await venueNamesForAgent(agentId));
+}
+
+// Tên cơ sở tách làm hai: LOẠI HÌNH dịch được, TÊN RIÊNG thì không.
+// "Hộ Kinh Doanh Đan Trinh Pastie" → "Business household Dan Trinh Pastie".
+// Tên riêng để nguyên dấu ở đây; cổng khách bỏ dấu khi ngôn ngữ không phải
+// tiếng Việt, vì chỉ ở đó mới biết khách đang xem bằng ngôn ngữ nào.
+async function localizeVenueName(name, lang, agentId) {
+  const raw = String(name || '').trim();
+  const target = String(lang || '').toLowerCase().slice(0, 2);
+  if (!raw || !target || target === MENU_SOURCE_LANG || !MENU_LANGS.includes(target)) return raw;
+  const { prefix, propel } = gemini.splitVenueName(raw);
+  if (!prefix) return raw;
+  const translated = await translateNoteText(prefix, target, await venueNamesForAgent(agentId));
+  return [translated, propel].filter(Boolean).join(' ');
+}
+
 async function translateMenuCategoryToLanguage(categoryId, name, lang, protect) {
   const target = String(lang || '').toLowerCase();
   if (!MENU_LANGS.includes(target) || target === MENU_SOURCE_LANG) return { name };
@@ -9630,6 +9674,7 @@ function buildPosOrderPayload(order, event) {
     occurred_at: new Date().toISOString(),
     order: {
       id: order.id,
+      order_code: order.order_code,
       version,
       status: order.status,
       currency: order.currency || 'VND',
@@ -10022,12 +10067,13 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
     const totalAmount = charges.grandTotal;
 
     const orderId = randomUUID();
+    const orderCode = await nextOrderCode();
     let created;
     try {
       created = await db.query(
-        `INSERT INTO chat_orders (id, session_id, project_id, total_amount, items, charges, status, placed_by)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending_confirm', 'customer') RETURNING *`,
-        [orderId, sessionId, owner.project_id, totalAmount, JSON.stringify(items), JSON.stringify(charges)]
+        `INSERT INTO chat_orders (id, order_code, session_id, project_id, total_amount, items, charges, status, placed_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending_confirm', 'customer') RETURNING *`,
+        [orderId, orderCode, sessionId, owner.project_id, totalAmount, JSON.stringify(items), JSON.stringify(charges)]
       );
     } catch (error) {
       // 23505 = dung chi muc idx_chat_orders_one_open_per_session. Nghia la mot
@@ -10247,7 +10293,8 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
       { ...session, ...(billMeta.rows[0] || {}) },
       order.items,
       Number(order.total_amount),
-      order.charges
+      order.charges,
+      order.order_code
     );
 
     const client = await db.pool.connect();
@@ -10469,7 +10516,7 @@ async function deferredPaymentForSession(sessionId) {
 //
 // Mot cho duy nhat quyet dinh cau chu, vi hai loi vao (khach bam / het 2 phut)
 // deu ket thuc o day.
-async function sendOrderThankYou(sessionId, method, { autoSelected, orderId } = {}) {
+async function sendOrderThankYou(sessionId, method, { autoSelected, orderCode } = {}) {
   const label = invoiceHelper.paymentMethodLabel(method, 'vi');
   // Nêu MÃ ĐƠN: một khách gọi thêm nhiều lần trong bữa, câu không nói rõ đơn nào
   // thì đối chiếu với bill nào cũng được.
@@ -10477,7 +10524,7 @@ async function sendOrderThankYou(sessionId, method, { autoSelected, orderId } = 
   // Câu cũ nói "đơn đã hoàn tất" — sai, vì lúc này quán mới bắt đầu làm. Đây
   // cũng chính là chỗ đúng để nói "đang chuẩn bị", thay cho tin nhắn cũ gửi
   // ngay lúc Sale xác nhận (khi đó khách còn sửa đơn được).
-  const code = orderId ? ` ${orderId}` : '';
+  const code = orderCode ? ` ${orderCode}` : '';
   const text = autoSelected
     ? `Đơn${code} đã được xác nhận theo phương thức ${label} (do chưa có lựa chọn sau 2 phút). Cửa hàng đang chuẩn bị. Cảm ơn quý khách!`
     : `Đơn${code} đã được xác nhận, thanh toán bằng ${label}. Cửa hàng đang chuẩn bị. Cảm ơn quý khách!`;
@@ -10573,7 +10620,7 @@ async function maybeAutoSelectDeferredPayment(order) {
      VALUES ($1, 'system', $2, $2, 'vi', 'staff') RETURNING id`,
     [order.session_id, text]
   ).catch(() => null);
-  await sendOrderThankYou(order.session_id, method, { autoSelected: true });
+  await sendOrderThankYou(order.session_id, method, { autoSelected: true, orderCode: order.order_code });
   notifyAdminRealtime('new_message', {
     sessionId: order.session_id,
     projectId: order.project_id,
@@ -10611,7 +10658,7 @@ app.get('/api/chats/:sessionId/bills', async (req, res) => {
     );
     const rows = await db.query(
       `SELECT b.id, b.order_id, b.version, b.invoice, b.items, b.total_amount,
-              b.payment_method, b.created_at, o.status AS order_status
+              b.payment_method, b.created_at, o.status AS order_status, o.order_code
          FROM chat_order_bills b
          LEFT JOIN chat_orders o ON o.id = b.order_id
         WHERE b.session_id = $1
@@ -10629,7 +10676,7 @@ app.get('/api/chats/:sessionId/bills', async (req, res) => {
         { ...(row.invoice || {}), items: localized?.items || row.items }, language
       ).catch(() => row.invoice);
       return {
-        id: row.id, orderId: row.order_id, version: row.version,
+        id: row.id, orderId: row.order_id, orderCode: row.order_code, version: row.version,
         totalAmount: row.total_amount, paymentMethod: row.payment_method,
         orderStatus: row.order_status, createdAt: row.created_at, invoice,
       };

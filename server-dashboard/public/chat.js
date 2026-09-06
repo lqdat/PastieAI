@@ -1595,16 +1595,22 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
         const locale = currentLang === 'vi' ? 'vi-VN' : currentLang === 'zh' ? 'zh-CN' : currentLang === 'ru' ? 'ru-RU' : 'en-US';
         const timeStr = new Date(msg.created_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 
+        const readableOrderText = (value) => {
+            const text = String(value || '');
+            return adminOrder?.order_code && adminOrder?.id
+                ? text.split(adminOrder.id).join(adminOrder.order_code)
+                : text;
+        };
         let innerHtml = '';
         if (msg.sender === 'visitor') {
             const hasTranslation = msg.translated_text && msg.translated_text !== msg.original_text;
-            const primaryText = hasTranslation ? msg.translated_text : msg.original_text;
+            const primaryText = readableOrderText(hasTranslation ? msg.translated_text : msg.original_text);
             const attachmentHtml = renderAttachmentHtml(msg);
             innerHtml = `
                 <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
                     ${attachmentHtml}
                     ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(primaryText)}</div>`}
-                    ${hasTranslation && !isAttachmentPlaceholder(msg.original_text) ? `<div class="translated-text-wrapper" data-label="${dict.labelOriginal} ">${escapeHtml(msg.original_text)}</div>` : ''}
+                    ${hasTranslation && !isAttachmentPlaceholder(msg.original_text) ? `<div class="translated-text-wrapper" data-label="${dict.labelOriginal} ">${escapeHtml(readableOrderText(msg.original_text))}</div>` : ''}
                 </div>
                 <div class="message-time">${timeStr}</div>
             `;
@@ -1614,8 +1620,8 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
             innerHtml = `
                 <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
                     ${attachmentHtml}
-                    ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(msg.original_text)}</div>`}
-                    ${hasTranslation && !isAttachmentPlaceholder(msg.original_text) ? `<div class="translated-text-wrapper" data-label="${dict.labelAiTranslation} ">${escapeHtml(msg.translated_text)}</div>` : ''}
+                    ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(readableOrderText(msg.original_text))}</div>`}
+                    ${hasTranslation && !isAttachmentPlaceholder(msg.original_text) ? `<div class="translated-text-wrapper" data-label="${dict.labelAiTranslation} ">${escapeHtml(readableOrderText(msg.translated_text))}</div>` : ''}
                 </div>
                 <div class="message-time">${timeStr}</div>
             `;
@@ -1623,7 +1629,7 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
             // System message
             innerHtml = `
                 <div class="message-bubble">
-                    <div class="original-text">${escapeHtml(msg.original_text)}</div>
+                    <div class="original-text">${escapeHtml(readableOrderText(msg.original_text))}</div>
                 </div>
             `;
         }

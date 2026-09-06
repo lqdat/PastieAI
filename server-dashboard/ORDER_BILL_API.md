@@ -21,7 +21,7 @@ Khi khách kết thúc, API xoá order và message của phiên QR, sau đó đ�
 }
 ```
 
-API tự tính `total_amount`, trả về order kèm `invoice` JSON. `invoice.html` là HTML có thể render trực tiếp trong bubble chat; `pngUrl` và `pdfUrl` ban đầu là `null` để dành cho phần mềm bill.
+API tự cấp và lưu `order_code` duy nhất (ví dụ `BILL-260906-100125`), tính `total_amount`, rồi trả về order kèm `invoice` JSON. `id` UUID chỉ là định danh kỹ thuật dùng trong URL API; giao diện, hóa đơn và đối soát phải dùng `order_code`. `invoice.html` là HTML có thể render trực tiếp trong bubble chat; `pngUrl` và `pdfUrl` ban đầu là `null` để dành cho phần mềm bill.
 
 ## 2. Phần mềm bill thay thế/gắn hóa đơn thật
 

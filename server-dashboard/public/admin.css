@@ -4637,6 +4637,120 @@ button {
     .agent-identity-sub { font-size: 10.5px; }
 }
 
+/* ── Header Agent/Sale đồng bộ với cổng khách ─────────────────────────────
+   Một hàng nhận diện gọn: logo vuông, tên chính lớn, tên phụ nhỏ; phía phải
+   chỉ còn một nút Công cụ. Khối cũ từng đẩy wordmark xuống hàng dưới làm header
+   cao tới 136px trên mobile, vì vậy ghi đè toàn bộ bố cục sale-header tại đây. */
+.dashboard-header.sale-header {
+    min-height: 72px;
+    height: auto;
+    padding: 11px 18px;
+    align-items: center;
+}
+.dashboard-header.sale-header .header-left {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-right: 12px;
+    gap: 0;
+    align-items: center;
+}
+.dashboard-header.sale-header .logo { display: none; }
+.dashboard-header.sale-header .agent-identity,
+.dashboard-header.sale-header .agent-identity.sale-identity {
+    width: auto;
+    padding: 0;
+    border: 0;
+    flex-direction: row;
+    align-items: center;
+    gap: 11px;
+}
+.dashboard-header.sale-header .agent-avatar-badge {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    overflow: visible;
+    background: #fff;
+    border: 1px solid rgba(231, 30, 132, .16);
+    box-shadow: 0 6px 18px rgba(171, 22, 111, .13);
+}
+.dashboard-header.sale-header .agent-avatar-badge img {
+    width: 100%;
+    height: 100%;
+    padding: 6px;
+    border-radius: inherit;
+    object-fit: contain;
+}
+.dashboard-header.sale-header .agent-identity-text { gap: 2px; }
+.dashboard-header.sale-header .agent-identity-label,
+.dashboard-header.sale-header .agent-identity.sale-identity .agent-identity-label {
+    display: -webkit-box;
+    max-width: min(520px, 48vw);
+    padding: 0;
+    color: var(--text-primary);
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.16;
+    letter-spacing: -.015em;
+    text-transform: none;
+    white-space: normal;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.dashboard-header.sale-header .agent-display-name,
+.dashboard-header.sale-header .agent-identity.sale-identity .agent-display-name {
+    max-width: min(520px, 48vw);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 1.25;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+/* Agent không có tên Sale: chính tên Agent là hàng chính. */
+.dashboard-header.sale-header .agent-identity:not(.sale-identity) .agent-display-name {
+    color: var(--text-primary);
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.16;
+}
+.dashboard-header.sale-header .header-right {
+    position: static;
+    align-self: center;
+    align-items: center;
+}
+.dashboard-header.sale-header .header-menu-btn {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 13px;
+}
+.dashboard-header.sale-header .header-menu-btn span { display: none; }
+
+@media (max-width: 720px) {
+    .dashboard-header.sale-header {
+        min-height: calc(70px + env(safe-area-inset-top));
+        padding: calc(9px + env(safe-area-inset-top)) 12px 9px;
+    }
+    .dashboard-header.sale-header .header-left { padding-right: 8px; }
+    .dashboard-header.sale-header .agent-avatar-badge { width: 42px; height: 42px; border-radius: 13px; }
+    .dashboard-header.sale-header .agent-identity-label,
+    .dashboard-header.sale-header .agent-identity.sale-identity .agent-identity-label,
+    .dashboard-header.sale-header .agent-identity:not(.sale-identity) .agent-display-name {
+        max-width: calc(100vw - 128px);
+        font-size: 16px;
+    }
+    .dashboard-header.sale-header .agent-display-name,
+    .dashboard-header.sale-header .agent-identity.sale-identity .agent-display-name {
+        max-width: calc(100vw - 128px);
+        font-size: 12px;
+    }
+}
+
 /* ── Một nút "Công cụ" thay cho năm nút rời ───────────────────────────────
    Các nút cũ được CHUYỂN vào bảng này, nên ở đây chỉ tả lại dáng của chúng khi
    đã nằm trong bảng: một hàng đầy chiều ngang, icon trái, nhãn luôn hiện (kể cả

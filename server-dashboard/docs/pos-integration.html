@@ -252,6 +252,7 @@ không tạo hai đơn cho cùng một sự kiện khi mạng chập chờn.</p>
 
   "order": {
     "id": "9f3c1a2b-4d5e-6f70-8901-23456789abcd",
+    "order_code": "BILL-260902-100125",
     "version": 1,
     "status": "awaiting_payment",
     "currency": "VND",
@@ -328,7 +329,8 @@ không tạo hai đơn cho cùng một sự kiện khi mạng chập chờn.</p>
 <h4><code>order</code></h4>
 <table>
   <tr><th>Trường</th><th>Kiểu</th><th>Giải thích</th></tr>
-  <tr><td><code>id</code></td><td>UUID</td><td>Mã đơn. Không đổi suốt vòng đời.</td></tr>
+  <tr><td><code>id</code></td><td>UUID</td><td>Định danh kỹ thuật nội bộ. Dùng cho URL API và khóa idempotency; không hiển thị cho khách.</td></tr>
+  <tr><td><code>order_code</code></td><td>string</td><td>Mã đơn nghiệp vụ được lưu duy nhất trong database, ví dụ <code>BILL-260902-100125</code>. Dùng để hiển thị, in hóa đơn và đối chiếu với nhân viên/khách.</td></tr>
   <tr><td><code>version</code></td><td>int</td><td>Bắt đầu từ 1, tăng mỗi lần đơn đổi. Dùng để bỏ gói đến muộn.</td></tr>
   <tr><td><code>status</code></td><td>string</td>
       <td><code>pending_confirm</code> chờ Sale · <code>awaiting_payment</code> đã xác nhận, chờ trả tiền · <code>paid</code> đã thu · <code>rejected</code> bị từ chối</td></tr>
