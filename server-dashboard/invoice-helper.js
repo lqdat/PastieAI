@@ -54,35 +54,35 @@ function findCjkFont(language) {
 
 const INVOICE_I18N = {
   vi: {
-    title: 'HÓA ĐƠN BÁN HÀNG', invoiceNo: 'Số hóa đơn', date: 'Ngày bán', customer: 'Khách hàng',
+    title: 'HÓA ĐƠN BÁN HÀNG', invoiceNo: 'Số hóa đơn', date: 'Ngày bán', customer: 'Khách hàng', email: 'Email', table: 'Bàn', openedAt: 'Giờ vào', printedAt: 'Giờ in', sale: 'Nhân viên',
     phone: 'Điện thoại', address: 'Địa chỉ', item: 'Mặt hàng', unitPrice: 'Đơn giá', quantity: 'SL',
     discount: 'Chiết khấu', lineTotal: 'Thành tiền', subtotal: 'Tổng tiền hàng',
     totalDiscount: 'Chiết khấu', vat: 'VAT', grandTotal: 'TỔNG CỘNG', paymentMethod: 'Thanh toán',
     thanks: 'Cảm ơn quý khách!', note: 'Hóa đơn được tạo tự động từ hệ thống Pastie Chat.',
   },
   en: {
-    title: 'SALES INVOICE', invoiceNo: 'Invoice No.', date: 'Date', customer: 'Customer',
+    title: 'SALES INVOICE', invoiceNo: 'Invoice No.', date: 'Date', customer: 'Customer', email: 'Email', table: 'Table', openedAt: 'Time in', printedAt: 'Printed', sale: 'Served by',
     phone: 'Phone', address: 'Address', item: 'Item', unitPrice: 'Unit price', quantity: 'Qty',
     discount: 'Discount', lineTotal: 'Amount', subtotal: 'Subtotal',
     totalDiscount: 'Discount', vat: 'VAT', grandTotal: 'TOTAL', paymentMethod: 'Payment',
     thanks: 'Thank you!', note: 'This invoice was generated automatically by Pastie Chat.',
   },
   ru: {
-    title: 'СЧЁТ НА ОПЛАТУ', invoiceNo: 'Номер счёта', date: 'Дата', customer: 'Клиент',
+    title: 'СЧЁТ НА ОПЛАТУ', invoiceNo: 'Номер счёта', date: 'Дата', customer: 'Клиент', email: 'Email', table: 'Стол', openedAt: 'Время входа', printedAt: 'Напечатано', sale: 'Обслужил',
     phone: 'Телефон', address: 'Адрес', item: 'Наименование', unitPrice: 'Цена', quantity: 'Кол-во',
     discount: 'Скидка', lineTotal: 'Сумма', subtotal: 'Итого по товарам',
     totalDiscount: 'Скидка', vat: 'НДС', grandTotal: 'ИТОГО', paymentMethod: 'Оплата',
     thanks: 'Спасибо за покупку!', note: 'Счёт сформирован автоматически системой Pastie Chat.',
   },
   zh: {
-    title: '销售发票', invoiceNo: '发票号', date: '日期', customer: '客户',
+    title: '销售发票', invoiceNo: '发票号', date: '日期', customer: '客户', email: '邮箱', table: '桌号', openedAt: '入座时间', printedAt: '打印时间', sale: '服务员',
     phone: '电话', address: '地址', item: '商品', unitPrice: '单价', quantity: '数量',
     discount: '折扣', lineTotal: '金额', subtotal: '商品合计',
     totalDiscount: '折扣', vat: '增值税', grandTotal: '总计', paymentMethod: '付款方式',
     thanks: '感谢惠顾！', note: '本发票由 Pastie Chat 系统自动生成。',
   },
   ko: {
-    title: '판매 영수증', invoiceNo: '영수증 번호', date: '발행일', customer: '고객',
+    title: '판매 영수증', invoiceNo: '영수증 번호', date: '발행일', customer: '고객', email: '이메일', table: '테이블', openedAt: '입장 시간', printedAt: '출력 시간', sale: '담당 직원',
     phone: '전화번호', address: '주소', item: '품목', unitPrice: '단가', quantity: '수량',
     discount: '할인', lineTotal: '금액', subtotal: '상품 합계',
     totalDiscount: '할인', vat: 'VAT', grandTotal: '총 합계', paymentMethod: '결제 수단',
@@ -208,6 +208,12 @@ function buildInvoiceData(invoice, language) {
     buyerName: invoice?.buyerName || invoice?.buyer_name || invoice?.customerName || '',
     buyerPhone: invoice?.buyerPhone || invoice?.buyer_phone || invoice?.customerPhone || '',
     buyerAddress: invoice?.buyerAddress || invoice?.buyer_address || invoice?.customerAddress || '',
+    // Bốn trường mới theo mẫu bill của quán: email khách, bàn, giờ vào, và
+    // nhân viên phụ trách. Khách cầm bill về mà thắc mắc thì biết hỏi ai.
+    buyerEmail: invoice?.buyerEmail || invoice?.buyer_email || '',
+    tableLabel: invoice?.tableLabel || invoice?.table_label || '',
+    openedAt: invoice?.openedAt || invoice?.opened_at || null,
+    saleName: invoice?.saleName || invoice?.sale_name || '',
     sellerName: invoice?.sellerName || invoice?.seller_name || '',
     currency: invoice?.currency || 'VND',
     paymentMethod: invoice?.paymentMethod || invoice?.payment_method || '',
@@ -282,10 +288,17 @@ function createInvoicePdfDataUrl(invoice, language) {
       useBold().text(`${label}: `, { continued: true });
       useRegular().text(String(value));
     };
-    infoLine(copy.date, formatIssuedAt(data.issuedAt, fonts.language));
+    // Thứ tự theo mẫu bill của quán: bàn -> giờ vào -> giờ in -> khách -> liên hệ.
+    // Bàn và giờ vào đứng trước vì nhân viên cầm tờ bill lên là tìm hai thứ đó
+    // trước tiên để mang đúng bàn.
+    infoLine(copy.table, data.tableLabel);
+    infoLine(copy.openedAt, data.openedAt ? formatIssuedAt(data.openedAt, fonts.language) : '');
+    infoLine(copy.printedAt, formatIssuedAt(data.issuedAt, fonts.language));
     infoLine(copy.customer, data.buyerName);
+    infoLine(copy.email, data.buyerEmail);
     infoLine(copy.phone, data.buyerPhone);
     infoLine(copy.address, data.buyerAddress);
+    infoLine(copy.sale, data.saleName);
 
     doc.moveDown(0.7);
     doc.moveTo(left, doc.y).lineTo(right, doc.y).strokeColor('#e6cede').lineWidth(1).stroke();
@@ -480,10 +493,16 @@ function createInvoiceSvg(invoice, language) {
     text(`${label}: ${value}`, PAD, y, { size: 12, fill: '#3d3044' });
     y += 18;
   };
-  infoLine(copy.date, formatIssuedAt(data.issuedAt, code));
+  // Ảnh xem trước phải khớp với PDF tải về, nếu không khách tưởng hai bản là
+  // hai hoá đơn khác nhau.
+  infoLine(copy.table, data.tableLabel);
+  infoLine(copy.openedAt, data.openedAt ? formatIssuedAt(data.openedAt, code) : '');
+  infoLine(copy.printedAt, formatIssuedAt(data.issuedAt, code));
   infoLine(copy.customer, data.buyerName);
+  infoLine(copy.email, data.buyerEmail);
   infoLine(copy.phone, data.buyerPhone);
   infoLine(copy.address, data.buyerAddress);
+  infoLine(copy.sale, data.saleName);
 
   y += 6; line(y); y += 20;
 

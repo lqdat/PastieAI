@@ -1062,6 +1062,7 @@ async function checkAdminAuth(req, res, next) {
     // 1. Check if token exists in admin_sessions and joins admins
     const sessionRes = await db.query(
       `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.role, a.avatar_url, a.is_active, a.project_id, a.sale_limit,
+              a.managed_by_admin_id,
               m.full_name AS manager_name, m.username AS manager_username
        FROM admin_sessions s
        JOIN admins a ON s.admin_id = a.id
@@ -3702,9 +3703,16 @@ function buildSampleInvoice(orderId, session, items, totalAmount, charges = null
   // Dữ liệu lưu vào DB là JSON có cấu trúc (items/tổng tiền) — PDF chỉ được vẽ
   // lúc khách mở hóa đơn, theo ngôn ngữ khách, nên KHÔNG lưu PDF ở đây.
   return {
-    version: '1.0', invoiceNo, issuedAt: new Date().toISOString(),
+    version: '1.1', invoiceNo, issuedAt: new Date().toISOString(),
     buyerName: session.visitor_name || 'Khách hàng',
     buyerPhone: session.visitor_phone || '',
+    // Email của khách và tên nhân viên phụ trách in thẳng lên hoá đơn: khách
+    // cầm tờ bill về mà có thắc mắc thì biết hỏi ai, và quán đối chiếu được
+    // đơn với ca trực. Giờ vào lấy từ lúc mở phiên chat.
+    buyerEmail: session.visitor_email || '',
+    tableLabel: session.qr_label || session.group_name || '',
+    openedAt: session.created_at || null,
+    saleName: session.sale_name || '',
     items, subtotal, vatRate, vatAmount, totalAmount, currency: 'VND',
     html: `<article class="pastie-bill"><h2>Hóa đơn ${invoiceNo}</h2><p>Khách hàng: ${escapeInvoiceHtml(session.visitor_name || 'Khách hàng')}</p><table><thead><tr><th>Sản phẩm</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody></table><h3>Tổng cộng: ${formatVnd(totalAmount)}</h3></article>`,
     pngUrl: null, pdfUrl: null,
@@ -3994,10 +4002,11 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
     paymentMethods: (await paymentMethodsForSession(req.params.sessionId, language)).map((entry) => entry.id),
     paymentMethodLabels: invoiceHelper.PAYMENT_METHOD_I18N[language] || invoiceHelper.PAYMENT_METHOD_I18N.vi,
     defaultPaymentMethod: await deferredPaymentForSession(req.params.sessionId),
-    autoPaymentAt: order.bill_sent_at
-      ? new Date(new Date(order.bill_sent_at).getTime() + 120000).toISOString()
-      : null,
-    autoPaymentSeconds: 120,
+    // null khi đang tạm dừng — cổng khách dựa vào đó để dừng đồng hồ hiển thị,
+    // không phải tự đoán.
+    autoPaymentAt: paymentDueAt(order) ? new Date(paymentDueAt(order)).toISOString() : null,
+    autoPaymentPaused: !!order.payment_paused_at,
+    autoPaymentSeconds: PAYMENT_WINDOW_MS / 1000,
     language,
   });
 });
@@ -4037,7 +4046,15 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
        VALUES ($1, 'system', $2, $2, 'vi', 'staff') RETURNING id`,
       [req.params.sessionId, text]
     );
-    await sendOrderThankYou(req.params.sessionId, method, { autoSelected: false });
+    // Ghi phương thức lên chính bản bill đó, để tấm bill khách đang xem khớp
+    // với thứ họ vừa chọn thay vì mâu thuẫn với nó.
+    await db.query(
+      `UPDATE chat_order_bills SET payment_method = $2
+        WHERE order_id = $1 AND version = $3`,
+      [order.id, method, Number(order.version || 1)]
+    ).catch((error) => console.error('[Bill] Không ghi được phương thức:', error.message));
+
+    await sendOrderThankYou(req.params.sessionId, method, { autoSelected: false, orderId: order.id });
     if (session) {
       void notifyAgentMessage(session, text);
       await extendQrSessionOnActivity(session);
@@ -4049,6 +4066,9 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
     console.error('[Order] Không thể ghi tin nhắn phương thức thanh toán:', error.message);
   }
 
+  // Gọi máy tính tiền SAU CÙNG, sau khi đã báo khách. Đây cũng là lần gọi DUY
+  // NHẤT: sự kiện 'order.confirmed' lúc Sale xác nhận đã bỏ, vì lúc đó khách
+  // vẫn còn sửa hoặc bỏ đơn được.
   void deliverPosEvent(order.id, 'payment.selected');
   // KHÔNG trả về updated.rows[0].
   //
@@ -4065,6 +4085,94 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
   res.json({ success: true, paymentMethod: method });
 });
 
+// Giỏ hàng: đơn của các cuộc trò chuyện, cho Sale và Agent.
+//
+// Phạm vi bám đúng phân quyền chat đang có, không mở thêm cửa nào:
+//   Sale   -> đơn của những chat CHÍNH MÌNH tiếp nhận;
+//   Agent  -> đơn của cả cơ sở mình quản lý;
+//   Superadmin -> tất cả.
+// Mở rộng hơn thì Sale đọc được đơn của bàn mình không phụ trách, trái với
+// chính quy tắc đang áp cho tin nhắn.
+// Thực đơn ở chế độ CHỈ XEM cho nhân viên trực.
+//
+// Không dùng lại màn quản lý thực đơn của Agent: màn đó nằm trong hộp "Sale &
+// Nhóm" mà Sale không được vào, và nó có nút thêm/sửa/xoá. Endpoint này trả
+// đúng thứ khách nhìn thấy, cộng thêm trạng thái còn/hết để Sale tư vấn.
+//
+// KHÔNG trả stock_quantity: số tồn là chuyện nội bộ của Agent, Sale chỉ cần
+// biết món còn hay hết.
+app.get('/api/admin/menu/view', checkAdminAuth, async (req, res) => {
+  try {
+    // Sale xem thực đơn của Agent quản lý mình; Agent xem của chính mình.
+    const agentId = req.admin.role === 'sale' ? req.admin.managed_by_admin_id : req.admin.id;
+    if (!agentId) return res.json({ categories: [], items: [] });
+
+    const items = await db.query(
+      `SELECT i.id, i.category_id, i.name, i.description, i.price, i.currency, i.image_url,
+              i.is_available,
+              (i.stock_quantity IS NOT NULL AND i.stock_quantity <= 0) AS sold_out
+         FROM qr_menu_items i
+        WHERE i.agent_id = $1
+        ORDER BY i.sort_order, i.id`,
+      [agentId]
+    );
+    const categories = await db.query(
+      `SELECT id, name, sort_order, is_promo, is_active FROM qr_menu_categories
+        WHERE agent_id = $1 ORDER BY is_promo DESC, sort_order, id`,
+      [agentId]
+    );
+    res.json({ readOnly: true, categories: categories.rows, items: items.rows });
+  } catch (error) {
+    console.error('Staff menu view error:', error);
+    res.status(500).json({ error: 'Không tải được thực đơn.' });
+  }
+});
+
+app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
+  try {
+    const where = ['o.status <> $1'];
+    const params = ['rejected'];
+    if (isSuperAdmin(req.admin)) {
+      // không thêm điều kiện
+    } else if (req.admin.role === 'sale') {
+      params.push(req.admin.id);
+      where.push(`s.claimed_by_admin_id = $${params.length}`);
+    } else if (isAgentManager(req.admin)) {
+      params.push(req.admin.id);
+      where.push(`COALESCE(g.agent_id, q.owner_admin_id) = $${params.length}`);
+    } else {
+      params.push(req.admin.id);
+      where.push(`(s.claimed_by_admin_id = $${params.length} OR s.assigned_admin_id = $${params.length})`);
+    }
+
+    const rows = await db.query(
+      `SELECT o.id, o.session_id, o.status, o.total_amount, o.payment_method,
+              o.payment_selected_at, o.paid_at, o.created_at, o.updated_at, o.version,
+              s.visitor_name, s.visitor_email, s.status AS session_status,
+              q.label AS qr_label, g.name AS group_name,
+              sale.full_name AS sale_name
+         FROM chat_orders o
+         JOIN sessions s ON s.id = o.session_id
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
+        WHERE ${where.join(' AND ')}
+        ORDER BY o.updated_at DESC
+        LIMIT 100`,
+      params
+    );
+    res.json({
+      orders: rows.rows,
+      // Chỉ Agent và Superadmin mới được bấm "Đã thanh toán": đó là xác nhận
+      // ĐÃ CÓ TIỀN, không phải một bước thao tác của người phục vụ bàn.
+      canMarkPaid: isSuperAdmin(req.admin) || isAgentManager(req.admin),
+    });
+  } catch (error) {
+    console.error('Order cart error:', error);
+    res.status(500).json({ error: 'Không tải được giỏ hàng.' });
+  }
+});
+
 app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const orderRes = await db.query('SELECT o.*, s.project_id FROM chat_orders o JOIN sessions s ON s.id = o.session_id WHERE o.id = $1', [req.params.orderId]);
   const order = orderRes.rows[0];
@@ -4076,6 +4184,22 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
       WHERE id = $2 RETURNING *`,
     [String(req.body?.reference || '').trim().slice(0, 255) || null, order.id]
   );
+  // Báo vào ĐÚNG cuộc trò chuyện đó, kèm MÃ ĐƠN.
+  //
+  // Trước đây route này chỉ đổi trạng thái trong database rồi im lặng: khách
+  // không biết quán đã ghi nhận tiền, và Sale trực cũng không thấy gì trong
+  // khung chat mình đang mở. Một khách gọi thêm nhiều lần trong bữa nên câu
+  // báo bắt buộc phải nêu mã đơn.
+  const paidText = `[Thanh toán] Đơn ${order.id} đã được xác nhận ĐÃ THANH TOÁN`
+    + `${order.payment_method ? ` (${invoiceHelper.paymentMethodLabel(order.payment_method, 'vi')})` : ''}`
+    + `. Cảm ơn quý khách!`;
+  const paidMsg = await db.query(
+    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id, system_kind)
+     VALUES ($1, 'agent', $2, $2, 'vi', $3, 'order_paid') RETURNING id`,
+    [order.session_id, paidText, req.admin.id]
+  ).catch((error) => { console.error('[Đơn] Không gửi được tin đã thanh toán:', error.message); return { rows: [] }; });
+
+  notifyAdminRealtime('new_message', { sessionId: order.session_id, projectId: order.project_id, sender: 'agent', messageId: paidMsg.rows[0]?.id });
   notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: 'paid', projectId: order.project_id });
   void deliverPosEvent(order.id, 'order.paid');
   res.json({ success: true, order: updated.rows[0], nextAction: 'customer_thank_you' });
@@ -9309,7 +9433,7 @@ const QR_HISTORY_DAYS = Number(process.env.QR_HISTORY_DAYS || 30);
 
 async function qrHistoryScope(sessionId) {
   const result = await db.query(
-    `SELECT s.id, s.visitor_email, s.project_id, s.qr_account_id,
+    `SELECT s.id, s.visitor_email, s.visitor_name, s.project_id, s.qr_account_id,
             COALESCE(g.agent_id, q.owner_admin_id) AS agent_id
        FROM sessions s
        LEFT JOIN agent_groups g ON g.id = s.group_id
@@ -9318,7 +9442,7 @@ async function qrHistoryScope(sessionId) {
     [sessionId]
   );
   const row = result.rows[0];
-  if (!row || !row.visitor_email || !row.agent_id) return null;
+  if (!row || !row.visitor_email) return null;
   return row;
 }
 
@@ -9327,32 +9451,43 @@ app.get('/api/chats/:sessionId/history', async (req, res) => {
     const scope = await qrHistoryScope(req.params.sessionId);
     if (!scope) return res.json({ sessions: [] });
 
-    // Chỉ liệt kê phiên ĐÃ ĐÓNG và KHÁC phiên đang mở: phiên hiện tại đã nằm
-    // ngay trong khung chat rồi, hiện lại trong danh sách lịch sử là thừa.
+    // Mọi đoạn chat của CHÍNH email này, gộp theo cơ sở.
+    //
+    // Trước đây chỉ lấy đoạn của cùng một cơ sở. Nhưng đây là màn hình của
+    // KHÁCH, trên thiết bị của khách, xem lịch sử của chính họ — không phải
+    // nhân viên quán A đọc chat của quán B. Gộp theo tên cơ sở thì khách quét
+    // mã ở nhiều quán vẫn tìm lại được đúng bữa mình cần.
+    //
+    // Vẫn bỏ phiên ĐANG mở: nó nằm ngay trong khung chat rồi.
     const rows = await db.query(
       `SELECT s.id, s.created_at, s.status, q.label AS qr_label,
+              COALESCE(owner.full_name, g.name, 'Pastie') AS agent_name,
+              COALESCE(g.agent_id, q.owner_admin_id) AS agent_id,
               (SELECT COUNT(*)::int FROM messages m
                 WHERE m.session_id = s.id AND ${visitorMessageFilter('m.')}) AS message_count,
               (SELECT MAX(m.created_at) FROM messages m WHERE m.session_id = s.id) AS last_at,
+              (SELECT o.status FROM chat_orders o
+                WHERE o.session_id = s.id ORDER BY o.updated_at DESC LIMIT 1) AS order_status,
               (SELECT o.total_amount FROM chat_orders o
                 WHERE o.session_id = s.id AND o.status = 'paid'
-                ORDER BY o.updated_at DESC LIMIT 1) AS paid_total
+                ORDER BY o.updated_at DESC LIMIT 1) AS paid_total,
+              (SELECT COUNT(*)::int FROM chat_order_bills b WHERE b.session_id = s.id) AS bill_count
          FROM sessions s
          LEFT JOIN agent_groups g ON g.id = s.group_id
          LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+         LEFT JOIN admins owner ON owner.id = COALESCE(g.agent_id, q.owner_admin_id)
         WHERE LOWER(s.visitor_email) = LOWER($1)
-          AND COALESCE(g.agent_id, q.owner_admin_id) = $2
-          AND s.id <> $3
-          AND s.status = 'closed'
-          AND s.created_at > NOW() - ($4 || ' days')::interval
+          AND s.id <> $2
+          AND s.created_at > NOW() - ($3 || ' days')::interval
         ORDER BY s.created_at DESC
-        LIMIT 50`,
-      [scope.visitor_email, scope.agent_id, scope.id, String(QR_HISTORY_DAYS)]
+        LIMIT 100`,
+      [scope.visitor_email, scope.id, String(QR_HISTORY_DAYS)]
     );
 
-    // Phiên rỗng (khách quét rồi thoát ngay) chỉ làm rối danh sách.
     res.json({
       days: QR_HISTORY_DAYS,
+      customer: { name: scope.visitor_name || '', email: scope.visitor_email },
+      // Phiên rỗng (khách quét rồi thoát ngay) chỉ làm rối danh sách.
       sessions: rows.rows.filter((row) => row.message_count > 0),
     });
   } catch (error) {
@@ -9374,9 +9509,8 @@ app.get('/api/chats/:sessionId/history/:pastSessionId', async (req, res) => {
          LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
         WHERE s.id = $1
           AND LOWER(s.visitor_email) = LOWER($2)
-          AND COALESCE(g.agent_id, q.owner_admin_id) = $3
-          AND s.created_at > NOW() - ($4 || ' days')::interval`,
-      [req.params.pastSessionId, scope.visitor_email, scope.agent_id, String(QR_HISTORY_DAYS)]
+          AND s.created_at > NOW() - ($3 || ' days')::interval`,
+      [req.params.pastSessionId, scope.visitor_email, String(QR_HISTORY_DAYS)]
     );
     if (!past.rows[0]) return res.status(404).json({ error: 'Không tìm thấy đoạn trò chuyện này.' });
 
@@ -9997,6 +10131,10 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
       [sessionId, text]
     );
     notifyAdminRealtime('new_message', { sessionId, projectId: session.project_id, sender: 'system', messageId: editMsgRes.rows[0]?.id });
+    // Gửi lại đơn là khách đã xong việc sửa -> đồng hồ chạy tiếp ngay tại đây,
+    // không chờ cổng khách gọi endpoint riêng. Nếu chờ, một lần rớt mạng của
+    // trình duyệt là đơn treo mãi ở trạng thái tạm dừng.
+    await resumePaymentTimer(order.id);
     notifyAdminRealtime('order_update', { sessionId, orderId: order.id, status: 'pending_confirm', projectId: session.project_id });
     void deliverPosEvent(order.id, 'order.updated');
     const responseLanguage = invoiceLanguageFor(session, req.body?.language);
@@ -10032,7 +10170,24 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
 
     // Hoá đơn chỉ được phát ra ở bước này — trước khi Sale xác nhận thì đơn của
     // khách mới chỉ là đề nghị. Và tồn kho cũng chỉ trừ ở đây, cùng lý do.
-    const invoice = buildSampleInvoice(order.id, session, order.items, Number(order.total_amount), order.charges);
+    // Nạp thêm tên bàn và tên nhân viên phụ trách. Một truy vấn nhỏ ở đây rẻ
+    // hơn nhiều so với để hoá đơn thiếu thông tin rồi khách phải hỏi lại.
+    const billMeta = await db.query(
+      `SELECT q.label AS qr_label, g.name AS group_name, sale.full_name AS sale_name
+         FROM sessions s
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN admins sale ON sale.id = COALESCE(s.claimed_by_admin_id, $2)
+        WHERE s.id = $1`,
+      [order.session_id, req.admin.id]
+    ).catch(() => ({ rows: [] }));
+    const invoice = buildSampleInvoice(
+      order.id,
+      { ...session, ...(billMeta.rows[0] || {}) },
+      order.items,
+      Number(order.total_amount),
+      order.charges
+    );
 
     const client = await db.pool.connect();
     let updated;
@@ -10071,7 +10226,8 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
       const result = await client.query(
         `UPDATE chat_orders
             SET status = 'awaiting_payment', invoice = $2, invoice_render = '{}'::jsonb,
-                confirmed_by_admin_id = $3, confirmed_at = NOW(), bill_sent_at = NOW(), updated_at = NOW()
+                confirmed_by_admin_id = $3, confirmed_at = NOW(), bill_sent_at = NOW(),
+                payment_paused_at = NULL, payment_paused_ms = 0, updated_at = NOW()
           WHERE id = $1 AND status = 'pending_confirm'
           RETURNING *`,
         [order.id, JSON.stringify(invoice), req.admin.id]
@@ -10091,17 +10247,19 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
       client.release();
     }
 
-    // Báo khách: bếp đã nhận. Gửi sau khi COMMIT — thà thiếu một tin nhắn còn
-    // hơn báo bếp đang làm trong khi giao dịch đã bị huỷ.
-    const kitchenText = 'Đơn của bạn đã được xác nhận, bếp đang chuẩn bị. Vui lòng chờ trong giây lát.';
-    await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id)
-       VALUES ($1, 'agent', $2, $2, 'vi', $3)`,
-      [order.session_id, kitchenText, req.admin.id]
-    );
+    // KHÔNG nhắn gì cho khách lẫn Sale ở bước này — chỉ gửi bill.
+    //
+    // Trước đây có một tin "Đơn của bạn đã được xác nhận, bếp đang chuẩn bị".
+    // Nó vừa thừa (tấm bill xuất hiện ngay bên dưới đã nói đúng điều đó) vừa
+    // SAI THỜI ĐIỂM: lúc này khách còn chưa chọn phương thức thanh toán và vẫn
+    // có thể sửa đơn, nên nói "bếp đang chuẩn bị" là nói sớm. Câu đó chuyển
+    // xuống bước khách chọn xong phương thức.
+    await saveOrderBill({ ...updated, session_id: order.session_id }, updated.invoice, req.admin.id);
 
     notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: 'awaiting_payment', projectId: order.project_id });
-    void deliverPosEvent(order.id, 'order.confirmed');
+    // POS chỉ được gọi SAU khi khách chốt phương thức thanh toán (xem route
+    // payment-method). Gọi ở đây là báo máy tính tiền một đơn mà khách còn có
+    // thể sửa hoặc bỏ.
     res.json({ success: true, order: updated });
   } catch (error) {
     console.error('Confirm order error:', error);
@@ -10250,11 +10408,18 @@ async function deferredPaymentForSession(sessionId) {
 //
 // Mot cho duy nhat quyet dinh cau chu, vi hai loi vao (khach bam / het 2 phut)
 // deu ket thuc o day.
-async function sendOrderThankYou(sessionId, method, { autoSelected } = {}) {
+async function sendOrderThankYou(sessionId, method, { autoSelected, orderId } = {}) {
   const label = invoiceHelper.paymentMethodLabel(method, 'vi');
+  // Nêu MÃ ĐƠN: một khách gọi thêm nhiều lần trong bữa, câu không nói rõ đơn nào
+  // thì đối chiếu với bill nào cũng được.
+  //
+  // Câu cũ nói "đơn đã hoàn tất" — sai, vì lúc này quán mới bắt đầu làm. Đây
+  // cũng chính là chỗ đúng để nói "đang chuẩn bị", thay cho tin nhắn cũ gửi
+  // ngay lúc Sale xác nhận (khi đó khách còn sửa đơn được).
+  const code = orderId ? ` ${orderId}` : '';
   const text = autoSelected
-    ? `Cảm ơn quý khách! Do chưa có lựa chọn sau 2 phút, đơn được ghi nhận theo phương thức ${label}. Đơn của quý khách đã hoàn tất.`
-    : `Cảm ơn quý khách! Đơn của quý khách đã hoàn tất với phương thức ${label}.`;
+    ? `Đơn${code} đã được xác nhận theo phương thức ${label} (do chưa có lựa chọn sau 2 phút). Cửa hàng đang chuẩn bị. Cảm ơn quý khách!`
+    : `Đơn${code} đã được xác nhận, thanh toán bằng ${label}. Cửa hàng đang chuẩn bị. Cảm ơn quý khách!`;
   await db.query(
     `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
      VALUES ($1, 'system', $2, $2, 'vi')`,
@@ -10262,10 +10427,71 @@ async function sendOrderThankYou(sessionId, method, { autoSelected } = {}) {
   ).catch((error) => console.error('[Order] Khong gui duoc loi cam on:', error.message));
 }
 
+// Hạn chót chọn phương thức, có trừ đi khoảng thời gian khách đang sửa món.
+//
+// Đang tạm dừng thì KHÔNG có hạn chót: khách mở form sửa món mà bị chốt phương
+// thức mặc định giữa chừng là mất tiền oan của quán hoặc của khách.
+const PAYMENT_WINDOW_MS = 120000;
+
+function paymentDueAt(order) {
+  if (!order?.bill_sent_at || order.payment_paused_at) return null;
+  const due = new Date(order.bill_sent_at).getTime()
+    + PAYMENT_WINDOW_MS + Number(order.payment_paused_ms || 0);
+  return Number.isFinite(due) ? due : null;
+}
+
+// Lưu MỘT bản bill. Mỗi lần Sale xác nhận là một bản mới, không ghi đè.
+//
+// Nhờ vậy bill hiển thị lần lượt trong hội thoại đúng thứ tự thời gian, bill cũ
+// không biến mất khi khách sửa đơn, và tất cả còn nguyên kể cả khi đoạn chat đã
+// đóng — bảng này không có khoá ngoại tới sessions.
+async function saveOrderBill(order, invoice, adminId) {
+  try {
+    const saved = await db.query(
+      `INSERT INTO chat_order_bills
+         (order_id, session_id, version, invoice, items, total_amount, confirmed_by_admin_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (order_id, version) DO UPDATE
+         SET invoice = EXCLUDED.invoice, items = EXCLUDED.items,
+             total_amount = EXCLUDED.total_amount
+       RETURNING *`,
+      [order.id, order.session_id, Number(order.version || 1), JSON.stringify(invoice || {}),
+       JSON.stringify(order.items || []), order.total_amount, adminId || null]
+    );
+    return saved.rows[0];
+  } catch (error) {
+    console.error('[Bill] Không lưu được bản bill:', error.message);
+    return null;
+  }
+}
+
+// Khách mở form sửa món -> dừng đồng hồ. Ghi mốc dừng, chưa cộng gì.
+async function pausePaymentTimer(orderId) {
+  await db.query(
+    `UPDATE chat_orders SET payment_paused_at = NOW(), updated_at = NOW()
+      WHERE id = $1 AND status = 'awaiting_payment'
+        AND payment_method IS NULL AND payment_paused_at IS NULL`,
+    [orderId]
+  ).catch((error) => console.error('[Đơn] Không dừng được đồng hồ:', error.message));
+}
+
+// Khách gửi lại đơn hoặc đóng form -> chạy tiếp TỪ CHỖ DỪNG, không đếm lại từ
+// đầu: cộng khoảng vừa dừng vào payment_paused_ms rồi xoá mốc dừng.
+async function resumePaymentTimer(orderId) {
+  await db.query(
+    `UPDATE chat_orders
+        SET payment_paused_ms = payment_paused_ms
+              + GREATEST(0, (EXTRACT(EPOCH FROM (NOW() - payment_paused_at)) * 1000)::bigint),
+            payment_paused_at = NULL, updated_at = NOW()
+      WHERE id = $1 AND payment_paused_at IS NOT NULL`,
+    [orderId]
+  ).catch((error) => console.error('[Đơn] Không chạy tiếp được đồng hồ:', error.message));
+}
+
 async function maybeAutoSelectDeferredPayment(order) {
-  if (!order || order.status !== 'awaiting_payment' || order.payment_method || !order.bill_sent_at) return null;
-  const dueAt = new Date(order.bill_sent_at).getTime() + 120000;
-  if (!Number.isFinite(dueAt) || Date.now() < dueAt) return null;
+  if (!order || order.status !== 'awaiting_payment' || order.payment_method) return null;
+  const dueAt = paymentDueAt(order);
+  if (dueAt === null || Date.now() < dueAt) return null;
   const method = await deferredPaymentForSession(order.session_id);
   if (method === 'none') return null;
 
@@ -10304,6 +10530,74 @@ async function maybeAutoSelectDeferredPayment(order) {
   void deliverPosEvent(order.id, 'payment.selected');
   return updated.rows[0];
 }
+
+// Khách mở form sửa món thì dừng đồng hồ 2 phút; gửi lại đơn hoặc đóng form thì
+// chạy tiếp TỪ CHỖ DỪNG.
+//
+// Việc mở/đóng form chỉ xảy ra ở trình duyệt nên máy chủ không tự biết — phải
+// có endpoint này. Không dừng thì khách đang chọn lại món có thể bị chốt phương
+// thức mặc định giữa chừng.
+// Mọi bản bill của một phiên chat, theo thứ tự thời gian.
+//
+// KHÔNG đòi phiên còn 'active' như getChatOrderForVisitor: bill phải xem lại
+// được cả khi đoạn chat đã đóng — đó là chỗ khách cần nó nhất, lúc quay lại tra
+// "hồi nãy tôi trả bao nhiêu".
+app.get('/api/chats/:sessionId/bills', async (req, res) => {
+  try {
+    const language = invoiceLanguageFor(
+      (await db.query('SELECT detected_language FROM sessions WHERE id = $1', [req.params.sessionId])).rows[0],
+      req.query.lang
+    );
+    const rows = await db.query(
+      `SELECT b.id, b.order_id, b.version, b.invoice, b.items, b.total_amount,
+              b.payment_method, b.created_at, o.status AS order_status
+         FROM chat_order_bills b
+         LEFT JOIN chat_orders o ON o.id = b.order_id
+        WHERE b.session_id = $1
+        ORDER BY b.created_at ASC, b.version ASC
+        LIMIT 50`,
+      [req.params.sessionId]
+    );
+    // Dựng hoá đơn theo ngôn ngữ khách đang chọn, giống route /order. Làm song
+    // song vì một bữa có thể có vài bill và khách không nên chờ tuần tự.
+    const bills = await Promise.all(rows.rows.map(async (row) => {
+      const localized = await localizeOrderForVisitor(
+        { session_id: req.params.sessionId, items: row.items }, language
+      );
+      const invoice = await prepareInvoiceDelivery(
+        { ...(row.invoice || {}), items: localized?.items || row.items }, language
+      ).catch(() => row.invoice);
+      return {
+        id: row.id, orderId: row.order_id, version: row.version,
+        totalAmount: row.total_amount, paymentMethod: row.payment_method,
+        orderStatus: row.order_status, createdAt: row.created_at, invoice,
+      };
+    }));
+    res.json({ language, bills });
+  } catch (error) {
+    console.error('List bills error:', error);
+    res.status(500).json({ error: 'Không tải được hoá đơn.' });
+  }
+});
+
+app.post('/api/chats/:sessionId/order/payment-timer', limitChatMessageIp, limitChatMessage, async (req, res) => {
+  const paused = req.body?.paused === true;
+  const order = await getChatOrderForVisitor(req.params.sessionId);
+  // Không có đơn đang chờ thanh toán thì không có đồng hồ nào để dừng. Trả 200
+  // chứ không 404: cổng khách gọi hàm này mỗi lần mở thực đơn, kể cả khi chưa
+  // đặt món, và một lỗi đỏ ở đó chỉ làm khách hoang mang.
+  if (!order || order.status !== 'awaiting_payment' || order.payment_method) {
+    return res.json({ success: true, paused: false });
+  }
+  if (paused) await pausePaymentTimer(order.id);
+  else await resumePaymentTimer(order.id);
+  const fresh = await getChatOrderForVisitor(req.params.sessionId);
+  res.json({
+    success: true,
+    paused: !!fresh?.payment_paused_at,
+    autoPaymentAt: paymentDueAt(fresh) ? new Date(paymentDueAt(fresh)).toISOString() : null,
+  });
+});
 
 app.get('/api/chats/:sessionId/payment-methods', async (req, res) => {
   try {

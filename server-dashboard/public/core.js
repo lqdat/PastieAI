@@ -869,7 +869,10 @@ function updateAgentHeaderUI() {
     // Header của Sale có bố cục riêng: nút ở hàng trên bên phải, logo ở góc
     // phải dưới. Đặt class trên chính thẻ <header> để CSS không phải suy ra
     // vai trò từ một thẻ con nằm sâu bên trong.
-    document.querySelector('.dashboard-header')?.classList.toggle('sale-header', isSaleView);
+    // Cùng một bố cục header cho Sale VÀ Agent: cột trái tên, nút hàng trên bên
+    // phải, logo góc phải dưới. Giữ tên lớp 'sale-header' để không phải sửa lại
+    // toàn bộ CSS đã viết và đã đo.
+    document.querySelector('.dashboard-header')?.classList.toggle('sale-header', isAgentRole);
     if (labelEl) {
         labelEl.textContent = isSaleView ? managerName : '';
         labelEl.title = isSaleView ? managerName : '';
@@ -886,6 +889,11 @@ function updateAgentHeaderUI() {
     // Tên đã hiện to ở header trái rồi thì badge tên bên phải là thừa.
     const profileBadge = document.getElementById('admin-profile-badge');
     if (profileBadge) profileBadge.style.display = visibleName ? 'none' : 'flex';
+
+    // Giỏ hàng: Sale, Agent và Superadmin đều dùng. Thực đơn chỉ-xem: RIÊNG
+    // Sale — Agent đã có màn quản lý thực đơn đầy đủ trong "Sale & Nhóm".
+    document.getElementById('order-cart-btn')?.classList.toggle('hide', !(isAgentRole || CURRENT_ADMIN?.role === 'superadmin'));
+    document.getElementById('sale-menu-btn')?.classList.toggle('hide', !isSaleView);
 
     document.getElementById('project-selector-wrap')?.classList.toggle('hide', isAgentRole);
 

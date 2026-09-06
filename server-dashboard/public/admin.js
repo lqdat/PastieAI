@@ -1480,6 +1480,10 @@ document.getElementById('org-qr-list')?.addEventListener('click', (event) => {
 // --- Sự kiện -----------------------------------------------------------------
 
 document.getElementById('org-manage-btn')?.addEventListener('click', openOrgModal);
+document.getElementById('order-cart-btn')?.addEventListener('click', () => window.OrderCart?.open());
+// Sale mở thực đơn ở chế độ CHỈ XEM: không thêm/sửa/xoá, không thấy tồn kho
+// (đó là chuyện nội bộ của Agent), và không đặt hộ khách.
+document.getElementById('sale-menu-btn')?.addEventListener('click', () => window.StaffMenuView?.open());
 
 document.getElementById('org-close-btn')?.addEventListener('click', closeOrgModal);
 

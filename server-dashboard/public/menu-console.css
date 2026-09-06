@@ -1254,3 +1254,85 @@
     font-size: 11.5px; line-height: 1.6;
 }
 .device-hint strong { color: var(--text-secondary); }
+
+
+/* ── Giỏ hàng và thực đơn chỉ-xem ────────────────────────────────────────── */
+.cart-overlay {
+    position: fixed; inset: 0; z-index: 1200;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px; background: rgba(15, 23, 42, .45);
+}
+.cart-box { width: min(560px, 100%); max-height: 86vh; display: flex; flex-direction: column; }
+.cart-body { overflow-y: auto; padding: 4px 2px 8px; display: flex; flex-direction: column; gap: 10px; }
+.cart-loading, .cart-empty, .cart-error {
+    margin: 0; padding: 22px; text-align: center; font-size: 12.5px; color: var(--text-muted);
+}
+.cart-error { color: #f87171; }
+
+.cart-row {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 12px 14px; border-radius: 12px;
+    border: 1px solid var(--panel-border); background: var(--panel-bg);
+}
+.cart-row.is-paid { border-color: rgba(16, 185, 129, .4); }
+.cart-row.is-pending { border-color: rgba(245, 158, 11, .4); }
+.cart-row.is-muted { opacity: .65; }
+.cart-row-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* Mã đơn là NÚT: từ giỏ hàng nhìn thấy mã rồi phải tự đi tìm chat là bước thừa
+   trong lúc đang đông khách. */
+.cart-code {
+    padding: 0; border: 0; background: none; cursor: pointer;
+    color: var(--accent-color); font: inherit; font-size: 13px; font-weight: 800;
+    text-decoration: underline; text-underline-offset: 2px;
+}
+.cart-status {
+    flex: 0 0 auto; padding: 3px 9px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 800; letter-spacing: .02em;
+    background: rgba(148, 163, 184, .18); color: var(--text-secondary);
+}
+.cart-status.is-paid { background: rgba(16, 185, 129, .16); color: #059669; }
+.cart-status.is-awaiting { background: rgba(245, 158, 11, .18); color: #b45309; }
+.cart-status.is-pending { background: rgba(236, 72, 153, .14); color: #be185d; }
+.cart-row-meta {
+    display: flex; flex-wrap: wrap; gap: 4px 12px;
+    font-size: 11.5px; color: var(--text-muted);
+}
+.cart-closed { color: #b45309; font-weight: 700; }
+.cart-row-foot {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+    padding-top: 4px; border-top: 1px dashed var(--panel-border);
+}
+.cart-pay { font-size: 12px; color: var(--text-secondary); min-width: 0; }
+.cart-total { flex: 0 0 auto; font-size: 15px; font-weight: 800; color: var(--accent-color); white-space: nowrap; }
+.cart-row-time { font-size: 10.5px; color: var(--text-muted); }
+.cart-paid-btn {
+    align-self: flex-start;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 13px; border-radius: 9px; cursor: pointer;
+    border: 1px solid rgba(16, 185, 129, .45); background: rgba(16, 185, 129, .1);
+    color: #059669; font: inherit; font-size: 12px; font-weight: 700;
+}
+.cart-paid-btn:hover { background: rgba(16, 185, 129, .18); }
+.cart-paid-btn:disabled { opacity: .55; cursor: wait; }
+
+.menu-view-list { display: flex; flex-direction: column; gap: 8px; }
+.menu-view-row {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+    padding: 10px 13px; border-radius: 10px;
+    border: 1px solid var(--panel-border); background: var(--panel-bg);
+}
+.menu-view-row.is-out { opacity: .6; }
+.menu-view-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.menu-view-main strong { font-size: 13px; font-weight: 700; }
+.menu-view-main small { font-size: 11px; color: var(--text-muted); }
+.menu-view-desc { line-height: 1.45; }
+.menu-view-side { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.menu-view-side b { font-size: 13px; color: var(--accent-color); white-space: nowrap; }
+.menu-view-tag {
+    padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 700;
+    background: rgba(148, 163, 184, .2); color: var(--text-secondary);
+}
+@media (max-width: 720px) {
+    .cart-overlay { padding: 0; align-items: flex-end; }
+    .cart-box { width: 100%; max-height: 92vh; border-radius: 16px 16px 0 0; }
+}

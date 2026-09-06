@@ -1011,6 +1011,46 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS payment_auto_selected_at TIMESTAMP;`);
     await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS bill_sent_at TIMESTAMP;`);
 
+    // ── Đồng hồ 2 phút chọn phương thức thanh toán: TẠM DỪNG ĐƯỢC ──────────
+    //
+    // Trước đây hạn chót tính cứng bằng bill_sent_at + 120s nên không dừng
+    // được. Khách bấm sửa món là đồng hồ vẫn chạy, và có thể bị chốt phương
+    // thức mặc định trong lúc đang chọn lại món.
+    //
+    // Hạn chót giờ = bill_sent_at + 120s + payment_paused_ms, và bỏ qua hẳn
+    // khi payment_paused_at khác NULL.
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS payment_paused_at TIMESTAMP;`);
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS payment_paused_ms BIGINT NOT NULL DEFAULT 0;`);
+
+    // ── Từng bản BILL, giữ lại hết ────────────────────────────────────────
+    //
+    // chat_orders chỉ có MỘT dòng cho mỗi đơn, và mỗi lần Sale xác nhận lại
+    // thì invoice_render bị đặt về '{}' — bản cũ mất sạch. Ba yêu cầu cùng
+    // dựa vào bảng này:
+    //   - bill hiển thị LẦN LƯỢT trong hội thoại, không thay thế nhau;
+    //   - khách sửa đơn thì bill cũ vẫn còn nguyên chỗ của nó;
+    //   - MỌI bill được lưu, kể cả khi đoạn chat đã đóng.
+    //
+    // Không có khoá ngoại tới sessions: bill phải sống lâu hơn phiên chat.
+    await query(`
+      CREATE TABLE IF NOT EXISTS chat_order_bills (
+        id SERIAL PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        version INT NOT NULL DEFAULT 1,
+        invoice JSONB NOT NULL DEFAULT '{}'::jsonb,
+        items JSONB NOT NULL DEFAULT '[]'::jsonb,
+        total_amount NUMERIC(14,0) NOT NULL DEFAULT 0,
+        payment_method VARCHAR(30),
+        confirmed_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_order_bills_session
+                   ON chat_order_bills(session_id, created_at);`);
+    await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_order_bills_order_version
+                   ON chat_order_bills(order_id, version);`);
+
     // ── Tích hợp phần mềm tính tiền ───────────────────────────────────────────
     //
     // Mỗi Agent tự nối tới phần mềm tính tiền của mình. Đơn được đẩy sang đó bằng

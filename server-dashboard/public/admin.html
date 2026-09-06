@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r86">
-    <link rel="stylesheet" href="menu-console.css?v=r86">
+    <link rel="stylesheet" href="admin.css?v=r88">
+    <link rel="stylesheet" href="menu-console.css?v=r88">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -143,6 +143,15 @@
                 <!-- Nút riêng cho Agent: Quản lý Sale & Nhóm, Báo cáo, Tài khoản, Thông báo -->
                 <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, Nhóm tiếp nhận, Mã QR và Thực đơn">
                     <i class="ri-organization-chart"></i><span>Sale &amp; Nhóm</span>
+                </button>
+                <!-- Giỏ hàng: đơn của các cuộc trò chuyện. Sale thấy đơn mình
+                     phụ trách, Agent thấy cả cơ sở. -->
+                <button id="order-cart-btn" class="header-quick-btn hide" type="button" title="Đơn hàng của khách theo từng cuộc trò chuyện">
+                    <i class="ri-shopping-basket-2-line"></i><span>Giỏ hàng</span>
+                </button>
+                <!-- Sale chỉ XEM thực đơn để tư vấn, không thêm sửa xoá, không đặt hộ khách. -->
+                <button id="sale-menu-btn" class="header-quick-btn hide" type="button" title="Xem thực đơn của cơ sở">
+                    <i class="ri-restaurant-line"></i><span>Thực đơn</span>
                 </button>
                 <button id="report-modal-btn" class="header-quick-btn" type="button" title="Báo cáo hiệu suất tư vấn &amp; Xuất Excel">
                     <i class="ri-file-chart-line"></i><span>Báo cáo</span>
@@ -1343,14 +1352,15 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r86"></script>
-    <script src="core.js?v=r86"></script>
-    <script src="chat.js?v=r86"></script>
-    <script src="org-console.js?v=r86"></script>
-    <script src="project-admin.js?v=r86"></script>
-    <script src="menu-console.js?v=r86"></script>
-    <script src="order-console.js?v=r86"></script>
-    <script src="monitor-console.js?v=r86"></script>
-    <script src="admin.js?v=r86"></script>
+    <script src="config.js?v=r88"></script>
+    <script src="core.js?v=r88"></script>
+    <script src="chat.js?v=r88"></script>
+    <script src="org-console.js?v=r88"></script>
+    <script src="project-admin.js?v=r88"></script>
+    <script src="menu-console.js?v=r88"></script>
+    <script src="order-console.js?v=r88"></script>
+    <script src="monitor-console.js?v=r88"></script>
+    <script src="cart-console.js?v=r88"></script>
+    <script src="admin.js?v=r88"></script>
 </body>
 </html>
