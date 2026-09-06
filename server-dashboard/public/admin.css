@@ -5024,3 +5024,25 @@ button {
 
 /* Ảnh cơ sở lấp đầy ô avatar; nền gradient chỉ còn là lớp lót khi chưa có ảnh. */
 .agent-avatar-badge img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; display: block; }
+
+
+/* ── Lịch sử chỉnh sửa của một tờ hoá đơn ─────────────────────────────────
+   Gập lại mặc định: việc thường ngày là nhìn tờ hiện tại, còn dò lại đã đổi gì
+   là việc thỉnh thoảng — nhưng khi cần thì phải có ngay tại chỗ. */
+.bill-history { margin-top: 8px; border-top: 1px solid var(--panel-border); padding-top: 7px; }
+.bill-history summary {
+    cursor: pointer; list-style: none;
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--text-secondary); font-size: 11.5px; font-weight: 700;
+}
+.bill-history summary::-webkit-details-marker { display: none; }
+.bill-history summary:hover { color: var(--accent-color); }
+.bill-history-list { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.bill-history-list li {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline;
+    padding: 6px 9px; border-radius: 9px; background: var(--surface-neutral, rgba(0,0,0,.04));
+    font-size: 11.5px;
+}
+.bill-hist-when { color: var(--text-secondary); white-space: nowrap; }
+.bill-hist-what { color: var(--text-primary); min-width: 0; }
+.bill-hist-total { font-weight: 800; color: var(--accent-color); white-space: nowrap; }

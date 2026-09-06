@@ -53,6 +53,41 @@
         }
     }
 
+    // Lịch sử chỉnh sửa của một đơn.
+    //
+    // Chỉ hiện Ở ĐÂY, không hiện trong khung chat: giữa dòng hội thoại thì nó
+    // chỉ làm rối, còn khi Sale mở đơn ra đối chiếu thì đây đúng là thứ họ cần
+    // — "món này thêm vào lúc nào, ai sửa, tổng đổi từ bao nhiêu sang bao nhiêu".
+    async function loadOrderHistory(order) {
+        if (!order?.session_id) return [];
+        try {
+            const res = await fetch(`${API_BASE}/api/chats/${order.session_id}/bills`);
+            if (!res.ok) return [];
+            const bills = (await res.json()).bills || [];
+            const mine = bills.find((bill) => String(bill.orderId) === String(order.id))
+                || bills.find((bill) => (bill.history || []).some((step) => String(step.orderId) === String(order.id)));
+            return Array.isArray(mine?.history) ? mine.history : [];
+        } catch { return []; }
+    }
+
+    function orderHistoryHtml(history) {
+        if (!Array.isArray(history) || history.length < 2) return '';
+        return `
+            <details class="bill-history" open>
+                <summary><i class="ri-history-line"></i> Đã chỉnh sửa ${history.length - 1} lần</summary>
+                <ol class="bill-history-list">
+                    ${history.slice().reverse().map((step) => `
+                        <li>
+                            <span class="bill-hist-when">${escapeHtml(new Date(step.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }))}</span>
+                            <span class="bill-hist-what">${step.changes?.length
+                                ? step.changes.map((line) => escapeHtml(line)).join(', ')
+                                : 'Bản đầu tiên'}</span>
+                            <span class="bill-hist-total">${money(step.totalAmount)}</span>
+                        </li>`).join('')}
+                </ol>
+            </details>`;
+    }
+
     async function showOrderDetails(orderId, trigger) {
         if (trigger) trigger.disabled = true;
         try {
@@ -91,6 +126,7 @@
                             ${Number(charges.vatAmount || 0) > 0 ? `<span>VAT (${Number(charges.vatRate || 0)}%) <b>${money(charges.vatAmount)}</b></span>` : ''}
                             <span class="is-total">Tổng cộng <b>${money(order.total_amount)}</b></span>
                         </div>
+                        <div class="order-detail-history"></div>
                         <div class="order-detail-actions">
                             <button type="button" class="secondary-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
                             <button type="button" class="primary-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem bill</button>
@@ -98,6 +134,12 @@
                     </div>
                 </section>`;
             document.body.appendChild(detailOverlay);
+            // Tải sau khi đã vẽ: lịch sử là thông tin phụ, không nên bắt Sale
+            // chờ thêm một lượt gọi mạng mới thấy được chi tiết đơn.
+            void loadOrderHistory(order).then((history) => {
+                const host = detailOverlay?.querySelector('.order-detail-history');
+                if (host) host.innerHTML = orderHistoryHtml(history);
+            });
             detailOverlay.addEventListener('click', async (event) => {
                 if (event.target === detailOverlay || event.target.closest('.detail-close')) {
                     detailOverlay.remove(); detailOverlay = null; return;

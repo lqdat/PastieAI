@@ -1442,6 +1442,9 @@ async function loadBillsForAdmin(sessionId) {
 // bản đó rồi, vẽ thêm là hiện hai lần cùng một tờ hoá đơn.
 function renderAdminSavedBills() {
     if (!Array.isArray(adminBills) || adminBills.length === 0) return;
+    // Hiện ĐỦ các bản bill theo thứ tự khách nhận được, cùng mã, khác món và
+    // tiền. Chỉ bỏ đúng BẢN MỚI NHẤT của đơn đang mở, vì renderAdminInvoice()
+    // đã vẽ chính bản đó rồi — bỏ cả đơn thì mất luôn các bản trước.
     const liveId = adminOrder && adminOrder.status !== 'pending_confirm'
         && (adminOrder.invoice?.svgDataUrl || adminOrder.invoice?.pdfUrl || adminOrder.invoice?.pdfDataUrl)
         ? String(adminOrder.id) : '';
@@ -1449,7 +1452,9 @@ function renderAdminSavedBills() {
     for (const bill of adminBills) {
         const key = String(bill.orderId);
         const seen = newestOfOrder.get(key);
-        if (!seen || Number(bill.version || 0) > Number(seen)) newestOfOrder.set(key, Number(bill.version || 0));
+        if (seen === undefined || Number(bill.version || 0) > Number(seen)) {
+            newestOfOrder.set(key, Number(bill.version || 0));
+        }
     }
     const methodLabels = { cash: 'Tiền mặt', bank_qr: 'Chuyển khoản QR', card: 'Thẻ', room_charge: 'Cộng vào tiền phòng', pay_later: 'Thanh toán sau' };
 

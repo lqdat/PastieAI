@@ -10931,9 +10931,81 @@ async function loadSessionBills(sessionId, language) {
         id: row.id, orderId: row.order_id, orderCode: row.order_code, version: row.version,
         totalAmount: row.total_amount, paymentMethod: row.payment_method,
         orderStatus: row.order_status, createdAt: row.created_at, invoice,
+        items: localized?.items || row.items || [],
       };
     }));
+
+  // MỘT đơn chỉ hiện MỘT tờ hoá đơn — bản mới nhất. Các bản trước không biến
+  // mất, chúng thành LỊCH SỬ CHỈNH SỬA gắn vào chính tờ đó.
+  //
+  // Xếp mấy tờ bill của cùng một đơn cạnh nhau trông như khách đặt mấy lần,
+  // trong khi thật ra chỉ có một đơn được sửa đi sửa lại. Nhưng cũng không được
+  // xoá bản cũ: khi có tranh cãi "món này thêm vào lúc nào", dấu vết ấy là thứ
+  // duy nhất trả lời được.
+  // Khung chat hiện ĐỦ các bản bill theo đúng thứ tự khách nhận được: cùng một
+  // mã bill, chỉ khác món và số tiền. Khách nhìn vào là thấy ngay mình đã sửa
+  // gì — không phải mở thêm cái gì cả.
+  //
+  // Nhưng mỗi bản vẫn mang theo history của CẢ chuỗi, để giỏ hàng dựng được
+  // bảng "đã chỉnh sửa mấy lần" mà không phải gọi thêm lượt nào.
+  //
+  // Sửa đơn có thể còn mở một ĐƠN MỚI và đánh dấu đơn cũ 'superseded'. Về mặt
+  // nghiệp vụ đó vẫn là một chuỗi, nên chuỗi được cắt ở tờ còn sống.
+  const DEAD = new Set(['superseded', 'rejected', 'cancelled']);
+  bills.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+    || Number(a.version || 0) - Number(b.version || 0));
+
+  const chain = [];
+  const closeChain = (steps) => {
+    const history = steps.map((step, index) => ({
+      version: step.version,
+      // Kèm mã đơn của CHÍNH bản đó: một lần sửa có thể đã sang một đơn khác,
+      // nên giỏ hàng cần biết bản nào của đơn nào.
+      orderId: step.orderId,
+      orderCode: step.orderCode,
+      createdAt: step.createdAt,
+      totalAmount: step.totalAmount,
+      changes: index === 0 ? [] : diffBillItems(steps[index - 1].items, step.items),
+    }));
+    for (const step of steps) step.history = history;
+  };
+  for (const bill of bills) {
+    chain.push(bill);
+    if (DEAD.has(String(bill.orderStatus || ''))) continue;
+    closeChain(chain.splice(0, chain.length));
+  }
+  if (chain.length) closeChain(chain);
   return bills;
+}
+
+
+// So hai bản đơn, trả về vài câu ngắn nói ĐÃ ĐỔI GÌ.
+// Nói "Thêm Bánh flan x1" thì Sale hiểu ngay; đưa hai tờ hoá đơn bắt họ tự dò
+// từng dòng thì không ai dò.
+function diffBillItems(before, after) {
+  const key = (item) => String(item?.menuItemId ?? item?.name ?? '');
+  const map = (list) => {
+    const out = new Map();
+    for (const item of Array.isArray(list) ? list : []) {
+      const k = key(item);
+      if (!k) continue;
+      out.set(k, { name: item.name || '', quantity: Number(item.quantity || 0), note: item.note || '' });
+    }
+    return out;
+  };
+  const a = map(before);
+  const b = map(after);
+  const changes = [];
+  for (const [k, item] of b) {
+    const old = a.get(k);
+    if (!old) changes.push(`Thêm ${item.name} x${item.quantity}`);
+    else if (old.quantity !== item.quantity) changes.push(`${item.name}: ${old.quantity} → ${item.quantity}`);
+    else if (old.note !== item.note) changes.push(`${item.name}: đổi ghi chú`);
+  }
+  for (const [k, item] of a) {
+    if (!b.has(k)) changes.push(`Bỏ ${item.name} x${item.quantity}`);
+  }
+  return changes;
 }
 
 app.get('/api/chats/:sessionId/bills', async (req, res) => {
