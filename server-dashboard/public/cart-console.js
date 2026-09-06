@@ -1,4 +1,4 @@
-// Giỏ hàng: đơn của khách theo từng cuộc trò chuyện.
+// Quản lý bill: đơn của khách theo từng cuộc trò chuyện, gom theo cơ sở.
 //
 // Sale thấy đơn của chat mình tiếp nhận; Agent thấy cả cơ sở. Chỉ Agent và
 // Superadmin bấm được "Đã thanh toán" — đó là xác nhận ĐÃ CÓ TIỀN, không phải
@@ -166,14 +166,23 @@
         try {
             const res = await authFetch(`${API_BASE}/api/admin/orders/cart`);
             const data = await res.json();
-            if (!res.ok) throw new Error(data?.error || 'Không tải được giỏ hàng.');
+            if (!res.ok) throw new Error(data?.error || 'Không tải được danh sách bill.');
             canMarkPaid = !!data.canMarkPaid;
             const orders = Array.isArray(data.orders) ? data.orders : [];
             if (orders.length === 0) {
                 body.innerHTML = '<p class="cart-empty">Chưa có đơn hàng nào.</p>';
                 return;
             }
-            body.innerHTML = orders.map((order) => {
+            // Gom theo CƠ SỞ. Superadmin nhìn đơn của nhiều cơ sở cùng lúc, một
+            // danh sách phẳng thì không biết đơn nào của quán nào; Agent chỉ có
+            // một cơ sở nên chỉ thấy đúng một nhóm, không vướng gì.
+            const groups = new Map();
+            for (const order of orders) {
+                const key = order.agent_name || 'Chưa xác định cơ sở';
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(order);
+            }
+            const renderOrder = (order) => {
                 const methodLabel = order.payment_method ? PAYMENT[order.payment_method] || order.payment_method : '';
                 const state = order.status === 'awaiting_payment' && methodLabel
                     ? { label: `Đã chọn ${methodLabel}`, cls: 'is-selected' }
@@ -207,6 +216,17 @@
                         ? `<button type="button" class="cart-paid-btn" data-paid="${escapeHtml(order.id)}"><i class="ri-check-double-line"></i> Đã thanh toán</button>`
                         : ''}
                 </article>`;
+            };
+            body.innerHTML = [...groups].map(([venue, list]) => {
+                const total = list.reduce((sum, order) => sum + Number(order.total_amount || 0), 0);
+                return `
+                <section class="cart-group">
+                    <header class="cart-group-head">
+                        <h4>${escapeHtml(venue)}</h4>
+                        <span>${list.length} đơn · ${money(total)}</span>
+                    </header>
+                    ${list.map(renderOrder).join('')}
+                </section>`;
             }).join('');
         } catch (error) {
             body.innerHTML = `<p class="cart-error">${escapeHtml(error.message)}</p>`;
@@ -220,7 +240,7 @@
         overlay.innerHTML = `
             <div class="admin-management-box cart-box">
                 <div class="admin-list-head">
-                    <h3><i class="ri-shopping-basket-2-line"></i> Giỏ hàng</h3>
+                    <h3><i class="ri-file-list-3-line"></i> Quản lý bill</h3>
                     <button type="button" class="icon-btn cart-close" title="Đóng"><i class="ri-close-line"></i></button>
                 </div>
                 <div class="cart-body"></div>

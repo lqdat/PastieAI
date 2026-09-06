@@ -3367,8 +3367,13 @@ async function protectedNamesForSession(sessionId) {
     );
     const row = result.rows[0] || {};
     // Chỉ lấy phần tên riêng của tên cơ sở; loại hình vẫn để máy dịch.
+    //
+    // KHÔNG giữ nguyên nhãn QR và tên nhóm ("Bàn 10", "Lễ Tân", "Hồ bơi"):
+    // chúng là chữ MÔ TẢ chứ không phải tên riêng, và đó chính là thứ khách
+    // nước ngoài cần đọc hiểu nhất — giữ nguyên là họ không biết mình đang ngồi
+    // ở đâu. Chỉ tên riêng của cơ sở và tên người mới được giữ.
     const venue = gemini.splitVenueName(row.venue_name).propel;
-    names = [venue, row.qr_label, row.group_name, row.sale_name]
+    names = [venue, row.sale_name]
       .map((name) => String(name || '').trim())
       .filter((name) => name.length >= 2);
   } catch (error) {
@@ -4364,12 +4369,17 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
               o.payment_selected_at, o.paid_at, o.created_at, o.updated_at, o.version,
               s.visitor_name, s.visitor_email, s.status AS session_status,
               q.label AS qr_label, g.name AS group_name,
-              sale.full_name AS sale_name
+              sale.full_name AS sale_name,
+              -- Superadmin nhìn đơn của NHIỀU cơ sở cùng lúc, nên phải biết
+              -- đơn nào của cơ sở nào mới gom nhóm được.
+              COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id) AS agent_id,
+              owner.full_name AS agent_name
          FROM chat_orders o
          JOIN sessions s ON s.id = o.session_id
          LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
          LEFT JOIN agent_groups g ON g.id = s.group_id
          LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
+         LEFT JOIN admins owner ON owner.id = COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id)
         WHERE ${where.join(' AND ')}
         ORDER BY o.updated_at DESC
         LIMIT 100`,
@@ -5200,9 +5210,12 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
         );
         // Sale cần biết khách đã đổi chỗ, nếu không sẽ mang đồ tới bàn cũ.
         const text = `[Vị trí] Khách vừa quét mã "${account.label}"${sameAgent.qr_label ? ` (trước đó ở "${sameAgent.qr_label}")` : ''}.`;
+        // Câu này nói VỀ khách, với nhân viên: khách không cần đọc lại chính
+        // mình vừa làm gì, và họ cũng không đọc được nếu quán đặt tên bàn theo
+        // quy ước nội bộ.
         await db.query(
-          `INSERT INTO messages (session_id, sender, original_text, translated_text, language)
-           VALUES ($1, 'system', $2, $2, 'vi')`,
+          `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
+           VALUES ($1, 'system', $2, $2, 'vi', 'staff')`,
           [sameAgent.id, text]
         );
         notifyAdminRealtime('session_update', { sessionId: sameAgent.id, projectId: account.project_id });

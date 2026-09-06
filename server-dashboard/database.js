@@ -487,6 +487,50 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
            OR original_text LIKE '[Thanh toán] Sau 2 phút%');
     `);
 
+    // Migration: đánh dấu các câu NÓI VỚI KHÁCH đã nằm sẵn trong database.
+    //
+    // Lời chào và lời cảm ơn không cần hiện trong khung chat của Sale/Agent,
+    // nhưng tin cũ chưa có system_kind nên vẫn lọt qua bộ lọc.
+    //
+    // KHÔNG dùng được câu UPDATE ... LIKE: nội dung tin nhắn được mã hoá khi lưu
+    // nên Postgres chỉ nhìn thấy chuỗi đã mã hoá. Phải đọc qua tầng ứng dụng
+    // (query() tự giải mã) rồi cập nhật riêng cột system_kind — cột này không
+    // mã hoá nên UPDATE không đụng gì tới nội dung.
+    //
+    // Dấu hiệu phân biệt: MỌI câu dành cho nhân viên đều mở đầu bằng dấu ngoặc
+    // vuông ("[Đặt món]", "[Thanh toán]", "[Vị trí]", "[Hệ thống]"). Lời chào và
+    // lời cảm ơn thì không — và cách này đúng với cả 5 ngôn ngữ.
+    try {
+      // Con trỏ chạy theo id, KHÔNG dùng OFFSET: hàng vừa đánh dấu rời khỏi tập
+      // kết quả nên OFFSET sẽ nhảy cóc qua những hàng chưa xét.
+      let scanned = 0;
+      let cursor = 0;
+      for (let round = 0; round < 200; round += 1) {
+        const batch = await query(
+          `SELECT id, original_text FROM messages
+            WHERE sender = 'system' AND system_kind IS NULL AND visible_to <> 'staff'
+              AND id > $1
+            ORDER BY id LIMIT 500`,
+          [cursor]
+        );
+        if (batch.rows.length === 0) break;
+        cursor = batch.rows[batch.rows.length - 1].id;
+        const guestOnly = batch.rows
+          .filter((row) => !String(row.original_text || '').trimStart().startsWith('['))
+          .map((row) => row.id);
+        if (guestOnly.length) {
+          await query(`UPDATE messages SET system_kind = 'guest_only' WHERE id = ANY($1::int[])`, [guestOnly]);
+          scanned += guestOnly.length;
+        }
+        if (batch.rows.length < 500) break;
+      }
+      if (scanned) console.log(`[Migration] Đã đánh dấu ${scanned} câu nói-với-khách là guest_only.`);
+    } catch (error) {
+      // Không đánh dấu được thì thôi: cùng lắm Sale thấy thừa lời chào cũ,
+      // không đáng để chặn cả quá trình khởi động.
+      console.error('[Migration] Không đánh dấu được tin guest_only:', error.message);
+    }
+
     // Migration: File attachments (images/videos/documents) on chat messages.
     // attachment_key is the S3 object key (used to delete the file later);
     // attachment_url is a cached direct/presigned URL for convenience.

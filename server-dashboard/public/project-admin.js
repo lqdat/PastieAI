@@ -413,20 +413,16 @@ function updateAdminFormRoleVisibility() {
 let VENUE_PREFIXES = [];
 
 async function loadVenuePrefixes() {
-    const select = document.getElementById('admin-form-venue-type');
-    if (!select || VENUE_PREFIXES.length) return;
+    const list = document.getElementById('admin-venue-type-list');
+    if (!list || VENUE_PREFIXES.length) return;
     try {
         const res = await authFetch(`${API_BASE}/api/admin/venue-prefixes`);
         const data = await res.json();
         VENUE_PREFIXES = Array.isArray(data.prefixes) ? data.prefixes : [];
     } catch { VENUE_PREFIXES = []; }
     const title = (text) => String(text || '').replace(/\b\p{L}/gu, (c) => c.toUpperCase());
-    for (const prefix of VENUE_PREFIXES) {
-        const option = document.createElement('option');
-        option.value = prefix;
-        option.textContent = title(prefix);
-        select.appendChild(option);
-    }
+    // Gợi ý, không ép: người dùng gõ được loại hình ngoài danh sách.
+    list.innerHTML = VENUE_PREFIXES.map((prefix) => `<option value="${escapeHtml(title(prefix))}"></option>`).join('');
 }
 
 // Tách một tên đầy đủ thành loại hình + tên riêng, dùng ĐÚNG danh sách của máy
@@ -451,7 +447,7 @@ function updateVenueNamePreview() {
         ? `Tên đầy đủ: ${type} ${name} — khách nước ngoài thấy loại hình đã dịch, "${name}" giữ nguyên.`
         : '';
 }
-document.getElementById('admin-form-venue-type')?.addEventListener('change', updateVenueNamePreview);
+document.getElementById('admin-form-venue-type')?.addEventListener('input', updateVenueNamePreview);
 document.getElementById('admin-form-fullname')?.addEventListener('input', updateVenueNamePreview);
 
 // Ảnh đại diện: xem trước + tải lên. Thay hẳn bộ năm ô màu gradient.
@@ -466,9 +462,15 @@ const AVATAR_GRADIENTS = {
     'gradient-4': 'linear-gradient(135deg,#fbbf24,#d97706)',
     'gradient-5': 'linear-gradient(135deg,#60a5fa,#2563eb)',
 };
-const isImageUrl = (value) => /^https?:\/\//i.test(String(value || ''));
+// Nhận cả ảnh đã lưu trên máy chủ (http) LẪN ảnh vừa chọn từ máy (data:).
+// Thiếu 'data:' là chọn ảnh xong ô xem trước vẫn hiện dấu "?" — người dùng
+// tưởng chưa chọn được gì.
+const isImageUrl = (value) => /^(https?:\/\/|data:image\/|\/)/i.test(String(value || ''));
 
-function renderAdminAvatarPreview(value, fallbackName) {
+// previewOnly: ảnh chỉ để NHÌN, chưa phải giá trị sẽ lưu. Ảnh vừa chọn từ máy
+// là một chuỗi data: dài hàng trăm KB — nhét vào ô ẩn rồi gửi lên là hỏng cả
+// bản ghi; đường dẫn thật chỉ có sau khi tải ảnh lên xong.
+function renderAdminAvatarPreview(value, fallbackName, previewOnly = false) {
     const box = document.getElementById('admin-avatar-preview');
     if (!box) return;
     if (isImageUrl(value)) {
@@ -478,7 +480,7 @@ function renderAdminAvatarPreview(value, fallbackName) {
         box.style.background = AVATAR_GRADIENTS[value] || AVATAR_GRADIENTS['gradient-1'];
         box.innerHTML = `<span>${escapeHtml(String(fallbackName || '?').trim().charAt(0).toUpperCase() || '?')}</span>`;
     }
-    if (adminFormAvatar) adminFormAvatar.value = value || '';
+    if (adminFormAvatar && !previewOnly) adminFormAvatar.value = value || '';
 }
 
 // Tài khoản CHƯA LƯU thì chưa có id để gắn ảnh vào. Giữ tệp lại, tải lên ngay
@@ -509,7 +511,7 @@ document.getElementById('admin-avatar-file')?.addEventListener('change', (event)
     // Xem trước ngay bằng chính tệp vừa chọn, không đợi tải lên xong: người dùng
     // cần biết mình chọn đúng ảnh trước khi bấm Lưu.
     const reader = new FileReader();
-    reader.onload = () => renderAdminAvatarPreview(String(reader.result || ''));
+    reader.onload = () => renderAdminAvatarPreview(String(reader.result || ''), '', true);
     reader.readAsDataURL(file);
     event.target.value = '';
 });

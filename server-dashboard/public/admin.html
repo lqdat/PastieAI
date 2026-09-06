@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r96">
-    <link rel="stylesheet" href="menu-console.css?v=r96">
+    <link rel="stylesheet" href="admin.css?v=r97">
+    <link rel="stylesheet" href="menu-console.css?v=r97">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -164,8 +164,8 @@
                 </button>
                 <!-- Giỏ hàng: đơn của các cuộc trò chuyện. Sale thấy đơn mình
                      phụ trách, Agent thấy cả cơ sở. -->
-                <button id="order-cart-btn" class="header-quick-btn hide" type="button" title="Đơn hàng của khách theo từng cuộc trò chuyện">
-                    <i class="ri-shopping-basket-2-line"></i><span>Giỏ hàng</span>
+                <button id="order-cart-btn" class="header-quick-btn hide" type="button" title="Quản lý bill: đơn của khách theo từng cuộc trò chuyện">
+                    <i class="ri-file-list-3-line"></i><span>Quản lý bill</span>
                 </button>
                 <!-- Sale chỉ XEM thực đơn để tư vấn, không thêm sửa xoá, không đặt hộ khách. -->
                 <button id="sale-menu-btn" class="header-quick-btn hide" type="button" title="Xem thực đơn của cơ sở">
@@ -1215,9 +1215,14 @@
                                  khoản Sale và quản trị là tên người, không có loại hình. -->
                             <div class="form-group" id="admin-form-venue-group" style="margin: 0;">
                                 <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Loại hình cơ sở</label>
-                                <select id="admin-form-venue-type" style="width:100%;">
-                                    <option value="">— Không có (tên người) —</option>
-                                </select>
+                                <!-- Ô NHẬP kèm gợi ý, không phải danh sách chọn:
+                                     loại hình ngoài đời nhiều hơn danh sách có
+                                     sẵn ("Trung tâm hội nghị", "Nhà xe"...), bắt
+                                     chọn là không nhập được cái mình cần. -->
+                                <input id="admin-form-venue-type" list="admin-venue-type-list"
+                                       style="width:100%;" autocomplete="off"
+                                       placeholder="Hộ Kinh Doanh, Nhà hàng, Khách sạn… (để trống nếu là tên người)">
+                                <datalist id="admin-venue-type-list"></datalist>
                             </div>
 
                             <div class="form-group" style="margin: 0;">
@@ -1446,15 +1451,15 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r96"></script>
-    <script src="core.js?v=r96"></script>
-    <script src="chat.js?v=r96"></script>
-    <script src="org-console.js?v=r96"></script>
-    <script src="project-admin.js?v=r96"></script>
-    <script src="menu-console.js?v=r96"></script>
-    <script src="order-console.js?v=r96"></script>
-    <script src="monitor-console.js?v=r96"></script>
-    <script src="cart-console.js?v=r96"></script>
-    <script src="admin.js?v=r96"></script>
+    <script src="config.js?v=r97"></script>
+    <script src="core.js?v=r97"></script>
+    <script src="chat.js?v=r97"></script>
+    <script src="org-console.js?v=r97"></script>
+    <script src="project-admin.js?v=r97"></script>
+    <script src="menu-console.js?v=r97"></script>
+    <script src="order-console.js?v=r97"></script>
+    <script src="monitor-console.js?v=r97"></script>
+    <script src="cart-console.js?v=r97"></script>
+    <script src="admin.js?v=r97"></script>
 </body>
 </html>
