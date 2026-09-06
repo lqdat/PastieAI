@@ -254,7 +254,10 @@ function createInvoicePdfDataUrl(invoice, language) {
     const data = buildInvoiceData(invoice, fonts.language);
 
     const chunks = [];
-    const doc = new PDFDocument({ size: 'A4', margin: 46, info: { Title: data.invoiceNo || 'Pastie Invoice' } });
+    // A5 portrait cho cảm giác đúng một tờ bill/phiếu bán hàng. A4 tuy là dọc
+    // về kỹ thuật nhưng phần nội dung thấp và trải ngang khiến bản xem trước
+    // trên điện thoại trông như một banner nằm ngang.
+    const doc = new PDFDocument({ size: 'A5', layout: 'portrait', margin: 32, info: { Title: data.invoiceNo || 'Pastie Invoice' } });
     doc.on('data', (chunk) => chunks.push(chunk));
     doc.on('error', reject);
     doc.on('end', () => resolve(`data:application/pdf;base64,${Buffer.concat(chunks).toString('base64')}`));
@@ -271,13 +274,20 @@ function createInvoicePdfDataUrl(invoice, language) {
     const width = right - left;
     const money = (value) => formatMoney(value, data.currency, fonts.language);
 
-    // Tiêu đề
-    useBold().fontSize(19).fillColor('#b20c69').text(copy.title, { align: 'center' });
+    // Thương hiệu của Agent là tiêu đề chính. Loại chứng từ nằm dưới với kích
+    // thước nhỏ hơn; không dùng chữ "SALES INVOICE" thay tên cơ sở.
+    doc.roundedRect(left, doc.y, width, data.sellerName ? 62 : 48, 10).fill('#fff1f8');
+    doc.y += 13;
     if (data.sellerName) {
-      useRegular().fontSize(10).fillColor('#666').text(data.sellerName, { align: 'center' });
+      useBold().fontSize(17).fillColor('#98205f').text(data.sellerName, left + 12, doc.y, { width: width - 24, align: 'center' });
+      doc.moveDown(0.28);
+      useBold().fontSize(9).fillColor('#c52d77').text(copy.title, left + 12, doc.y, { width: width - 24, align: 'center', characterSpacing: .7 });
+    } else {
+      useBold().fontSize(17).fillColor('#98205f').text(copy.title, left + 12, doc.y, { width: width - 24, align: 'center' });
     }
+    doc.y = doc.y < 100 ? 100 : doc.y;
     if (data.invoiceNo) {
-      useRegular().fontSize(11).fillColor('#333').text(data.invoiceNo, { align: 'center' });
+      useBold().fontSize(10.5).fillColor('#382936').text(data.invoiceNo, { align: 'center' });
     }
     doc.moveDown(0.9);
 
@@ -306,10 +316,10 @@ function createInvoicePdfDataUrl(invoice, language) {
 
     const hasDiscount = data.items.some((item) => item.discount > 0) || data.totalDiscount > 0;
     // Cột: tên | đơn giá | SL | (chiết khấu) | thành tiền
-    const colTotalW = 92;
-    const colDiscountW = hasDiscount ? 78 : 0;
-    const colQtyW = 42;
-    const colPriceW = 88;
+    const colTotalW = 76;
+    const colDiscountW = hasDiscount ? 56 : 0;
+    const colQtyW = 30;
+    const colPriceW = 68;
     const colNameW = width - colPriceW - colQtyW - colDiscountW - colTotalW;
     const xName = left;
     const xPrice = xName + colNameW;
@@ -318,7 +328,7 @@ function createInvoicePdfDataUrl(invoice, language) {
     const xTotal = xDiscount + colDiscountW;
 
     // Tiêu đề bảng
-    useBold().fontSize(9.5).fillColor('#7a2a5c');
+    useBold().fontSize(8).fillColor('#7a2a5c');
     let y = doc.y;
     doc.text(copy.item, xName, y, { width: colNameW });
     doc.text(copy.unitPrice, xPrice, y, { width: colPriceW, align: 'right' });
@@ -329,7 +339,7 @@ function createInvoicePdfDataUrl(invoice, language) {
     doc.moveTo(left, doc.y - 4).lineTo(right, doc.y - 4).strokeColor('#f0dfea').stroke();
 
     // Dòng hàng
-    useRegular().fontSize(10).fillColor('#222');
+    useRegular().fontSize(8.7).fillColor('#222');
     data.items.forEach((item) => {
       if (doc.y > doc.page.height - doc.page.margins.bottom - 120) doc.addPage();
       y = doc.y;
@@ -348,7 +358,7 @@ function createInvoicePdfDataUrl(invoice, language) {
         doc.fontSize(8.5).fillColor('#6f6070');
         noteHeight = doc.heightOfString(item.note, { width: colNameW }) + 2;
         doc.text(item.note, xName, noteY, { width: colNameW });
-        doc.fontSize(10).fillColor('#222');
+        doc.fontSize(8.7).fillColor('#222');
       }
       doc.y = y + Math.max(nameHeight, 12) + noteHeight + 7;
     });
@@ -360,7 +370,7 @@ function createInvoicePdfDataUrl(invoice, language) {
     const summaryRow = (label, value, options = {}) => {
       const rowY = doc.y;
       const labelWidth = width - colTotalW - 10;
-      (options.bold ? useBold() : useRegular()).fontSize(options.bold ? 12.5 : 10)
+      (options.bold ? useBold() : useRegular()).fontSize(options.bold ? 12 : 9)
         .fillColor(options.bold ? '#b20c69' : '#444');
       doc.text(label, left, rowY, { width: labelWidth, align: 'right' });
       doc.text(value, xTotal - 10, rowY, { width: colTotalW + 10, align: 'right' });
@@ -375,8 +385,8 @@ function createInvoicePdfDataUrl(invoice, language) {
     }
 
     doc.moveDown(1.1);
-    useBold().fontSize(11).fillColor('#b20c69').text(copy.thanks, left, doc.y, { width, align: 'center' });
-    useRegular().fontSize(8.5).fillColor('#998');
+    useBold().fontSize(10.5).fillColor('#b20c69').text(copy.thanks, left, doc.y, { width, align: 'center' });
+    useRegular().fontSize(7.8).fillColor('#897b88');
     doc.moveDown(0.35);
     doc.text(copy.note, left, doc.y, { width, align: 'center' });
 
@@ -456,15 +466,17 @@ function createInvoiceSvg(invoice, language) {
   const data = buildInvoiceData(invoice, code);
   const money = (value) => formatMoney(value, data.currency, code);
 
-  const W = 620;
-  const PAD = 26;
+  // Bản xem trước cùng tỷ lệ bill dọc với PDF A5. Chiều cao tối thiểu giúp bill
+  // ít món không co thành một dải ngang trong khung chat.
+  const W = 440;
+  const PAD = 22;
   const innerWidth = W - PAD * 2;
   const hasDiscount = data.items.some((item) => item.discount > 0) || data.totalDiscount > 0;
 
-  const colTotalW = 104;
-  const colDiscountW = hasDiscount ? 84 : 0;
-  const colQtyW = 44;
-  const colPriceW = 96;
+  const colTotalW = 82;
+  const colDiscountW = hasDiscount ? 58 : 0;
+  const colQtyW = 32;
+  const colPriceW = 72;
   const colNameW = innerWidth - colPriceW - colQtyW - colDiscountW - colTotalW;
   const xName = PAD;
   const xPriceEnd = xName + colNameW + colPriceW;
@@ -482,9 +494,17 @@ function createInvoiceSvg(invoice, language) {
   };
   const line = (y) => parts.push(`<line x1="${PAD}" y1="${y}" x2="${W - PAD}" y2="${y}" stroke="#e6cede" stroke-width="1"/>`);
 
-  let y = 44;
-  text(copy.title, W / 2, y, { size: 20, weight: 700, fill: '#b20c69', anchor: 'middle' });
-  y += 22;
+  parts.push(`<rect x="${PAD}" y="20" width="${innerWidth}" height="${data.sellerName ? 72 : 56}" rx="13" fill="#fff1f8"/>`);
+  let y = 47;
+  if (data.sellerName) {
+    text(truncateToWidth(data.sellerName, 19, innerWidth - 30), W / 2, y, { size: 19, weight: 700, fill: '#98205f', anchor: 'middle' });
+    y += 24;
+    text(copy.title, W / 2, y, { size: 10.5, weight: 700, fill: '#c52d77', anchor: 'middle' });
+    y += 21;
+  } else {
+    text(copy.title, W / 2, y, { size: 18, weight: 700, fill: '#98205f', anchor: 'middle' });
+    y += 25;
+  }
   if (data.invoiceNo) { text(data.invoiceNo, W / 2, y, { size: 13, fill: '#6b5c69', anchor: 'middle' }); y += 20; }
   else y += 4;
 
@@ -506,19 +526,19 @@ function createInvoiceSvg(invoice, language) {
 
   y += 6; line(y); y += 20;
 
-  text(copy.item, xName, y, { size: 11.5, weight: 700, fill: '#7a2a5c' });
-  text(copy.unitPrice, xPriceEnd, y, { size: 11.5, weight: 700, fill: '#7a2a5c', anchor: 'end' });
-  text(copy.quantity, xQtyEnd, y, { size: 11.5, weight: 700, fill: '#7a2a5c', anchor: 'end' });
-  if (hasDiscount) text(copy.discount, xDiscountEnd, y, { size: 11.5, weight: 700, fill: '#7a2a5c', anchor: 'end' });
-  text(copy.lineTotal, xTotalEnd, y, { size: 11.5, weight: 700, fill: '#7a2a5c', anchor: 'end' });
+  text(copy.item, xName, y, { size: 9.5, weight: 700, fill: '#7a2a5c' });
+  text(copy.unitPrice, xPriceEnd, y, { size: 9.5, weight: 700, fill: '#7a2a5c', anchor: 'end' });
+  text(copy.quantity, xQtyEnd, y, { size: 9.5, weight: 700, fill: '#7a2a5c', anchor: 'end' });
+  if (hasDiscount) text(copy.discount, xDiscountEnd, y, { size: 9.5, weight: 700, fill: '#7a2a5c', anchor: 'end' });
+  text(copy.lineTotal, xTotalEnd, y, { size: 9.5, weight: 700, fill: '#7a2a5c', anchor: 'end' });
   y += 8; line(y); y += 20;
 
   data.items.forEach((item) => {
-    text(truncateToWidth(item.name, 12.5, colNameW - 8), xName, y, { size: 12.5 });
-    text(money(item.unitPrice), xPriceEnd, y, { size: 12.5, anchor: 'end' });
-    text(String(item.quantity), xQtyEnd, y, { size: 12.5, anchor: 'end' });
-    if (hasDiscount) text(item.discount ? money(item.discount) : '—', xDiscountEnd, y, { size: 12.5, anchor: 'end' });
-    text(money(item.lineTotal), xTotalEnd, y, { size: 12.5, anchor: 'end' });
+    text(truncateToWidth(item.name, 10.5, colNameW - 8), xName, y, { size: 10.5 });
+    text(money(item.unitPrice), xPriceEnd, y, { size: 10.5, anchor: 'end' });
+    text(String(item.quantity), xQtyEnd, y, { size: 10.5, anchor: 'end' });
+    if (hasDiscount) text(item.discount ? money(item.discount) : '—', xDiscountEnd, y, { size: 10.5, anchor: 'end' });
+    text(money(item.lineTotal), xTotalEnd, y, { size: 10.5, anchor: 'end' });
     y += 22;
     // Ảnh xem trước phải khớp với PDF tải về, nếu không khách sẽ tưởng hai bản
     // là hai hoá đơn khác nhau.
@@ -549,7 +569,7 @@ function createInvoiceSvg(invoice, language) {
   text(copy.note, W / 2, y, { size: 10, fill: '#9b8d9c', anchor: 'middle' });
   y += 22;
 
-  const H = Math.round(y);
+  const H = Math.max(640, Math.round(y));
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="'Be Vietnam Pro',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif"><rect x="0" y="0" width="${W}" height="${H}" rx="16" fill="#ffffff"/><rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="16" fill="none" stroke="#f0cde0"/>${parts.join('')}</svg>`;
 }
 

@@ -1590,7 +1590,8 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
 
     adminMessages.forEach(msg => {
         const wrapper = document.createElement('div');
-        wrapper.className = `message-wrapper ${msg.sender}`;
+        const staffOnly = msg.visible_to === 'staff';
+        wrapper.className = `message-wrapper ${msg.sender}${staffOnly ? ' staff-only-notice' : ''}`;
         // Mốc thời gian đi kèm ngay trong DOM: thẻ đơn và hoá đơn dựa vào đây để
         // chen vào đúng chỗ của mình trong dòng hội thoại.
         stampChatTime(wrapper, msg.created_at);
@@ -1632,6 +1633,7 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
             // System message
             innerHtml = `
                 <div class="message-bubble">
+                    ${staffOnly ? '<span class="staff-only-label"><i class="ri-lock-2-line"></i> Nội bộ · khách không thấy</span>' : ''}
                     <div class="original-text">${escapeHtml(readableOrderText(msg.original_text))}</div>
                 </div>
             `;
@@ -1710,9 +1712,13 @@ function renderAdminInvoice() {
         rejected: 'Đã từ chối',
         superseded: 'Đã thay bằng đơn mới',
     };
-    const methodLabels = { cash: 'Tiền mặt', bank_qr: 'Chuyển khoản QR', card: 'Thẻ' };
-    const statusText = statusLabels[adminOrder.status] || adminOrder.status || '';
+    const methodLabels = { cash: 'Tiền mặt', bank_qr: 'Chuyển khoản QR', card: 'Thẻ', room_charge: 'Cộng vào tiền phòng', pay_later: 'Thanh toán sau' };
     const methodText = adminOrder.payment_method ? methodLabels[adminOrder.payment_method] || adminOrder.payment_method : '';
+    const paymentSelected = adminOrder.status === 'awaiting_payment' && !!methodText;
+    const statusText = paymentSelected
+        ? `Đã chọn ${methodText}`
+        : (statusLabels[adminOrder.status] || adminOrder.status || '');
+    const statusClass = adminOrder.status === 'paid' ? 'is-paid' : (paymentSelected ? 'is-selected' : 'is-waiting');
     const totalText = new Intl.NumberFormat('vi-VN').format(Number(adminOrder.total_amount || 0));
 
     const wrapper = document.createElement('div');
@@ -1720,7 +1726,7 @@ function renderAdminInvoice() {
     wrapper.innerHTML = `
         <div class="admin-invoice-head">
             <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> Hóa đơn đã gửi khách</span>
-            <span class="admin-invoice-status ${adminOrder.status === 'paid' ? 'is-paid' : 'is-waiting'}">${escapeHtml(statusText)}</span>
+            <span class="admin-invoice-status ${statusClass}">${escapeHtml(statusText)}</span>
         </div>
         ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(pdf || preview)}" data-preview-type="document" data-preview-title="Hóa đơn"><img src="${escapeHtml(preview)}" alt="Hóa đơn"></button>` : ''}
         <div class="admin-invoice-meta">

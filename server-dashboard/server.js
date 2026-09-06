@@ -934,7 +934,8 @@ async function checkDeviceAllowed(admin, req) {
     return { ok: true };
   }
 
-  // Thiết bị lạ: xét hạn mức.
+  // Thiết bị lạ: xét hạn mức CHỈ bằng device_id do hệ thống cấp. clientIp,
+  // userAgent và fingerprint là dữ liệu nhật ký/đối chiếu, không tham gia đếm.
   const info = await db.query(
     `SELECT a.device_limit, a.last_device_change_at,
             (SELECT COUNT(*)::int FROM admin_devices d
@@ -1133,6 +1134,7 @@ async function checkAdminAuth(req, res, next) {
       // ở vài chỗ khác nhưng không gắn vào req.admin, nên /api/admin/me không trả
       // về và giao diện luôn hiển thị "Không giới hạn" dù đã đặt hạn mức.
       sale_limit: adminSession.sale_limit,
+      managed_by_admin_id: adminSession.managed_by_admin_id,
       // Tên Agent quản lý — header của Sale hiển thị "Agent · Sale" để người trực
       // chat luôn biết mình đang trực dưới quyền ai.
       manager_name: adminSession.manager_name || adminSession.manager_username || null,
@@ -3730,6 +3732,10 @@ function buildSampleInvoice(orderId, session, items, totalAmount, charges = null
     tableLabel: session.qr_label || session.group_name || '',
     openedAt: session.created_at || null,
     saleName: session.sale_name || '',
+    // Tên cơ sở/Agent là thương hiệu chính trên bill. "SALES INVOICE" chỉ là
+    // loại chứng từ, không được đứng thay tên đơn vị bán hàng.
+    sellerName: session.seller_name || session.agent_name || '',
+    paymentMethod: session.payment_method || '',
     items, subtotal, vatRate, vatAmount, totalAmount, currency: 'VND',
     html: `<article class="pastie-bill"><h2>Hóa đơn ${invoiceNo}</h2><p>Khách hàng: ${escapeInvoiceHtml(session.visitor_name || 'Khách hàng')}</p><table><thead><tr><th>Sản phẩm</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody></table><h3>Tổng cộng: ${formatVnd(totalAmount)}</h3></article>`,
     pngUrl: null, pdfUrl: null,
@@ -3960,7 +3966,18 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
     if (autoSelected) order = autoSelected;
   }
 
-  const sessionRes = await db.query('SELECT detected_language FROM sessions WHERE id = $1', [req.params.sessionId]);
+  const sessionRes = await db.query(
+    `SELECT s.detected_language, sale.full_name AS sale_name,
+            COALESCE(agent.full_name, manager.full_name) AS seller_name
+       FROM sessions s
+       LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+       LEFT JOIN agent_groups g ON g.id = s.group_id
+       LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
+       LEFT JOIN admins manager ON manager.id = sale.managed_by_admin_id
+       LEFT JOIN admins agent ON agent.id = COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id)
+      WHERE s.id = $1`,
+    [req.params.sessionId]
+  );
   const language = invoiceLanguageFor(sessionRes.rows[0], req.query.lang);
   const localizedOrder = await localizeOrderForVisitor(order, language);
 
@@ -4003,6 +4020,9 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
     const invoiceSource = {
       ...(order.invoice || {}),
       items: localizedOrder?.items || order.invoice?.items,
+      sellerName: sessionRes.rows[0]?.seller_name || order.invoice?.sellerName || '',
+      saleName: sessionRes.rows[0]?.sale_name || order.invoice?.saleName || '',
+      paymentMethod: order.payment_method || order.invoice?.paymentMethod || '',
     };
     invoice = await prepareInvoiceDelivery(invoiceSource, language);
     // Chỉ lưu khi thật sự vừa render (generated: true). Trường hợp hoá đơn đã có
@@ -4045,7 +4065,9 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
 
   const updated = await db.query(
     `UPDATE chat_orders SET payment_method = $1, payment_selected_at = NOW(),
-            payment_auto_selected_at = NULL, updated_at = NOW()
+            payment_auto_selected_at = NULL,
+            invoice = jsonb_set(COALESCE(invoice, '{}'::jsonb), '{paymentMethod}', to_jsonb($1::text), TRUE),
+            invoice_render = '{}'::jsonb, updated_at = NOW()
       WHERE id = $2 AND status = 'awaiting_payment' RETURNING *`,
     [method, order.id]
   );
@@ -4184,7 +4206,13 @@ app.post('/api/superadmin/accounts/:adminId/avatar', checkAdminAuth, uploadAttac
 app.get('/api/admin/menu/view', checkAdminAuth, async (req, res) => {
   try {
     // Sale xem thực đơn của Agent quản lý mình; Agent xem của chính mình.
-    const agentId = req.admin.role === 'sale' ? req.admin.managed_by_admin_id : req.admin.id;
+    let agentId = req.admin.role === 'sale' ? req.admin.managed_by_admin_id : req.admin.id;
+    // Phiên đăng nhập cũ được tạo trước khi middleware trả managed_by_admin_id
+    // vẫn phải xem được menu ngay, không bắt Sale đăng xuất/đăng nhập lại.
+    if (req.admin.role === 'sale' && !agentId) {
+      const manager = await db.query('SELECT managed_by_admin_id FROM admins WHERE id = $1', [req.admin.id]);
+      agentId = manager.rows[0]?.managed_by_admin_id;
+    }
     if (!agentId) return res.json({ categories: [], items: [] });
 
     const items = await db.query(
@@ -4250,6 +4278,64 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
   } catch (error) {
     console.error('Order cart error:', error);
     res.status(500).json({ error: 'Không tải được giỏ hàng.' });
+  }
+});
+
+// Chi tiết một đơn trong giỏ hàng. Route riêng có xác thực để Sale/Agent mở
+// đúng bill kể cả khi chat đã đóng; endpoint công khai của khách cố ý chỉ trả
+// đơn thuộc phiên khách đang giữ.
+app.get('/api/admin/orders/:orderId/details', checkAdminAuth, async (req, res) => {
+  try {
+    const found = await db.query(
+      `SELECT o.*, s.visitor_name, s.visitor_email, s.status AS session_status,
+              q.label AS qr_label, g.name AS group_name,
+              sale.full_name AS sale_name,
+              COALESCE(g.agent_id, q.owner_admin_id, sale.managed_by_admin_id, s.assigned_admin_id) AS agent_id,
+              COALESCE(agent.full_name, manager.full_name) AS agent_name
+         FROM chat_orders o
+         JOIN sessions s ON s.id = o.session_id
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
+         LEFT JOIN admins manager ON manager.id = sale.managed_by_admin_id
+         LEFT JOIN admins agent ON agent.id = COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id)
+        WHERE o.id = $1`,
+      [req.params.orderId]
+    );
+    const order = found.rows[0];
+    if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+
+    const allowed = isSuperAdmin(req.admin)
+      || (isSale(req.admin) && Number(order.claimed_by_admin_id || 0) === Number(req.admin.id))
+      || (isAgentManager(req.admin) && Number(order.agent_id || 0) === Number(req.admin.id))
+      || (!isSale(req.admin) && !isAgentManager(req.admin) && canAccessProject(req.admin, order.project_id));
+    // claimed_by_admin_id nằm trên sessions và không được SELECT bằng tên cũ;
+    // với Sale kiểm trực tiếp bằng truy vấn để tránh mở bill của Sale khác.
+    if (isSale(req.admin)) {
+      const mine = await db.query(
+        'SELECT 1 FROM sessions WHERE id = $1 AND claimed_by_admin_id = $2',
+        [order.session_id, req.admin.id]
+      );
+      if (!mine.rows.length) return res.status(403).json({ error: 'Đơn này không thuộc cuộc trò chuyện của bạn.' });
+    } else if (!allowed) {
+      return res.status(403).json({ error: 'Bạn không có quyền xem đơn này.' });
+    }
+
+    const language = invoiceHelper.normalizeLanguage(req.query.lang || 'vi');
+    let invoice = null;
+    if (order.status !== 'pending_confirm') {
+      invoice = await prepareInvoiceDelivery({
+        ...(order.invoice || {}),
+        items: order.items || [],
+        sellerName: order.agent_name || order.invoice?.sellerName || '',
+        saleName: order.sale_name || order.invoice?.saleName || '',
+        paymentMethod: order.payment_method || order.invoice?.paymentMethod || '',
+      }, language);
+    }
+    res.json({ order: { ...order, invoice } });
+  } catch (error) {
+    console.error('Order details error:', error);
+    res.status(500).json({ error: 'Không tải được chi tiết đơn hàng.' });
   }
 });
 
@@ -10286,13 +10372,16 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
     // Nạp thêm tên bàn và tên nhân viên phụ trách. Một truy vấn nhỏ ở đây rẻ
     // hơn nhiều so với để hoá đơn thiếu thông tin rồi khách phải hỏi lại.
     const billMeta = await db.query(
-      `SELECT q.label AS qr_label, g.name AS group_name, sale.full_name AS sale_name
+      `SELECT q.label AS qr_label, g.name AS group_name, sale.full_name AS sale_name,
+              COALESCE(agent.full_name, manager.full_name, $3) AS seller_name
          FROM sessions s
          LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
          LEFT JOIN agent_groups g ON g.id = s.group_id
          LEFT JOIN admins sale ON sale.id = COALESCE(s.claimed_by_admin_id, $2)
+         LEFT JOIN admins manager ON manager.id = sale.managed_by_admin_id
+         LEFT JOIN admins agent ON agent.id = COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id)
         WHERE s.id = $1`,
-      [order.session_id, req.admin.id]
+      [order.session_id, req.admin.id, req.admin.manager_name || req.admin.full_name || 'Pastie Chat']
     ).catch(() => ({ rows: [] }));
     const invoice = buildSampleInvoice(
       order.id,
@@ -10612,12 +10701,20 @@ async function maybeAutoSelectDeferredPayment(order) {
   const updated = await db.query(
     `UPDATE chat_orders
         SET payment_method = $2, payment_selected_at = NOW(),
-            payment_auto_selected_at = NOW(), updated_at = NOW()
+            payment_auto_selected_at = NOW(),
+            invoice = jsonb_set(COALESCE(invoice, '{}'::jsonb), '{paymentMethod}', to_jsonb($2::text), TRUE),
+            invoice_render = '{}'::jsonb, updated_at = NOW()
       WHERE id = $1 AND status = 'awaiting_payment' AND payment_method IS NULL
       RETURNING *`,
     [order.id, method]
   );
   if (!updated.rows[0]) return null;
+
+  await db.query(
+    `UPDATE chat_order_bills SET payment_method = $2
+      WHERE order_id = $1 AND version = $3`,
+    [order.id, method, Number(order.version || 1)]
+  ).catch((error) => console.error('[Bill] Không ghi được phương thức mặc định:', error.message));
 
   const label = invoiceHelper.paymentMethodLabel(method, 'vi');
   const text = `[Thanh toán] Sau 2 phút chưa có lựa chọn, hệ thống đã chọn mặc định: ${label}.`;
@@ -10664,9 +10761,17 @@ app.get('/api/chats/:sessionId/bills', async (req, res) => {
     );
     const rows = await db.query(
       `SELECT b.id, b.order_id, b.version, b.invoice, b.items, b.total_amount,
-              b.payment_method, b.created_at, o.status AS order_status, o.order_code
+              b.payment_method, b.created_at, o.status AS order_status, o.order_code,
+              sale.full_name AS sale_name,
+              COALESCE(agent.full_name, manager.full_name) AS seller_name
          FROM chat_order_bills b
          LEFT JOIN chat_orders o ON o.id = b.order_id
+         LEFT JOIN sessions s ON s.id = b.session_id
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
+         LEFT JOIN admins manager ON manager.id = sale.managed_by_admin_id
+         LEFT JOIN admins agent ON agent.id = COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id)
         WHERE b.session_id = $1
         ORDER BY b.created_at ASC, b.version ASC
         LIMIT 50`,
@@ -10679,7 +10784,13 @@ app.get('/api/chats/:sessionId/bills', async (req, res) => {
         { session_id: req.params.sessionId, items: row.items }, language
       );
       const invoice = await prepareInvoiceDelivery(
-        { ...(row.invoice || {}), items: localized?.items || row.items }, language
+        {
+          ...(row.invoice || {}),
+          items: localized?.items || row.items,
+          sellerName: row.seller_name || row.invoice?.sellerName || '',
+          saleName: row.sale_name || row.invoice?.saleName || '',
+          paymentMethod: row.payment_method || row.invoice?.paymentMethod || '',
+        }, language
       ).catch(() => row.invoice);
       return {
         id: row.id, orderId: row.order_id, orderCode: row.order_code, version: row.version,

@@ -678,6 +678,7 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
 
     // --- LỚP 3 BẢO MẬT LICENSE: nhật ký truy cập ----------------------------
     //
+    // IP chỉ là dữ liệu nhật ký, tuyệt đối không dùng để tính hạn mức thiết bị.
     // Chỉ ghi khi IP hoặc thiết bị KHÁC lần trước, không ghi mọi request —
     // ghi hết thì bảng phình theo số lần gọi API, vô dụng mà tốn đĩa.
     await query(`

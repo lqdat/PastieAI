@@ -6,6 +6,7 @@
 // canMarkPaid chứ không để giao diện tự suy ra từ vai trò.
 (function () {
     let overlay = null;
+    let detailOverlay = null;
     let canMarkPaid = false;
 
     const STATUS = {
@@ -15,13 +16,107 @@
         superseded: { label: 'Đã thay bản mới', cls: 'is-muted' },
         rejected: { label: 'Đã từ chối', cls: 'is-muted' },
     };
-    const PAYMENT = { cash: 'Tiền mặt', bank_qr: 'Chuyển khoản QR', card: 'Thẻ', room_charge: 'Cộng tiền phòng', defer: 'Thanh toán sau' };
+    const PAYMENT = { cash: 'Tiền mặt', bank_qr: 'Chuyển khoản QR', card: 'Thẻ', room_charge: 'Cộng tiền phòng', pay_later: 'Thanh toán sau', defer: 'Thanh toán sau' };
     const money = (value) => Number(value || 0).toLocaleString('vi-VN') + ' ₫';
     const when = (value) => (value ? new Date(value).toLocaleString('vi-VN') : '—');
 
     function close() {
+        detailOverlay?.remove();
+        detailOverlay = null;
         overlay?.remove();
         overlay = null;
+    }
+
+    async function fetchOrderDetails(orderId) {
+        const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/details?lang=vi`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Không tải được chi tiết đơn hàng.');
+        return data.order;
+    }
+
+    async function openBill(orderId, trigger) {
+        if (trigger) trigger.disabled = true;
+        try {
+            const order = await fetchOrderDetails(orderId);
+            const invoice = order.invoice || {};
+            const url = invoice.pdfUrl || invoice.pdfDataUrl || invoice.svgDataUrl || '';
+            if (!url) throw new Error('Đơn đang chờ xác nhận nên chưa có bill.');
+            if (typeof openMediaPreview === 'function') {
+                openMediaPreview(url, 'document', `Bill ${order.order_code || ''}`.trim());
+            } else {
+                window.open(url, '_blank', 'noopener,noreferrer');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        } finally {
+            if (trigger) trigger.disabled = false;
+        }
+    }
+
+    async function showOrderDetails(orderId, trigger) {
+        if (trigger) trigger.disabled = true;
+        try {
+            const order = await fetchOrderDetails(orderId);
+            const items = Array.isArray(order.items) ? order.items : [];
+            const charges = order.charges || {};
+            const payment = order.payment_method ? PAYMENT[order.payment_method] || order.payment_method : 'Khách chưa chọn';
+            detailOverlay?.remove();
+            detailOverlay = document.createElement('div');
+            detailOverlay.className = 'cart-overlay order-detail-overlay';
+            detailOverlay.innerHTML = `
+                <section class="cart-box order-detail-box" role="dialog" aria-modal="true" aria-label="Chi tiết đơn hàng">
+                    <div class="admin-list-head">
+                        <div class="order-detail-heading">
+                            <small>CHI TIẾT ĐƠN HÀNG</small>
+                            <h3>${escapeHtml(order.order_code || order.id)}</h3>
+                        </div>
+                        <button type="button" class="icon-btn cart-close detail-close" title="Đóng"><i class="ri-close-line"></i></button>
+                    </div>
+                    <div class="cart-body order-detail-body">
+                        <div class="order-detail-meta">
+                            <span><i class="ri-map-pin-line"></i>${escapeHtml(order.qr_label || order.group_name || '—')}</span>
+                            <span><i class="ri-user-line"></i>${escapeHtml(order.visitor_name || order.visitor_email || 'Khách')}</span>
+                            <span><i class="ri-bank-card-line"></i>${escapeHtml(payment)}</span>
+                        </div>
+                        <div class="order-detail-items">
+                            ${items.map((item) => `
+                                <div class="order-detail-item">
+                                    <div><strong>${escapeHtml(item.name || 'Món')}</strong>${item.note ? `<small>${escapeHtml(item.note)}</small>` : ''}</div>
+                                    <span>×${Number(item.quantity || 0)}</span>
+                                    <b>${money(item.lineTotal ?? Number(item.unitPrice || 0) * Number(item.quantity || 0))}</b>
+                                </div>`).join('') || '<p class="cart-empty">Đơn chưa có món.</p>'}
+                        </div>
+                        <div class="order-detail-summary">
+                            <span>Tạm tính <b>${money(charges.subtotal ?? order.total_amount)}</b></span>
+                            ${Number(charges.vatAmount || 0) > 0 ? `<span>VAT (${Number(charges.vatRate || 0)}%) <b>${money(charges.vatAmount)}</b></span>` : ''}
+                            <span class="is-total">Tổng cộng <b>${money(order.total_amount)}</b></span>
+                        </div>
+                        <div class="order-detail-actions">
+                            <button type="button" class="secondary-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
+                            <button type="button" class="primary-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem bill</button>
+                        </div>
+                    </div>
+                </section>`;
+            document.body.appendChild(detailOverlay);
+            detailOverlay.addEventListener('click', async (event) => {
+                if (event.target === detailOverlay || event.target.closest('.detail-close')) {
+                    detailOverlay.remove(); detailOverlay = null; return;
+                }
+                const direct = event.target.closest('[data-open]');
+                if (direct) {
+                    const sessionId = direct.dataset.open;
+                    close();
+                    if (typeof selectSession === 'function') selectSession(sessionId);
+                    return;
+                }
+                const bill = event.target.closest('[data-bill]');
+                if (bill) await openBill(bill.dataset.bill, bill);
+            });
+        } catch (error) {
+            showToast(error.message, 'error');
+        } finally {
+            if (trigger) trigger.disabled = false;
+        }
     }
 
     async function load(body) {
@@ -37,15 +132,17 @@
                 return;
             }
             body.innerHTML = orders.map((order) => {
-                const state = STATUS[order.status] || { label: order.status, cls: '' };
+                const methodLabel = order.payment_method ? PAYMENT[order.payment_method] || order.payment_method : '';
+                const state = order.status === 'awaiting_payment' && methodLabel
+                    ? { label: `Đã chọn ${methodLabel}`, cls: 'is-selected' }
+                    : (STATUS[order.status] || { label: order.status, cls: '' });
                 // Đơn của phiên chat ĐÃ ĐÓNG vẫn hiện: đó thường là đơn cần đối
                 // chiếu nhất, và ẩn đi thì Agent tưởng nó biến mất.
                 const closed = order.session_status !== 'active' ? '<span class="cart-closed">Chat đã đóng</span>' : '';
                 return `
                 <article class="cart-row ${state.cls}">
                     <div class="cart-row-head">
-                        <button type="button" class="cart-code" data-open="${escapeHtml(order.session_id)}"
-                                title="Mở cuộc trò chuyện của đơn này">${escapeHtml(order.order_code || order.id)}</button>
+                        <strong class="cart-code">${escapeHtml(order.order_code || order.id)}</strong>
                         <span class="cart-status ${state.cls}">${state.label}</span>
                     </div>
                     <div class="cart-row-meta">
@@ -59,6 +156,11 @@
                         <strong class="cart-total">${money(order.total_amount)}</strong>
                     </div>
                     <div class="cart-row-time">Cập nhật: ${when(order.updated_at)}</div>
+                    <div class="cart-row-actions">
+                        <button type="button" class="cart-action-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem bill</button>
+                        <button type="button" class="cart-action-btn" data-details="${escapeHtml(order.id)}"><i class="ri-eye-line"></i> Chi tiết</button>
+                        <button type="button" class="cart-action-btn is-primary" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Hội thoại</button>
+                    </div>
                     ${canMarkPaid && order.status === 'awaiting_payment'
                         ? `<button type="button" class="cart-paid-btn" data-paid="${escapeHtml(order.id)}"><i class="ri-check-double-line"></i> Đã thanh toán</button>`
                         : ''}
@@ -96,6 +198,18 @@
                 // vựng, NHƯNG hàm khai báo kiểu đó không gắn vào window —
                 // window.selectSession là undefined.
                 if (typeof selectSession === 'function') selectSession(open.dataset.open);
+                return;
+            }
+
+            const bill = event.target.closest('[data-bill]');
+            if (bill) {
+                await openBill(bill.dataset.bill, bill);
+                return;
+            }
+
+            const details = event.target.closest('[data-details]');
+            if (details) {
+                await showOrderDetails(details.dataset.details, details);
                 return;
             }
 
