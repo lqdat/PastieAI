@@ -1421,6 +1421,12 @@ async function selectSession(sessionId) {
     await Promise.all([loadOrderForAdmin(sessionId), loadBillsForAdmin(sessionId)]);
     await loadMessages(sessionId);
 
+    // Chốt chặn cuối: không bao giờ để spinner "Đang dịch thuật..." đứng vĩnh
+    // viễn. Vẽ bằng dữ liệu đang có — kể cả rỗng — vẫn hơn là đứng hình.
+    if (sessionId === currentSessionId && chatMessagesContainer.querySelector('.chat-loading-state')) {
+        renderAdminMessages(false);
+    }
+
     // Không còn cần polling 2s/lần: tin nhắn mới được server đẩy tức thì qua SSE Event Stream
     if (messagePollInterval) clearInterval(messagePollInterval);
     messagePollInterval = null;
@@ -1531,7 +1537,18 @@ async function loadOrderForAdmin(sessionId) {
 
 async function loadMessages(sessionId, isLoadMore = false) {
     // Do not allow a slow request to finish after a newer poll and redraw stale content.
-    if (adminIsSyncingMessages) return;
+    //
+    // Nhưng BỎ HẲN lượt gọi này thì màn hình đứng mãi ở spinner "Đang dịch
+    // thuật...": mở đoạn A (lượt gọi A đang bay) rồi bấm sang đoạn B — openChat
+    // vẽ spinner, loadMessages(B) bị chặn ở đây và biến mất, còn lượt A khi về
+    // thấy sessionId đã đổi nên cũng không vẽ gì. Không còn ai vẽ nữa, vì tin
+    // mới nay đến bằng SSE chứ không còn polling 2 giây một lần để cứu.
+    //
+    // Vậy nên: nhớ lại lượt bị chặn và chạy nó ngay khi lượt đang bay xong.
+    if (adminIsSyncingMessages) {
+        adminPendingMessageLoad = { sessionId, isLoadMore };
+        return;
+    }
     adminIsSyncingMessages = true;
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
 
@@ -1618,6 +1635,13 @@ async function loadMessages(sessionId, isLoadMore = false) {
         }
     } finally {
         adminIsSyncingMessages = false;
+        const pending = adminPendingMessageLoad;
+        adminPendingMessageLoad = null;
+        // Chỉ chạy tiếp nếu người dùng vẫn đang ở đúng đoạn chat đó — bấm lướt
+        // qua năm đoạn thì chỉ đoạn cuối cùng đáng được vẽ.
+        if (pending && pending.sessionId === currentSessionId) {
+            setTimeout(() => loadMessages(pending.sessionId, pending.isLoadMore), 0);
+        }
     }
 }
 

@@ -319,6 +319,8 @@ let adminIsLoadingMore = false;
 let adminIsSending = false;
 
 let adminIsSyncingMessages = false;
+// Lượt tải tin nhắn bị chặn vì đang có lượt khác bay: chạy bù khi lượt kia xong.
+let adminPendingMessageLoad = null;
 
 // Hóa đơn của cuộc chat đang mở — Agent cần nhìn thấy đúng hóa đơn đã gửi cho khách.
 // Bộ lọc trạng thái hội thoại: 'all' | 'active' | 'closed'

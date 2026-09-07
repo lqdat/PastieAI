@@ -808,6 +808,35 @@ async function touchQrIdentity(token, projectId, queryRunner = db) {
   return result.rows[0] || null;
 }
 
+// KHÁCH ĐANG MỞ TRANG cũng là hoạt động.
+//
+// Trước đây hai đồng hồ (phiên 1 tiếng, định danh 15 phút) chỉ được gia hạn khi
+// có TIN NHẮN. Khách ngồi đọc thực đơn, chờ món, xem lại hoá đơn suốt nửa tiếng
+// mà không gõ gì thì định danh chết; chỉ cần tải lại trang một cái là rơi thẳng
+// về màn đăng nhập, mất sạch bill và đoạn chat đang dở — đúng lỗi khách báo.
+//
+// Cổng khách hỏi tin mới mỗi 3,5 giây, nên chỗ này phải rẻ: mệnh đề WHERE chỉ
+// cho phép ghi khi hạn cũ đã lùi hơn một phút so với hạn mới, tức tối đa một
+// lượt ghi mỗi phút cho mỗi phiên, còn lại là no-op trên chỉ mục khoá chính.
+async function touchQrPresence(session) {
+  if (!session?.qr_account_id || session.status !== 'active') return;
+  const sessionUntil = new Date(Date.now() + QR_CHAT_SESSION_MS);
+  const identityUntil = new Date(Date.now() + QR_IDENTITY_MS);
+  await db.query(
+    `UPDATE sessions SET expires_at = $2::timestamptz
+      WHERE id = $1 AND status = 'active'
+        AND (expires_at IS NULL OR expires_at < $2::timestamptz - INTERVAL '1 minute')`,
+    [session.id, sessionUntil]
+  ).catch(() => {});
+  if (!session.project_id || !session.visitor_email) return;
+  await db.query(
+    `UPDATE qr_identities SET expires_at = $3::timestamptz, last_seen_at = NOW()
+      WHERE project_id = $1 AND LOWER(email) = LOWER($2)
+        AND expires_at > NOW() AND expires_at < $3::timestamptz - INTERVAL '1 minute'`,
+    [session.project_id, session.visitor_email, identityUntil]
+  ).catch(() => {});
+}
+
 // Gọi ở mọi nơi có hoạt động trong cuộc chat. Gia hạn cả hai đồng hồ cùng lúc:
 // cuộc trò chuyện và định danh. Tin của Sale cũng tính là hoạt động — khách đang
 // đọc trả lời thì không thể coi là đã bỏ đi.
@@ -3545,6 +3574,10 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
 
     const session = sessionRes.rows[0];
 
+    // Đặt TRƯỚC đường tắt: lượt hỏi "không có gì mới" vẫn là bằng chứng khách
+    // đang mở trang, và đó chính là những lượt chiếm đa số.
+    await touchQrPresence(session);
+
     // ĐƯỜNG TẮT CHO LƯỢT HỎI KHÔNG CÓ GÌ MỚI.
     //
     // Cổng khách hỏi lại mỗi 3,5 giây; phần lớn những lượt ấy không có tin nào
@@ -4071,7 +4104,11 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
 
   const sessionRes = await db.query(
     `SELECT s.detected_language, sale.full_name AS sale_name,
-            COALESCE(agent.full_name, manager.full_name) AS seller_name
+            COALESCE(agent.full_name, manager.full_name) AS seller_name,
+            -- Cần để dịch TÊN CƠ SỞ và nhãn bàn in trên hoá đơn, giống hệt
+            -- route hoá đơn đã lưu.
+            COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id) AS agent_id,
+            q.label AS qr_label, g.name AS group_name
        FROM sessions s
        LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
        LEFT JOIN agent_groups g ON g.id = s.group_id
@@ -4088,7 +4125,10 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   // maybeAutoSelectDeferredPayment ở trên — đồng hồ 2 phút vẫn phải chạy mỗi
   // lượt hỏi, chỉ phần đóng gói hoá đơn mới được bỏ qua. Đặt trước là đơn quá
   // hạn sẽ không bao giờ được chốt.
-  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${language}.i18n2`;
+  // i18n3: tên cơ sở và nhãn bàn giờ cũng được dịch, nên vân tay và cache cũ
+  // phải hết hiệu lực — nếu không khách vẫn nhận lại đúng tờ bill tiếng Việt
+  // đã render trước đó.
+  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${language}.i18n3`;
   if (String(req.query.known || '').trim() === orderPrint) {
     res.setHeader('X-Order-Print', orderPrint);
     return res.status(200).json({ unchanged: true, fingerprint: orderPrint });
@@ -4117,21 +4157,33 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   // moi don dang cho.
   if (order.status === 'pending_confirm') {
     invoice = null;
-  } else if (cached && Number(cached.orderStamp) === orderStamp && Number(cached.translationVersion) === 2) {
+  } else if (cached && Number(cached.orderStamp) === orderStamp && Number(cached.translationVersion) === 3) {
     invoice = cached.invoice;
   } else {
+    // TÊN CƠ SỞ VÀ TÊN BÀN CŨNG PHẢI DỊCH.
+    //
+    // Món ăn thì đã dịch từ lâu, nhưng dòng to nhất trên tờ bill — tên Agent —
+    // vẫn nằm nguyên tiếng Việt: khách Hàn cầm hoá đơn thấy một dòng chữ họ
+    // không đọc được ở đúng chỗ quan trọng nhất. Route hoá đơn đã lưu làm
+    // đúng việc này rồi; chỗ này bị bỏ sót.
+    const row = sessionRes.rows[0] || {};
+    const [sellerName, tableLabel] = await Promise.all([
+      localizeVenueName(row.seller_name || order.invoice?.sellerName || '', language, row.agent_id),
+      localizeQrText(row.qr_label || row.group_name || order.invoice?.tableLabel || '', language, row.agent_id),
+    ]);
     const invoiceSource = {
       ...(order.invoice || {}),
       items: localizedOrder?.items || order.invoice?.items,
-      sellerName: sessionRes.rows[0]?.seller_name || order.invoice?.sellerName || '',
-      saleName: sessionRes.rows[0]?.sale_name || order.invoice?.saleName || '',
+      sellerName,
+      tableLabel,
+      saleName: row.sale_name || order.invoice?.saleName || '',
       paymentMethod: order.payment_method || order.invoice?.paymentMethod || '',
     };
     invoice = await prepareInvoiceDelivery(invoiceSource, language);
     // Chỉ lưu khi thật sự vừa render (generated: true). Trường hợp hoá đơn đã có
     // sẵn pdfUrl thì không có gì để cache.
     if (invoice?.generated) {
-      const store = { ...(order.invoice_render || {}), [language]: { orderStamp, translationVersion: 2, invoice } };
+      const store = { ...(order.invoice_render || {}), [language]: { orderStamp, translationVersion: 3, invoice } };
       db.query('UPDATE chat_orders SET invoice_render = $1 WHERE id = $2', [JSON.stringify(store), order.id])
         .catch((error) => console.error('[Invoice] Không lưu được cache PDF:', error.message));
     }
@@ -4446,10 +4498,15 @@ app.get('/api/admin/orders/:orderId/details', checkAdminAuth, async (req, res) =
     const language = invoiceHelper.normalizeLanguage(req.query.lang || 'vi');
     let invoice = null;
     if (order.status !== 'pending_confirm') {
+      // Nhân viên cũng có thể đang xem bảng bằng tiếng Anh: tên cơ sở trên tờ
+      // bill phải theo ngôn ngữ đang xem, giống hệt phía khách.
+      const sellerName = await localizeVenueName(
+        order.agent_name || order.invoice?.sellerName || '', language, order.agent_id || null
+      );
       invoice = await prepareInvoiceDelivery({
         ...(order.invoice || {}),
         items: order.items || [],
-        sellerName: order.agent_name || order.invoice?.sellerName || '',
+        sellerName,
         saleName: order.sale_name || order.invoice?.saleName || '',
         paymentMethod: order.payment_method || order.invoice?.paymentMethod || '',
       }, language);
@@ -9819,7 +9876,10 @@ app.get('/api/chats/:sessionId/history', async (req, res) => {
     // nhân viên quán A đọc chat của quán B. Gộp theo tên cơ sở thì khách quét
     // mã ở nhiều quán vẫn tìm lại được đúng bữa mình cần.
     //
-    // Vẫn bỏ phiên ĐANG mở: nó nằm ngay trong khung chat rồi.
+    // Phiên ĐANG mở cũng nằm trong danh sách, có cờ is_current. Bỏ nó ra thì
+    // bộ lọc "Đang mở" trả về rỗng đúng lúc khách đang có một đoạn mở — khách
+    // không đọc danh sách này như "các đoạn khác", họ đọc như "các đoạn của
+    // tôi". Nhấn vào nó thì quay về khung chat chứ không mở chế độ chỉ đọc.
     const rows = await db.query(
       `SELECT s.id, s.created_at, s.status, q.label AS qr_label,
               COALESCE(owner.full_name, g.name, 'Pastie') AS agent_name,
@@ -9832,13 +9892,13 @@ app.get('/api/chats/:sessionId/history', async (req, res) => {
               (SELECT o.total_amount FROM chat_orders o
                 WHERE o.session_id = s.id AND o.status = 'paid'
                 ORDER BY o.updated_at DESC LIMIT 1) AS paid_total,
-              (SELECT COUNT(*)::int FROM chat_order_bills b WHERE b.session_id = s.id) AS bill_count
+              (SELECT COUNT(*)::int FROM chat_order_bills b WHERE b.session_id = s.id) AS bill_count,
+              (s.id = $2) AS is_current
          FROM sessions s
          LEFT JOIN agent_groups g ON g.id = s.group_id
          LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
          LEFT JOIN admins owner ON owner.id = COALESCE(g.agent_id, q.owner_admin_id)
         WHERE LOWER(s.visitor_email) = LOWER($1)
-          AND s.id <> $2
           AND s.created_at > NOW() - ($3 || ' days')::interval
         ORDER BY s.created_at DESC
         LIMIT 100`,
