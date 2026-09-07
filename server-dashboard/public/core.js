@@ -433,6 +433,19 @@ function getAdminOtpDigits() {
 }
 
 
+// Xoá sạch sáu ô OTP và đưa con trỏ về ô đầu.
+//
+// Nhập sai mà giữ lại mã cũ thì người dùng phải tự xoá từng ô mới gõ lại được —
+// đúng lúc họ đang bối rối vì vừa bị báo sai. Gọi syncAdminOtpCode() sau khi
+// xoá để nút Xác nhận khoá lại theo, nếu không nút vẫn sáng với một ô rỗng.
+function clearAdminOtpDigits() {
+    const digits = getAdminOtpDigits();
+    digits.forEach((input) => { input.value = ''; });
+    syncAdminOtpCode();
+    digits[0]?.focus();
+}
+
+
 function syncAdminOtpCode() {
     const digits = getAdminOtpDigits();
     const code = digits.map((input) => input.value.replace(/\D/g, '').slice(-1)).join('');
@@ -580,10 +593,13 @@ async function handleVerifyAdminOtp(e) {
             }, 400);
         } else {
             setLoginError(data.error || 'Mã OTP không hợp lệ hoặc đã hết hạn.');
-            getAdminOtpDigits()[0]?.focus();
+            clearAdminOtpDigits();
         }
     } catch (e) {
         setLoginError('Lỗi kết nối khi xác thực OTP: ' + e.message);
+        // Lỗi mạng cũng xoá: không biết mã đã tới máy chủ hay chưa, để nguyên
+        // sáu số rồi bấm lại là dễ dính giới hạn số lần thử.
+        clearAdminOtpDigits();
     } finally {
         if (verifyBtn) {
             verifyBtn.disabled = false;
