@@ -913,6 +913,11 @@ const DEVICE_LIMIT_DEFAULT = Number(process.env.DEVICE_LIMIT_DEFAULT || 2);
 // Cooldown là mấu chốt của cả lớp này: không có nó thì chỉ cần xoá dữ liệu trình
 // duyệt là thành "máy mới" và vượt hạn mức thoải mái.
 const DEVICE_CHANGE_COOLDOWN_DAYS = Number(process.env.DEVICE_CHANGE_COOLDOWN_DAYS || 30);
+// Số mã thiết bị tối đa gom được vào MỘT máy. Một người thật hết cỡ cũng chỉ vài
+// mã: Safari, Chrome, shortcut ngoài màn hình chính, cộng vài lần xoá dữ liệu
+// trình duyệt. Đặt trần để một vân tay máy trùng nhau (hai điện thoại cùng đời,
+// cùng cỡ màn hình, cùng múi giờ) không thể nở ra thành đường lách hạn mức.
+const MACHINE_MERGE_LIMIT = Number(process.env.MACHINE_MERGE_LIMIT || 8);
 
 // Chỉ áp cho tài khoản trực chat của dự án QR. Superadmin, DealPhuQuoc và các
 // role cũ không đụng tới — cùng ràng buộc phạm vi như phần khung giờ làm việc.
@@ -1118,31 +1123,40 @@ async function checkDeviceAllowed(admin, req, res) {
 
     if (sameMachine.rows[0]) {
       const match = sameMachine.rows[0];
-      // Chốt chặn thông minh:
-      // 1) Nếu là Shortcut / PWA (appMode === 'standalone')
-      // 2) HOẶC nếu cùng IP mạng (clientIp === last_ip)
-      // -> Chắc chắn là cùng một người dùng trên cùng một thiết bị. Cho phép gom máy ngay.
-      const isTrustedSameDevice = (
-        appMode === 'standalone'
-        || (clientIp && clientIp === match.last_ip)
-      );
 
-      let canMerge = isTrustedSameDevice;
-      if (!canMerge) {
-        // Trường hợp khác IP và không phải standalone: kiểm tra xem máy cũ có đang có phiên sống không
-        const activeSession = await db.query(
-          `SELECT 1 FROM admin_sessions s
-            WHERE s.admin_id = $1
-              AND s.expires_at > NOW()
-              AND s.last_seen_at > NOW() - INTERVAL '10 minutes'
-              AND (s.device_id = $2 OR s.device_id = ANY(COALESCE($3, ARRAY[]::text[])))
-            LIMIT 1`,
-          [admin.id, match.device_id, match.device_ids || []]
-        );
-        canMerge = activeSession.rows.length === 0;
-      }
-
-      if (canMerge) {
+      // CÙNG MỘT MÁY THÌ LÀ MỘT THIẾT BỊ — kể cả đổi trình duyệt, đổi mạng, hay
+      // mở bằng shortcut ngoài màn hình chính.
+      //
+      // Vì sao KHÔNG còn kiểm "máy cũ có phiên nào đang sống không":
+      //
+      //   - Phép kiểm ấy bắt nhầm đúng người dùng thật. Đăng nhập trên trình
+      //     duyệt rồi tạo shortcut và đăng nhập tiếp: phiên trình duyệt vẫn còn
+      //     sống, nên lần thứ hai bị tính thành MÁY THỨ HAI. Một người, một máy,
+      //     ăn hai suất trong hạn mức.
+      //
+      //   - Mà nó cũng không chặn được thứ nó nhắm tới. BAO-MAT-LICENSE.md nói
+      //     rõ lớp này sinh ra để bắt kiểu CHUYỀN TAY THEO CA — sáng người này,
+      //     chiều người khác. Kiểu đó không bao giờ tạo hai phiên cùng lúc, nên
+      //     phép kiểm phiên sống không thấy gì.
+      //
+      //   - Còn kiểu dùng ĐỒNG THỜI: gộp lại KHÔNG có lợi cho người lách. Hai
+      //     người gộp chung một suất thì lớp 1 (mỗi tài khoản một phiên sống)
+      //     đá nhau ra liên tục; tách thành hai suất mới là thứ cho họ chạy song
+      //     song. Nói cách khác chặn gộp ở đây làm khó người thật và giúp người
+      //     lách — đúng chiều ngược lại.
+      //
+      // Cũng bỏ luôn hai điều kiện "tin cậy" cũ: appMode do CHÍNH MÁY KHÁCH gửi
+      // lên nên ai cũng đặt được 'standalone', còn trùng IP thì cả một văn phòng
+      // dùng chung đường mạng cũng thành "cùng máy". Vân tay máy đã đủ và không
+      // giả được từ phía client dễ như hai thứ kia.
+      //
+      // Chốt chặn còn giữ: mỗi máy chỉ gom được một số mã hữu hạn. Vân tay máy
+      // có thể trùng giữa hai điện thoại cùng đời, cùng cỡ màn hình, cùng múi
+      // giờ; giới hạn này khiến chuyện đó không thể mở rộng thành đường lách.
+      const foldedIds = Array.isArray(match.device_ids) ? match.device_ids.length : 0;
+      if (foldedIds < MACHINE_MERGE_LIMIT) {
+        // Nhãn thiết bị theo lần dùng gần nhất, để danh sách máy trong phần Cài
+        // đặt còn nhận ra được là cái nào.
         const updatedLabel = appMode === 'standalone' ? describeDevice(userAgent, appMode) : match.label;
         await db.query(
           `UPDATE admin_devices
