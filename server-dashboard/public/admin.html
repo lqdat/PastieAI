@@ -17,7 +17,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r105">
+    <link rel="stylesheet" href="admin.css?v=r106">
     <link rel="stylesheet" href="menu-console.css?v=r105">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
@@ -1111,12 +1111,16 @@
     <!-- Admin Management Modal -->
     <div id="admin-management-modal" class="modal-overlay hide">
         <div class="login-box glass-panel admin-management-box">
-            <div class="brand-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
+            <div class="brand-header staff-modal-head">
+                <div class="staff-modal-heading">
                     <div class="brand-logo admin-mgmt-brand-icon"><i class="ri-team-line"></i></div>
-                    <h2 style="margin: 0; font-size: 16px; font-weight: 700;">Quản lý nhân viên</h2>
+                    <div class="staff-modal-title-copy">
+                        <span class="account-section-kicker">ĐỘI NGŨ &amp; PHÂN QUYỀN</span>
+                        <h2>Quản lý nhân viên</h2>
+                        <p id="admin-mgmt-subtitle">Quản lý tài khoản và quyền truy cập theo từng dự án</p>
+                    </div>
                 </div>
-                <button id="admin-mgmt-close-top-btn" class="icon-btn"><i class="ri-close-line"></i></button>
+                <button id="admin-mgmt-close-top-btn" class="icon-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
             </div>
 
             <!-- Hai tab: Dự án và Nhân sự. Dùng lại .org-tabs của console Agent
@@ -1127,7 +1131,7 @@
                 <button type="button" class="org-tab is-active" data-staff-tab="people" role="tab"><i class="ri-team-line"></i> <span>Nhân sự</span></button>
             </div>
 
-            <div style="overflow-y: auto; flex: 1; min-height: 0;">
+            <div class="admin-mgmt-scroll">
               <div data-staff-pane="projects" class="hide">
                 <!-- Quản lý dự án (multi-project - chỉ Superadmin) -->
                 <div class="admin-mgmt-section admin-project-management">
@@ -1180,25 +1184,25 @@
                 </section>
 
                 <!-- Grid: Left side list of users, Right side add/edit form -->
-                <div class="admin-management-grid" style="display: grid; text-align: left;">
+                <div class="admin-management-grid">
                     <!-- Left panel: List -->
-                    <div class="admin-users-panel" style="padding-right: 18px; display: flex; flex-direction: column; min-height: 0;">
+                    <div class="admin-users-panel">
                         <div class="admin-list-head">
-                            <h3 style="font-size: 13.5px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px;">
+                            <h3 class="admin-list-title">
                                 <i class="ri-user-line" style="color: var(--accent-color);"></i> <span id="admin-list-heading">Danh sách nhân viên</span>
                             </h3>
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <span id="admin-user-count-badge" style="background: var(--surface-neutral); color: var(--text-secondary); padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 700;">0 nhân viên</span>
+                            <div class="admin-list-actions">
+                                <span id="admin-user-count-badge" class="admin-user-count-badge">0 nhân viên</span>
                                 <button type="button" class="pane-add" id="admin-add-toggle" data-addbox-toggle="staff"><i class="ri-user-add-line"></i> <span>Thêm nhân viên</span></button>
                             </div>
                         </div>
-                        <div id="admin-list-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; max-height: 380px;">
+                        <div id="admin-list-container">
                             <!-- Dynamically populated -->
                         </div>
                     </div>
 
                     <!-- Right panel: Form -->
-                    <div class="admin-user-form-panel hide" data-addbox="staff" style="display: flex; flex-direction: column; padding: 16px 18px; overflow-y: auto; max-height: 460px;">
+                    <div class="admin-user-form-panel hide" data-addbox="staff">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
                             <h3 id="admin-form-title" style="font-size: 13.5px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px;">
                                 <i class="ri-user-add-line" style="color: var(--accent-color);"></i> Thêm nhân viên
@@ -1455,7 +1459,7 @@
     <script src="core.js?v=r105"></script>
     <script src="chat.js?v=r105"></script>
     <script src="org-console.js?v=r105"></script>
-    <script src="project-admin.js?v=r105"></script>
+    <script src="project-admin.js?v=r106"></script>
     <script src="menu-console.js?v=r105"></script>
     <script src="order-console.js?v=r105"></script>
     <script src="monitor-console.js?v=r105"></script>

@@ -763,12 +763,12 @@ async function loadAdminUsers() {
                 roleLabel = 'Admin Agent';
                 roleClass = 'agent';
                 const limitStr = u.sale_limit ? `${u.used_sales_count || 0}/${u.sale_limit} Sale` : `${u.used_sales_count || 0} Sale (Không giới hạn)`;
-                extraBadges = `<span style="font-size:10px; color:#ec4899; background:rgba(236,72,153,0.1); border:1px solid rgba(236,72,153,0.25); padding:1px 6px; border-radius:4px; font-weight:600;"><i class="ri-team-line"></i> Cấp phép: <strong>${limitStr}</strong></span>`;
+                extraBadges = `<span class="admin-user-meta-badge is-license"><i class="ri-team-line"></i> Cấp phép: <strong>${limitStr}</strong></span>`;
             } else if (u.role === 'sale') {
                 roleLabel = 'Sale';
                 roleClass = 'sale';
                 const managerText = u.manager_name || u.manager_username || 'Chưa gán';
-                extraBadges = `<span style="font-size:10px; color:#6366f1; background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.22); padding:1px 6px; border-radius:4px; font-weight:600;"><i class="ri-user-star-line"></i> Thuộc Agent: <strong>${escapeHtml(managerText)}</strong></span>`;
+                extraBadges = `<span class="admin-user-meta-badge is-manager"><i class="ri-user-star-line"></i> Thuộc Agent: <strong>${escapeHtml(managerText)}</strong></span>`;
             } else if (u.role === 'superadmin') {
                 roleLabel = 'Superadmin';
                 roleClass = 'superadmin';
@@ -794,25 +794,26 @@ async function loadAdminUsers() {
                         <div class="admin-user-details">
                             <h4>
                                 ${escapeHtml(u.full_name || u.username)}
-                                ${isSelf ? '<span style="font-size:10.5px; color:#ec4899; font-weight:700;">(Bạn)</span>' : ''}
+                                ${isSelf ? '<span class="admin-user-you">Bạn</span>' : ''}
                             </h4>
                             <p>
                                 <span>${escapeHtml(u.username)}</span>
-                                ${u.project_id ? ` · <span style="color:#818cf8; font-weight:500;">${escapeHtml(u.project_id)}</span>` : ''}
+                                ${u.project_id ? `<span class="admin-user-project">${escapeHtml(u.project_id)}</span>` : ''}
                             </p>
-                            <div style="margin-top: 2px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
+                            <div class="admin-user-badges">
                                 <span class="admin-user-role-badge ${roleClass}">
                                     ${roleLabel}
                                 </span>
-                                ${u.is_active ? '<span style="font-size:10.5px; color:#34d399; font-weight:600;">✓ Hoạt động</span>' : '<span style="font-size:10.5px; color:#f87171; font-weight:600;">✗ Đã khóa</span>'}
-                                ${isCreatedByMe && !isSelf ? '<span style="font-size:9.5px; color:#ec4899; background:rgba(236,72,153,0.12); border:1px solid rgba(236,72,153,0.25); padding:1px 5px; border-radius:4px; font-weight:600;">Do bạn tạo</span>' : ''}
+                                ${u.is_active ? '<span class="admin-user-state is-active"><i class="ri-checkbox-circle-fill"></i> Hoạt động</span>' : '<span class="admin-user-state is-locked"><i class="ri-close-circle-fill"></i> Đã khóa</span>'}
+                                ${isCreatedByMe && !isSelf ? '<span class="admin-user-meta-badge is-created">Do bạn tạo</span>' : ''}
+                                ${extraBadges}
                             </div>
                         </div>
                     </div>
                     <div class="admin-user-actions">
-                        <button onclick="editAdminUser(${u.id})" class="icon-btn" title="Chỉnh sửa" style="width:28px; height:28px; font-size:13px; background:rgba(99,102,241,0.12); color:#818cf8; border:1px solid rgba(99,102,241,0.25); border-radius:6px; cursor:pointer;"><i class="ri-edit-line"></i></button>
-                        ${canManageDevices ? `<button onclick="openAccountDevices(${u.id})" class="icon-btn" title="Thiết bị đã đăng ký" style="width:28px; height:28px; font-size:13px; background:rgba(16,185,129,0.12); color:#34d399; border:1px solid rgba(16,185,129,0.25); border-radius:6px; cursor:pointer;"><i class="ri-computer-line"></i></button>` : ''}
-                        ${canDelete ? `<button onclick="deleteAdminUser(${u.id})" class="icon-btn" title="Xóa tài khoản" style="width:28px; height:28px; font-size:13px; background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); border-radius:6px; cursor:pointer;"><i class="ri-delete-bin-line"></i></button>` : ''}
+                        <button onclick="editAdminUser(${u.id})" class="admin-user-action is-edit" title="Chỉnh sửa" aria-label="Chỉnh sửa ${escapeHtml(u.full_name || u.username)}"><i class="ri-edit-line"></i></button>
+                        ${canManageDevices ? `<button onclick="openAccountDevices(${u.id})" class="admin-user-action is-device" title="Thiết bị đã đăng ký" aria-label="Quản lý thiết bị của ${escapeHtml(u.full_name || u.username)}"><i class="ri-computer-line"></i></button>` : ''}
+                        ${canDelete ? `<button onclick="deleteAdminUser(${u.id})" class="admin-user-action is-delete" title="Xóa tài khoản" aria-label="Xóa ${escapeHtml(u.full_name || u.username)}"><i class="ri-delete-bin-line"></i></button>` : ''}
                     </div>
                 </div>
             `;

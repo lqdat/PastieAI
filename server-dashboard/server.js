@@ -31,7 +31,17 @@ const app = express();
 // route, chỉ cần quên một chỗ là lỗi im lặng quay lại.
 for (const verb of ['get', 'post', 'put', 'patch', 'delete']) {
   const register = app[verb].bind(app);
-  app[verb] = (path, ...handlers) => register(path, ...handlers.map((handler) => {
+  app[verb] = (path, ...handlers) => {
+    // app.get('env') LÀ MỘT LỜI GỌI KHÁC HẲN: đọc cấu hình, không đăng ký route.
+    //
+    // Express dành riêng dạng một tham số ấy cho việc đọc cấu hình, và chính nó
+    // gọi this.get('env') trong app.handle() — tức MỖI REQUEST một lần. Chuyển
+    // thẳng xuống hàm gốc để nó rơi đúng vào nhánh đó. (Đã dựng thử: bỏ dòng
+    // này đi thì spread rỗng cũng gọi register(path) với đúng một tham số nên
+    // vẫn chạy đúng — giữ lại vì viết rõ ra thì không ai phải suy luận việc đó,
+    // và một lần đổi cách bọc là mất luôn sự may mắn ấy.)
+    if (handlers.length === 0) return register(path);
+    return register(path, ...handlers.map((handler) => {
     // Middleware xử lý lỗi có 4 tham số — không được bọc, bọc là Express thôi
     // coi nó là middleware lỗi.
     if (typeof handler !== 'function' || handler.length > 3) return handler;
@@ -42,7 +52,8 @@ for (const verb of ['get', 'post', 'put', 'patch', 'delete']) {
         return result;
       } catch (error) { next(error); }
     };
-  }));
+    }));
+  };
 }
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
@@ -1862,54 +1873,40 @@ async function closeActiveQrSession(qrAccountId, queryRunner = db) {
 // Tệ hơn: nó đóng cả cuộc ở Agent KHÁC. Khách ở khách sạn A quét thêm mã của
 // nhà hàng B là cuộc chat với A chết ngay, dù hai bên chẳng liên quan gì nhau.
 //
-// Hàm này trả về cuộc còn sống của khách với ĐÚNG Agent của mã QR đang quét.
-// Ba lối vào (resume, OTP, Google) đều hỏi qua đây trước khi nghĩ tới việc mở
-// cuộc mới.
-async function findLiveQrSessionForAgent(projectId, email, agentId, queryRunner = db) {
-  if (!projectId || !email || !agentId) return null;
+// MỘT MÃ QR LÀ MỘT CUỘC TRÒ CHUYỆN.
+//
+// Trước đây hàm này tra theo AGENT: khách đang chat ở "Bàn 10" mà quét mã
+// "Phòng 101" của cùng quán thì cuộc chat bị KÉO sang phòng 101 thay vì mở cuộc
+// mới. Nhưng bàn 10 và phòng 101 là hai chỗ khác nhau, thường là hai nhóm khách
+// và hai hoá đơn khác nhau — gộp chung là nhân viên mang đồ sai chỗ và tiền
+// cộng nhầm đơn.
+//
+// Nay phạm vi nối lại là CHÍNH MÃ QR: quét lại đúng mã cũ thì về đúng cuộc cũ
+// (đây là lối khách đăng nhập lại sau khi hết định danh), quét mã khác thì mở
+// cuộc mới, dù cùng Agent hay khác Agent.
+async function findLiveQrSessionForQrAccount(projectId, email, qrAccountId, queryRunner = db) {
+  if (!projectId || !email || !qrAccountId) return null;
   const result = await queryRunner.query(
-    `SELECT s.*, COALESCE(g.agent_id, q.owner_admin_id) AS agent_id, q.label AS qr_label
+    `SELECT s.*, q.label AS qr_label
        FROM sessions s
-       LEFT JOIN agent_groups g ON g.id = s.group_id
        LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
       WHERE s.project_id = $1 AND LOWER(s.visitor_email) = LOWER($2)
-        AND s.status = 'active' AND s.qr_account_id IS NOT NULL
+        AND s.status = 'active' AND s.qr_account_id = $3
         AND (s.expires_at IS NULL OR s.expires_at > NOW())
-        AND COALESCE(g.agent_id, q.owner_admin_id) = $3
       ORDER BY s.created_at DESC
       LIMIT 1`,
-    [projectId, String(email).trim(), agentId]
+    [projectId, String(email).trim(), qrAccountId]
   );
   return result.rows[0] || null;
 }
 
-// Agent của một mã QR: theo nhóm nếu mã thuộc nhóm, không thì theo chủ mã.
-async function agentIdOfQrAccount(account, queryRunner = db) {
-  if (!account) return null;
-  if (!account.group_id) return account.owner_admin_id;
-  const g = await queryRunner.query('SELECT agent_id FROM agent_groups WHERE id = $1', [account.group_id]);
-  return g.rows[0]?.agent_id || account.owner_admin_id;
-}
-
-// Khách quay lại bằng một mã QR khác của CÙNG Agent: kéo cuộc chat sang bàn mới
-// và báo cho nhân viên biết, thay vì mở một cuộc mới ở bàn mới.
-async function moveQrSessionToAccount(session, account, queryRunner = db) {
-  if (Number(session.qr_account_id) === Number(account.id)) return false;
-  await queryRunner.query(
-    'UPDATE sessions SET qr_account_id = $2, group_id = COALESCE($3, group_id) WHERE id = $1',
-    [session.id, account.id, account.group_id || null]
-  );
-  // Sale cần biết khách đã đổi chỗ, nếu không sẽ mang đồ tới bàn cũ. Câu này
-  // nói VỀ khách, với nhân viên — khách không cần đọc lại chính mình vừa làm gì.
-  const text = `[Vị trí] Khách vừa quét mã "${account.label}"${session.qr_label ? ` (trước đó ở "${session.qr_label}")` : ''}.`;
-  await queryRunner.query(
-    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
-     VALUES ($1, 'system', $2, $2, 'vi', 'staff')`,
-    [session.id, text]
-  );
-  notifyAdminRealtime('session_update', { sessionId: session.id, projectId: session.project_id });
-  return true;
-}
+// (Đã bỏ agentIdOfQrAccount và moveQrSessionToAccount.)
+//
+// Hai hàm này phục vụ luật cũ: "quét mã khác của CÙNG Agent thì KÉO cuộc chat
+// sang mã mới". Luật đó sai với thực tế — "Bàn 10" và "Phòng 101" là hai chỗ
+// khác nhau, thường là hai nhóm khách và hai hoá đơn khác nhau; gộp chung là
+// nhân viên mang đồ sai chỗ và tiền cộng nhầm đơn. Nay mỗi mã QR là một cuộc
+// trò chuyện riêng nên không còn gì để kéo. Không khôi phục lại.
 
 // (Đã bỏ closeActiveQrSessionsForVisitor.)
 //
@@ -2306,10 +2303,8 @@ app.post('/api/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, async (req, r
     // món đã gọi, mất cả đoạn nói chuyện với nhân viên; và còn đóng lây cuộc ở
     // Agent khác mà khách đang chat song song.
     if (qrAccount) {
-      const agentId = await agentIdOfQrAccount(qrAccount);
-      const live = await findLiveQrSessionForAgent(projectId, email, agentId);
+      const live = await findLiveQrSessionForQrAccount(projectId, email, qrAccount.id);
       if (live) {
-        await moveQrSessionToAccount(live, qrAccount);
         await touchQrActivity(live, null);
         const idBack = await issueQrIdentity({ projectId, email, authProvider: 'otp' }).catch(() => null);
         await db.query('DELETE FROM otps WHERE email = $1', [email]);
@@ -5442,32 +5437,19 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
       .includes(String(req.body?.language || '').toLowerCase().slice(0, 2))
       ? String(req.body.language).toLowerCase().slice(0, 2) : 'vi';
 
-    const agentIdOfQr = await agentIdOfQrAccount(account);
+    // Cuộc còn sống của chính khách này TRÊN CHÍNH MÃ QR vừa quét.
+    const sameQr = await findLiveQrSessionForQrAccount(account.project_id, identity.email, account.id);
 
-    // Cuộc chat còn sống của chính khách này trong dự án, kèm Agent đang phụ trách.
-    const openRes = await db.query(
-      `SELECT s.*, COALESCE(g.agent_id, q.owner_admin_id) AS agent_id, q.label AS qr_label
-         FROM sessions s
-         LEFT JOIN agent_groups g ON g.id = s.group_id
-         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
-        WHERE s.project_id = $1 AND LOWER(s.visitor_email) = LOWER($2)
-          AND s.status = 'active' AND s.qr_account_id IS NOT NULL
-          AND (s.expires_at IS NULL OR s.expires_at > NOW())
-        ORDER BY s.created_at DESC`,
-      [account.project_id, identity.email]
-    );
-    const sameAgent = openRes.rows.find((row) => Number(row.agent_id) === Number(agentIdOfQr));
-
-    if (sameAgent) {
-      const movedQr = await moveQrSessionToAccount(sameAgent, account);
-      await touchQrActivity(sameAgent, identity.token);
+    if (sameQr) {
+      await touchQrActivity(sameQr, identity.token);
       return res.json({
-        authenticated: true, sessionId: sameAgent.id, continued: true, movedQr,
+        authenticated: true, sessionId: sameQr.id, continued: true, movedQr: false,
         identityExpiresAt: identity.expires_at,
       });
     }
 
-    // Chưa có cuộc nào với Agent này: mở cuộc mới, không đụng vào cuộc của Agent khác.
+    // Mã QR này chưa có cuộc nào của khách: mở cuộc mới. Cuộc ở bàn khác — kể cả
+    // của cùng Agent — vẫn sống nguyên, khách chuyển qua lại được trong màn lịch sử.
     const sessionId = randomUUID();
     const { browser, device } = parseUserAgent(req.headers['user-agent'] || '');
     const customer = await db.query(
@@ -5524,10 +5506,8 @@ app.post('/api/qr-chat/google', async (req, res) => {
     const account = await resolveQrChatAccount(projectId, qrCode);
     if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
     // Cùng luật với lối OTP: còn cuộc sống với Agent này thì về đúng cuộc đó.
-    const agentId = await agentIdOfQrAccount(account);
-    const live = await findLiveQrSessionForAgent(projectId, profile.email, agentId);
+    const live = await findLiveQrSessionForQrAccount(projectId, profile.email, account.id);
     if (live) {
-      await moveQrSessionToAccount(live, account);
       await touchQrActivity(live, null);
       const idBack = await issueQrIdentity({ projectId, email: profile.email, authProvider: 'google' }).catch(() => null);
       await upsertCustomer({
