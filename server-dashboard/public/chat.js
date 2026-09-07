@@ -1516,6 +1516,8 @@ function showChatLoadFailed(sessionId) {
     chatMessagesContainer.appendChild(box);
 }
 
+// Các bản đơn khách đã gửi trước bản hiện tại (khách bấm sửa rồi gửi lại).
+let adminOrderRevisions = [];
 let adminBills = [];
 async function loadBillsForAdmin(sessionId) {
     try {
@@ -1533,7 +1535,7 @@ async function loadBillsForAdmin(sessionId) {
     // vẽ tin nhắn không bao giờ chạy. Một tờ hoá đơn dị dạng không được phép
     // khoá cả cuộc trò chuyện.
     if (sessionId === currentSessionId) {
-        try { renderAdminSavedBills(); }
+        try { renderAdminSavedBills(); renderAdminOrderRevisions(); }
         catch (error) { console.error('Không vẽ được hoá đơn đã lưu:', error); }
     }
 }
@@ -1542,6 +1544,36 @@ async function loadBillsForAdmin(sessionId) {
 // Vẽ các bill đã lưu vào đúng chỗ của chúng trong dòng thời gian.
 // BỎ QUA bản mới nhất của đơn đang hiển thị: renderAdminInvoice() đã vẽ đúng
 // bản đó rồi, vẽ thêm là hiện hai lần cùng một tờ hoá đơn.
+// Bản đơn cũ của khách, vẽ vào đúng chỗ của nó trong dòng hội thoại — cùng luật
+// với hoá đơn: mỗi lần khách bấm gửi là một sự kiện đã xảy ra, không bị bản sau
+// xoá đi.
+function renderAdminOrderRevisions() {
+    chatMessagesContainer?.querySelectorAll('.admin-order-revision').forEach((node) => node.remove());
+    if (!Array.isArray(adminOrderRevisions) || adminOrderRevisions.length === 0) return;
+    for (const revision of adminOrderRevisions) {
+      try {
+        const rows = (revision.items || []).map((item) => `
+            <div class="admin-order-rev-row">
+                <span>${escapeHtml(item.name || '')} <b>×${Number(item.quantity || 0)}</b>
+                    ${item.note ? `<small>${escapeHtml(String(item.note))}</small>` : ''}</span>
+                <span>${new Intl.NumberFormat('vi-VN').format(Number(item.lineTotal || 0))} ₫</span>
+            </div>`).join('');
+        const wrapper = document.createElement('div');
+        wrapper.className = 'admin-invoice-block admin-order-revision';
+        wrapper.innerHTML = `
+            <div class="admin-invoice-head">
+                <span class="admin-invoice-kicker"><i class="ri-file-list-3-line"></i> Đơn khách đã gửi (bản ${Number(revision.version || 1)})</span>
+                <span class="admin-invoice-status is-waiting">Khách đã sửa lại</span>
+            </div>
+            <div class="admin-order-rev-body">${rows}</div>
+            <div class="admin-invoice-meta">
+                <span><strong>${new Intl.NumberFormat('vi-VN').format(Number(revision.total_amount || 0))} ₫</strong></span>
+            </div>`;
+        insertIntoChatFlow(wrapper, revision.created_at);
+      } catch (error) { console.error('Bỏ qua một bản đơn không vẽ được:', error); }
+    }
+}
+
 function renderAdminSavedBills() {
     // Dọn bản vẽ trước: hàm này có thể được gọi nhiều lần cho cùng một phiên
     // (một lần sau khi vẽ tin nhắn, một lần khi bill về). Không dọn là mỗi lượt
@@ -1613,8 +1645,13 @@ async function loadOrderForAdmin(sessionId) {
         }
         const data = await response.json();
         const order = data.order || null;
+        // Các bản đơn khách đã gửi rồi sửa lại. Nhân viên phải thấy ĐÚNG những
+        // gì khách thấy: khách nhớ mình từng gửi đơn khác, mà bảng của Sale chỉ
+        // có bản cuối thì hai bên nói chuyện lệch nhau.
+        adminOrderRevisions = Array.isArray(data.revisions) ? data.revisions : [];
         const signature = order
-            ? [order.id, order.status, order.payment_method, order.total_amount, currentLang].join('|')
+            ? [order.id, order.status, order.payment_method, order.total_amount,
+               adminOrderRevisions.length, currentLang].join('|')
             : '';
         if (signature === adminOrderSignature) return false;
         adminOrder = order;
@@ -1858,6 +1895,7 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
 
     renderAdminInvoice();
     renderAdminSavedBills();
+    renderAdminOrderRevisions();
     // Đơn CHỜ XÁC NHẬN do order-console.js vẽ; đơn đã xác nhận thì hàm trên vẽ
     // hoá đơn. Hai trạng thái loại trừ nhau nên không chồng lên nhau.
     window.OrderConsole?.renderPending(adminOrder, chatMessagesContainer);

@@ -5109,3 +5109,9 @@ button {
     font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .chat-load-failed button:hover { background: rgba(255, 255, 255, .12); }
+
+/* Bản đơn khách đã gửi rồi sửa lại — nhân viên thấy đúng thứ khách thấy. */
+.admin-order-revision { opacity: .82; border-style: dashed; }
+.admin-order-rev-body { display: flex; flex-direction: column; gap: 6px; padding: 10px 13px; }
+.admin-order-rev-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 12.5px; }
+.admin-order-rev-row small { display: block; opacity: .7; font-size: 11px; }

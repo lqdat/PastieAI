@@ -4286,8 +4286,19 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
     }
   }
 
+  // CÁC BẢN ĐƠN KHÁCH ĐÃ GỬI TRƯỚC ĐÓ.
+  //
+  // Đi kèm luôn trong endpoint này thay vì thêm một lượt gọi nữa: cổng khách và
+  // bảng nhân viên đều đã hỏi /order sẵn rồi, và vân tay ở trên đã đổi theo
+  // updated_at nên sửa đơn là hai bên nhận được ngay.
+  const revisions = await loadOrderRevisions(order.id, language).catch((error) => {
+    console.error('[Đơn] Không tải được lịch sử đơn:', error.message);
+    return [];   // lịch sử hỏng không được làm chết cả tấm hoá đơn
+  });
+
   res.setHeader('X-Order-Print', orderPrint);
   res.json({
+    revisions,
     fingerprint: orderPrint,
     order: { ...localizedOrder, invoice },
     paymentMethods: (await paymentMethodsForSession(req.params.sessionId, language)).map((entry) => entry.id),
@@ -10638,6 +10649,23 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
     const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
     const charges = calculateQrMenuCharges(subtotal);
     const total = charges.grandTotal;
+    // CHỐT LẠI BẢN KHÁCH ĐÃ GỬI TRƯỚC ĐÓ, TRƯỚC KHI GHI ĐÈ.
+    //
+    // Câu UPDATE ngay dưới ghi thẳng lên dòng đơn: sửa xong là bản cũ không còn
+    // dấu vết nào, đơn lần đầu biến mất khỏi đoạn chat như chưa từng được gửi.
+    // Cùng một luật đã áp cho hoá đơn: mọi bản khách đã gửi đều ở lại đúng chỗ
+    // của nó trong hội thoại, cùng mã đơn, chỉ khác món và tiền.
+    //
+    // ON CONFLICT DO NOTHING: gửi lại hai lần vì mạng chập chờn không được đẻ ra
+    // hai dòng giống hệt nhau.
+    await client.query(
+      `INSERT INTO chat_order_revisions (order_id, session_id, version, items, total_amount, charges, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (order_id, version) DO NOTHING`,
+      [order.id, sessionId, Number(order.version || 1), JSON.stringify(order.items || []),
+       order.total_amount || 0, JSON.stringify(order.charges || {}),
+       order.updated_at || order.created_at || new Date()]
+    );
     const updated = await client.query(
       `UPDATE chat_orders SET items = $2, total_amount = $3, charges = $4, status = 'pending_confirm',
               invoice = '{}'::jsonb, invoice_render = '{}'::jsonb,
@@ -11118,6 +11146,31 @@ async function maybeAutoSelectDeferredPayment(order) {
 // Hoá đơn đã lưu của MỘT phiên, dựng lại theo ngôn ngữ khách đang xem.
 // Dùng chung cho route /bills (phiên đang mở) và cho màn xem lại đoạn chat đã
 // đóng — cùng một cách dựng thì hoá đơn cũ trông y hệt lúc mới nhận.
+// Các bản đơn khách đã gửi trước bản hiện tại, cũ nhất trước — đúng thứ tự
+// khách đã bấm gửi. Tên món dịch theo ngôn ngữ đang xem, giống hệt hoá đơn:
+// khách Hàn không đọc được "Cơm ghẹ Phú Quốc" ở bản cũ trong khi bản mới đã dịch.
+async function loadOrderRevisions(orderId, language) {
+  const rows = await db.query(
+    `SELECT r.id, r.version, r.items, r.total_amount, r.charges, r.created_at, r.session_id
+       FROM chat_order_revisions r
+      WHERE r.order_id = $1
+      ORDER BY r.version ASC
+      LIMIT 20`,
+    [orderId]
+  );
+  return Promise.all(rows.rows.map(async (row) => {
+    const localized = await localizeOrderForVisitor(
+      { session_id: row.session_id, items: row.items }, language
+    ).catch(() => null);
+    return {
+      id: row.id, version: row.version,
+      items: localized?.items || row.items || [],
+      total_amount: row.total_amount, charges: row.charges,
+      created_at: row.created_at,
+    };
+  }));
+}
+
 async function loadSessionBills(sessionId, language) {
     const rows = await db.query(
       `SELECT b.id, b.order_id, b.version, b.invoice, b.items, b.total_amount,

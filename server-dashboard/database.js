@@ -1189,6 +1189,34 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_order_bills_order_version
                    ON chat_order_bills(order_id, version);`);
 
+    // ── Lịch sử ĐƠN của khách ────────────────────────────────────────────────
+    //
+    // Cùng một luật với chat_order_bills, nhưng cho giai đoạn TRƯỚC khi có hoá
+    // đơn: khách gửi đơn, rồi sửa và gửi lại. Trước đây lần sửa GHI ĐÈ thẳng lên
+    // dòng chat_orders, nên đơn lần đầu biến mất khỏi đoạn chat như chưa từng
+    // được gửi — trong khi khách và nhân viên đều nhớ là có.
+    //
+    // Mỗi dòng ở đây là một bản khách ĐÃ GỬI ĐI, chốt lại đúng lúc gửi. Cùng một
+    // đơn, cùng một mã, chỉ khác món và tiền.
+    await query(`
+      CREATE TABLE IF NOT EXISTS chat_order_revisions (
+        id SERIAL PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        version INT NOT NULL DEFAULT 1,
+        items JSONB NOT NULL DEFAULT '[]'::jsonb,
+        total_amount NUMERIC(14,0) NOT NULL DEFAULT 0,
+        charges JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_order_revisions_session
+                   ON chat_order_revisions(session_id, created_at);`);
+    // Một đơn chỉ có MỘT bản cho mỗi số hiệu: gửi lại hai lần liên tiếp vì mạng
+    // chập chờn không được đẻ ra hai dòng giống hệt nhau.
+    await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_order_revisions_order_version
+                   ON chat_order_revisions(order_id, version);`);
+
     // ── Tích hợp phần mềm tính tiền ───────────────────────────────────────────
     //
     // Mỗi Agent tự nối tới phần mềm tính tiền của mình. Đơn được đẩy sang đó bằng

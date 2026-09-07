@@ -620,10 +620,21 @@ function createInvoiceSvg(invoice, language) {
 
   y -= 4; line(y); y += 24;
 
+  // NHÃN PHẢI TRÁNH CHỖ SỐ TIỀN ĐANG ĐỨNG.
+  //
+  // Hai chuỗi đều căn phải, nhãn kết thúc đúng tại xDiscountEnd còn số tiền kéo
+  // dài về bên trái từ xTotalEnd. Hoá đơn vài trăm nghìn thì không sao; tới
+  // "3.278.000 đ" cỡ chữ 15 đậm là số tiền lấn qua mốc kia và chồng thẳng lên
+  // chữ "TỔNG CỘNG" — đúng cái trong ảnh.
+  //
+  // Nên mốc phải của nhãn không được cố định: nó là điểm nào sớm hơn giữa
+  // xDiscountEnd và mép trái của số tiền, chừa 10px thở.
   const summary = (label, value, options = {}) => {
     const size = options.bold ? 15 : 12.5;
     const fill = options.bold ? '#b20c69' : '#4a3f52';
-    text(label, xDiscountEnd, y, { size, weight: options.bold ? 700 : 400, fill, anchor: 'end' });
+    const valueLeft = xTotalEnd - approximateTextWidth(String(value), size);
+    const labelEnd = Math.min(xDiscountEnd, valueLeft - 10);
+    text(label, labelEnd, y, { size, weight: options.bold ? 700 : 400, fill, anchor: 'end' });
     text(value, xTotalEnd, y, { size, weight: options.bold ? 700 : 400, fill, anchor: 'end' });
     y += options.bold ? 26 : 20;
   };
