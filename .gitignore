@@ -12,7 +12,21 @@ CREDENTIALS.md
 _git_locks_to_delete/
 _to_delete/
 
+# AI Assistants & UI/UX Pro Max
+.agent/
 .claude/
+.codebuddy/
+.codex/
+.continue/
+.cursor/
+.gemini/
+.github/
+.kiro/
+.opencode/
+.qoder/
+.roo/
+.trae/
+.windsurf/
 
 # System files
 .DS_Store

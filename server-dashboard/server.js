@@ -5830,11 +5830,12 @@ app.post('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
     return res.json({ success: true, reused: true, account: existing.rows[0], chat_url: qrCustomerChatUrl(req, existing.rows[0].code) });
   }
 
-  const code = `qr_${randomUUID().replace(/-/g, '')}`;
+  const cleanLabel = String(label || 'QR chat').trim().slice(0, 255);
   const created = await db.query(
     `INSERT INTO qr_chat_accounts (project_id, owner_admin_id, code, label) VALUES ($1, $2, $3, $4) RETURNING *`,
-    [projectId, ownerAdminId, code, String(label || 'QR chat').trim().slice(0, 255)]
+    [projectId, ownerAdminId, code, cleanLabel]
   );
+  void pretranslateQrText(cleanLabel);
   res.status(201).json({ success: true, account: created.rows[0], chat_url: qrCustomerChatUrl(req, code) });
 });
 
@@ -6085,6 +6086,11 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
       [username, passwordHash, full_name.trim(), effectiveRole, avatar, scope, creatorId, saleLimit, deferredMode]
     );
 
+    if (effectiveRole === 'agent' && full_name?.trim()) {
+      const { prefix } = gemini.splitVenueName(full_name.trim());
+      if (prefix) void pretranslateVenuePrefix(prefix);
+    }
+
     res.status(201).json({
       success: true,
       message: 'Tạo tài khoản nhân viên thành công.',
@@ -6170,6 +6176,11 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
        RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, deferred_payment_mode, allow_room_charge, created_at`,
       [updatedUsername, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, updatedProject, updatedSaleLimit, updatedDeferred, id]
     );
+
+    if (updatedRole === 'agent' && updatedFullName) {
+      const { prefix } = gemini.splitVenueName(updatedFullName);
+      if (prefix) void pretranslateVenuePrefix(prefix);
+    }
 
     res.json({
       success: true,
@@ -9037,6 +9048,7 @@ app.post('/api/agent/groups', checkAdminAuth, async (req, res) => {
       }
     }
 
+    if (group.name) void pretranslateQrText(group.name);
     res.status(201).json({ success: true, group });
   } catch (error) {
     console.error('Create group error:', error);
@@ -9058,6 +9070,7 @@ app.put('/api/agent/groups/:groupId', checkAdminAuth, async (req, res) => {
        description !== undefined ? String(description || '').trim() : null,
        typeof isActive === 'boolean' ? isActive : null]
     );
+    if (name) void pretranslateQrText(String(name).trim());
     res.json({ success: true, group: updated.rows[0] });
   } catch (error) {
     console.error('Update group error:', error);
@@ -9202,11 +9215,13 @@ app.post('/api/agent/qr-accounts', checkAdminAuth, async (req, res) => {
     if (duplicate.rows[0]) return res.status(400).json({ error: 'Nhóm này đã có QR trùng tên. Hãy đặt tên khác.' });
 
     const code = `qr_${randomUUID().replace(/-/g, '')}`;
+    const cleanLabel = String(label).trim().slice(0, 255);
     const created = await db.query(
       `INSERT INTO qr_chat_accounts (project_id, owner_admin_id, code, label, group_id, created_by_admin_id)
        VALUES ($1, $2, $3, $4, $5, $2) RETURNING *`,
-      [group.project_id, group.agent_id, code, String(label).trim().slice(0, 255), group.id]
+      [group.project_id, group.agent_id, code, cleanLabel, group.id]
     );
+    void pretranslateQrText(cleanLabel);
     res.status(201).json({ success: true, account: created.rows[0], chat_url: qrCustomerChatUrl(req, code) });
   } catch (error) {
     console.error('Create agent QR error:', error);
@@ -9230,12 +9245,14 @@ app.put('/api/agent/qr-accounts/:qrId', checkAdminAuth, async (req, res) => {
       nextGroupId = target.id;
     }
 
+    const cleanLabel = label ? String(label).trim().slice(0, 255) : null;
     const updated = await db.query(
       `UPDATE qr_chat_accounts
           SET label = COALESCE($2, label), group_id = $3
         WHERE id = $1 RETURNING *`,
-      [qr.rows[0].id, label ? String(label).trim().slice(0, 255) : null, nextGroupId]
+      [qr.rows[0].id, cleanLabel, nextGroupId]
     );
+    if (cleanLabel) void pretranslateQrText(cleanLabel);
     res.json({ success: true, account: updated.rows[0] });
   } catch (error) {
     console.error('Update agent QR error:', error);
@@ -9752,29 +9769,111 @@ async function venueNamesForAgent(agentId) {
   } catch { return []; }
 }
 
-// Nhãn do Agent tự đặt: "Bàn 10", "Lễ Tân", "Hồ bơi". Dịch qua đúng cái cache
-// theo NỘI DUNG đang dùng cho ghi chú món — cả cơ sở chỉ có vài chục nhãn và
-// dùng lại mãi, nên gần như luôn trúng cache, không tốn lượt gọi dịch.
+async function pretranslateQrText(text) {
+  const source = String(text || '').trim();
+  if (!source) return;
+  const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
+  await Promise.all(targets.map(async (lang) => {
+    try {
+      await translateNoteText(source, lang);
+    } catch (e) {
+      console.warn(`[QR] Lỗi tiền dịch nhãn "${source}" sang ${lang}:`, e.message);
+    }
+  }));
+}
+
+// Nhãn do Agent tự đặt: "Bàn 10", "Lễ Tân", "Hồ bơi". Dịch qua cache theo NỘI DUNG.
+// Khi xem bằng ngôn ngữ nước ngoài:
+// - Bỏ dấu nếu phần tên riêng không dịch được hoặc dịch lỗi.
+// - Tự động tiền dịch sang tất cả 4 ngôn ngữ (en, ru, zh, ko) trong nền.
 async function localizeQrText(text, lang, agentId) {
   const source = String(text || '').trim();
   if (!source) return source;
   const target = String(lang || '').toLowerCase().slice(0, 2);
   if (!target || target === MENU_SOURCE_LANG || !MENU_LANGS.includes(target)) return source;
-  return translateNoteText(source, target, await venueNamesForAgent(agentId));
+
+  // Tiền dịch sang tất cả các ngôn ngữ còn lại trong nền
+  void pretranslateQrText(source);
+
+  try {
+    const translated = await translateNoteText(source, target);
+    if (translated && translated.toLowerCase() !== source.toLowerCase()) {
+      // Nếu bản dịch có chứa ký tự tiếng Việt còn sót (tên riêng), tự động bỏ dấu
+      return gemini.removeVietnameseTones(translated);
+    }
+    return gemini.removeVietnameseTones(source);
+  } catch {
+    return gemini.removeVietnameseTones(source);
+  }
+}
+
+async function seedExistingQrTranslations() {
+  try {
+    const [qrRows, groupRows] = await Promise.all([
+      db.query("SELECT DISTINCT label FROM qr_chat_accounts WHERE label IS NOT NULL AND label != ''"),
+      db.query("SELECT DISTINCT name FROM agent_groups WHERE name IS NOT NULL AND name != ''"),
+    ]);
+    const labels = new Set([
+      ...qrRows.rows.map((r) => r.label.trim()),
+      ...groupRows.rows.map((r) => r.name.trim()),
+    ]);
+    for (const label of labels) {
+      if (label) await pretranslateQrText(label);
+    }
+  } catch (err) {
+    console.warn('[QR] Seed QR translations error:', err.message);
+  }
+}
+
+async function pretranslateVenuePrefix(prefix) {
+  const rawPrefix = String(prefix || '').trim();
+  if (!rawPrefix) return;
+  const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
+  await Promise.all(targets.map(async (lang) => {
+    try {
+      await translateNoteText(rawPrefix, lang);
+    } catch (e) {
+      console.warn(`[Venue] Lỗi tiền dịch loại hình "${rawPrefix}" sang ${lang}:`, e.message);
+    }
+  }));
+}
+
+async function seedVenuePrefixTranslations() {
+  try {
+    const prefixes = Array.isArray(gemini.VENUE_PREFIXES) ? gemini.VENUE_PREFIXES : [];
+    for (const prefix of prefixes) {
+      await pretranslateVenuePrefix(prefix);
+    }
+  } catch (err) {
+    console.warn('[Venue] Seed venue prefixes error:', err.message);
+  }
 }
 
 // Tên cơ sở tách làm hai: LOẠI HÌNH dịch được, TÊN RIÊNG thì không.
-// "Hộ Kinh Doanh Đan Trinh Pastie" → "Business household Dan Trinh Pastie".
-// Tên riêng để nguyên dấu ở đây; cổng khách bỏ dấu khi ngôn ngữ không phải
-// tiếng Việt, vì chỉ ở đó mới biết khách đang xem bằng ngôn ngữ nào.
+// "Hộ Kinh Doanh Đan Trinh Pastie" → "Household Business Dan Trinh Pastie".
+// Tên riêng không dịch thì BỎ DẤU cho mọi ngôn ngữ trừ tiếng Việt.
+// Nếu không nhận diện được loại hình, tên cơ sở cũng được bỏ dấu cho khách nước ngoài.
 async function localizeVenueName(name, lang, agentId) {
   const raw = String(name || '').trim();
   const target = String(lang || '').toLowerCase().slice(0, 2);
   if (!raw || !target || target === MENU_SOURCE_LANG || !MENU_LANGS.includes(target)) return raw;
+
   const { prefix, propel } = gemini.splitVenueName(raw);
-  if (!prefix) return raw;
-  const translated = await translateNoteText(prefix, target, await venueNamesForAgent(agentId));
-  return [translated, propel].filter(Boolean).join(' ');
+  const cleanPropel = propel ? gemini.removeVietnameseTones(propel) : '';
+
+  if (!prefix) {
+    return gemini.removeVietnameseTones(raw);
+  }
+
+  // Tự động kích hoạt tiền dịch loại hình sang tất cả các ngôn ngữ còn lại trong nền
+  void pretranslateVenuePrefix(prefix);
+
+  const translated = await translateNoteText(prefix, target);
+  const cleanPrefix = (translated && translated.toLowerCase() !== prefix.toLowerCase())
+    ? translated
+    : gemini.removeVietnameseTones(prefix);
+
+  return [cleanPrefix, cleanPropel].filter(Boolean).join(' ');
 }
 
 async function translateMenuCategoryToLanguage(categoryId, name, lang, protect) {
@@ -11752,6 +11851,8 @@ async function startServer() {
   // sau khi mã đã đúng.
   await db.initPromise;
   await ensureReadReceiptsTable();
+  void seedVenuePrefixTranslations();
+  void seedExistingQrTranslations();
 
   // Quét nền định kỳ mỗi 45s: tự động đóng các phiên hết hạn và gọi AI tóm tắt
   setInterval(async () => {

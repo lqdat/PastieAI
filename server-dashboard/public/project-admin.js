@@ -454,13 +454,22 @@ function splitVenueName(fullName) {
     return { prefix: '', name: raw };
 }
 
+function removeVietnameseTones(text) {
+    return String(text || '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .normalize('NFC');
+}
+
 function updateVenueNamePreview() {
     const type = document.getElementById('admin-form-venue-type')?.value || '';
     const name = (adminFormFullname?.value || '').trim();
     const preview = document.getElementById('admin-form-name-preview');
     if (!preview) return;
     preview.textContent = type && name
-        ? `Tên đầy đủ: ${titleCaseVi(type)} ${name} — khách nước ngoài thấy loại hình đã dịch, "${name}" giữ nguyên.`
+        ? `Tên đầy đủ: ${titleCaseVi(type)} ${name} — khách nước ngoài thấy loại hình đã dịch (Anh/Nga/Trung/Hàn), tên riêng "${removeVietnameseTones(name)}" bỏ dấu.`
         : '';
 }
 document.getElementById('admin-form-venue-type')?.addEventListener('input', updateVenueNamePreview);
