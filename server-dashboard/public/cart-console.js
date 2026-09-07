@@ -229,9 +229,11 @@
                         <button type="button" class="cart-action-btn" data-details="${escapeHtml(order.id)}"><i class="ri-eye-line"></i> Chi tiết</button>
                         <button type="button" class="cart-action-btn is-primary" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Hội thoại</button>
                     </div>
-                    ${canMarkPaid && order.status === 'awaiting_payment'
+                    ${canMarkPaid && order.status === 'awaiting_payment' && order.payment_method
                         ? `<button type="button" class="cart-paid-btn" data-paid="${escapeHtml(order.id)}"><i class="ri-check-double-line"></i> Đã thanh toán</button>`
-                        : ''}
+                        : (canMarkPaid && order.status === 'awaiting_payment'
+                            ? '<p class="cart-paid-hint">Chờ khách chọn cách trả rồi mới xác nhận được đã thu tiền.</p>'
+                            : '')}
                 </article>`;
             };
             body.innerHTML = [...groups].map(([venue, list]) => {

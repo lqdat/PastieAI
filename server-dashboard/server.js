@@ -4478,14 +4478,28 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
   // không biết quán đã ghi nhận tiền, và Sale trực cũng không thấy gì trong
   // khung chat mình đang mở. Một khách gọi thêm nhiều lần trong bữa nên câu
   // báo bắt buộc phải nêu mã đơn.
-  const paidText = `[Thanh toán] Cửa hàng đã nhận đủ tiền`
-    + `${order.payment_method ? ` bằng ${invoiceHelper.paymentMethodLabel(order.payment_method, 'vi')}` : ''}`
-    + `. Cảm ơn quý khách! (mã đơn ${order.order_code})`;
+  // HAI câu cho hai người đọc, không phải một câu dùng chung.
+  //
+  //   Nhân viên  — một dòng ghi việc: đã thu đủ tiền, bằng gì, đơn nào.
+  //   Khách      — một lời cảm ơn.
+  //
+  // Trước đây chỉ có một tin mang cả "Cảm ơn quý khách!" hiện ở khung chat của
+  // Sale, tức là bắt họ đọc lời cảm ơn nói với người khác.
+  const method = order.payment_method
+    ? ` bằng ${invoiceHelper.paymentMethodLabel(order.payment_method, 'vi')}` : '';
+  const staffText = `[Thanh toán] Đã thu đủ tiền${method} (mã đơn ${order.order_code}).`;
   const paidMsg = await db.query(
-    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id, system_kind)
-     VALUES ($1, 'agent', $2, $2, 'vi', $3, 'order_paid') RETURNING id`,
-    [order.session_id, paidText, req.admin.id]
+    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id, system_kind, visible_to)
+     VALUES ($1, 'agent', $2, $2, 'vi', $3, 'order_paid', 'staff') RETURNING id`,
+    [order.session_id, staffText, req.admin.id]
   ).catch((error) => { console.error('[Đơn] Không gửi được tin đã thanh toán:', error.message); return { rows: [] }; });
+
+  const guestText = `Cửa hàng đã nhận đủ tiền${method}. Cảm ơn quý khách! (mã đơn ${order.order_code})`;
+  await db.query(
+    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, system_kind)
+     VALUES ($1, 'system', $2, $2, 'vi', 'guest_only')`,
+    [order.session_id, guestText]
+  ).catch((error) => console.error('[Đơn] Không gửi được lời cảm ơn:', error.message));
 
   notifyAdminRealtime('new_message', { sessionId: order.session_id, projectId: order.project_id, sender: 'agent', messageId: paidMsg.rows[0]?.id });
   notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: 'paid', projectId: order.project_id });

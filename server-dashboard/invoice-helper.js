@@ -533,19 +533,43 @@ function createInvoiceSvg(invoice, language) {
   };
   const line = (y) => parts.push(`<line x1="${PAD}" y1="${y}" x2="${W - PAD}" y2="${y}" stroke="#e6cede" stroke-width="1"/>`);
 
-  parts.push(`<rect x="${PAD}" y="20" width="${innerWidth}" height="${data.sellerName ? 72 : 56}" rx="13" fill="#fff1f8"/>`);
+  // Khối đầu hoá đơn: nền hồng phải CAO THEO nội dung.
+  //
+  // Trước đây chiều cao viết cứng 72px trong khi bên trong có ba dòng (tên cơ
+  // sở, "HOÁ ĐƠN BÁN HÀNG", mã bill) — dòng mã bill rơi hẳn ra ngoài nền. Tên
+  // cơ sở dài cũng bị cắt bằng "…" thay vì xuống hàng.
+  //
+  // Vẽ chữ vào một mảng riêng trước để biết đáy thật, rồi mới đẩy hình nền vào
+  // TRƯỚC: SVG vẽ theo thứ tự, nền phải nằm dưới chữ.
+  const headerParts = [];
+  const headerText = (content, x, yy, options) => {
+    const before = parts.length;
+    text(content, x, yy, options);
+    headerParts.push(...parts.splice(before));
+  };
+
+  const HEADER_TOP = 20;
   let y = 47;
-  if (data.sellerName) {
-    text(truncateToWidth(data.sellerName, 19, innerWidth - 30), W / 2, y, { size: 19, weight: 700, fill: '#98205f', anchor: 'middle' });
-    y += 24;
-    text(copy.title, W / 2, y, { size: 10.5, weight: 700, fill: '#c52d77', anchor: 'middle' });
+  const sellerLines = data.sellerName ? wrapToWidth(data.sellerName, 19, innerWidth - 30, 2) : [];
+  if (sellerLines.length) {
+    sellerLines.forEach((lineText, index) => {
+      headerText(lineText, W / 2, y + index * 23, { size: 19, weight: 700, fill: '#98205f', anchor: 'middle' });
+    });
+    y += 24 + (sellerLines.length - 1) * 23;
+    headerText(copy.title, W / 2, y, { size: 10.5, weight: 700, fill: '#c52d77', anchor: 'middle' });
     y += 21;
   } else {
-    text(copy.title, W / 2, y, { size: 18, weight: 700, fill: '#98205f', anchor: 'middle' });
+    headerText(copy.title, W / 2, y, { size: 18, weight: 700, fill: '#98205f', anchor: 'middle' });
     y += 25;
   }
-  if (data.invoiceNo) { text(data.invoiceNo, W / 2, y, { size: 13, fill: '#6b5c69', anchor: 'middle' }); y += 20; }
+  if (data.invoiceNo) { headerText(data.invoiceNo, W / 2, y, { size: 13, fill: '#6b5c69', anchor: 'middle' }); y += 20; }
   else y += 4;
+
+  // Đáy nền = chân dòng cuối + một khoảng thở, không phải một con số đoán.
+  const headerBottom = y - 20 + 12;
+  parts.push(`<rect x="${PAD}" y="${HEADER_TOP}" width="${innerWidth}" height="${Math.round(headerBottom - HEADER_TOP)}" rx="13" fill="#fff1f8"/>`);
+  parts.push(...headerParts);
+  y = headerBottom + 16;
 
   const infoLine = (label, value) => {
     if (!value) return;

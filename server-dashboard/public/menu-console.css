@@ -1648,3 +1648,7 @@
     background: rgba(245, 158, 11, .16); color: #b45309;
 }
 .cart-pay-state.is-paid { background: rgba(16, 185, 129, .16); color: #059669; }
+
+/* Chưa chọn cách trả thì chưa có gì để xác nhận đã thu tiền — nói rõ lý do,
+   đừng để một khoảng trống khiến Agent tưởng nút bị mất. */
+.cart-paid-hint { margin: 8px 0 0; color: var(--text-secondary); font-size: 11.5px; font-style: italic; }
