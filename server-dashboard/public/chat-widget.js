@@ -9,6 +9,11 @@
         BACKEND_URL: (function() {
             const configuredUrl = _scriptEl && _scriptEl.dataset.backend;
             if (configuredUrl) return configuredUrl.replace(/\/$/, '');
+            // Đặt lúc build. Bình thường pastie-chat.js đã truyền data-backend
+            // xuống rồi, nhưng ai nạp thẳng file này từ máy chủ tĩnh thì origin
+            // của script không phải backend — giá trị build cứu trường hợp đó.
+            const BUILD_BACKEND = '';
+            if (BUILD_BACKEND) return BUILD_BACKEND.replace(/\/$/, '');
             if (_scriptEl && _scriptEl.src) {
                 try {
                     const url = new URL(_scriptEl.src);
@@ -1017,7 +1022,7 @@
                 });
 
                 const currentMsgs = state.messages.filter(m => m.id && !m.id.toString().startsWith('temp_'));
-                const firstLoad = currentMsgs.length === 0;
+                const firstLoad = currentMsgs.length === 0; // lần đầu nạp lịch sử
                 const map = new Map();
                 fetchedMessages.forEach(m => map.set(m.id, m));
                 currentMsgs.forEach(m => {
@@ -1037,6 +1042,7 @@
                     state.lastMessageCount = merged.length;
                 }
 
+                // Check diff to prevent periodic 4s flickering/scroll jumping
                 const isDiff = state.messages.length !== merged.length ||
                                state.messages.some((m, idx) => {
                                    const o = merged[idx];
@@ -1045,8 +1051,10 @@
 
                 state.messages = merged;
                 state.offset = state.messages.filter(m => m.id && !String(m.id).startsWith('temp_')).length;
-                if (firstLoad && !state.isOpen) state.lastSeenCount = merged.length;
+                if (firstLoad && !state.isOpen) state.lastSeenCount = merged.length; // lịch sử cũ coi như đã đọc
 
+                // Đồng bộ chế độ theo TRẠNG THÁI PHIÊN (nguồn đúng): human khi đang có/chờ nhân viên,
+                // ai khi nhân viên đã kết thúc -> đổi lại nút "Gặp CSKH" cho khách.
                 try {
                     const st = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/state?_=${Date.now()}`).then(r => r.ok ? r.json() : null);
                     if (st && st.mode && st.mode !== state.mode) {
@@ -1061,7 +1069,7 @@
                 }
             }
             refreshUnreadBadge();
-        } catch(e) {
+        } catch (e) {
             console.error('Error loading message history:', e);
         } finally {
             state.isSyncing = false;
@@ -1091,7 +1099,6 @@
             loadMoreBtn.style.cssText = 'background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);color:var(--widget-text);font-family:"Be Vietnam Pro",sans-serif;font-size:11px;font-weight:600;border-radius:20px;padding:6px 16px;cursor:pointer;transition:all 0.2s';
             loadMoreBtn.textContent = state.isLoadingMore ? t.loadingMore : t.loadOlder;
             if (state.isLoadingMore) loadMoreBtn.disabled = true;
-
             loadMoreBtn.onmouseover = () => { loadMoreBtn.style.background = 'rgba(255,255,255,0.15)'; };
             loadMoreBtn.onmouseout = () => { loadMoreBtn.style.background = 'rgba(255,255,255,0.08)'; };
             loadMoreBtn.onclick = async () => {
@@ -1146,6 +1153,7 @@
             threadContainer.appendChild(bubbleWrap);
         });
 
+        // Show typing indicator only in AI mode (human agents don't need it)
         const lastMsg = state.messages[state.messages.length - 1];
         if (lastMsg && lastMsg.sender === 'visitor' && state.mode === 'ai') {
             state.isTyping = true;
