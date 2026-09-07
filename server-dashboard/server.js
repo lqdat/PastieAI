@@ -976,6 +976,7 @@ function readDeviceHeaders(req) {
     // Vân tay của MÁY: chỉ gồm phần cứng và hệ điều hành, KHÔNG có tên trình
     // duyệt — để Safari và Chrome trên cùng một máy cho ra cùng một giá trị.
     machineHash: String(req?.headers['x-machine-fp'] || '').slice(0, 64) || null,
+    appMode: String(req?.headers['x-app-mode'] || '').toLowerCase() === 'standalone' ? 'standalone' : 'browser',
     userAgent: String(req?.headers['user-agent'] || '').slice(0, 1000),
     clientIp: req?.headers['x-forwarded-for']?.split(',')[0]?.trim() || req?.socket?.remoteAddress || '',
   };
@@ -983,13 +984,18 @@ function readDeviceHeaders(req) {
 
 // Đặt tên dễ đọc cho thiết bị từ user-agent, để agent nhận ra máy nào là máy nào
 // trong màn hình quản lý thiết bị.
-function describeDevice(userAgent) {
+function describeDevice(userAgent, appMode = 'browser') {
   const ua = String(userAgent || '');
   const os = /iPhone|iPad/i.test(ua) ? 'iPhone/iPad'
     : /Android/i.test(ua) ? 'Android'
     : /Mac OS X/i.test(ua) ? 'macOS'
     : /Windows/i.test(ua) ? 'Windows'
     : /Linux/i.test(ua) ? 'Linux' : 'Thiết bị khác';
+
+  if (appMode === 'standalone') {
+    return `Ứng dụng Pastie trên ${os}`;
+  }
+
   const browser = /Edg\//i.test(ua) ? 'Edge'
     : /OPR\//i.test(ua) ? 'Opera'
     : /Chrome\//i.test(ua) ? 'Chrome'
@@ -999,13 +1005,61 @@ function describeDevice(userAgent) {
 }
 
 /**
+ * Tự động hợp nhất các bản ghi thiết bị trùng lặp của cùng một máy (cùng machine_hash).
+ * Xảy ra khi người dùng vào bằng trình duyệt rồi tạo shortcut màn hình chính (sandbox tách biệt),
+ * hoặc khi xoá cookie/localStorage làm sinh device_id mới trên cùng một thiết bị.
+ */
+async function mergeDuplicateAdminDevices(adminId) {
+  if (!adminId) return;
+  try {
+    const dupes = await db.query(
+      `SELECT machine_hash,
+              array_agg(id ORDER BY last_seen DESC) AS ids,
+              array_agg(device_id ORDER BY last_seen DESC) AS dev_ids,
+              COUNT(*) AS count
+         FROM admin_devices
+        WHERE admin_id = $1 AND machine_hash IS NOT NULL AND status = 'active'
+        GROUP BY machine_hash
+       HAVING COUNT(*) > 1`,
+      [adminId]
+    );
+
+    for (const group of dupes.rows) {
+      const primaryId = group.ids[0]; // Giữ lại bản ghi hoạt động gần nhất
+      const otherIds = group.ids.slice(1);
+      const allDevIds = group.dev_ids;
+
+      // Gom tất cả device_ids vào bản ghi chính
+      await db.query(
+        `UPDATE admin_devices
+            SET device_ids = (
+              SELECT array_agg(DISTINCT x)
+              FROM unnest(COALESCE(device_ids, ARRAY[]::text[]) || $2::text[]) AS x
+            ),
+            last_seen = NOW()
+          WHERE id = $1`,
+        [primaryId, allDevIds]
+      );
+
+      // Xoá các bản ghi trùng lặp phụ
+      await db.query(`DELETE FROM admin_devices WHERE id = ANY($1::int[])`, [otherIds]);
+    }
+  } catch (err) {
+    console.error('Merge duplicate admin devices error:', err);
+  }
+}
+
+/**
  * Kiểm tra thiết bị TRƯỚC KHI cấp token.
  * @returns {Promise<{ok: true} | {ok: false, error: string, code: string}>}
  */
 async function checkDeviceAllowed(admin, req, res) {
   if (!(await isDeviceRestrictedAdmin(admin))) return { ok: true };
 
-  const { deviceId, fingerprint, machineHash, userAgent, clientIp } = readDeviceHeaders(req);
+  // Tự động gom các thiết bị trùng lặp (nếu trước đó đã lỡ bị tách thành 2 thiết bị)
+  await mergeDuplicateAdminDevices(admin.id);
+
+  const { deviceId, fingerprint, machineHash, userAgent, clientIp, appMode } = readDeviceHeaders(req);
   // Không có device_id (trình duyệt chặn localStorage, hoặc client cũ chưa cập
   // nhật): cho qua thay vì khoá người dùng ra ngoài. Thà bỏ lọt còn hơn chặn nhầm.
   if (!deviceId) return { ok: true };
@@ -1014,7 +1068,7 @@ async function checkDeviceAllowed(admin, req, res) {
   // Một MÁY có thể có nhiều mã: mỗi trình duyệt trên máy đó một mã, gom trong
   // device_ids. Tìm theo cả mã chính lẫn các mã đã gom.
   const known = await db.query(
-    `SELECT id, status, fingerprint FROM admin_devices
+    `SELECT id, status, fingerprint, label FROM admin_devices
       WHERE admin_id = $1 AND ($2 = device_id OR $2 = ANY(COALESCE(device_ids, ARRAY[]::text[])))`,
     [admin.id, deviceId]
   );
@@ -1028,48 +1082,67 @@ async function checkDeviceAllowed(admin, req, res) {
           + 'trong mục Thiết bị thì mới đăng nhập lại được trên máy này.',
       };
     }
+    const newLabel = appMode === 'standalone' ? describeDevice(userAgent, appMode) : known.rows[0].label;
     await db.query(
       `UPDATE admin_devices
           SET last_seen = NOW(), last_ip = $2, user_agent = $3,
-              fingerprint = COALESCE($4, fingerprint)
+              fingerprint = COALESCE($4, fingerprint),
+              label = COALESCE($5, label)
         WHERE id = $1`,
-      [known.rows[0].id, clientIp, userAgent, fingerprint]
+      [known.rows[0].id, clientIp, userAgent, fingerprint, newLabel]
     );
     return { ok: true };
   }
 
   // Mã lạ nhưng vân tay MÁY trùng một thiết bị đã đăng ký: gần như chắc chắn là
-  // cùng một máy, chỉ khác trình duyệt (hoặc mã cũ đã bị iOS xoá). Gom mã mới
-  // vào máy đó, không tính thêm suất.
-  //
-  // Chốt chặn: máy đó không được đang có phiên SỐNG. Hai máy cùng đời, cùng múi
-  // giờ cho vân tay giống hệt nhau, nên nếu máy kia đang mở bảng điều khiển
-  // ngay lúc này thì đó là hai người thật đang chia nhau một tài khoản — đúng
-  // thứ hạn mức sinh ra để chặn. Dùng admin_sessions.last_seen_at vì nó được
-  // cập nhật ở MỌI request, còn admin_devices.last_seen chỉ đổi khi đăng nhập.
+  // cùng một máy, chỉ khác trình duyệt (hoặc shortcut PWA, hoặc mã cũ bị xoá).
+  // Gom mã mới vào máy đó, không tính thêm suất.
   if (machineHash) {
     const sameMachine = await db.query(
-      `SELECT d.id FROM admin_devices d
+      `SELECT d.id, d.device_id, d.device_ids, d.last_ip, d.label FROM admin_devices d
         WHERE d.admin_id = $1 AND d.machine_hash = $2 AND d.status = 'active'
-          AND NOT EXISTS (
-            SELECT 1 FROM admin_sessions s
-             WHERE s.admin_id = d.admin_id
-               AND s.expires_at > NOW()
-               AND s.last_seen_at > NOW() - INTERVAL '10 minutes'
-               AND (s.device_id = d.device_id
-                    OR s.device_id = ANY(COALESCE(d.device_ids, ARRAY[]::text[]))))
         ORDER BY d.last_seen DESC LIMIT 1`,
       [admin.id, machineHash]
     );
+
     if (sameMachine.rows[0]) {
-      await db.query(
-        `UPDATE admin_devices
-            SET device_ids = array_append(COALESCE(device_ids, ARRAY[]::text[]), $2),
-                last_seen = NOW(), last_ip = $3, user_agent = $4
-          WHERE id = $1`,
-        [sameMachine.rows[0].id, deviceId, clientIp, userAgent]
+      const match = sameMachine.rows[0];
+      // Chốt chặn thông minh:
+      // 1) Nếu là Shortcut / PWA (appMode === 'standalone')
+      // 2) HOẶC nếu cùng IP mạng (clientIp === last_ip)
+      // -> Chắc chắn là cùng một người dùng trên cùng một thiết bị. Cho phép gom máy ngay.
+      const isTrustedSameDevice = (
+        appMode === 'standalone'
+        || (clientIp && clientIp === match.last_ip)
       );
-      return { ok: true };
+
+      let canMerge = isTrustedSameDevice;
+      if (!canMerge) {
+        // Trường hợp khác IP và không phải standalone: kiểm tra xem máy cũ có đang có phiên sống không
+        const activeSession = await db.query(
+          `SELECT 1 FROM admin_sessions s
+            WHERE s.admin_id = $1
+              AND s.expires_at > NOW()
+              AND s.last_seen_at > NOW() - INTERVAL '10 minutes'
+              AND (s.device_id = $2 OR s.device_id = ANY(COALESCE($3, ARRAY[]::text[])))
+            LIMIT 1`,
+          [admin.id, match.device_id, match.device_ids || []]
+        );
+        canMerge = activeSession.rows.length === 0;
+      }
+
+      if (canMerge) {
+        const updatedLabel = appMode === 'standalone' ? describeDevice(userAgent, appMode) : match.label;
+        await db.query(
+          `UPDATE admin_devices
+              SET device_ids = array_append(COALESCE(device_ids, ARRAY[]::text[]), $2),
+                  last_seen = NOW(), last_ip = $3, user_agent = $4,
+                  label = COALESCE($5, label)
+            WHERE id = $1`,
+          [match.id, deviceId, clientIp, userAgent, updatedLabel]
+        );
+        return { ok: true };
+      }
     }
   }
 
@@ -1088,7 +1161,7 @@ async function checkDeviceAllowed(admin, req, res) {
     : DEVICE_LIMIT_DEFAULT;
 
   if (row.active_count < limit) {
-    await registerDevice(admin.id, { deviceId, fingerprint, machineHash, userAgent, clientIp }, false);
+    await registerDevice(admin.id, { deviceId, fingerprint, machineHash, userAgent, clientIp, appMode }, false);
     return { ok: true };
   }
 
@@ -1117,14 +1190,14 @@ async function checkDeviceAllowed(admin, req, res) {
   };
 }
 
-async function registerDevice(adminId, { deviceId, fingerprint, machineHash = null, userAgent, clientIp }, countsAsChange = true) {
+async function registerDevice(adminId, { deviceId, fingerprint, machineHash = null, userAgent, clientIp, appMode = 'browser' }, countsAsChange = true) {
   await db.query(
     `INSERT INTO admin_devices (admin_id, device_id, fingerprint, label, user_agent, last_ip, machine_hash)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (admin_id, device_id)
      DO UPDATE SET status = 'active', last_seen = NOW(), last_ip = EXCLUDED.last_ip,
                    machine_hash = COALESCE(EXCLUDED.machine_hash, admin_devices.machine_hash)`,
-    [adminId, deviceId, fingerprint, describeDevice(userAgent), userAgent, clientIp, machineHash]
+    [adminId, deviceId, fingerprint, describeDevice(userAgent, appMode), userAgent, clientIp, machineHash]
   );
   // Thiết bị ĐẦU TIÊN của tài khoản không tính là "đổi thiết bị" — nếu tính thì
   // agent mới nhận máy đã bị khoá cooldown ngay từ lần đăng nhập thứ hai.
@@ -9016,8 +9089,11 @@ app.post('/api/agent/qr-accounts/:qrId/revoke', checkAdminAuth, async (req, res)
 // quản trị viên cho mọi lần đổi máy thì hạn mức trở thành gánh nặng vận hành.
 app.get('/api/admin/me/devices', checkAdminAuth, async (req, res) => {
   try {
+    // Tự động gộp các bản ghi bị phân mảnh do shortcut / web sandbox
+    await mergeDuplicateAdminDevices(req.admin.id);
+
     const result = await db.query(
-      `SELECT id, device_id, label, status, first_seen, last_seen, last_ip
+      `SELECT id, device_id, device_ids, label, status, first_seen, last_seen, last_ip
          FROM admin_devices WHERE admin_id = $1 ORDER BY last_seen DESC`,
       [req.admin.id]
     );
@@ -9030,7 +9106,15 @@ app.get('/api/admin/me/devices', checkAdminAuth, async (req, res) => {
       limit: info.rows[0]?.device_limit ?? DEVICE_LIMIT_DEFAULT,
       cooldownDays: DEVICE_CHANGE_COOLDOWN_DAYS,
       lastChangeAt: info.rows[0]?.last_device_change_at || null,
-      devices: result.rows.map((row) => ({ ...row, is_current: row.device_id === currentDeviceId })),
+      devices: result.rows.map((row) => {
+        const isCurrent = Boolean(
+          currentDeviceId && (
+            row.device_id === currentDeviceId
+            || (Array.isArray(row.device_ids) && row.device_ids.includes(currentDeviceId))
+          )
+        );
+        return { ...row, is_current: isCurrent };
+      }),
     });
   } catch (error) {
     console.error('List my devices error:', error);
@@ -9041,14 +9125,21 @@ app.get('/api/admin/me/devices', checkAdminAuth, async (req, res) => {
 app.delete('/api/admin/me/devices/:deviceRowId', checkAdminAuth, async (req, res) => {
   try {
     const row = await db.query(
-      'SELECT id, device_id FROM admin_devices WHERE id = $1 AND admin_id = $2',
+      'SELECT id, device_id, device_ids FROM admin_devices WHERE id = $1 AND admin_id = $2',
       [Number(req.params.deviceRowId), req.admin.id]
     );
     if (!row.rows[0]) return res.status(404).json({ error: 'Không tìm thấy thiết bị.' });
 
     // Không cho gỡ chính thiết bị đang dùng: gỡ xong là tự khoá mình ra ngoài,
     // và lần đăng nhập sau lại tính là thiết bị lạ.
-    if (row.rows[0].device_id === String(req.headers['x-device-id'] || '')) {
+    const currentDeviceId = String(req.headers['x-device-id'] || '');
+    const isCurrent = Boolean(
+      currentDeviceId && (
+        row.rows[0].device_id === currentDeviceId
+        || (Array.isArray(row.rows[0].device_ids) && row.rows[0].device_ids.includes(currentDeviceId))
+      )
+    );
+    if (isCurrent) {
       return res.status(400).json({ error: 'Không thể gỡ thiết bị bạn đang dùng. Hãy gỡ từ thiết bị khác.' });
     }
 
@@ -9061,8 +9152,12 @@ app.delete('/api/admin/me/devices/:deviceRowId', checkAdminAuth, async (req, res
     await db.query('DELETE FROM admin_devices WHERE id = $1', [row.rows[0].id]);
     // Gỡ thiết bị KHÔNG tính là "đổi thiết bị" nên không chạm cooldown — người
     // dùng chủ động dọn chỗ là việc nên khuyến khích, không nên phạt.
-    await db.query('DELETE FROM admin_sessions WHERE admin_id = $1 AND device_id = $2',
-      [req.admin.id, row.rows[0].device_id]);
+    await db.query(
+      `DELETE FROM admin_sessions
+        WHERE admin_id = $1
+          AND (device_id = $2 OR device_id = ANY(COALESCE($3, ARRAY[]::text[])))`,
+      [req.admin.id, row.rows[0].device_id, row.rows[0].device_ids || []]
+    );
     res.json({ success: true });
   } catch (error) {
     console.error('Revoke my device error:', error);
@@ -9073,17 +9168,19 @@ app.delete('/api/admin/me/devices/:deviceRowId', checkAdminAuth, async (req, res
 // Superadmin: xem thiết bị của một tài khoản và reset khi agent đổi máy hỏng.
 app.get('/api/superadmin/accounts/:adminId/devices', checkAdminAuth, async (req, res) => {
   if (!isSuperAdmin(req.admin)) return res.status(403).json({ error: 'Chỉ Admin tổng được xem.' });
+  const adminId = Number(req.params.adminId);
   try {
+    await mergeDuplicateAdminDevices(adminId);
     const account = await db.query(
       `SELECT id, username, full_name, role, project_id, device_limit, last_device_change_at
          FROM admins WHERE id = $1`,
-      [Number(req.params.adminId)]
+      [adminId]
     );
     if (!account.rows[0]) return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
     const devices = await db.query(
-      `SELECT id, device_id, label, status, first_seen, last_seen, last_ip
+      `SELECT id, device_id, device_ids, label, status, first_seen, last_seen, last_ip
          FROM admin_devices WHERE admin_id = $1 ORDER BY last_seen DESC`,
-      [Number(req.params.adminId)]
+      [adminId]
     );
     res.json({
       account: account.rows[0],

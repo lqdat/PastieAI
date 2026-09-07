@@ -238,12 +238,26 @@ function getMachineFingerprint() {
 }
 
 
+function isStandaloneApp() {
+    try {
+        return Boolean(
+            window.matchMedia?.('(display-mode: standalone)').matches
+            || window.navigator.standalone === true
+            || (typeof document !== 'undefined' && document.referrer.includes('android-app://'))
+        );
+    } catch {
+        return false;
+    }
+}
+
+
 function deviceHeaders(extra = {}) {
     return {
         ...extra,
         'X-Device-Id': getDeviceId(),
         'X-Device-Fp': getDeviceFingerprint(),
         'X-Machine-Fp': getMachineFingerprint(),
+        'X-App-Mode': isStandaloneApp() ? 'standalone' : 'browser',
     };
 }
 
@@ -272,7 +286,8 @@ function authFetch(url, options = {}) {
         'Authorization': `Bearer ${token}`,
         'X-Device-Id': getDeviceId(),
         'X-Device-Fp': getDeviceFingerprint(),
-        'X-Machine-Fp': getMachineFingerprint()
+        'X-Machine-Fp': getMachineFingerprint(),
+        'X-App-Mode': isStandaloneApp() ? 'standalone' : 'browser'
     };
     return fetch(url, { ...options, headers }).then(res => {
         if (res.status === 401) {
