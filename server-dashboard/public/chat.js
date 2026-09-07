@@ -1114,7 +1114,13 @@ async function selectSession(sessionId) {
     });
 
     const session = sessionsList.find(s => s.id === sessionId);
-    if (!session) return;
+    if (!session) {
+        // Bấm vào một đoạn vừa rơi khỏi danh sách (danh sách vừa được nạp lại,
+        // hoặc bộ lọc vừa đổi): thoát ở đây là ĐÚNG, nhưng không được để lại
+        // spinner của lượt chọn trước đó quay mãi trên màn hình.
+        clearChatLoadingState();
+        return;
+    }
     applyDetailsPanelMode(session);
 
     // Show header details
@@ -1414,17 +1420,30 @@ async function selectSession(sessionId) {
         </div>
     `;
 
-    // Đơn và hoá đơn phải có TRƯỚC khi vẽ tin nhắn: loadMessages() chính là nơi
-    // vẽ chúng vào dòng hội thoại. Tải sau thì lượt vẽ đầu tiên không có gì để
-    // vẽ, và đoạn chat đã đóng thì không còn lượt vẽ nào nữa — đúng lỗi "mở
-    // đoạn chat cũ không thấy hoá đơn đâu".
-    await Promise.all([loadOrderForAdmin(sessionId), loadBillsForAdmin(sessionId)]);
-    await loadMessages(sessionId);
+    // ĐỒNG HỒ CANH SPINNER.
+    //
+    // Mọi nhánh bên dưới đều đã được bọc, nhưng cái đứng hình mà khách báo là
+    // thứ không được phép xảy ra thêm một lần nào nữa: nếu sau 12 giây spinner
+    // vẫn còn, tự thử lại một lượt; hết lượt thử thì hiện nút "Thử lại" để còn
+    // bấm được, thay vì bắt người ta nhìn vòng xoay không hồi kết.
+    armChatLoadingWatchdog(sessionId);
 
-    // Chốt chặn cuối: không bao giờ để spinner "Đang dịch thuật..." đứng vĩnh
-    // viễn. Vẽ bằng dữ liệu đang có — kể cả rỗng — vẫn hơn là đứng hình.
-    if (sessionId === currentSessionId && chatMessagesContainer.querySelector('.chat-loading-state')) {
-        renderAdminMessages(false);
+    try {
+        // Đơn và hoá đơn phải có TRƯỚC khi vẽ tin nhắn: loadMessages() chính là
+        // nơi vẽ chúng vào dòng hội thoại. Tải sau thì lượt vẽ đầu tiên không
+        // có gì để vẽ, và đoạn chat đã đóng thì không còn lượt vẽ nào nữa —
+        // đúng lỗi "mở đoạn chat cũ không thấy hoá đơn đâu".
+        await Promise.all([loadOrderForAdmin(sessionId), loadBillsForAdmin(sessionId)]);
+        await loadMessages(sessionId);
+    } catch (error) {
+        console.error('Mở cuộc trò chuyện lỗi:', error);
+    } finally {
+        // Chốt chặn cuối: vẽ bằng dữ liệu đang có — kể cả rỗng — vẫn hơn đứng hình.
+        if (sessionId === currentSessionId && chatMessagesContainer.querySelector('.chat-loading-state')) {
+            try { renderAdminMessages(false); }
+            catch (error) { console.error('Vẽ tin nhắn lỗi:', error); showChatLoadFailed(sessionId); }
+        }
+        if (sessionId === currentSessionId) disarmChatLoadingWatchdog();
     }
 
     // Không còn cần polling 2s/lần: tin nhắn mới được server đẩy tức thì qua SSE Event Stream
@@ -1440,6 +1459,63 @@ async function selectSession(sessionId) {
 // chat_order_bills nên vẫn trả về khi phiên đã đóng — /order chỉ tìm đơn của
 // phiên đang 'active', nên mở lại một đoạn chat cũ thì Sale và Agent không thấy
 // hoá đơn nào cả, dù bill vẫn nằm nguyên trong database.
+// --- CANH SPINNER "ĐANG DỊCH THUẬT..." --------------------------------------
+//
+// Khung chat chỉ có MỘT nơi vẽ spinner (lúc mở cuộc trò chuyện) và nhiều nơi có
+// thể vẽ đè lên nó. Chỉ cần một nhánh nào đó thoát sớm mà quên vẽ là spinner ở
+// lại vĩnh viễn — không có polling nào cứu nữa vì tin mới đi bằng SSE. Ba hàm
+// dưới đây là lưới an toàn cuối cùng, KHÔNG thay cho việc sửa đúng nguyên nhân.
+let chatLoadingWatchdog = null;
+let chatLoadingRetries = 0;
+
+function clearChatLoadingState() {
+    chatMessagesContainer?.querySelectorAll('.chat-loading-state').forEach((node) => node.remove());
+}
+
+function disarmChatLoadingWatchdog() {
+    if (chatLoadingWatchdog) clearTimeout(chatLoadingWatchdog);
+    chatLoadingWatchdog = null;
+    chatLoadingRetries = 0;
+}
+
+function armChatLoadingWatchdog(sessionId) {
+    if (chatLoadingWatchdog) clearTimeout(chatLoadingWatchdog);
+    chatLoadingWatchdog = setTimeout(() => {
+        chatLoadingWatchdog = null;
+        // Đã chuyển sang đoạn khác, hoặc đã vẽ xong: không còn gì để canh.
+        if (sessionId !== currentSessionId) return;
+        if (!chatMessagesContainer?.querySelector('.chat-loading-state')) return;
+        if (chatLoadingRetries >= 1) return showChatLoadFailed(sessionId);
+        chatLoadingRetries += 1;
+        // Thử lại một lượt: phần lớn trường hợp là một yêu cầu mạng treo giữa
+        // chừng trên 4G, gọi lại là xong.
+        adminIsSyncingMessages = false;
+        adminPendingMessageLoad = null;
+        armChatLoadingWatchdog(sessionId);
+        loadMessages(sessionId).catch(() => showChatLoadFailed(sessionId));
+    }, 12000);
+}
+
+function showChatLoadFailed(sessionId) {
+    if (sessionId !== currentSessionId || !chatMessagesContainer) return;
+    disarmChatLoadingWatchdog();
+    const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
+    clearChatLoadingState();
+    const box = document.createElement('div');
+    box.className = 'chat-load-failed';
+    box.innerHTML = `
+        <i class="ri-wifi-off-line"></i>
+        <p>${escapeHtml(dict.chatLoadFailed || 'Không tải được tin nhắn. Kiểm tra kết nối rồi thử lại.')}</p>
+        <button type="button">${escapeHtml(dict.chatLoadRetry || 'Thử lại')}</button>
+    `;
+    box.querySelector('button').onclick = () => {
+        adminIsSyncingMessages = false;
+        adminPendingMessageLoad = null;
+        selectSession(sessionId);
+    };
+    chatMessagesContainer.appendChild(box);
+}
+
 let adminBills = [];
 async function loadBillsForAdmin(sessionId) {
     try {
@@ -1451,7 +1527,15 @@ async function loadBillsForAdmin(sessionId) {
     // Trước đây hoá đơn chỉ được vẽ trong loadMessages(): tuỳ luồng mở chat của
     // từng vai trò mà bill về trước hay sau lượt vẽ, nên có tài khoản thấy có
     // tài khoản không. Hàm vẽ đã tự dọn bản cũ nên gọi thêm một lần vô hại.
-    if (sessionId === currentSessionId) renderAdminSavedBills();
+    // BỌC LẠI: hàm vẽ này nằm NGOÀI try ở trên. Nó ném một cái là lời hứa của
+    // loadBillsForAdmin vỡ, Promise.all trong openChat vỡ theo, và openChat
+    // dừng ngay tại đó — spinner "Đang dịch thuật..." ở lại vĩnh viễn vì lượt
+    // vẽ tin nhắn không bao giờ chạy. Một tờ hoá đơn dị dạng không được phép
+    // khoá cả cuộc trò chuyện.
+    if (sessionId === currentSessionId) {
+        try { renderAdminSavedBills(); }
+        catch (error) { console.error('Không vẽ được hoá đơn đã lưu:', error); }
+    }
 }
 
 
@@ -1481,6 +1565,9 @@ function renderAdminSavedBills() {
     const methodLabels = { cash: 'Tiền mặt', bank_qr: 'Chuyển khoản QR', card: 'Thẻ', room_charge: 'Cộng vào tiền phòng', pay_later: 'Thanh toán sau' };
 
     for (const bill of adminBills) {
+      // Từng tờ một: dữ liệu hỏng ở tờ thứ hai không được xoá luôn tờ thứ nhất
+      // đã vẽ xong.
+      try {
         if (liveId && String(bill.orderId) === liveId
             && Number(bill.version || 0) === newestOfOrder.get(String(bill.orderId))) continue;
         const preview = bill.invoice?.svgDataUrl || '';
@@ -1507,6 +1594,7 @@ function renderAdminSavedBills() {
             </div>
         `;
         insertIntoChatFlow(wrapper, bill.createdAt);
+      } catch (error) { console.error('Bỏ qua một hoá đơn không vẽ được:', error); }
     }
 }
 
@@ -1562,7 +1650,19 @@ async function loadMessages(sessionId, isLoadMore = false) {
     }
 
     try {
-        const response = await authFetch(`${API_BASE}/api/admin/chats/${sessionId}/messages?adminLang=${currentLang}&limit=${fetchLimit}&offset=${fetchOffset}&_=${Date.now()}`);
+        // HẠN 20 GIÂY.
+        //
+        // fetch() không tự bỏ cuộc: một yêu cầu treo trên 4G chập chờn sẽ chờ
+        // mãi mãi, và vì lượt vẽ nằm sau nó nên spinner cũng đứng mãi mãi. Có
+        // hạn thì nó rơi vào nhánh catch, và đồng hồ canh ở trên xử lý tiếp.
+        const stopSlow = new AbortController();
+        const slowTimer = setTimeout(() => stopSlow.abort(), 20000);
+        let response;
+        try {
+            response = await authFetch(`${API_BASE}/api/admin/chats/${sessionId}/messages?adminLang=${currentLang}&limit=${fetchLimit}&offset=${fetchOffset}&_=${Date.now()}`, { signal: stopSlow.signal });
+        } finally {
+            clearTimeout(slowTimer);
+        }
         const fetchedMessages = await response.json();
 
         // Prevent a late response from the previous chat/account from being
@@ -1631,7 +1731,10 @@ async function loadMessages(sessionId, isLoadMore = false) {
     } catch (e) {
         console.error('Error loading messages:', e);
         if (chatMessagesContainer.querySelector('.chat-loading-state')) {
-            renderAdminMessages(false);
+            // Chưa có gì để vẽ mà lại vừa lỗi: nói thẳng là hỏng và cho cái nút
+            // bấm, đừng vẽ một khung trống rồi để người ta đoán.
+            if (adminMessages.length === 0) showChatLoadFailed(sessionId);
+            else renderAdminMessages(false);
         }
     } finally {
         adminIsSyncingMessages = false;

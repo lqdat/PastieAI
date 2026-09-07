@@ -5094,3 +5094,18 @@ button {
 @media (max-width: 620px) {
     #admin-form-title { font-size: 12.5px; }
 }
+
+/* Lỗi tải tin nhắn: có mặt để KHÔNG bao giờ phải nhìn spinner quay vô tận nữa.
+   Thà nói thẳng là hỏng và cho một cái nút bấm được. */
+.chat-load-failed {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; height: 100%; padding: 24px; text-align: center;
+}
+.chat-load-failed i { font-size: 30px; color: var(--text-muted); }
+.chat-load-failed p { margin: 0; max-width: 320px; color: var(--text-secondary); font-size: 13.5px; line-height: 1.6; }
+.chat-load-failed button {
+    padding: 9px 20px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 999px;
+    background: rgba(255, 255, 255, .06); color: var(--text-primary);
+    font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.chat-load-failed button:hover { background: rgba(255, 255, 255, .12); }
