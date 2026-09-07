@@ -975,15 +975,15 @@
 
     // --- Polling & Message History ---
     async function loadMessageHistory(isLoadMore = false) {
-        // A slow mobile request must not race the next polling cycle and redraw old data.
         if (!state.sessionId || state.isSyncing) return;
         state.isSyncing = true;
 
         let fetchLimit = state.limit;
-        let fetchOffset = state.offset;
+        const currentPersistedCount = state.messages.filter(m => m.id && !String(m.id).startsWith('temp_')).length;
+        let fetchOffset = isLoadMore ? currentPersistedCount : 0;
 
         if (!isLoadMore) {
-            fetchLimit = Math.max(state.messages.length, state.limit);
+            fetchLimit = Math.max(currentPersistedCount, state.limit);
             fetchOffset = 0;
         }
 
@@ -997,9 +997,17 @@
             if (!Array.isArray(fetchedMessages)) return;
 
             if (isLoadMore) {
-                if (fetchedMessages.length < state.limit) state.hasMore = false;
-                state.messages = [...fetchedMessages, ...state.messages];
-                state.offset += fetchedMessages.length;
+                const existingIds = new Set(state.messages.map(m => m.id));
+                const newOlderMessages = fetchedMessages.filter(m => !existingIds.has(m.id));
+
+                if (fetchedMessages.length < state.limit || newOlderMessages.length === 0) {
+                    state.hasMore = false;
+                }
+
+                if (newOlderMessages.length > 0) {
+                    state.messages = [...newOlderMessages, ...state.messages];
+                    state.offset = state.messages.filter(m => m.id && !String(m.id).startsWith('temp_')).length;
+                }
                 renderMessageThread(true);
             } else {
                 // Keep unresolved in-flight temp messages
@@ -1009,7 +1017,7 @@
                 });
 
                 const currentMsgs = state.messages.filter(m => m.id && !m.id.toString().startsWith('temp_'));
-                const firstLoad = currentMsgs.length === 0; // lần đầu nạp lịch sử
+                const firstLoad = currentMsgs.length === 0;
                 const map = new Map();
                 fetchedMessages.forEach(m => map.set(m.id, m));
                 currentMsgs.forEach(m => {
@@ -1029,7 +1037,6 @@
                     state.lastMessageCount = merged.length;
                 }
 
-                // Check diff to prevent periodic 4s flickering/scroll jumping
                 const isDiff = state.messages.length !== merged.length ||
                                state.messages.some((m, idx) => {
                                    const o = merged[idx];
@@ -1037,10 +1044,9 @@
                                });
 
                 state.messages = merged;
-                if (firstLoad && !state.isOpen) state.lastSeenCount = merged.length; // lịch sử cũ coi như đã đọc
+                state.offset = state.messages.filter(m => m.id && !String(m.id).startsWith('temp_')).length;
+                if (firstLoad && !state.isOpen) state.lastSeenCount = merged.length;
 
-                // Đồng bộ chế độ theo TRẠNG THÁI PHIÊN (nguồn đúng): human khi đang có/chờ nhân viên,
-                // ai khi nhân viên đã kết thúc -> đổi lại nút "Gặp CSKH" cho khách.
                 try {
                     const st = await fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/state?_=${Date.now()}`).then(r => r.ok ? r.json() : null);
                     if (st && st.mode && st.mode !== state.mode) {
@@ -1056,7 +1062,7 @@
             }
             refreshUnreadBadge();
         } catch(e) {
-            console.error('Failed to load message history:', e);
+            console.error('Error loading message history:', e);
         } finally {
             state.isSyncing = false;
         }
@@ -1067,8 +1073,9 @@
         if (!threadContainer) return;
 
         const previousScrollHeight = threadContainer.scrollHeight;
+        const previousScrollTop = threadContainer.scrollTop;
         const isNearBottom = (threadContainer.scrollHeight - threadContainer.scrollTop - threadContainer.clientHeight) < 80;
-        const isFirstLoad = threadContainer.children.length === 0 || threadContainer.querySelector('.system');
+        const isFirstLoad = threadContainer.children.length === 0;
         const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
 
         threadContainer.innerHTML = '';
@@ -1083,14 +1090,27 @@
             loadMoreBtn.id = 'btn-load-older';
             loadMoreBtn.style.cssText = 'background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);color:var(--widget-text);font-family:"Be Vietnam Pro",sans-serif;font-size:11px;font-weight:600;border-radius:20px;padding:6px 16px;cursor:pointer;transition:all 0.2s';
             loadMoreBtn.textContent = state.isLoadingMore ? t.loadingMore : t.loadOlder;
+            if (state.isLoadingMore) loadMoreBtn.disabled = true;
+
             loadMoreBtn.onmouseover = () => { loadMoreBtn.style.background = 'rgba(255,255,255,0.15)'; };
             loadMoreBtn.onmouseout = () => { loadMoreBtn.style.background = 'rgba(255,255,255,0.08)'; };
             loadMoreBtn.onclick = async () => {
                 if (state.isLoadingMore) return;
                 state.isLoadingMore = true;
                 loadMoreBtn.textContent = t.loadingMore;
-                await loadMessageHistory(true);
-                state.isLoadingMore = false;
+                loadMoreBtn.disabled = true;
+                try {
+                    await loadMessageHistory(true);
+                } catch (err) {
+                    console.error('Lỗi khi tải tin nhắn cũ:', err);
+                } finally {
+                    state.isLoadingMore = false;
+                    const currentBtn = document.getElementById('btn-load-older');
+                    if (currentBtn) {
+                        currentBtn.textContent = t.loadOlder;
+                        currentBtn.disabled = false;
+                    }
+                }
             };
             loadMoreDiv.appendChild(loadMoreBtn);
             threadContainer.appendChild(loadMoreDiv);
@@ -1126,7 +1146,6 @@
             threadContainer.appendChild(bubbleWrap);
         });
 
-        // Show typing indicator only in AI mode (human agents don't need it)
         const lastMsg = state.messages[state.messages.length - 1];
         if (lastMsg && lastMsg.sender === 'visitor' && state.mode === 'ai') {
             state.isTyping = true;
@@ -1136,7 +1155,8 @@
         }
 
         if (isLoadMore) {
-            threadContainer.scrollTop = threadContainer.scrollHeight - previousScrollHeight;
+            const heightDiff = threadContainer.scrollHeight - previousScrollHeight;
+            threadContainer.scrollTop = heightDiff > 0 ? heightDiff : previousScrollTop;
         } else if (isFirstLoad || isNearBottom) {
             threadContainer.scrollTop = threadContainer.scrollHeight;
         }

@@ -1681,11 +1681,12 @@ async function loadMessages(sessionId, isLoadMore = false) {
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
 
     let fetchLimit = adminLimit;
-    let fetchOffset = adminOffset;
+    const currentPersistedCount = adminMessages.filter(m => m.id && !String(m.id).startsWith('temp_')).length;
+    let fetchOffset = isLoadMore ? currentPersistedCount : 0;
 
     if (!isLoadMore) {
         // Fetch all currently loaded messages to keep polling sync complete
-        fetchLimit = Math.max(adminMessages.length, adminLimit);
+        fetchLimit = Math.max(currentPersistedCount, adminLimit);
         fetchOffset = 0;
     }
 
@@ -1717,12 +1718,17 @@ async function loadMessages(sessionId, isLoadMore = false) {
         }
 
         if (isLoadMore) {
-            if (fetchedMessages.length < adminLimit) {
+            const existingIds = new Set(adminMessages.map(m => m.id));
+            const newOlderMessages = fetchedMessages.filter(m => !existingIds.has(m.id));
+
+            if (fetchedMessages.length < adminLimit || newOlderMessages.length === 0) {
                 adminHasMore = false;
             }
-            // Prepend older messages
-            adminMessages = [...fetchedMessages, ...adminMessages];
-            adminOffset += fetchedMessages.length;
+
+            if (newOlderMessages.length > 0) {
+                adminMessages = [...newOlderMessages, ...adminMessages];
+                adminOffset = adminMessages.filter(m => m.id && !String(m.id).startsWith('temp_')).length;
+            }
             renderAdminMessages(true);
         } else {
             // Keep unresolved in-flight temp messages
@@ -1755,6 +1761,7 @@ async function loadMessages(sessionId, isLoadMore = false) {
                            });
 
             adminMessages = merged;
+            adminOffset = adminMessages.filter(m => m.id && !String(m.id).startsWith('temp_')).length;
 
             // Keep local seen count in sync while admin is viewing
             if (currentSessionId) {
@@ -1792,6 +1799,7 @@ async function loadMessages(sessionId, isLoadMore = false) {
 function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     const previousScrollHeight = chatMessagesContainer.scrollHeight;
+    const previousScrollTop = chatMessagesContainer.scrollTop;
     const isNearBottom = (chatMessagesContainer.scrollHeight - chatMessagesContainer.scrollTop - chatMessagesContainer.clientHeight) < 100;
     const isFirstLoad = chatMessagesContainer.children.length === 0 || chatMessagesContainer.querySelector('.chat-loading-state') || chatMessagesContainer.querySelector('.chat-welcome-state');
 
@@ -1817,6 +1825,7 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
         loadMoreBtn.style.cursor = 'pointer';
         loadMoreBtn.style.transition = 'all 0.2s';
         loadMoreBtn.textContent = adminIsLoadingMore ? dict.loadingMore : dict.loadOlder;
+        if (adminIsLoadingMore) loadMoreBtn.disabled = true;
 
         loadMoreBtn.onmouseover = () => { loadMoreBtn.style.background = 'rgba(255, 255, 255, 0.1)'; loadMoreBtn.style.color = 'var(--text-primary)'; };
         loadMoreBtn.onmouseout = () => { loadMoreBtn.style.background = 'rgba(255, 255, 255, 0.05)'; loadMoreBtn.style.color = 'var(--text-secondary)'; };
@@ -1825,8 +1834,19 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
             if (adminIsLoadingMore) return;
             adminIsLoadingMore = true;
             loadMoreBtn.textContent = dict.loadingMore;
-            await loadMessages(currentSessionId, true);
-            adminIsLoadingMore = false;
+            loadMoreBtn.disabled = true;
+            try {
+                await loadMessages(currentSessionId, true);
+            } catch (err) {
+                console.error('Lỗi khi tải tin nhắn cũ:', err);
+            } finally {
+                adminIsLoadingMore = false;
+                const currentBtn = chatMessagesContainer.querySelector('.admin-chat-loadmore-btn');
+                if (currentBtn) {
+                    currentBtn.textContent = dict.loadOlder;
+                    currentBtn.disabled = false;
+                }
+            }
         };
 
         loadMoreDiv.appendChild(loadMoreBtn);
@@ -1901,7 +1921,8 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
     window.OrderConsole?.renderPending(adminOrder, chatMessagesContainer);
 
     if (isLoadMore) {
-        chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight - previousScrollHeight;
+        const heightDiff = chatMessagesContainer.scrollHeight - previousScrollHeight;
+        chatMessagesContainer.scrollTop = heightDiff > 0 ? heightDiff : previousScrollTop;
     } else {
         if (forceScrollToLatest || isFirstLoad || isNearBottom) {
             chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
