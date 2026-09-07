@@ -800,8 +800,21 @@ app.get('/api/qr-chat/:code', async (req, res) => {
 });
 
 
-const ADMIN_SESSION_HOURS = 8;
-const ADMIN_SESSION_MS = ADMIN_SESSION_HOURS * 3600000;
+// THỜI HẠN PHIÊN ĐĂNG NHẬP THEO VAI TRÒ.
+//
+// Agent và Sale ngồi ca: 4 tiếng đủ hết một ca, và hết ca thì phiên tự rụng —
+// máy để quên ở quầy không còn là một cánh cửa mở. Superadmin làm việc rải suốt
+// ngày trên máy riêng nên 8 tiếng.
+//
+// Cả hai đều TRƯỢT: còn thao tác là còn gia hạn, nên không ai bị đá ra giữa
+// chừng lúc đang phục vụ khách.
+const ADMIN_SESSION_HOURS_BY_ROLE = { agent: 4, sale: 4 };
+const ADMIN_SESSION_DEFAULT_HOURS = 8;
+const adminSessionHours = (role) => ADMIN_SESSION_HOURS_BY_ROLE[String(role || '')] || ADMIN_SESSION_DEFAULT_HOURS;
+const adminSessionMs = (role) => adminSessionHours(role) * 3600000;
+// Gia hạn khi thời gian còn lại đã tụt quá một giờ so với hạn đầy đủ: tối đa
+// một lượt ghi mỗi giờ cho mỗi phiên, thay vì mỗi request một lượt.
+const adminSessionRenewAt = (role) => (adminSessionHours(role) - 1) * 3600000;
 // Hai đồng hồ khác nhau, đừng gộp lại:
 //
 //   QR_CHAT_SESSION_MS  — CUỘC TRÒ CHUYỆN còn sống bao lâu. 1 tiếng, trượt.
@@ -1282,7 +1295,7 @@ async function issueSingleActiveAdminSession(admin, req = null) {
 
   // 3. Tạo token phiên mới duy nhất
   const sessionToken = randomUUID();
-  const expiresAt = new Date(Date.now() + ADMIN_SESSION_MS);
+  const expiresAt = new Date(Date.now() + adminSessionMs(admin.role));
   await db.query(
     `INSERT INTO admin_sessions (token, admin_id, expires_at, device_id, user_agent, client_ip, last_seen_at)
      VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
@@ -1335,12 +1348,13 @@ async function checkAdminAuth(req, res, next) {
       return res.status(401).json({ error: 'Session expired. Please log in again.', code: 'SESSION_EXPIRED' });
     }
 
-    // Gia hạn kiểu trượt: gia hạn thêm 8 giờ nếu còn hoạt động (cập nhật tối đa 1 lần/giờ) + lưu last_seen_at
+    // Gia hạn kiểu trượt theo vai trò (4 giờ với Agent/Sale, 8 giờ với còn lại),
+    // cập nhật tối đa 1 lần/giờ + lưu last_seen_at
     const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
     const userAgent = String(req.headers['user-agent'] || '').slice(0, 1000);
     const currentExpires = new Date(adminSession.expires_at).getTime();
-    if (currentExpires - Date.now() < (ADMIN_SESSION_HOURS - 1) * 3600000) {
-      const newExpiresAt = new Date(Date.now() + ADMIN_SESSION_MS);
+    if (currentExpires - Date.now() < adminSessionRenewAt(adminSession.role)) {
+      const newExpiresAt = new Date(Date.now() + adminSessionMs(adminSession.role));
       db.query(
         `UPDATE admin_sessions 
             SET expires_at = $1, last_seen_at = NOW(), client_ip = COALESCE(NULLIF($2, ''), client_ip), user_agent = COALESCE(NULLIF($3, ''), user_agent) 
@@ -2005,8 +2019,8 @@ async function getAdminFromToken(req) {
   if (!result.rows[0]) return null;
   const admin = result.rows[0];
   const currentExpires = new Date(admin.expires_at).getTime();
-  if (currentExpires - Date.now() < (ADMIN_SESSION_HOURS - 1) * 3600000) {
-    const newExpiresAt = new Date(Date.now() + ADMIN_SESSION_MS);
+  if (currentExpires - Date.now() < adminSessionRenewAt(admin.role)) {
+    const newExpiresAt = new Date(Date.now() + adminSessionMs(admin.role));
     db.query('UPDATE admin_sessions SET expires_at = $1, last_seen_at = NOW() WHERE token = $2', [newExpiresAt, token]).catch(() => {});
   } else {
     db.query('UPDATE admin_sessions SET last_seen_at = NOW() WHERE token = $1', [token]).catch(() => {});
@@ -4602,8 +4616,21 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
     if (isSuperAdmin(req.admin)) {
       // không thêm điều kiện
     } else if (req.admin.role === 'sale') {
+      // PHẠM VI PHẢI KHỚP VỚI DANH SÁCH CHAT CỦA CHÍNH SALE ĐÓ.
+      //
+      // Trước đây chỗ này chỉ lấy đơn của đoạn chat Sale ĐÃ TỰ TAY NHẬN, trong
+      // khi danh sách hội thoại của Sale lại theo NHÓM. Hậu quả: Sale nhìn thấy
+      // một cuộc trò chuyện trong danh sách nhưng bill của chính cuộc đó lại
+      // không có trong "Quản lý bill" — nên đếm ở Sale và đếm ở Agent ra hai
+      // con số khác nhau mà không ai giải thích được.
+      //
+      // Không lọc thêm theo khung giờ trực như danh sách chat: bill là thứ để
+      // tra cứu và đối chiếu tiền, nó không được biến mất khi hết ca.
+      const groups = await groupIdsOfSale(req.admin.id);
+      params.push(groups);
+      const groupParam = params.length;
       params.push(req.admin.id);
-      where.push(`s.claimed_by_admin_id = $${params.length}`);
+      where.push(`(s.group_id = ANY($${groupParam}::int[]) OR s.claimed_by_admin_id = $${params.length})`);
     } else if (isAgentManager(req.admin)) {
       params.push(req.admin.id);
       where.push(`COALESCE(g.agent_id, q.owner_admin_id) = $${params.length}`);
