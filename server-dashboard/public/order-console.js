@@ -94,11 +94,17 @@
             setEditLabel(wrapper, 'Xong');
         }
 
-        // Thẻ đơn thuộc về thời điểm khách bấm đặt, không phải cuối khung chat.
-        // Dùng created_at chứ không phải updated_at: Sale lưu ghi chú cũng làm
-        // updated_at nhảy, mà thẻ thì không nên tự trôi xuống dưới vì chuyện đó.
+        // Thẻ đơn thuộc về LẦN GỬI GẦN NHẤT, không phải lần đặt đầu tiên.
+        //
+        // Khách sửa đơn thì dòng chat_orders được ghi đè tại chỗ, created_at giữ
+        // nguyên mốc cũ. Neo vào đó là thẻ đơn HIỆN TẠI nhảy lên nằm trên cả
+        // dòng "[Đặt món] Khách vừa đặt..." của lần đầu — đọc từ trên xuống
+        // thành ra đơn mới nhất lại đứng trước bản khách đã sửa bỏ.
+        //
+        // Đơn đang chờ xác nhận thì updated_at CHÍNH LÀ lúc khách bấm gửi lần
+        // gần nhất. Các trạng thái sau đó dùng mốc riêng của chúng ở nơi khác.
         if (typeof window.insertIntoChatFlow === 'function') {
-            window.insertIntoChatFlow(wrapper, order.created_at, container);
+            window.insertIntoChatFlow(wrapper, order.updated_at || order.created_at, container);
         } else {
             container.appendChild(wrapper);
         }

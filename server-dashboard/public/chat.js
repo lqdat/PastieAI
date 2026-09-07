@@ -562,6 +562,13 @@ function handleAdminRealtimeEvent(data) {
         }
         if (data.type === 'order_update') {
             adminOrderSignature = '';
+            // TẢI LẠI CẢ HOÁ ĐƠN ĐÃ LƯU, không chỉ tin nhắn.
+            //
+            // Trước đây chỉ gọi loadMessages(), mà danh sách bill chỉ được nạp
+            // đúng một lần lúc MỞ đoạn chat. Nên tờ bill Sale vừa gửi — hoặc tờ
+            // đầu tiên trước khi khách sửa món — không hiện ra cho tới khi thoát
+            // ra vào lại. Hàm nạp bill tự vẽ lại khi dữ liệu về nên gọi thẳng.
+            loadBillsForAdmin(currentSessionId);
             loadMessages(currentSessionId);
         }
     }

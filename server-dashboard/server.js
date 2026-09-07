@@ -4087,10 +4087,17 @@ async function getChatOrderForVisitor(sessionId) {
 // dung vì một quán chỉ dùng đi dùng lại vài chục câu ("ít cay", "không hành",
 // "để sốt riêng") — cache theo đơn là mỗi khách lại tốn một lượt gọi dịch cho
 // đúng câu đó.
+// GHI CHÚ MÓN LÀ CHỮ CỦA KHÁCH, KHÔNG PHẢI CHỮ CỦA QUÁN.
+//
+// Tên món do Agent nhập bằng tiếng Việt nên tiếng Việt là bản gốc, khỏi dịch.
+// Ghi chú thì ngược lại: khách gõ bằng tiếng của họ ("Less spicy", "No onion"),
+// nên nhân viên đọc tiếng Việt vẫn cần dịch. Hai điều kiện cũ chặn đúng chiều
+// đó — bỏ qua khi ngôn ngữ đích là tiếng Việt — nên tờ bill tiếng Việt hiện
+// nguyên câu tiếng Anh của khách.
 async function translateNoteText(text, language, protect) {
   const source = String(text || '').trim();
   const target = String(language || '').toLowerCase().slice(0, 2);
-  if (!source || !MENU_LANGS.includes(target) || target === MENU_SOURCE_LANG) return source;
+  if (!source || !MENU_LANGS.includes(target)) return source;
 
   // Khoá cache gồm CẢ danh sách tên được giữ: cùng một câu ghi chú nhưng hai
   // quán tên khác nhau sẽ ra hai bản dịch khác nhau, dùng chung là sai.
@@ -4109,7 +4116,9 @@ async function translateNoteText(text, language, protect) {
   }
 
   try {
-    const out = await gemini.translateText(source, target, { sourceLang: MENU_SOURCE_LANG, protect });
+    // KHÔNG ép sourceLang: ghi chú có thể là bất kỳ tiếng nào khách gõ. Ép cứng
+    // 'vi' là bảo bên dịch rằng "Less spicy" vốn là tiếng Việt.
+    const out = await gemini.translateText(source, target, { protect });
     // Nhà cung cấp dịch chết thì trả lại nguyên văn và KHÔNG cache — cache bản
     // gốc là khoá vĩnh viễn câu đó ở tiếng Việt.
     if (!out || out.provider === 'none' || !out.translatedText) return source;
@@ -4128,11 +4137,17 @@ async function translateNoteText(text, language, protect) {
 async function localizeOrderForVisitor(order, language) {
   const target = String(language || '').toLowerCase().slice(0, 2);
   const items = Array.isArray(order?.items) ? order.items : [];
-  if (!order || target === MENU_SOURCE_LANG || !MENU_LANGS.includes(target) || items.length === 0) {
+  if (!order || !MENU_LANGS.includes(target) || items.length === 0) {
     return order;
   }
 
-  const ids = [...new Set(items.map((item) => Number(item?.menuItemId)).filter(Number.isInteger))];
+  // TÊN MÓN chỉ cần dịch khi ngôn ngữ đích khác bản gốc của thực đơn; GHI CHÚ
+  // thì luôn phải dịch, kể cả sang tiếng Việt — xem lý do ở translateNoteText.
+  // Trước đây cả hàm thoát sớm khi đích là tiếng Việt, nên ghi chú của khách
+  // nằm nguyên tiếng Anh trên tờ bill của cả khách lẫn Sale lẫn Agent.
+  const ids = target === MENU_SOURCE_LANG
+    ? []
+    : [...new Set(items.map((item) => Number(item?.menuItemId)).filter(Number.isInteger))];
   const translated = ids.length
     ? await db.query(
         `SELECT item_id, name FROM qr_menu_item_translations
@@ -4318,10 +4333,10 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   // maybeAutoSelectDeferredPayment ở trên — đồng hồ 2 phút vẫn phải chạy mỗi
   // lượt hỏi, chỉ phần đóng gói hoá đơn mới được bỏ qua. Đặt trước là đơn quá
   // hạn sẽ không bao giờ được chốt.
-  // i18n3: tên cơ sở và nhãn bàn giờ cũng được dịch, nên vân tay và cache cũ
-  // phải hết hiệu lực — nếu không khách vẫn nhận lại đúng tờ bill tiếng Việt
-  // đã render trước đó.
-  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${language}.i18n3`;
+  // i18n4: ghi chú món giờ cũng được dịch (kể cả sang tiếng Việt), nên vân tay
+  // và cache cũ phải hết hiệu lực — nếu không khách vẫn nhận lại đúng tờ bill
+  // đã render trước đó với ghi chú nguyên văn.
+  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${language}.i18n4`;
   if (String(req.query.known || '').trim() === orderPrint) {
     res.setHeader('X-Order-Print', orderPrint);
     return res.status(200).json({ unchanged: true, fingerprint: orderPrint });
@@ -4350,7 +4365,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   // moi don dang cho.
   if (order.status === 'pending_confirm') {
     invoice = null;
-  } else if (cached && Number(cached.orderStamp) === orderStamp && Number(cached.translationVersion) === 3) {
+  } else if (cached && Number(cached.orderStamp) === orderStamp && Number(cached.translationVersion) === 4) {
     invoice = cached.invoice;
   } else {
     // TÊN CƠ SỞ VÀ TÊN BÀN CŨNG PHẢI DỊCH.
@@ -4376,7 +4391,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
     // Chỉ lưu khi thật sự vừa render (generated: true). Trường hợp hoá đơn đã có
     // sẵn pdfUrl thì không có gì để cache.
     if (invoice?.generated) {
-      const store = { ...(order.invoice_render || {}), [language]: { orderStamp, translationVersion: 3, invoice } };
+      const store = { ...(order.invoice_render || {}), [language]: { orderStamp, translationVersion: 4, invoice } };
       db.query('UPDATE chat_orders SET invoice_render = $1 WHERE id = $2', [JSON.stringify(store), order.id])
         .catch((error) => console.error('[Invoice] Không lưu được cache PDF:', error.message));
     }
@@ -4720,9 +4735,15 @@ app.get('/api/admin/orders/:orderId/details', checkAdminAuth, async (req, res) =
       const sellerName = await localizeVenueName(
         order.agent_name || order.invoice?.sellerName || '', language, order.agent_id || null
       );
+      // Món ĐÃ QUA BƯỚC DỊCH, không lấy dòng thô: ghi chú là chữ của khách nên
+      // nhân viên đọc tiếng Việt vẫn cần bản dịch. Lấy thô là tờ bill trong
+      // bảng nhân viên hiện nguyên "Less spicy" bên dưới tên món tiếng Việt.
+      const localizedForStaff = await localizeOrderForVisitor(
+        { session_id: order.session_id, items: order.items || [] }, language
+      ).catch(() => null);
       invoice = await prepareInvoiceDelivery({
         ...(order.invoice || {}),
-        items: order.items || [],
+        items: localizedForStaff?.items || order.items || [],
         sellerName,
         saleName: order.sale_name || order.invoice?.saleName || '',
         paymentMethod: order.payment_method || order.invoice?.paymentMethod || '',

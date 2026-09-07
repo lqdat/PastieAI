@@ -259,7 +259,7 @@
         overlay.innerHTML = `
             <div class="admin-management-box cart-box">
                 <div class="admin-list-head">
-                    <h3><i class="ri-file-list-3-line"></i> Quản lý bill</h3>
+                    <h3><i class="ri-shopping-cart-2-line"></i> Giỏ hàng</h3>
                     <button type="button" class="icon-btn cart-close" title="Đóng"><i class="ri-close-line"></i></button>
                 </div>
                 <div class="cart-body"></div>
