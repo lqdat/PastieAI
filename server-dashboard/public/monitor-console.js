@@ -244,7 +244,10 @@
     }
 
     document.addEventListener('click', (event) => {
-        if (event.target.closest('#monitor-btn')) return void open();
+        if (event.target.closest('#monitor-btn, #superadmin-monitor-btn')) {
+            if (typeof closeSettingsDropdown === 'function') closeSettingsDropdown();
+            return void open();
+        }
         if (event.target.closest('#monitor-close-btn, #monitor-close-top-btn')) return void close();
         const tab = event.target.closest('[data-monitor-tab]');
         if (tab) setTab(tab.dataset.monitorTab);

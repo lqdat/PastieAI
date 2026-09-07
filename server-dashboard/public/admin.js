@@ -1881,3 +1881,218 @@ document.getElementById('self-devices-list')?.addEventListener('click', async (e
         toastError(error.message);
     }
 });
+
+
+// =====================================================================
+// MENU QUẢN TRỊ (SUPERADMIN & PROJECT ADMIN) & MỞ KHÓA CHỜ OTP
+// =====================================================================
+
+// Nút Quản lý bill / Giỏ hàng trong Menu Quản trị
+document.getElementById('superadmin-order-cart-btn')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    closeSettingsDropdown();
+    window.OrderCart?.open();
+});
+
+// Nút Báo cáo hiệu suất trong Menu Quản trị
+document.getElementById('superadmin-report-modal-btn')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    closeSettingsDropdown();
+    openReportModal();
+});
+
+// Nút Tải lại ứng dụng trong Menu Quản trị
+document.getElementById('app-reload-super-btn')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    closeSettingsDropdown();
+    window.location.reload(true);
+});
+
+// --- MỞ KHÓA & QUẢN LÝ GIỚI HẠN OTP ---
+const otpUnlockModal = document.getElementById('otp-unlock-modal');
+const superadminOtpUnlockBtn = document.getElementById('superadmin-otp-unlock-btn');
+const otpUnlockCloseTop = document.getElementById('otp-unlock-close-top');
+const otpUnlockCloseBtn = document.getElementById('otp-unlock-close-btn');
+const otpBypassToggle = document.getElementById('otp-bypass-toggle');
+const otpBypassBadge = document.getElementById('otp-bypass-badge');
+const otpStatusTbody = document.getElementById('otp-status-tbody');
+const otpUnlockFeedback = document.getElementById('otp-unlock-feedback');
+
+function openOtpUnlockModal() {
+    closeSettingsDropdown();
+    if (!otpUnlockModal) return;
+    otpUnlockModal.classList.remove('hide');
+    if (otpUnlockFeedback) {
+        otpUnlockFeedback.classList.add('hide');
+        otpUnlockFeedback.textContent = '';
+    }
+    refreshOtpStatusTable();
+}
+window.openOtpUnlockModal = openOtpUnlockModal;
+
+function closeOtpUnlockModal() {
+    if (!otpUnlockModal) return;
+    otpUnlockModal.classList.add('hide');
+}
+window.closeOtpUnlockModal = closeOtpUnlockModal;
+
+superadminOtpUnlockBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openOtpUnlockModal();
+});
+otpUnlockCloseTop?.addEventListener('click', closeOtpUnlockModal);
+otpUnlockCloseBtn?.addEventListener('click', closeOtpUnlockModal);
+
+otpUnlockModal?.addEventListener('click', (e) => {
+    if (e.target === otpUnlockModal) closeOtpUnlockModal();
+});
+
+// Bật / Tắt toggle Bypass OTP
+otpBypassToggle?.addEventListener('change', async () => {
+    const enabled = otpBypassToggle.checked;
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/otp-unlock/toggle-bypass`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Lỗi khi cập nhật chế độ bỏ qua chờ');
+        toastSuccess(data.message || (enabled ? 'Đã bật bỏ qua chờ gửi OTP' : 'Đã tắt bỏ qua chờ'));
+        updateOtpBypassBadge(data.bypassEnabled);
+        refreshOtpStatusTable();
+    } catch (err) {
+        toastError(err.message);
+        otpBypassToggle.checked = !enabled;
+    }
+});
+
+function updateOtpBypassBadge(enabled) {
+    if (!otpBypassBadge) return;
+    if (enabled) {
+        otpBypassBadge.className = 'otp-bypass-badge is-active';
+        otpBypassBadge.textContent = 'ĐANG BẬT — Bỏ qua mọi giới hạn chờ';
+    } else {
+        otpBypassBadge.className = 'otp-bypass-badge is-off';
+        otpBypassBadge.textContent = 'ĐANG TẮT — Áp dụng giới hạn bảo vệ';
+    }
+    if (otpBypassToggle) otpBypassToggle.checked = Boolean(enabled);
+}
+
+// Tải bảng trạng thái OTP & danh sách mã gần nhất
+async function refreshOtpStatusTable() {
+    if (!otpStatusTbody) return;
+    otpStatusTbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 18px;"><i class="ri-loader-4-line spin"></i> Đang tải dữ liệu...</td></tr>`;
+
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/otp-unlock/status`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Không tải được danh sách OTP');
+
+        updateOtpBypassBadge(data.bypassEnabled);
+
+        const otps = Array.isArray(data.recentOtps) ? data.recentOtps : [];
+        if (otps.length === 0) {
+            otpStatusTbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 22px;">Chưa có yêu cầu gửi OTP nào gần đây.</td></tr>`;
+            return;
+        }
+
+        const now = new Date();
+        otpStatusTbody.innerHTML = otps.map((row) => {
+            const exp = new Date(row.expires_at);
+            const isValid = exp > now;
+            const diffSec = Math.max(0, Math.floor((exp - now) / 1000));
+            const m = Math.floor(diffSec / 60);
+            const s = diffSec % 60;
+            const timeStr = isValid ? `Còn ${m}:${s < 10 ? '0' : ''}${s}` : 'Đã hết hạn';
+            const statusBadge = isValid
+                ? `<span class="otp-pill-badge otp-valid">Còn hiệu lực</span>`
+                : `<span class="otp-pill-badge otp-expired">Đã hết hạn</span>`;
+            const safeEmail = escapeHtml(row.email);
+
+            return `
+                <tr>
+                    <td><strong>${safeEmail}</strong></td>
+                    <td><span class="otp-code-pill">${escapeHtml(row.code)}</span></td>
+                    <td><span class="otp-attempts-pill ${row.attempts >= 5 ? 'is-danger' : ''}">${Number(row.attempts || 0)} / 5</span></td>
+                    <td><span class="otp-time-text">${timeStr}</span></td>
+                    <td>${statusBadge}</td>
+                    <td>
+                        <button type="button" class="otp-row-unlock-btn" onclick="quickUnlockSingleEmail('${safeEmail}')" title="Mở khóa và reset lượt gửi cho email này">
+                            <i class="ri-lock-unlock-line"></i> Mở khóa
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        otpStatusTbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ef4444; padding: 18px;">Lỗi: ${escapeHtml(err.message)}</td></tr>`;
+    }
+}
+window.refreshOtpStatusTable = refreshOtpStatusTable;
+
+// Xử lý mở khóa nhanh cho 1 email
+async function quickUnlockSingleEmail(email) {
+    if (!email) return;
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/otp-unlock/reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Lỗi khi mở khóa email');
+        toastSuccess(data.message || `Đã mở khóa OTP cho ${email}`);
+        showOtpFeedback(data.message, 'success');
+        refreshOtpStatusTable();
+    } catch (err) {
+        toastError(err.message);
+        showOtpFeedback(err.message, 'error');
+    }
+}
+window.quickUnlockSingleEmail = quickUnlockSingleEmail;
+
+// Form mở khóa theo email nhập tay
+async function handleQuickUnlockOtp(event) {
+    if (event) event.preventDefault();
+    const input = document.getElementById('otp-unlock-email-input');
+    const email = (input?.value || '').trim();
+    if (!email) return;
+    await quickUnlockSingleEmail(email);
+    if (input) input.value = '';
+}
+window.handleQuickUnlockOtp = handleQuickUnlockOtp;
+
+// Mở khóa toàn hệ thống
+async function handleUnlockAllOtp() {
+    const ok = await pastieConfirm(
+        'Bạn có chắc chắn muốn xóa toàn bộ bộ đếm giới hạn rate-limit và giải phóng chờ OTP cho toàn hệ thống?',
+        { title: 'Mở khóa toàn bộ OTP?', confirmText: 'Mở khóa toàn bộ' }
+    );
+    if (!ok) return;
+
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/otp-unlock/reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ unlockAll: true })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Lỗi khi mở khóa toàn hệ thống');
+        toastSuccess(data.message || 'Đã mở khóa toàn bộ hệ thống.');
+        showOtpFeedback(data.message, 'success');
+        refreshOtpStatusTable();
+    } catch (err) {
+        toastError(err.message);
+        showOtpFeedback(err.message, 'error');
+    }
+}
+window.handleUnlockAllOtp = handleUnlockAllOtp;
+
+function showOtpFeedback(msg, type = 'success') {
+    if (!otpUnlockFeedback) return;
+    otpUnlockFeedback.className = `otp-feedback otp-feedback-${type}`;
+    otpUnlockFeedback.textContent = msg;
+    otpUnlockFeedback.classList.remove('hide');
+}
+window.showOtpFeedback = showOtpFeedback;

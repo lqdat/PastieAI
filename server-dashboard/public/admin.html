@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r107">
-    <link rel="stylesheet" href="menu-console.css?v=r107">
+    <link rel="stylesheet" href="admin.css?v=r108">
+    <link rel="stylesheet" href="menu-console.css?v=r108">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -150,28 +150,18 @@
                 </div>
             </div>
             <div class="header-right">
-                <!-- Nút riêng cho Superadmin: Quản lý đội ngũ trực tiếp theo project -->
-                <button id="monitor-btn" class="header-quick-btn hide" type="button" title="Theo dõi hệ thống theo thời gian thực">
-                    <i class="ri-pulse-line"></i>
-                </button>
-                <button id="superadmin-team-btn" class="header-quick-btn hide" type="button" title="Quản lý nhân viên &amp; Đội ngũ theo từng project">
-                    <i class="ri-team-line"></i><span>Quản lý đội ngũ</span>
-                </button>
-
-                <!-- Nút riêng cho Agent: Quản lý Sale & Nhóm, Báo cáo, Tài khoản, Thông báo -->
+                <!-- Nút riêng cho Agent / Sale: Quản lý Sale & Nhóm, Bill, Thực đơn, Báo cáo, Tài khoản, Thông báo
+                     (Khi Agent/Sale đăng nhập, layoutHeaderQuickMenu gom gọn toàn bộ vào nút "Công cụ") -->
                 <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, Nhóm tiếp nhận, Mã QR và Thực đơn">
                     <i class="ri-organization-chart"></i><span>Sale &amp; Nhóm</span>
                 </button>
-                <!-- Giỏ hàng: đơn của các cuộc trò chuyện. Sale thấy đơn mình
-                     phụ trách, Agent thấy cả cơ sở. -->
-                <button id="order-cart-btn" class="header-quick-btn hide" type="button" title="Giỏ hàng: đơn của khách theo từng cuộc trò chuyện">
-                    <i class="ri-shopping-cart-2-line"></i><span>Giỏ hàng</span>
+                <button id="order-cart-btn" class="header-quick-btn hide" type="button" title="Quản lý bill: đơn của khách theo từng cuộc trò chuyện">
+                    <i class="ri-bill-line"></i><span>Quản lý bill</span>
                 </button>
-                <!-- Sale chỉ XEM thực đơn để tư vấn, không thêm sửa xoá, không đặt hộ khách. -->
                 <button id="sale-menu-btn" class="header-quick-btn hide" type="button" title="Xem thực đơn của cơ sở">
                     <i class="ri-restaurant-line"></i><span>Thực đơn</span>
                 </button>
-                <button id="report-modal-btn" class="header-quick-btn" type="button" title="Báo cáo hiệu suất tư vấn &amp; Xuất Excel">
+                <button id="report-modal-btn" class="header-quick-btn hide" type="button" title="Báo cáo hiệu suất tư vấn &amp; Xuất Excel">
                     <i class="ri-file-chart-line"></i><span>Báo cáo</span>
                 </button>
                 <button id="agent-account-btn" class="header-quick-btn hide" type="button" title="Quản lý tài khoản của bạn">
@@ -181,39 +171,57 @@
                     <i class="ri-notification-3-line" id="agent-push-icon"></i><span id="agent-push-label">Thông báo</span>
                 </button>
 
-                <!-- Agent/Sale có tới năm nút công cụ, xếp hết ra header thì
-                     hàng nút dài hơn cả tên cơ sở. Gom vào MỘT nút menu; các nút
-                     cũ được chuyển nguyên vẹn vào bảng thả xuống nên vẫn giữ id,
-                     nhãn và mọi trình xử lý sự kiện đã gắn. -->
+                <!-- Bảng thả xuống "Công cụ" dành cho Agent / Sale -->
                 <div class="header-menu-wrap hide" id="header-menu-wrap">
                     <button type="button" class="header-quick-btn header-menu-btn" id="header-menu-btn"
                             aria-haspopup="true" aria-expanded="false" title="Công cụ">
                         <i class="ri-menu-line"></i><span>Công cụ</span>
                     </button>
                     <div class="header-menu-panel hide" id="header-menu-panel">
-                    <!-- Shortcut trên màn hình chính không có nút tải lại của
-                         trình duyệt. Nút này nằm trong bảng công cụ để không
-                         phải tắt hẳn app mới nhận được bản mới. -->
-                    <button id="app-reload-btn" class="header-quick-btn header-menu-item header-menu-fixed" type="button" title="Tải lại ứng dụng">
-                        <i class="ri-refresh-line"></i><span>Tải lại ứng dụng</span>
-                    </button>
-                </div>
+                        <button id="app-reload-btn" class="header-quick-btn header-menu-item header-menu-fixed" type="button" title="Tải lại ứng dụng">
+                            <i class="ri-refresh-line"></i><span>Tải lại ứng dụng</span>
+                        </button>
+                    </div>
                 </div>
 
-                <!-- Settings Dropdown (Superadmin & Project Admin) -->
+                <!-- Menu Quản Trị Duy Nhất cho Superadmin & Project Admin (Gom gọn cả PC và Mobile) -->
                 <div class="settings-dropdown-wrapper" id="settings-dropdown-wrapper">
-                    <button class="settings-trigger-btn" id="settings-trigger-btn" title="Cài đặt">
-                        <i class="ri-settings-3-line"></i>
-                        <span>Cài đặt</span>
+                    <button class="settings-trigger-btn" id="settings-trigger-btn" title="Trung tâm quản trị">
+                        <i class="ri-apps-2-line"></i>
+                        <span>Quản trị</span>
                         <i class="ri-arrow-down-s-line chevron-icon"></i>
                     </button>
                     <div class="settings-dropdown-menu hide" id="settings-dropdown-menu">
                         <div class="sdm-menu-head">
                             <span>TRUNG TÂM QUẢN TRỊ</span>
-                            <strong>Thiết lập workspace</strong>
+                            <strong>Hệ thống &amp; Vận hành</strong>
                         </div>
                         <div class="sdm-group sdm-tools-grid">
-                            <div class="sdm-label">Kênh &amp; Công cụ</div>
+                            <div class="sdm-label">Vận hành &amp; Đội ngũ</div>
+                            <button id="superadmin-team-btn" class="sdm-item hide">
+                                <span class="sdm-icon" style="background:rgba(236,72,153,0.14);color:#ec4899;"><i class="ri-team-line"></i></span>
+                                <div class="sdm-text"><span>Quản lý đội ngũ</span><small>Nhân viên &amp; phân quyền</small></div>
+                            </button>
+                            <button id="superadmin-monitor-btn" class="sdm-item hide">
+                                <span class="sdm-icon" style="background:rgba(14,165,233,0.14);color:#0ea5e9;"><i class="ri-pulse-line"></i></span>
+                                <div class="sdm-text"><span>Giám sát hệ thống</span><small>Lưu lượng &amp; real-time</small></div>
+                            </button>
+                            <button id="superadmin-order-cart-btn" class="sdm-item hide">
+                                <span class="sdm-icon" style="background:rgba(245,158,11,0.14);color:#f59e0b;"><i class="ri-bill-line"></i></span>
+                                <div class="sdm-text"><span>Quản lý bill / đơn</span><small>Đơn hàng cuộc trò chuyện</small></div>
+                            </button>
+                            <button id="superadmin-report-modal-btn" class="sdm-item">
+                                <span class="sdm-icon" style="background:rgba(168,85,247,0.14);color:#a855f7;"><i class="ri-file-chart-line"></i></span>
+                                <div class="sdm-text"><span>Báo cáo hiệu suất</span><small>Thống kê tư vấn &amp; Excel</small></div>
+                            </button>
+                            <button id="superadmin-otp-unlock-btn" class="sdm-item hide">
+                                <span class="sdm-icon" style="background:rgba(239,68,68,0.14);color:#ef4444;"><i class="ri-lock-unlock-line"></i></span>
+                                <div class="sdm-text"><span>Mở khóa chờ OTP</span><small>Bỏ qua chờ &amp; mở khóa</small></div>
+                            </button>
+                        </div>
+                        <div class="sdm-divider"></div>
+                        <div class="sdm-group sdm-tools-grid">
+                            <div class="sdm-label">Kênh &amp; Công cụ AI</div>
                             <button id="knowledge-settings-btn" class="sdm-item hide">
                                 <span class="sdm-icon" style="background:rgba(99,102,241,0.15);color:#818cf8;"><i class="ri-brain-line"></i></span>
                                 <div class="sdm-text"><span>Knowledge Base</span><small>Huấn luyện &amp; quản lý tri thức</small></div>
@@ -229,10 +237,14 @@
                         </div>
                         <div class="sdm-divider"></div>
                         <div class="sdm-group">
-                            <div class="sdm-label">Tài khoản &amp; Thông báo</div>
+                            <div class="sdm-label">Tài khoản &amp; Tiện ích</div>
                             <button id="enable-push-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(16,185,129,.12);color:#10b981;"><i class="ri-notification-3-line"></i></span>
-                                <div class="sdm-text"><span id="enable-push-label">Bật thông báo</span><small id="enable-push-description">Nhận chat mới ngay cả khi đã đóng app</small></div>
+                                <div class="sdm-text"><span id="enable-push-label">Bật thông báo</span><small id="enable-push-description">Nhận chat mới ngay cả khi đóng app</small></div>
+                            </button>
+                            <button id="app-reload-super-btn" class="sdm-item">
+                                <span class="sdm-icon" style="background:rgba(59,130,246,.12);color:#3b82f6;"><i class="ri-refresh-line"></i></span>
+                                <div class="sdm-text"><span>Tải lại ứng dụng</span><small>Làm mới cache và phiên bản</small></div>
                             </button>
                         </div>
                         <div class="sdm-divider"></div>
@@ -1435,6 +1447,90 @@
         </div>
     </div>
 
+    <!-- Modal Mở khóa & Quản lý Giới hạn OTP (Superadmin) -->
+    <div id="otp-unlock-modal" class="modal-overlay hide">
+        <div class="otp-unlock-card glass-panel">
+            <header class="otp-unlock-head">
+                <div class="otp-unlock-head-title">
+                    <span class="otp-unlock-head-icon"><i class="ri-lock-unlock-line"></i></span>
+                    <div class="otp-unlock-head-text">
+                        <h2>Mở khóa &amp; Quản lý Giới hạn OTP</h2>
+                        <p>Bỏ qua thời gian chờ, reset hạn mức và kiểm tra mã OTP tức thời</p>
+                    </div>
+                </div>
+                <button id="otp-unlock-close-top" class="icon-btn" type="button" title="Đóng" aria-label="Đóng"><i class="ri-close-line"></i></button>
+            </header>
+
+            <div class="otp-unlock-body">
+                <!-- Banner Toggle Bỏ qua chờ -->
+                <div class="otp-bypass-box">
+                    <div class="otp-bypass-info">
+                        <div class="otp-bypass-title-row">
+                            <span class="otp-bypass-badge" id="otp-bypass-badge">Đang tải...</span>
+                            <strong>Chế độ bỏ qua giới hạn gửi OTP</strong>
+                        </div>
+                        <p class="otp-bypass-desc">Khi <strong>BẬT</strong>, toàn bộ nhân viên và khách có thể gửi lại mã OTP ngay lập tức mà không bị đếm ngược 60 giây hay chặn 429 quá nhanh. Mở ra khi cần kiểm thử hoặc hỗ trợ tài khoản gặp sự cố.</p>
+                    </div>
+                    <label class="otp-switch" title="Bật / Tắt chế độ bỏ qua chờ">
+                        <input type="checkbox" id="otp-bypass-toggle">
+                        <span class="otp-slider"></span>
+                    </label>
+                </div>
+
+                <!-- Form Mở khóa nhanh theo Email -->
+                <div class="otp-unlock-form-card">
+                    <div class="otp-form-head">
+                        <i class="ri-flashlight-line"></i>
+                        <span>Mở khóa nhanh cho tài khoản</span>
+                    </div>
+                    <form id="otp-quick-unlock-form" onsubmit="handleQuickUnlockOtp(event); return false;">
+                        <div class="otp-unlock-form-row">
+                            <input type="email" id="otp-unlock-email-input" class="otp-input" placeholder="Nhập email nhân viên / quản trị..." required>
+                            <button type="submit" id="otp-unlock-submit-btn" class="primary-btn">
+                                <i class="ri-key-2-line"></i> Mở khóa email này
+                            </button>
+                            <button type="button" id="otp-unlock-all-btn" class="secondary-btn" onclick="handleUnlockAllOtp()">
+                                <i class="ri-refresh-line"></i> Mở khóa toàn hệ thống
+                            </button>
+                        </div>
+                    </form>
+                    <div id="otp-unlock-feedback" class="otp-feedback hide"></div>
+                </div>
+
+                <!-- Bảng danh sách mã OTP & Tình trạng chờ gần đây -->
+                <div class="otp-table-wrap">
+                    <div class="otp-table-head-row">
+                        <h3><i class="ri-history-line"></i> Danh sách mã OTP &amp; Trạng thái gần đây</h3>
+                        <button type="button" class="otp-refresh-table-btn" onclick="refreshOtpStatusTable()" title="Làm mới bảng">
+                            <i class="ri-refresh-line"></i> Làm mới
+                        </button>
+                    </div>
+                    <div class="otp-table-scroll">
+                        <table class="otp-status-table">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Mã OTP (6 số)</th>
+                                    <th>Số lần thử sai</th>
+                                    <th>Thời hạn</th>
+                                    <th>Trạng thái</th>
+                                    <th>Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="otp-status-tbody">
+                                <tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 20px;">Đang tải dữ liệu...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="otp-unlock-foot">
+                <button id="otp-unlock-close-btn" class="secondary-btn"><i class="ri-close-line"></i> Đóng</button>
+            </footer>
+        </div>
+    </div>
+
     <!-- Modal Thông báo phiên bị đăng xuất do đăng nhập ở thiết bị khác (Lớp 1 License) -->
     <div id="session-revoked-modal" class="modal-overlay hide" style="z-index: 10000;">
         <div class="login-box glass-panel" style="max-width: 440px; text-align: center; padding: 28px 24px;">
@@ -1455,15 +1551,15 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r107"></script>
-    <script src="core.js?v=r107"></script>
-    <script src="chat.js?v=r107"></script>
-    <script src="org-console.js?v=r107"></script>
-    <script src="project-admin.js?v=r107"></script>
-    <script src="menu-console.js?v=r107"></script>
-    <script src="order-console.js?v=r107"></script>
-    <script src="monitor-console.js?v=r107"></script>
-    <script src="cart-console.js?v=r107"></script>
-    <script src="admin.js?v=r107"></script>
+    <script src="config.js?v=r108"></script>
+    <script src="core.js?v=r108"></script>
+    <script src="chat.js?v=r108"></script>
+    <script src="org-console.js?v=r108"></script>
+    <script src="project-admin.js?v=r108"></script>
+    <script src="menu-console.js?v=r108"></script>
+    <script src="order-console.js?v=r108"></script>
+    <script src="monitor-console.js?v=r108"></script>
+    <script src="cart-console.js?v=r108"></script>
+    <script src="admin.js?v=r108"></script>
 </body>
 </html>

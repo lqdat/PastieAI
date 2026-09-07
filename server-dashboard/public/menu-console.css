@@ -1426,6 +1426,10 @@
 /* Chi tiết đơn mở thành sheet thứ hai, giữ Giỏ hàng ở phía sau để đóng xong
    người dùng trở lại đúng danh sách đang xem. */
 .order-detail-overlay { z-index: 1220; }
+/* Mọi con trực tiếp của khung cuộn đều giữ chiều cao thật: chỉ cần một cái bị
+   co là nội dung bên trong nó bị nuốt mất mà không ai cuộn tới được. */
+.cart-overlay .cart-body > * { flex-shrink: 0; }
+
 .cart-overlay .order-detail-box { width: min(540px, 100%); }
 .order-detail-heading { min-width: 0; }
 .order-detail-heading > small {
@@ -1456,6 +1460,12 @@
 .order-detail-meta span:last-child { grid-column: 1 / -1; }
 .order-detail-meta i { color: var(--accent-color); font-size: 15px; }
 .order-detail-items {
+    /* KHÔNG ĐƯỢC CO LẠI.
+       Khung nội dung là flex column, mà flex item thì mặc định co được. Đơn dài
+       thì danh sách món bị bóp cho vừa chiều cao còn lại, và vì có overflow
+       hidden nên phần dư bị CẮT MẤT luôn — khung ngoài lại tưởng nội dung vừa
+       khít nên không có gì để cuộn. Đó là lỗi "đơn dài không lăn xuống được". */
+    flex: 0 0 auto;
     overflow: hidden;
     border: 1px solid rgba(84,62,100,.1);
     border-radius: 14px;
@@ -1600,30 +1610,45 @@
 
 .staff-menu-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px 18px 22px; }
 .staff-menu-grid { display: flex; flex-direction: column; }
+/* CÙNG KHUÔN VỚI THẺ MÓN BÊN KHÁCH (.menu-item trong globals.css của cổng
+   khách): ảnh 82px bo 17px, thẻ bo 20px có viền và bóng đổ, cách nhau 10px,
+   tên 14px, mô tả gọn trong 2 dòng, giá 14px.
+   Sale đang tư vấn cho khách đang nhìn màn hình kia — hai bên khác bố cục là
+   chỗ dễ chỉ nhầm món nhất. Chỉ MÀU là theo bảng tối của trang quản trị. */
+.staff-menu-grid { gap: 0; }
 .staff-menu-card {
     position: relative;
-    display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 12px; align-items: center;
-    padding: 11px 0; border-bottom: 1px solid var(--panel-border);
+    display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 13px; align-items: center;
+    min-height: 106px; margin-bottom: 10px; padding: 11px;
+    border: 1px solid var(--panel-border); border-radius: 20px;
+    background: var(--panel-bg, #fff);
+    box-shadow: 0 7px 20px rgba(80, 45, 69, .055);
+    transition: border-color .16s ease, box-shadow .16s ease;
 }
+.staff-menu-card:hover { border-color: #efafd0; box-shadow: 0 8px 23px rgba(211, 28, 124, .1); }
 .staff-menu-thumb {
-    width: 58px; height: 58px; border-radius: 14px; overflow: hidden;
-    display: grid; place-items: center; font-size: 24px;
-    background: linear-gradient(140deg, #fff0f7, #ffe6f2);
+    width: 82px; height: 82px; border-radius: 17px; overflow: hidden;
+    display: grid; place-items: center; font-size: 35px;
+    background: linear-gradient(145deg, #fff1c9, #ffddeb);
 }
 .staff-menu-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.staff-menu-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.staff-menu-copy strong { color: var(--text-primary); font-size: 13.5px; font-weight: 700; }
+.staff-menu-copy { min-width: 0; display: flex; flex-direction: column; gap: 5px; align-self: center; }
+.staff-menu-copy strong { color: var(--text-primary); font-size: 14px; font-weight: 700; line-height: 1.25; }
 .staff-menu-copy small {
-    color: var(--text-secondary); font-size: 11.5px; line-height: 1.4;
+    color: var(--text-secondary); font-size: 11px; line-height: 1.35;
     display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.staff-menu-copy b { color: #d2127e; font-size: 13.5px; font-weight: 800; }
-.staff-menu-card.is-out { opacity: .5; }
+.staff-menu-copy b { margin-top: 2px; color: #d41379; font-size: 14px; font-weight: 800; }
+/* Món hết: mờ đi nhưng vẫn đọc được, giống bên khách — Sale vẫn phải tra được
+   giá của món đang tạm hết để trả lời khách. */
+.staff-menu-card.is-out { opacity: .72; }
+.staff-menu-card.is-out .staff-menu-copy { filter: saturate(.35); }
+/* Nhãn "Tạm hết" nằm ĐÈ LÊN ẢNH như bên khách, không dạt ra mép phải thẻ. */
 .staff-menu-tag {
-    position: absolute; right: 0; top: 13px;
-    padding: 2px 8px; border-radius: 999px;
-    background: rgba(0, 0, 0, .07); color: var(--text-secondary);
-    font-size: 10px; font-weight: 800;
+    position: absolute; left: 16px; bottom: 16px; width: 72px;
+    padding: 4px; border-radius: 8px;
+    background: rgba(47, 35, 51, .86); color: #fff;
+    text-align: center; font-size: 9px; font-weight: 800;
 }
 @media (max-width: 620px) {
     .staff-menu-sheet { width: 100%; max-height: 92dvh; }

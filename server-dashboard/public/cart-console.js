@@ -188,18 +188,23 @@
                 groups.get(key).push(order);
             }
             const renderOrder = (order) => {
-                // HAI thứ khác nhau, phải hiện thành hai dòng:
-                //   Cách trả   — khách đã chọn trả bằng gì.
-                //   Trạng thái — quán đã thu được tiền hay chưa.
-                // Gộp thành một nhãn "Đã chọn Tiền mặt" là Sale không phân biệt
-                // được đơn đã thu tiền với đơn mới chỉ chọn cách trả.
+                // MỘT trạng thái duy nhất, và một dòng "cách trả" riêng.
+                //
+                // Trước đây có hai nhãn cùng lúc: "Chờ thanh toán" (theo cột
+                // status) và "Chưa thu tiền" (suy ra từ chính cột đó). Hai nhãn
+                // nói đúng một chuyện, dán cạnh nhau chỉ làm người đọc phân vân
+                // là chúng khác nhau ở đâu.
+                //
+                // Cách trả KHÔNG phải trạng thái: đó là dữ kiện khách đã chọn,
+                // nên nó ở dòng riêng bên dưới chứ không đứng thành nhãn thứ hai.
                 const methodLabel = order.payment_method ? PAYMENT[order.payment_method] || order.payment_method : '';
-                const state = STATUS[order.status] || { label: order.status, cls: '' };
-                const payState = order.status === 'paid'
+                const state = order.status === 'paid'
                     ? { label: 'Đã thu tiền', cls: 'is-paid' }
                     : order.status === 'awaiting_payment'
-                        ? { label: methodLabel ? 'Chưa thu tiền' : 'Khách chưa chọn cách trả', cls: 'is-awaiting' }
-                        : null;
+                        ? (methodLabel
+                            ? { label: 'Chưa thu tiền', cls: 'is-awaiting' }
+                            : { label: 'Khách chưa chọn cách trả', cls: 'is-awaiting' })
+                        : (STATUS[order.status] || { label: order.status, cls: '' });
                 // Đơn của phiên chat ĐÃ ĐÓNG vẫn hiện: đó thường là đơn cần đối
                 // chiếu nhất, và ẩn đi thì Agent tưởng nó biến mất.
                 const closed = order.session_status !== 'active' ? '<span class="cart-closed">Chat đã đóng</span>' : '';
@@ -217,7 +222,6 @@
                     </div>
                     <div class="cart-row-pay">
                         <span class="cart-pay-line"><i class="ri-bank-card-line"></i> Cách trả: <b>${methodLabel ? escapeHtml(methodLabel) : 'Khách chưa chọn'}</b></span>
-                        ${payState ? `<span class="cart-pay-state ${payState.cls}">${payState.label}</span>` : ''}
                     </div>
                     <div class="cart-row-foot">
                         <span class="cart-pay">Tổng cộng</span>
@@ -259,7 +263,7 @@
         overlay.innerHTML = `
             <div class="admin-management-box cart-box">
                 <div class="admin-list-head">
-                    <h3><i class="ri-shopping-cart-2-line"></i> Giỏ hàng</h3>
+                    <h3><i class="ri-bill-line"></i> Quản lý bill</h3>
                     <button type="button" class="icon-btn cart-close" title="Đóng"><i class="ri-close-line"></i></button>
                 </div>
                 <div class="cart-body"></div>

@@ -568,6 +568,23 @@ const crypto = require('crypto');
 
 const rateBuckets = new Map();
 
+// Cờ mở khóa / bỏ qua chờ gửi OTP do Superadmin điều khiển khi cần
+let otpBypassEnabled = false;
+
+function clearOtpRateLimits(targetEmail) {
+  let clearedCount = 0;
+  const emailLower = targetEmail ? String(targetEmail).trim().toLowerCase() : null;
+  for (const key of rateBuckets.keys()) {
+    const isOtpOrLoginKey = key.startsWith('otp-') || key.startsWith('login-');
+    if (!isOtpOrLoginKey) continue;
+    if (!emailLower || emailLower === 'all' || key.toLowerCase().includes(emailLower)) {
+      rateBuckets.delete(key);
+      clearedCount++;
+    }
+  }
+  return clearedCount;
+}
+
 // Dọn định kỳ, nếu không Map chỉ tăng theo số IP từng ghé qua.
 setInterval(() => {
   const now = Date.now();
@@ -588,6 +605,10 @@ function clientIpOf(req) {
  */
 function rateLimit(name, max, windowMs, keyFn) {
   return (req, res, next) => {
+    // Khi Superadmin bật chế độ mở khóa bỏ qua chờ: cho phép gửi lại và thử mã ngay lập tức
+    if (otpBypassEnabled && (name.startsWith('otp-') || name.startsWith('login-'))) {
+      return next();
+    }
     const key = `${name}:${keyFn ? keyFn(req) : clientIpOf(req)}`;
     const now = Date.now();
     let entry = rateBuckets.get(key);
@@ -4715,14 +4736,21 @@ app.get('/api/admin/orders/:orderId/details', checkAdminAuth, async (req, res) =
       || (isSale(req.admin) && Number(order.claimed_by_admin_id || 0) === Number(req.admin.id))
       || (isAgentManager(req.admin) && Number(order.agent_id || 0) === Number(req.admin.id))
       || (!isSale(req.admin) && !isAgentManager(req.admin) && canAccessProject(req.admin, order.project_id));
-    // claimed_by_admin_id nằm trên sessions và không được SELECT bằng tên cũ;
-    // với Sale kiểm trực tiếp bằng truy vấn để tránh mở bill của Sale khác.
+    // QUYỀN XEM CHI TIẾT PHẢI KHỚP VỚI QUYỀN THẤY TRONG DANH SÁCH.
+    //
+    // Danh sách bill của Sale lấy theo NHÓM + đoạn tự nhận. Chỗ này trước đây
+    // chỉ chấp nhận đoạn tự nhận, nên Sale nhìn thấy một tờ bill trong danh sách
+    // rồi bấm vào thì bị chặn: "Đơn này không thuộc cuộc trò chuyện của bạn".
+    // Hai phép kiểm phải cùng một luật, nếu không danh sách hứa một đằng còn
+    // nút bấm trả lời một nẻo.
     if (isSale(req.admin)) {
+      const groups = await groupIdsOfSale(req.admin.id);
       const mine = await db.query(
-        'SELECT 1 FROM sessions WHERE id = $1 AND claimed_by_admin_id = $2',
-        [order.session_id, req.admin.id]
+        `SELECT 1 FROM sessions
+          WHERE id = $1 AND (claimed_by_admin_id = $2 OR group_id = ANY($3::int[]))`,
+        [order.session_id, req.admin.id, groups]
       );
-      if (!mine.rows.length) return res.status(403).json({ error: 'Đơn này không thuộc cuộc trò chuyện của bạn.' });
+      if (!mine.rows.length) return res.status(403).json({ error: 'Đơn này không thuộc nhóm của bạn.' });
     } else if (!allowed) {
       return res.status(403).json({ error: 'Bạn không có quyền xem đơn này.' });
     }
@@ -5239,6 +5267,111 @@ app.get('/api/admin/auth/config', (req, res) => {
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     resendConfigured: Boolean(process.env.RESEND_API_KEY)
   });
+});
+
+// Kiểm tra nhanh trạng thái bỏ qua chờ OTP (dành cho client / trang login)
+app.get('/api/auth/otp-bypass-check', (req, res) => {
+  res.json({ bypassEnabled: otpBypassEnabled });
+});
+
+// API Superadmin: Lấy trạng thái OTP Bypass, danh sách rate limits & mã OTP gần nhất
+app.get('/api/admin/otp-unlock/status', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Chỉ Superadmin mới có quyền truy cập.' });
+  }
+
+  try {
+    const recentOtps = await db.query(`
+      SELECT email, code, attempts, expires_at, created_at,
+             (expires_at > CURRENT_TIMESTAMP) AS is_active
+      FROM admin_otps
+      ORDER BY created_at DESC
+      LIMIT 25
+    `);
+
+    const now = Date.now();
+    const activeLimits = [];
+    for (const [key, entry] of rateBuckets.entries()) {
+      if ((key.startsWith('otp-') || key.startsWith('login-')) && entry.resetAt > now) {
+        activeLimits.push({
+          key,
+          count: entry.count,
+          retryAfter: Math.ceil((entry.resetAt - now) / 1000)
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      bypassEnabled: otpBypassEnabled,
+      activeRateLimits: activeLimits,
+      recentOtps: recentOtps.rows
+    });
+  } catch (err) {
+    console.error('[OTPUnlock] Status error:', err);
+    res.status(500).json({ error: 'Lỗi lấy trạng thái OTP: ' + err.message });
+  }
+});
+
+// API Superadmin: Bật/Tắt chế độ bỏ qua chờ OTP
+app.post('/api/admin/otp-unlock/toggle-bypass', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Chỉ Superadmin mới có quyền truy cập.' });
+  }
+
+  const { enabled } = req.body;
+  otpBypassEnabled = Boolean(enabled);
+  if (otpBypassEnabled) {
+    // Khi bật bỏ qua chờ, lập tức dọn sạch toàn bộ rate-limit hiện có
+    clearOtpRateLimits();
+  }
+
+  console.log(`[OTPUnlock] Superadmin ${req.admin.username} đã ${otpBypassEnabled ? 'BẬT' : 'TẮT'} chế độ bỏ qua chờ gửi OTP`);
+  res.json({
+    success: true,
+    bypassEnabled: otpBypassEnabled,
+    message: otpBypassEnabled
+      ? 'Đã BẬT chế độ bỏ qua chờ gửi OTP. Tất cả người dùng có thể gửi lại OTP mà không bị giới hạn.'
+      : 'Đã TẮT chế độ bỏ qua chờ gửi OTP. Hệ thống trở lại giới hạn bảo vệ thông thường.'
+  });
+});
+
+// API Superadmin: Mở khóa / Xóa chờ OTP theo email hoặc toàn bộ
+app.post('/api/admin/otp-unlock/reset', checkAdminAuth, async (req, res) => {
+  if (!isSuperAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Chỉ Superadmin mới có quyền truy cập.' });
+  }
+
+  const { email, unlockAll } = req.body || {};
+
+  try {
+    if (unlockAll) {
+      const cleared = clearOtpRateLimits();
+      await db.query('UPDATE admin_otps SET attempts = 0');
+      console.log(`[OTPUnlock] Superadmin ${req.admin.username} đã mở khóa toàn bộ giới hạn OTP (xóa ${cleared} rate buckets)`);
+      return res.json({
+        success: true,
+        message: `Đã mở khóa toàn bộ hệ thống (đã giải phóng ${cleared} bộ đếm rate-limit và đặt lại lượt thử sai về 0).`
+      });
+    }
+
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp email cần mở khóa hoặc chọn unlockAll.' });
+    }
+
+    const cleared = clearOtpRateLimits(cleanEmail);
+    await db.query('UPDATE admin_otps SET attempts = 0 WHERE LOWER(email) = $1', [cleanEmail]);
+    console.log(`[OTPUnlock] Superadmin ${req.admin.username} đã mở khóa OTP cho: ${cleanEmail}`);
+
+    res.json({
+      success: true,
+      message: `Đã mở khóa thành công cho ${cleanEmail}. Người dùng có thể gửi lại và nhập OTP ngay.`
+    });
+  } catch (err) {
+    console.error('[OTPUnlock] Reset error:', err);
+    res.status(500).json({ error: 'Lỗi mở khóa OTP: ' + err.message });
+  }
 });
 
 // SSO đăng nhập từ hệ thống ngoài (vd DealPhuQuoc). Token ký HMAC-SHA256 bằng CHAT_SSO_SECRET chung.

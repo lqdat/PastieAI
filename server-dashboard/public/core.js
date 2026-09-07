@@ -434,12 +434,26 @@ function startLoginRetryCountdown(seconds) {
 }
 
 
-// Bắt đầu đếm ngược 5 phút OTP
-function startOtpCountdown(seconds = 300) {
+// Bắt đầu đếm ngược OTP (mặc định 60 giây; nếu đang bật bypass thì 0 giây)
+async function startOtpCountdown(seconds = 60) {
     if (adminOtpCountdownInterval) clearInterval(adminOtpCountdownInterval);
-    let remaining = seconds;
     const countdownEl = document.getElementById('admin-otp-countdown');
     const resendBtn = document.getElementById('resend-admin-otp-btn');
+
+    // Kiểm tra nhanh xem hệ thống có đang bật chế độ bỏ qua chờ OTP không
+    try {
+        const checkRes = await fetch(`${API_BASE}/api/auth/otp-bypass-check`).catch(() => null);
+        if (checkRes && checkRes.ok) {
+            const data = await checkRes.json().catch(() => ({}));
+            if (data.bypassEnabled) {
+                if (countdownEl) countdownEl.textContent = 'Chế độ bỏ qua chờ đang BẬT: Bạn có thể gửi lại ngay.';
+                if (resendBtn) resendBtn.disabled = false;
+                return;
+            }
+        }
+    } catch (_) {}
+
+    let remaining = seconds;
     if (resendBtn) resendBtn.disabled = true;
 
     function update() {
@@ -450,7 +464,7 @@ function startOtpCountdown(seconds = 300) {
         }
         if (remaining <= 0) {
             clearInterval(adminOtpCountdownInterval);
-            if (countdownEl) countdownEl.textContent = 'Mã OTP đã hết hạn.';
+            if (countdownEl) countdownEl.textContent = 'Bạn có thể gửi lại mã OTP mới.';
             if (resendBtn) resendBtn.disabled = false;
         }
         remaining--;
@@ -989,9 +1003,8 @@ function updateAgentHeaderUI() {
     const profileBadge = document.getElementById('admin-profile-badge');
     if (profileBadge) profileBadge.style.display = visibleName ? 'none' : 'flex';
 
-    // Giỏ hàng: Sale, Agent và Superadmin đều dùng. Thực đơn chỉ-xem: RIÊNG
-    // Sale — Agent đã có màn quản lý thực đơn đầy đủ trong "Sale & Nhóm".
-    document.getElementById('order-cart-btn')?.classList.toggle('hide', !(isAgentRole || CURRENT_ADMIN?.role === 'superadmin'));
+    // Giỏ hàng/Bill trên header: CHỈ dành cho Agent / Sale (và được gom vào bảng Công cụ)
+    document.getElementById('order-cart-btn')?.classList.toggle('hide', !isAgentRole);
     document.getElementById('sale-menu-btn')?.classList.toggle('hide', !isSaleView);
 
     document.getElementById('project-selector-wrap')?.classList.toggle('hide', isAgentRole);
@@ -1003,13 +1016,17 @@ function updateAgentHeaderUI() {
         detailLangEl.title = isAgentRole ? 'Chỉ quản trị viên mới đổi được ngôn ngữ' : '';
     }
     
-    // Nút quản lý đội ngũ riêng cho Superadmin (hiển thị trực tiếp ra header, phân theo project)
+    // Superadmin & Project Admin: gom tất cả công cụ vào menu Quản trị duy nhất
     const isSuperadmin = CURRENT_ADMIN?.role === 'superadmin';
-    document.getElementById('superadmin-team-btn')?.classList.toggle('hide', !isSuperadmin);
-    // Trang theo dõi đọc được số liệu của TOÀN hệ thống — mọi Agent, mọi doanh
-    // thu. Cùng một điều kiện quyền với nút quản lý nhân viên, và endpoint phía
-    // máy chủ cũng tự kiểm lại: ẩn nút không phải là chặn.
-    document.getElementById('monitor-btn')?.classList.toggle('hide', !isSuperadmin);
+    const isProjectAdmin = CURRENT_ADMIN?.role === 'project_admin';
+    const canManageTeam = isSuperadmin || isProjectAdmin;
+
+    // Các nút chức năng gom gọn bên trong menu Quản trị
+    document.getElementById('superadmin-team-btn')?.classList.toggle('hide', !canManageTeam);
+    document.getElementById('superadmin-monitor-btn')?.classList.toggle('hide', !isSuperadmin);
+    document.getElementById('superadmin-order-cart-btn')?.classList.toggle('hide', !(isSuperadmin || isProjectAdmin));
+    document.getElementById('superadmin-report-modal-btn')?.classList.toggle('hide', !(isSuperadmin || isProjectAdmin));
+    document.getElementById('superadmin-otp-unlock-btn')?.classList.toggle('hide', !isSuperadmin);
 
     // Ẩn ô chọn ngôn ngữ giao diện với Agent/Sale của dự án QR. Console của họ
     // chỉ dùng tiếng Việt, còn ngôn ngữ hội thoại đã tự nhận diện theo khách —
@@ -1018,9 +1035,8 @@ function updateAgentHeaderUI() {
     const hideLangPicker = isRestrictedConsole() && isQrConciergeProject(CURRENT_ADMIN?.project_id);
     document.getElementById('admin-lang-selector-wrap')?.classList.toggle('hide', hideLangPicker);
 
-    // Báo cáo là công cụ quản lý: Sale chỉ trả lời chat, không xem số liệu của cả
-    // đội. Ẩn với role 'sale'; Agent quản lý và các role khác vẫn thấy bình thường.
-    document.getElementById('report-modal-btn')?.classList.toggle('hide', isSaleRole());
+    // Báo cáo là công cụ quản lý: nút trên header chỉ hiện cho Agent quản lý (gom vào bảng Công cụ)
+    document.getElementById('report-modal-btn')?.classList.toggle('hide', !isAgentRole || isSaleRole());
 
     // Nút quản lý Sale, nhóm và QR (chỉ Agent quản lý của dự án QR)
     const canManageOrg = isAgentManagerRole();
