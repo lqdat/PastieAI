@@ -1098,6 +1098,13 @@ async function checkAppVersion() {
         if (!res.ok) return;
         const { version } = await res.json();
         if (!version || version === 'unknown' || version === mine) return;
+        // NÓI RÕ HAI CON SỐ.
+        //
+        // "Đã có bản cập nhật mới" không trả lời được câu hỏi quan trọng nhất
+        // lúc đi soi lỗi: MÁY NÀY ĐANG CHẠY BẢN NÀO? Thiếu nó thì một lỗi đã sửa
+        // rồi vẫn bị báo đi báo lại, vì không ai biết máy đang chạy bản cũ.
+        const line = document.getElementById('app-update-text');
+        if (line) line.textContent = `Đã có bản mới ${version} — máy này đang chạy ${mine}.`;
         document.getElementById('app-update-bar')?.classList.remove('hide');
     } catch {
         // Mất mạng thì thôi, lần sau kiểm lại. Không làm phiền người dùng.
@@ -1108,6 +1115,9 @@ document.getElementById('app-reload-btn')?.addEventListener('click', reloadApp);
 document.getElementById('app-update-reload')?.addEventListener('click', reloadApp);
 document.getElementById('app-update-dismiss')?.addEventListener('click', () => {
     document.getElementById('app-update-bar')?.classList.add('hide');
+    // Ẩn là ẩn TẠM. Bỏ qua một lần rồi im luôn thì máy đó ở lại bản cũ vô thời
+    // hạn — và mọi lỗi đã sửa vẫn còn nguyên trên đúng máy ấy.
+    setTimeout(() => { void checkAppVersion(); }, 10 * 60 * 1000);
 });
 // Kiểm khi mở app, mỗi 5 phút, và mỗi lần quay lại app từ nền — lúc quay lại
 // mới là lúc hay gặp bản mới nhất.
