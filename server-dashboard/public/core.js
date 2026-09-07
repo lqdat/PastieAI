@@ -248,6 +248,23 @@ function deviceHeaders(extra = {}) {
 }
 
 
+// LƯỢT GỌI CÓ HẠN GIỜ.
+//
+// fetch() không bao giờ tự bỏ cuộc. Một endpoint TREO (route async ném lỗi mà
+// Express 4 không bắt thì máy chủ không trả gì cả) là lượt await ở đây chờ vĩnh
+// viễn — và cả khung chat đứng theo, vì openChat phải chờ đơn và hoá đơn xong
+// mới vẽ tin nhắn. Đó chính là spinner "Đang dịch thuật..." đứng mãi.
+//
+// Hết hạn thì coi như không có dữ liệu và đi tiếp: thà vẽ khung chat thiếu tấm
+// hoá đơn trong vài giây còn hơn không vẽ gì.
+function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+    const stop = new AbortController();
+    const timer = setTimeout(() => stop.abort(), timeoutMs);
+    return fetch(url, { ...options, signal: stop.signal })
+        .finally(() => clearTimeout(timer));
+}
+window.fetchWithTimeout = fetchWithTimeout;
+
 function authFetch(url, options = {}) {
     const token = getToken();
     const headers = {

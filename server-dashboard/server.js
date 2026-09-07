@@ -19,6 +19,31 @@ const s3 = require('./s3-helper');
 const speech = require('./groq-speech');
 
 const app = express();
+
+// LỖI TRONG ROUTE async PHẢI THÀNH 500, KHÔNG ĐƯỢC THÀNH IM LẶNG.
+//
+// Express 4 không bắt lời hứa bị từ chối trong handler. Một câu SQL hỏng giữa
+// route async là res không bao giờ được gọi: máy chủ không trả gì hết, client
+// ngồi chờ tới khi tự bỏ cuộc. Trên điện thoại khách, cái đó hiện ra đúng như
+// "bấm nút mà không phản hồi" — không lỗi, không phản hồi, không dấu vết.
+//
+// Bọc một lần ở đây thay vì đi thêm try/catch vào từng route: hơn hai trăm
+// route, chỉ cần quên một chỗ là lỗi im lặng quay lại.
+for (const verb of ['get', 'post', 'put', 'patch', 'delete']) {
+  const register = app[verb].bind(app);
+  app[verb] = (path, ...handlers) => register(path, ...handlers.map((handler) => {
+    // Middleware xử lý lỗi có 4 tham số — không được bọc, bọc là Express thôi
+    // coi nó là middleware lỗi.
+    if (typeof handler !== 'function' || handler.length > 3) return handler;
+    return function catchAsync(req, res, next) {
+      try {
+        const result = handler(req, res, next);
+        if (result && typeof result.catch === 'function') result.catch(next);
+        return result;
+      } catch (error) { next(error); }
+    };
+  }));
+}
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 
@@ -4291,7 +4316,7 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
   }
 
   const updated = await db.query(
-    `UPDATE chat_orders SET payment_method = $1, payment_selected_at = NOW(),
+    `UPDATE chat_orders SET payment_method = $1::text, payment_selected_at = NOW(),
             payment_auto_selected_at = NULL,
             invoice = jsonb_set(COALESCE(invoice, '{}'::jsonb), '{paymentMethod}', to_jsonb($1::text), TRUE),
             invoice_render = '{}'::jsonb, updated_at = NOW()
@@ -11037,7 +11062,7 @@ async function maybeAutoSelectDeferredPayment(order) {
 
   const updated = await db.query(
     `UPDATE chat_orders
-        SET payment_method = $2, payment_selected_at = NOW(),
+        SET payment_method = $2::text, payment_selected_at = NOW(),
             payment_auto_selected_at = NOW(),
             invoice = jsonb_set(COALESCE(invoice, '{}'::jsonb), '{paymentMethod}', to_jsonb($2::text), TRUE),
             invoice_render = '{}'::jsonb, updated_at = NOW()
@@ -11442,6 +11467,15 @@ async function startServer() {
       // background sweep error
     }
   }, 45000);
+
+  // Chốt cuối của lưới trên: mọi lỗi lọt tới đây đều được trả lời tử tế.
+  // Đặt SAU toàn bộ route — Express chỉ nhận middleware lỗi ở cuối chuỗi.
+  app.use((error, req, res, next) => {
+    console.error(`[500] ${req.method} ${req.originalUrl}:`, error?.message || error);
+    if (res.headersSent) return next(error);
+    // Không hé lộ chi tiết lỗi cho khách: câu chữ của Postgres là thông tin nội bộ.
+    res.status(500).json({ error: 'Hệ thống đang bận, vui lòng thử lại.' });
+  });
 
   app.listen(PORT, '0.0.0.0', () => {
   console.log(`-----------------------------------------------------`);

@@ -1519,7 +1519,7 @@ function showChatLoadFailed(sessionId) {
 let adminBills = [];
 async function loadBillsForAdmin(sessionId) {
     try {
-        const response = await fetch(`${API_BASE}/api/chats/${sessionId}/bills?lang=${currentLang}`);
+        const response = await fetchWithTimeout(`${API_BASE}/api/chats/${sessionId}/bills?lang=${currentLang}`);
         adminBills = response.ok ? ((await response.json()).bills || []) : [];
     } catch { adminBills = []; }
     // Vẽ lại ngay khi bill về, không phụ thuộc vào việc ai chạy trước ai.
@@ -1601,7 +1601,10 @@ function renderAdminSavedBills() {
 
 async function loadOrderForAdmin(sessionId) {
     try {
-        const response = await fetch(`${API_BASE}/api/chats/${sessionId}/order?lang=${currentLang}&_=${Date.now()}`);
+        // Endpoint này DÙNG CHUNG với cổng khách, và nó là chỗ đã treo thật:
+        // một lỗi SQL trong nhánh tự chọn thanh toán làm route không trả về gì,
+        // nên lượt await này chờ mãi và khung chat đứng ở spinner.
+        const response = await fetchWithTimeout(`${API_BASE}/api/chats/${sessionId}/order?lang=${currentLang}&_=${Date.now()}`);
         if (!response.ok) {
             const had = !!adminOrder;
             adminOrder = null;
