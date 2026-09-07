@@ -1753,22 +1753,73 @@ async function closeActiveQrSession(qrAccountId, queryRunner = db) {
   }
 }
 
-async function closeActiveQrSessionsForVisitor(projectId, email, queryRunner = db) {
-  if (!projectId || !email) return;
-  const oldSessions = await queryRunner.query(
-    `UPDATE sessions SET status = 'closed',
-            routing_status = CASE WHEN routing_status IS NULL THEN NULL ELSE 'closed' END
-      WHERE project_id = $1
-        AND LOWER(visitor_email) = LOWER($2)
-        AND qr_account_id IS NOT NULL
-        AND status = 'active'
-      RETURNING id`,
-    [projectId, String(email).trim()]
+// KHÁCH ĐĂNG NHẬP LẠI THÌ VỀ ĐÚNG CUỘC CHAT CŨ.
+//
+// Định danh sống 15 phút, cuộc chat sống 1 tiếng. Khoảng giữa hai con số ấy là
+// chuyện thường ngày: khách ăn xong ngồi nói chuyện, định danh hết hạn, quét
+// lại mã hoặc nhập lại OTP — và trước đây lối đăng nhập ĐÓNG SẠCH mọi cuộc
+// đang mở của khách rồi mở một cuộc trắng. Hoá đơn, món đã gọi, cả đoạn hội
+// thoại với nhân viên: mất hết, dù chúng vẫn còn sống nguyên trong database.
+//
+// Tệ hơn: nó đóng cả cuộc ở Agent KHÁC. Khách ở khách sạn A quét thêm mã của
+// nhà hàng B là cuộc chat với A chết ngay, dù hai bên chẳng liên quan gì nhau.
+//
+// Hàm này trả về cuộc còn sống của khách với ĐÚNG Agent của mã QR đang quét.
+// Ba lối vào (resume, OTP, Google) đều hỏi qua đây trước khi nghĩ tới việc mở
+// cuộc mới.
+async function findLiveQrSessionForAgent(projectId, email, agentId, queryRunner = db) {
+  if (!projectId || !email || !agentId) return null;
+  const result = await queryRunner.query(
+    `SELECT s.*, COALESCE(g.agent_id, q.owner_admin_id) AS agent_id, q.label AS qr_label
+       FROM sessions s
+       LEFT JOIN agent_groups g ON g.id = s.group_id
+       LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+      WHERE s.project_id = $1 AND LOWER(s.visitor_email) = LOWER($2)
+        AND s.status = 'active' AND s.qr_account_id IS NOT NULL
+        AND (s.expires_at IS NULL OR s.expires_at > NOW())
+        AND COALESCE(g.agent_id, q.owner_admin_id) = $3
+      ORDER BY s.created_at DESC
+      LIMIT 1`,
+    [projectId, String(email).trim(), agentId]
   );
-  for (const row of oldSessions.rows) {
-    void autoSummarizeClosedSession(row.id);
-  }
+  return result.rows[0] || null;
 }
+
+// Agent của một mã QR: theo nhóm nếu mã thuộc nhóm, không thì theo chủ mã.
+async function agentIdOfQrAccount(account, queryRunner = db) {
+  if (!account) return null;
+  if (!account.group_id) return account.owner_admin_id;
+  const g = await queryRunner.query('SELECT agent_id FROM agent_groups WHERE id = $1', [account.group_id]);
+  return g.rows[0]?.agent_id || account.owner_admin_id;
+}
+
+// Khách quay lại bằng một mã QR khác của CÙNG Agent: kéo cuộc chat sang bàn mới
+// và báo cho nhân viên biết, thay vì mở một cuộc mới ở bàn mới.
+async function moveQrSessionToAccount(session, account, queryRunner = db) {
+  if (Number(session.qr_account_id) === Number(account.id)) return false;
+  await queryRunner.query(
+    'UPDATE sessions SET qr_account_id = $2, group_id = COALESCE($3, group_id) WHERE id = $1',
+    [session.id, account.id, account.group_id || null]
+  );
+  // Sale cần biết khách đã đổi chỗ, nếu không sẽ mang đồ tới bàn cũ. Câu này
+  // nói VỀ khách, với nhân viên — khách không cần đọc lại chính mình vừa làm gì.
+  const text = `[Vị trí] Khách vừa quét mã "${account.label}"${session.qr_label ? ` (trước đó ở "${session.qr_label}")` : ''}.`;
+  await queryRunner.query(
+    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
+     VALUES ($1, 'system', $2, $2, 'vi', 'staff')`,
+    [session.id, text]
+  );
+  notifyAdminRealtime('session_update', { sessionId: session.id, projectId: session.project_id });
+  return true;
+}
+
+// (Đã bỏ closeActiveQrSessionsForVisitor.)
+//
+// Hàm này đóng MỌI cuộc chat đang mở của khách trong dự án và được gọi ở hai
+// lối đăng nhập. Nó chính là lỗi "đăng nhập lại là mất sạch đoạn chat cũ", và
+// nó cũng đóng lây cuộc ở Agent khác mà khách đang chat song song. Không khôi
+// phục lại: muốn nhường chỗ cho khách mới ở một bàn thì dùng
+// closeActiveQrSession(qrAccountId) — đóng đúng một mã QR, không quét theo email.
 
 async function expireQrSessionIfNeeded(session, queryRunner = db) {
   if (session?.status === 'active' && session.qr_account_id && session.expires_at && new Date(session.expires_at) <= new Date()) {
@@ -2149,8 +2200,29 @@ app.post('/api/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, async (req, r
       if (!qrAccount) console.error('Error during auto-assignment calculations:', assignError.message);
     }
 
+    // ĐĂNG NHẬP LẠI KHÔNG PHẢI LÀ BẮT ĐẦU LẠI.
+    //
+    // Định danh 15 phút hết trước cuộc chat 1 tiếng, nên khách nhập lại OTP khi
+    // cuộc chat CŨ VẪN CÒN SỐNG là chuyện bình thường. Trước đây chỗ này đóng
+    // sạch mọi cuộc đang mở của khách rồi mở một cuộc trắng — mất hoá đơn, mất
+    // món đã gọi, mất cả đoạn nói chuyện với nhân viên; và còn đóng lây cuộc ở
+    // Agent khác mà khách đang chat song song.
     if (qrAccount) {
-      await closeActiveQrSessionsForVisitor(projectId, email);
+      const agentId = await agentIdOfQrAccount(qrAccount);
+      const live = await findLiveQrSessionForAgent(projectId, email, agentId);
+      if (live) {
+        await moveQrSessionToAccount(live, qrAccount);
+        await touchQrActivity(live, null);
+        const idBack = await issueQrIdentity({ projectId, email, authProvider: 'otp' }).catch(() => null);
+        await db.query('DELETE FROM otps WHERE email = $1', [email]);
+        return res.json({
+          success: true, sessionId: live.id, name: finalName, continued: true,
+          identityToken: idBack?.token || null, identityExpiresAt: idBack?.expiresAt || null,
+        });
+      }
+      // Không có cuộc nào của khách với Agent này: chỉ đóng cuộc ĐANG NẰM TRÊN
+      // CHÍNH MÃ QR NÀY (khách trước ở bàn đó), tuyệt đối không đụng vào cuộc
+      // của khách này ở Agent khác.
       await closeActiveQrSession(qrAccount.id);
     }
     await db.query(
@@ -5261,11 +5333,7 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
       .includes(String(req.body?.language || '').toLowerCase().slice(0, 2))
       ? String(req.body.language).toLowerCase().slice(0, 2) : 'vi';
 
-    const agentIdOfQr = await (async () => {
-      if (!account.group_id) return account.owner_admin_id;
-      const g = await db.query('SELECT agent_id FROM agent_groups WHERE id = $1', [account.group_id]);
-      return g.rows[0]?.agent_id || account.owner_admin_id;
-    })();
+    const agentIdOfQr = await agentIdOfQrAccount(account);
 
     // Cuộc chat còn sống của chính khách này trong dự án, kèm Agent đang phụ trách.
     const openRes = await db.query(
@@ -5282,24 +5350,7 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
     const sameAgent = openRes.rows.find((row) => Number(row.agent_id) === Number(agentIdOfQr));
 
     if (sameAgent) {
-      const movedQr = Number(sameAgent.qr_account_id) !== Number(account.id);
-      if (movedQr) {
-        await db.query(
-          'UPDATE sessions SET qr_account_id = $2, group_id = COALESCE($3, group_id) WHERE id = $1',
-          [sameAgent.id, account.id, account.group_id || null]
-        );
-        // Sale cần biết khách đã đổi chỗ, nếu không sẽ mang đồ tới bàn cũ.
-        const text = `[Vị trí] Khách vừa quét mã "${account.label}"${sameAgent.qr_label ? ` (trước đó ở "${sameAgent.qr_label}")` : ''}.`;
-        // Câu này nói VỀ khách, với nhân viên: khách không cần đọc lại chính
-        // mình vừa làm gì, và họ cũng không đọc được nếu quán đặt tên bàn theo
-        // quy ước nội bộ.
-        await db.query(
-          `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
-           VALUES ($1, 'system', $2, $2, 'vi', 'staff')`,
-          [sameAgent.id, text]
-        );
-        notifyAdminRealtime('session_update', { sessionId: sameAgent.id, projectId: account.project_id });
-      }
+      const movedQr = await moveQrSessionToAccount(sameAgent, account);
       await touchQrActivity(sameAgent, identity.token);
       return res.json({
         authenticated: true, sessionId: sameAgent.id, continued: true, movedQr,
@@ -5363,7 +5414,22 @@ app.post('/api/qr-chat/google', async (req, res) => {
     if (!profile.email || (profile.email_verified !== 'true' && profile.email_verified !== true)) return res.status(401).json({ error: 'Email Google chưa được xác thực.' });
     const account = await resolveQrChatAccount(projectId, qrCode);
     if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
-    await closeActiveQrSessionsForVisitor(projectId, profile.email);
+    // Cùng luật với lối OTP: còn cuộc sống với Agent này thì về đúng cuộc đó.
+    const agentId = await agentIdOfQrAccount(account);
+    const live = await findLiveQrSessionForAgent(projectId, profile.email, agentId);
+    if (live) {
+      await moveQrSessionToAccount(live, account);
+      await touchQrActivity(live, null);
+      const idBack = await issueQrIdentity({ projectId, email: profile.email, authProvider: 'google' }).catch(() => null);
+      await upsertCustomer({
+        projectId, email: profile.email, fullName: profile.name || 'Khách hàng',
+        authProvider: 'google', qrAccountId: account.id,
+      }).catch(() => {});
+      return res.json({
+        success: true, sessionId: live.id, continued: true, expiresAt: live.expires_at,
+        identityToken: idBack?.token || null, identityExpiresAt: idBack?.expiresAt || null,
+      });
+    }
     await closeActiveQrSession(account.id);
     const sessionId = randomUUID();
     const { browser, device } = parseUserAgent(req.headers['user-agent'] || '');
