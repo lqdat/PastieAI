@@ -904,7 +904,8 @@ function readCookie(req, name) {
   return '';
 }
 function rememberDeviceCookie(res, deviceId) {
-  if (!res || !deviceId || res.headersSent) return;
+  // Nơi gọi có thể không có res (luồng đăng nhập nội bộ): im lặng bỏ qua.
+  if (!res || typeof res.append !== 'function' || !deviceId || res.headersSent) return;
   res.append('Set-Cookie',
     // KHÔNG HttpOnly: bảng điều khiển phải đọc lại được để chép sang
     // localStorage, và mã máy không phải bí mật — nó chỉ nói "vẫn là máy này",
@@ -4575,7 +4576,10 @@ app.post('/api/admin/login', limitLoginIp, limitLoginEmail, async (req, res) => 
  * Shared helper to verify DealPhuQuoc user / local admin status,
  * provision/sync admin record and issue an 8-hour admin session.
  */
-async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null) {
+// res là TUỲ CHỌN: hàm này chỉ cần nó để đặt cookie mã máy. Nơi gọi nào không
+// có res (luồng nội bộ) thì bỏ qua bước đó, không được nổ ReferenceError giữa
+// đường đăng nhập.
+async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null, res = null) {
   const cleanEmail = String(email || '').trim().toLowerCase();
   if (!cleanEmail || !cleanEmail.includes('@')) {
     const err = new Error('Email không hợp lệ.');
@@ -4756,7 +4760,7 @@ app.post('/api/admin/auth/google', limitLoginIp, async (req, res) => {
       email: payload.email,
       name: payload.name,
       avatarUrl: payload.picture
-    }, req);
+    }, req, res);
 
     console.log(`[GoogleAuth] Đăng nhập thành công: ${payload.email} (${result.admin.role})`);
     res.json({
@@ -4906,7 +4910,7 @@ app.post('/api/admin/auth/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, as
     await db.query('DELETE FROM admin_otps WHERE email = $1', [cleanEmail]);
 
     // Resolve user and log in with Single Active Session
-    const result = await resolveAdminUserAndLogin({ email: cleanEmail }, req);
+    const result = await resolveAdminUserAndLogin({ email: cleanEmail }, req, res);
 
     console.log(`[AdminOTP] Đăng nhập thành công: ${cleanEmail} (${result.admin.role})`);
     res.json({
