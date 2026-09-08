@@ -684,22 +684,7 @@ function renderVisitorTypingIndicator(isTyping) {
             el = document.createElement('div');
             el.id = 'visitor-typing-bubble';
             el.className = 'visitor-typing-bar';
-            el.innerHTML = `
-                <div class="visitor-typing-bubble-inner">
-                    <div class="visitor-typing-icon-wrap">
-                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="visitor-typing-svg">
-                            <path d="M12 20h9"/>
-                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                        </svg>
-                    </div>
-                    <span class="visitor-typing-label">Đang nhập...</span>
-                    <div class="visitor-typing-dots">
-                        <span class="v-dot"></span>
-                        <span class="v-dot"></span>
-                        <span class="v-dot"></span>
-                    </div>
-                </div>
-            `;
+            el.innerHTML = `<span class="visitor-typing-text">Đang nhập...</span>`;
             inputContainer.insertBefore(el, chatFormEl);
         }
     }
