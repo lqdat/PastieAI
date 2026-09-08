@@ -113,7 +113,77 @@ async function sendAdminOTPEmail(toEmail, otpCode, recipientName = 'Quản trị
   }
 }
 
+/**
+ * Sends an Account Activation / Welcome email when an Agent, Sale, or Admin account is created.
+ */
+async function sendAccountActivationEmail({ toEmail, fullName, role, createdByName, loginUrl }) {
+  if (!resendClient) {
+    const msg = 'Resend client not initialized — RESEND_API_KEY missing.';
+    console.error(msg);
+    return { ok: false, reason: msg };
+  }
+
+  const sender = process.env.SENDER_EMAIL || 'onboarding@resend.dev';
+  const roleNameMap = {
+    superadmin: 'Quản trị viên cấp cao (Superadmin)',
+    project_admin: 'Quản trị viên dự án',
+    subadmin: 'Quản trị viên (Admin)',
+    agent: 'Chủ cơ sở / Quản lý (Agent)',
+    sale: 'Nhân viên tư vấn (Sale)'
+  };
+  const displayRole = roleNameMap[role] || 'Thành viên quản trị';
+  const resolvedLoginUrl = loginUrl || `${process.env.FRONTEND_URL || 'https://pastie.dealhot.info'}/admin.html`;
+
+  try {
+    const data = await resendClient.emails.send({
+      from: `Pastie AI Console <${sender}>`,
+      to: [toEmail],
+      subject: `[Kích hoạt tài khoản] Chào mừng bạn gia nhập Pastie AI Console (${displayRole})`,
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; border: 1px solid rgba(0,0,0,0.08); border-radius: 16px; background-color: #ffffff; color: #1e293b;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <h2 style="color: #ec4899; margin: 0 0 6px 0; font-size: 24px; font-weight: 800;">Pastie AI Console</h2>
+            <p style="color: #64748b; font-size: 13.5px; margin: 0;">Thông báo kích hoạt tài khoản quản trị & CSKH đa kênh</p>
+          </div>
+          <p style="font-size: 15px; line-height: 1.6; color: #334155;">Xin chào <b>${fullName || toEmail}</b>,</p>
+          <p style="font-size: 14.5px; line-height: 1.6; color: #334155;">
+            Tài khoản của bạn đã được khởi tạo thành công trên hệ thống <b>Pastie AI Console</b>${createdByName ? ` bởi <b>${createdByName}</b>` : ''}.
+          </p>
+          <div style="background: #fdf2f8; border: 1px solid #fbcfe8; border-radius: 12px; padding: 16px 20px; margin: 20px 0;">
+            <p style="margin: 4px 0; font-size: 13.5px; color: #831843;"><b>Email đăng nhập:</b> ${toEmail}</p>
+            <p style="margin: 4px 0; font-size: 13.5px; color: #831843;"><b>Vai trò:</b> ${displayRole}</p>
+            <p style="margin: 4px 0; font-size: 13.5px; color: #831843;"><b>Trạng thái:</b> <span style="color: #059669; font-weight: 700;">Đã kích hoạt</span></p>
+          </div>
+          <p style="font-size: 14px; line-height: 1.6; color: #475569;">
+            Bạn có thể đăng nhập ngay vào hệ thống bằng địa chỉ email trên thông qua tính năng <b>Đăng nhập bằng Email OTP</b> hoặc <b>Đăng nhập bằng Google</b>:
+          </p>
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${resolvedLoginUrl}" target="_blank" style="background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 10px; font-weight: 700; font-size: 14.5px; display: inline-block; box-shadow: 0 4px 12px rgba(236, 72, 153, 0.35);">
+              Truy cập Pastie AI Console &rarr;
+            </a>
+          </div>
+          <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 24px 0;">
+          <p style="text-align: center; font-size: 12px; color: #94a3b8; margin: 0;">&copy; ${new Date().getFullYear()} Pastie AI Console &bull; DealPhuQuoc Integration</p>
+        </div>
+      `
+    });
+
+    if (data.error) {
+      console.error(`Resend Activation error: ${JSON.stringify(data.error)}`);
+      return { ok: false, reason: data.error };
+    }
+
+    console.log(`[Resend] Account activation email sent to ${toEmail}. ID: ${data.data?.id}`);
+    return { ok: true };
+  } catch (error) {
+    console.error(`Resend Activation exception: ${error.message}`);
+    return { ok: false, reason: error.message };
+  }
+}
+
 module.exports = {
   sendOTPEmail,
-  sendAdminOTPEmail
+  sendAdminOTPEmail,
+  sendAccountActivationEmail
 };
+

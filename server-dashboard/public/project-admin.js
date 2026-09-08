@@ -581,16 +581,32 @@ function applyAdminMgmtFocus() {
         setSelfProfileStatus('');
 
         const isAgent = CURRENT_ADMIN?.role === 'agent';
-        const canEditName = !isAgent;
+        const isSale = CURRENT_ADMIN?.role === 'sale';
+        const canEditName = !isAgent && !isSale;
         const saveBtn = document.getElementById('self-display-name-save');
+        const hintEl = document.getElementById('self-display-name-hint');
         if (input) input.readOnly = !canEditName;
         if (saveBtn) saveBtn.classList.toggle('hide', !canEditName);
         selfPanel?.classList.toggle('is-readonly', !canEditName);
-        const hint = selfPanel?.querySelector('.self-profile-heading p');
-        if (hint) {
-            hint.textContent = isAgent
-                ? 'Tên này hiện trên thanh tiêu đề và là tên khách nhìn thấy. Tên Agent do Quản trị viên Superadmin quản lý.'
-                : 'Tên này hiện trên thanh tiêu đề và là tên khách nhìn thấy khi bạn trả lời chat.';
+        if (hintEl) {
+            hintEl.textContent = isAgent
+                ? 'Tên Agent do Quản trị viên Superadmin quản lý.'
+                : isSale
+                ? 'Tên hiển thị của Sale do Quản lý (Agent) thiết lập.'
+                : '';
+        }
+
+        // Render self avatar preview
+        const avatarPreview = document.getElementById('self-avatar-preview');
+        if (avatarPreview) {
+            const avatarUrl = CURRENT_ADMIN?.avatar_url;
+            const name = CURRENT_ADMIN?.full_name || CURRENT_ADMIN?.username || 'U';
+            const initial = name.trim().charAt(0).toUpperCase();
+            if (avatarUrl) {
+                avatarPreview.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
+            } else {
+                avatarPreview.innerHTML = `<span style="color:var(--text-primary);font-weight:700;">${escapeHtml(initial)}</span>`;
+            }
         }
     }
 
@@ -1391,3 +1407,42 @@ async function openAccountDevices(adminId) {
     await load();
 }
 window.openAccountDevices = openAccountDevices;
+
+// Xử lý upload avatar tài khoản cá nhân (Sale, Agent, Admin)
+document.getElementById('self-avatar-pick-btn')?.addEventListener('click', () => {
+    document.getElementById('self-avatar-file-input')?.click();
+});
+
+document.getElementById('self-avatar-file-input')?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    event.target.value = '';
+
+    const pickBtn = document.getElementById('self-avatar-pick-btn');
+    const origHtml = pickBtn ? pickBtn.innerHTML : '';
+    if (pickBtn) { pickBtn.disabled = true; pickBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang tải lên...'; }
+    setSelfProfileStatus('Đang tải ảnh đại diện lên...', '');
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await authFetch(`${API_BASE}/api/admin/me/avatar`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Không tải được ảnh lên.');
+
+        if (CURRENT_ADMIN) CURRENT_ADMIN.avatar_url = data.avatarUrl;
+        const preview = document.getElementById('self-avatar-preview');
+        if (preview && data.avatarUrl) {
+            preview.innerHTML = `<img src="${escapeHtml(data.avatarUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
+        }
+        updateAgentHeaderUI();
+        setSelfProfileStatus('Đã cập nhật ảnh đại diện.', 'ok');
+    } catch (err) {
+        setSelfProfileStatus(err.message, 'error');
+    } finally {
+        if (pickBtn) { pickBtn.disabled = false; pickBtn.innerHTML = origHtml; }
+    }
+});

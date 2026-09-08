@@ -841,16 +841,22 @@ app.get('/api/qr-chat/:code', async (req, res) => {
     // ("Hộ Kinh Doanh") đều là chữ thường, phải dịch. Riêng tên riêng của cơ sở
     // ("Đan Trinh Pastie") giữ nguyên — xem localizeVenueName.
     const lang = String(req.query.lang || '').toLowerCase().slice(0, 2);
-    const [agentName, groupName, label] = await Promise.all([
+    const isMenuEnabled = (account.superadmin_menu_disabled !== true) && (account.agent_menu_enabled !== false);
+    const rawMenuLabel = isMenuEnabled && account.menu_custom_label ? String(account.menu_custom_label).trim() : '';
+
+    const [agentName, groupName, label, customMenuLabel] = await Promise.all([
       localizeVenueName(account.owner_name || 'Agent', lang, account.owner_admin_id),
       localizeQrText(account.group_name || account.label || 'Tư vấn viên', lang, account.owner_admin_id),
       localizeQrText(account.label || '', lang, account.owner_admin_id),
+      rawMenuLabel ? localizeQrText(rawMenuLabel, lang, account.owner_admin_id) : Promise.resolve(null),
     ]);
     res.json({
       agentName,
       locationLogoUrl: /^https?:\/\//i.test(String(account.owner_avatar_url || '')) ? account.owner_avatar_url : null,
       groupName,
-      label
+      label,
+      menuEnabled: isMenuEnabled,
+      menuLabel: customMenuLabel || (rawMenuLabel || null)
     });
   } catch (error) {
     console.error('[QR Concierge] Cannot read public QR metadata:', error.message);
@@ -1942,6 +1948,9 @@ async function resolveQrChatAccount(projectId, qrCode, queryRunner = db) {
             COALESCE(p.ai_enabled, p.project_type <> 'qr_concierge') AS ai_enabled,
             a.full_name AS owner_name,
             a.avatar_url AS owner_avatar_url,
+            COALESCE(a.agent_menu_enabled, TRUE) AS agent_menu_enabled,
+            COALESCE(a.superadmin_menu_disabled, FALSE) AS superadmin_menu_disabled,
+            a.menu_custom_label,
             g.name AS group_name
        FROM qr_chat_accounts q
        JOIN projects p ON p.id = q.project_id
@@ -6363,10 +6372,10 @@ app.get('/api/admin/me', checkAdminAuth, async (req, res) => {
 // chỉ dành cho Superadmin/Project Admin) — ở đây chỉ cho sửa đúng full_name của
 // chính người đang đăng nhập, nên Agent dùng được mà không mở thêm quyền nào khác.
 app.put('/api/admin/me/display-name', checkAdminAuth, async (req, res) => {
-  // Agent không được tự đổi tên hiển thị — tên này là thứ khách nhìn thấy nên
-  // do Superadmin/Project Admin quản lý. Chặn ở server chứ không chỉ ẩn ô nhập.
-  if (req.admin.role === 'agent') {
-    return res.status(403).json({ error: 'Bạn không có quyền đổi tên hiển thị. Vui lòng liên hệ quản trị viên.' });
+  // Agent và Sale không được tự đổi tên hiển thị — tên này do cấp trên quản lý.
+  // Chặn ở server chứ không chỉ ẩn ô nhập.
+  if (req.admin.role === 'agent' || req.admin.role === 'sale') {
+    return res.status(403).json({ error: 'Bạn không có quyền đổi tên hiển thị. Vui lòng liên hệ Quản lý.' });
   }
 
   const fullName = String(req.body?.full_name || '').trim();
@@ -6537,6 +6546,13 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
       const { prefix } = gemini.splitVenueName(full_name.trim());
       if (prefix) void pretranslateVenuePrefix(prefix);
     }
+
+    void resend.sendAccountActivationEmail({
+      toEmail: username,
+      fullName: full_name.trim(),
+      role: effectiveRole,
+      createdByName: req.admin.full_name || req.admin.username,
+    }).catch((err) => console.error('[ActivationEmail] Error sending to admin user:', err.message));
 
     res.status(201).json({
       success: true,
@@ -9250,6 +9266,9 @@ app.get('/api/superadmin/agents', checkAdminAuth, async (req, res) => {
     const result = await db.query(
       `SELECT a.id, a.username, a.full_name, a.project_id, a.is_active, a.created_at,
               a.sale_limit, a.allow_room_charge, a.deferred_payment_mode,
+              COALESCE(a.superadmin_menu_disabled, FALSE) AS superadmin_menu_disabled,
+              COALESCE(a.agent_menu_enabled, TRUE) AS agent_menu_enabled,
+              a.menu_custom_label,
               (SELECT COUNT(*) FROM admins s WHERE s.managed_by_admin_id = a.id AND s.role = 'sale') AS sale_count,
               (SELECT COUNT(*) FROM agent_groups g WHERE g.agent_id = a.id) AS group_count
          FROM admins a
@@ -9299,6 +9318,13 @@ app.post('/api/superadmin/agents', checkAdminAuth, async (req, res) => {
     const adoptedGroupId = await db.adoptOrphanQrDataForProject(projectId, created.rows[0].id)
       .catch((error) => { console.error('Adopt orphan QR data failed:', error.message); return null; });
 
+    void resend.sendAccountActivationEmail({
+      toEmail: username,
+      fullName: String(fullName).trim(),
+      role: 'agent',
+      createdByName: req.admin.full_name || req.admin.username,
+    }).catch((err) => console.error('[ActivationEmail] Error sending to agent:', err.message));
+
     res.status(201).json({ success: true, agent: created.rows[0], adoptedGroupId });
   } catch (error) {
     console.error('Create agent error:', error);
@@ -9324,6 +9350,9 @@ app.put('/api/superadmin/agents/:agentId', checkAdminAuth, async (req, res) => {
     const nextDeferred = rawDeferred === undefined ? undefined
       : (['room_charge', 'pay_later'].includes(rawDeferred) ? rawDeferred : 'none');
 
+    const rawMenuDisabled = req.body?.superadminMenuDisabled ?? req.body?.superadmin_menu_disabled;
+    const nextMenuDisabled = typeof rawMenuDisabled === 'boolean' ? rawMenuDisabled : undefined;
+
     const updated = await db.query(
       `UPDATE admins
           SET full_name = COALESCE($2, full_name),
@@ -9331,12 +9360,14 @@ app.put('/api/superadmin/agents/:agentId', checkAdminAuth, async (req, res) => {
               is_active = COALESCE($4, is_active),
               sale_limit = CASE WHEN $6::boolean THEN $5::int ELSE sale_limit END,
               deferred_payment_mode = CASE WHEN $8::boolean THEN $7::varchar ELSE deferred_payment_mode END,
-              allow_room_charge = CASE WHEN $8::boolean THEN ($7 = 'room_charge') ELSE allow_room_charge END
+              allow_room_charge = CASE WHEN $8::boolean THEN ($7 = 'room_charge') ELSE allow_room_charge END,
+              superadmin_menu_disabled = CASE WHEN $10::boolean THEN $9::boolean ELSE superadmin_menu_disabled END
         WHERE id = $1
-        RETURNING id, username, full_name, role, project_id, sale_limit, is_active, deferred_payment_mode, allow_room_charge`,
+        RETURNING id, username, full_name, role, project_id, sale_limit, is_active, deferred_payment_mode, allow_room_charge, superadmin_menu_disabled, agent_menu_enabled, menu_custom_label`,
       [agentId, fullName ? String(fullName).trim().slice(0, 255) : null, projectId || null,
        typeof isActive === 'boolean' ? isActive : null, nextLimit ?? null, nextLimit !== undefined,
-       nextDeferred ?? 'none', nextDeferred !== undefined]
+       nextDeferred ?? 'none', nextDeferred !== undefined,
+       nextMenuDisabled ?? false, nextMenuDisabled !== undefined]
     );
     // Khóa tài khoản thì đóng luôn mọi phiên đang mở, không đợi token hết hạn.
     if (isActive === false) await db.query('DELETE FROM admin_sessions WHERE admin_id = $1', [agentId]);
@@ -9353,7 +9384,7 @@ app.get('/api/agent/sales', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
   try {
     const result = await db.query(
-      `SELECT a.id, a.username, a.full_name, a.is_active, a.project_id, a.created_at,
+      `SELECT a.id, a.username, a.full_name, a.avatar_url, a.is_active, a.project_id, a.created_at,
               COALESCE(json_agg(DISTINCT jsonb_build_object(
                 'start_time', h.start_time, 'end_time', h.end_time, 'timezone', h.timezone
               )) FILTER (WHERE h.id IS NOT NULL), '[]') AS access_hours,
@@ -9436,6 +9467,14 @@ app.post('/api/agent/sales', checkAdminAuth, async (req, res) => {
         [group.id, saleId]
       );
     }
+
+    void resend.sendAccountActivationEmail({
+      toEmail: username,
+      fullName: String(fullName).trim(),
+      role: 'sale',
+      createdByName: req.admin.full_name || req.admin.username,
+    }).catch((err) => console.error('[ActivationEmail] Error sending to sale:', err.message));
+
     res.status(201).json({ success: true, sale: { ...created.rows[0], access_hours: hours } });
   } catch (error) {
     console.error('Create sale error:', error);
@@ -9529,6 +9568,101 @@ app.patch('/api/agent/sales/:saleId/status', checkAdminAuth, async (req, res) =>
   } catch (error) {
     console.error('Toggle sale error:', error);
     res.status(500).json({ error: 'Không đổi được trạng thái Sale.' });
+  }
+});
+
+app.post('/api/agent/sales/:saleId/avatar', checkAdminAuth, uploadAttachmentMiddleware, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const saleId = Number(req.params.saleId);
+  if (!req.file) return res.status(400).json({ error: 'Chưa chọn ảnh.' });
+  if (!String(req.file.mimetype || '').startsWith('image/')) {
+    return res.status(400).json({ error: 'Chỉ nhận tệp ảnh.' });
+  }
+  try {
+    const sale = await loadOwnedSale(req, saleId);
+    if (!sale) return res.status(404).json({ error: 'Không tìm thấy Sale trong phạm vi của bạn.' });
+
+    const key = s3.buildMenuImageKey(sale.project_id || 'qr-concierge', saleId, req.file.originalname);
+    await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
+    const url = await s3.getMenuImageUrl(key);
+    const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
+    await db.query(
+      'UPDATE admins SET avatar_key = $2, avatar_url = $3, avatar_url_expires_at = $4 WHERE id = $1',
+      [saleId, key, url, expiresAt]
+    );
+    if (sale.avatar_key) void s3.deleteObject(sale.avatar_key).catch(() => {});
+    res.json({ success: true, avatarUrl: url });
+  } catch (error) {
+    console.error('Upload sale avatar error:', error);
+    res.status(500).json({ error: 'Không tải được ảnh đại diện cho Sale.' });
+  }
+});
+
+// Agent xem và chỉnh sửa cấu hình Menu cho khách (Bật/Tắt & Custom tên nút)
+app.get('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
+  try {
+    let agentId = req.admin.role === 'sale' ? req.admin.managed_by_admin_id : req.admin.id;
+    if (req.admin.role === 'sale' && !agentId) {
+      const manager = await db.query('SELECT managed_by_admin_id FROM admins WHERE id = $1', [req.admin.id]);
+      agentId = manager.rows[0]?.managed_by_admin_id;
+    }
+    if (!agentId) return res.status(400).json({ error: 'Không xác định được cơ sở quản lý.' });
+
+    const row = (await db.query(
+      'SELECT agent_menu_enabled, superadmin_menu_disabled, menu_custom_label FROM admins WHERE id = $1',
+      [agentId]
+    )).rows[0];
+    if (!row) return res.status(404).json({ error: 'Không tìm thấy thông tin cơ sở.' });
+
+    res.json({
+      agent_menu_enabled: row.agent_menu_enabled !== false,
+      superadmin_menu_disabled: row.superadmin_menu_disabled === true,
+      menu_custom_label: row.menu_custom_label || '',
+      is_active: (row.superadmin_menu_disabled !== true) && (row.agent_menu_enabled !== false)
+    });
+  } catch (error) {
+    console.error('Get menu settings error:', error);
+    res.status(500).json({ error: 'Không tải được cấu hình thực đơn.' });
+  }
+});
+
+app.put('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'agent' && !isSuperAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Chỉ Agent quản lý cơ sở mới được cấu hình thực đơn.' });
+  }
+  const agentId = req.admin.id;
+  try {
+    const agent = (await db.query('SELECT superadmin_menu_disabled FROM admins WHERE id = $1', [agentId])).rows[0];
+    if (!agent) return res.status(404).json({ error: 'Không tìm thấy Agent.' });
+
+    const { agentMenuEnabled, menuCustomLabel } = req.body || {};
+    const label = menuCustomLabel !== undefined ? String(menuCustomLabel || '').trim().slice(0, 100) : undefined;
+    const enabled = typeof agentMenuEnabled === 'boolean' ? agentMenuEnabled : undefined;
+
+    if (agent.superadmin_menu_disabled && enabled === true) {
+      return res.status(403).json({ error: 'Quản trị viên cấp cao (Superadmin) đã tắt tính năng thực đơn cho cơ sở của bạn.' });
+    }
+
+    const updated = await db.query(
+      `UPDATE admins 
+          SET agent_menu_enabled = COALESCE($2, agent_menu_enabled),
+              menu_custom_label = CASE WHEN $4::boolean THEN $3::varchar ELSE menu_custom_label END
+        WHERE id = $1
+        RETURNING agent_menu_enabled, superadmin_menu_disabled, menu_custom_label`,
+      [agentId, enabled !== undefined ? enabled : null, label !== undefined ? label : null, label !== undefined]
+    );
+    res.json({
+      success: true,
+      settings: {
+        agent_menu_enabled: updated.rows[0].agent_menu_enabled !== false,
+        superadmin_menu_disabled: updated.rows[0].superadmin_menu_disabled === true,
+        menu_custom_label: updated.rows[0].menu_custom_label || '',
+        is_active: (updated.rows[0].superadmin_menu_disabled !== true) && (updated.rows[0].agent_menu_enabled !== false)
+      }
+    });
+  } catch (error) {
+    console.error('Update menu settings error:', error);
+    res.status(500).json({ error: 'Không cập nhật được cấu hình thực đơn.' });
   }
 });
 
@@ -10832,10 +10966,14 @@ app.post('/api/agent/menu/items/:id/image', checkAdminAuth, uploadAttachmentMidd
 // Phiên QR cũ chưa gắn nhóm thì lùi về owner_admin_id của mã QR.
 async function resolveMenuOwner(sessionId) {
   const result = await db.query(
-    `SELECT COALESCE(g.agent_id, q.owner_admin_id) AS agent_id, s.detected_language, s.status, s.project_id
+    `SELECT COALESCE(g.agent_id, q.owner_admin_id) AS agent_id, s.detected_language, s.status, s.project_id,
+            COALESCE(a.agent_menu_enabled, TRUE) AS agent_menu_enabled,
+            COALESCE(a.superadmin_menu_disabled, FALSE) AS superadmin_menu_disabled,
+            a.menu_custom_label
        FROM sessions s
        LEFT JOIN agent_groups g ON g.id = s.group_id
        LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+       LEFT JOIN admins a ON a.id = COALESCE(g.agent_id, q.owner_admin_id)
       WHERE s.id = $1`,
     [sessionId]
   );
@@ -11239,6 +11377,9 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
   try {
     const owner = await resolveMenuOwner(req.params.sessionId);
     if (!owner?.agent_id) return res.json({ categories: [], items: [] });
+    if (owner.superadmin_menu_disabled || !owner.agent_menu_enabled) {
+      return res.json({ categories: [], items: [], menuDisabled: true });
+    }
 
     const lang = String(req.query.lang || owner.detected_language || 'vi').toLowerCase().slice(0, 2);
     const useLang = MENU_LANGS.includes(lang) ? lang : 'vi';
@@ -11350,6 +11491,9 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
     if (!owner) return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
     if (owner.status !== 'active') return res.status(410).json({ error: 'Phiên chat đã kết thúc.' });
     if (!owner.agent_id) return res.status(400).json({ error: 'Thực đơn chưa được thiết lập.' });
+    if (owner.superadmin_menu_disabled || !owner.agent_menu_enabled) {
+      return res.status(403).json({ error: 'Tính năng thực đơn hiện đang tạm đóng.' });
+    }
 
     // Một phiên chỉ có một đơn đang chờ (chưa chốt phương thức thanh toán).
     // Nếu đơn cũ đã chọn thanh toán xong, khách được phép đặt lượt order mới.

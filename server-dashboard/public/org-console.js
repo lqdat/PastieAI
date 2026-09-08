@@ -277,7 +277,10 @@ function switchOrgTab(name) {
     if (name === 'groups') void loadOrgGroups();
     if (name === 'qr') void loadOrgQr();
     // Thực đơn nằm ở menu-console.js — mảnh đầu tiên của QR Console tách riêng.
-    if (name === 'menu') void window.MenuConsole?.load();
+    if (name === 'menu') {
+        void window.MenuConsole?.load();
+        void loadAgentMenuSettings();
+    }
 }
 
 
@@ -354,7 +357,9 @@ async function loadOrgAgents() {
                             <option value="room_charge"${agent.deferred_payment_mode === 'room_charge' ? ' selected' : ''}>Cộng tiền phòng (Room charge)</option>
                             <option value="pay_later"${agent.deferred_payment_mode === 'pay_later' ? ' selected' : ''}>Thanh toán sau (Pay later)</option>
                         </select>
-                    </label>
+                    <button type="button" class="org-menu-toggle-btn" data-agent-menu-toggle="${agent.id}" data-menu-disabled="${agent.superadmin_menu_disabled}" style="padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid ${agent.superadmin_menu_disabled ? '#ef4444' : '#10b981'};background:${agent.superadmin_menu_disabled ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)'};color:${agent.superadmin_menu_disabled ? '#ef4444' : '#10b981'};font-weight:600;cursor:pointer;" title="Bật/Tắt tính năng thực đơn cho Agent này">
+                        <i class="${agent.superadmin_menu_disabled ? 'ri-restaurant-line' : 'ri-restaurant-fill'}"></i> ${agent.superadmin_menu_disabled ? 'Menu: Tắt (SA)' : 'Menu: Bật'}
+                    </button>
                     <button type="button" class="org-toggle" data-agent-toggle="${agent.id}" data-active="${agent.is_active}">
                         ${agent.is_active ? '✓ Đang hoạt động' : '✗ Đã khóa'}
                     </button>
@@ -497,6 +502,15 @@ function resetOrgSaleForm() {
         emailEl.style.opacity = '1';
         emailEl.title = '';
     }
+    const fileEl = document.getElementById('org-sale-avatar-file');
+    if (fileEl) fileEl.value = '';
+    const nameEl = document.getElementById('org-sale-avatar-filename');
+    if (nameEl) nameEl.textContent = 'Chưa chọn ảnh';
+    const clearBtn = document.getElementById('org-sale-avatar-clear-btn');
+    if (clearBtn) clearBtn.classList.add('hide');
+    const previewEl = document.getElementById('org-sale-avatar-preview');
+    if (previewEl) previewEl.innerHTML = '<span id="org-sale-avatar-char">S</span>';
+
     const submitBtn = document.getElementById('org-sale-submit-btn');
     if (submitBtn) submitBtn.innerHTML = '<i class="ri-user-add-line"></i> Thêm Sale';
     document.getElementById('org-sale-cancel-btn')?.classList.add('hide');
@@ -545,15 +559,21 @@ async function loadOrgSales() {
 
         box.innerHTML = ORG_SALES.length ? ORG_SALES.map((sale) => `
             <article class="org-item sale-card">
-                <div class="org-item-main">
-                    <strong class="sale-card-name">${escapeHtml(sale.full_name || sale.username)}
-                        <span class="org-shift ${sale.on_shift ? 'is-on' : ''}">${sale.on_shift ? 'Trong ca' : 'Ngoài ca'}</span>
-                    </strong>
-                    <span class="sale-card-mail">${escapeHtml(sale.username)}</span>
-                    <span class="sale-card-facts">
-                        <span class="sale-fact"><i class="ri-time-line"></i> ${escapeHtml(formatHourWindows(sale.access_hours))}</span>
-                        <span class="sale-fact"><i class="ri-team-line"></i> ${(sale.groups || []).map((g) => escapeHtml(g.name)).join(', ') || 'Chưa gán nhóm'}</span>
-                    </span>
+                <div class="org-item-main" style="display:flex;align-items:center;gap:12px;">
+                    ${sale.avatar_url 
+                        ? `<div style="width:38px;height:38px;border-radius:50%;overflow:hidden;flex-shrink:0;border:1.5px solid var(--accent-color);"><img src="${escapeHtml(sale.avatar_url)}" alt="" style="width:100%;height:100%;object-fit:cover;"></div>`
+                        : `<div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg, #6366f1, #a855f7);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;">${escapeHtml((sale.full_name || 'S').trim().charAt(0).toUpperCase())}</div>`
+                    }
+                    <div>
+                        <strong class="sale-card-name">${escapeHtml(sale.full_name || sale.username)}
+                            <span class="org-shift ${sale.on_shift ? 'is-on' : ''}">${sale.on_shift ? 'Trong ca' : 'Ngoài ca'}</span>
+                        </strong>
+                        <span class="sale-card-mail">${escapeHtml(sale.username)}</span>
+                        <span class="sale-card-facts">
+                            <span class="sale-fact"><i class="ri-time-line"></i> ${escapeHtml(formatHourWindows(sale.access_hours))}</span>
+                            <span class="sale-fact"><i class="ri-team-line"></i> ${(sale.groups || []).map((g) => escapeHtml(g.name)).join(', ') || 'Chưa gán nhóm'}</span>
+                        </span>
+                    </div>
                 </div>
                 <div class="org-item-actions" style="display:flex;gap:5px;align-items:center;">
                     <button type="button" class="org-btn-edit" data-sale-edit="${sale.id}" title="Sửa" style="background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:4px 8px;font-size:11.5px;cursor:pointer;font-weight:600;"><i class="ri-edit-line"></i> Sửa</button>
@@ -816,3 +836,67 @@ function clearSalePicker() {
         ?.querySelectorAll('.sale-chip.is-on')
         .forEach((chip) => chip.classList.remove('is-on'));
 }
+
+// --- Menu Configuration for Agent -------------------------------------------
+
+async function loadAgentMenuSettings() {
+    const card = document.getElementById('agent-menu-settings-card');
+    if (!card) return;
+    try {
+        const res = await authFetch(`${API_BASE}/api/agent/menu-settings`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Không tải được cài đặt menu.');
+
+        const checkbox = document.getElementById('agent-menu-toggle-checkbox');
+        const labelInput = document.getElementById('agent-menu-label-input');
+        const warning = document.getElementById('agent-menu-superadmin-warning');
+
+        if (checkbox) {
+            checkbox.checked = data.agent_menu_enabled && !data.superadmin_menu_disabled;
+            checkbox.disabled = data.superadmin_menu_disabled;
+        }
+        if (labelInput) {
+            labelInput.value = data.menu_custom_label || '';
+            labelInput.disabled = data.superadmin_menu_disabled;
+        }
+        if (warning) {
+            warning.classList.toggle('hide', !data.superadmin_menu_disabled);
+        }
+    } catch (err) {
+        console.error('loadAgentMenuSettings error:', err.message);
+    }
+}
+
+async function saveAgentMenuSettings() {
+    const saveBtn = document.getElementById('agent-menu-save-btn');
+    const checkbox = document.getElementById('agent-menu-toggle-checkbox');
+    const labelInput = document.getElementById('agent-menu-label-input');
+    if (!saveBtn || !checkbox) return;
+
+    const orig = saveBtn.innerHTML;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i>';
+
+    try {
+        const res = await authFetch(`${API_BASE}/api/agent/menu-settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                agentMenuEnabled: checkbox.checked,
+                menuCustomLabel: (labelInput?.value || '').trim()
+            })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data?.error || 'Không thể lưu cài đặt.');
+        showToast('Đã lưu cấu hình thực đơn.', 'success');
+        await loadAgentMenuSettings();
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = orig;
+    }
+}
+
+document.getElementById('agent-menu-save-btn')?.addEventListener('click', saveAgentMenuSettings);
+

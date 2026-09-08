@@ -1526,6 +1526,40 @@ document.getElementById('org-close-btn')?.addEventListener('click', closeOrgModa
 
 document.getElementById('org-sale-cancel-btn')?.addEventListener('click', resetOrgSaleForm);
 
+// Xử lý chọn ảnh đại diện cho Sale trong form của Agent
+document.getElementById('org-sale-avatar-pick-btn')?.addEventListener('click', () => {
+    document.getElementById('org-sale-avatar-file')?.click();
+});
+
+document.getElementById('org-sale-avatar-file')?.addEventListener('change', (event) => {
+    const file = event.target.files?.[0];
+    const previewEl = document.getElementById('org-sale-avatar-preview');
+    const nameEl = document.getElementById('org-sale-avatar-filename');
+    const clearBtn = document.getElementById('org-sale-avatar-clear-btn');
+    if (!file) return;
+
+    if (nameEl) nameEl.textContent = file.name;
+    if (clearBtn) clearBtn.classList.remove('hide');
+    if (previewEl) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            previewEl.innerHTML = `<img src="${escapeHtml(e.target.result)}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
+        };
+        reader.readAsDataURL(file);
+    }
+});
+
+document.getElementById('org-sale-avatar-clear-btn')?.addEventListener('click', () => {
+    const fileEl = document.getElementById('org-sale-avatar-file');
+    if (fileEl) fileEl.value = '';
+    const nameEl = document.getElementById('org-sale-avatar-filename');
+    if (nameEl) nameEl.textContent = 'Chưa chọn ảnh';
+    const clearBtn = document.getElementById('org-sale-avatar-clear-btn');
+    if (clearBtn) clearBtn.classList.add('hide');
+    const previewEl = document.getElementById('org-sale-avatar-preview');
+    if (previewEl) previewEl.innerHTML = '<span id="org-sale-avatar-char">S</span>';
+});
+
 document.getElementById('org-modal')?.addEventListener('click', (event) => {
     if (event.target === document.getElementById('org-modal')) closeOrgModal();
 });
@@ -1567,21 +1601,40 @@ document.getElementById('org-sale-form')?.addEventListener('submit', async (even
     const groupIds = groupId ? [Number(groupId)] : [];
 
     try {
+        let targetSaleId = saleId;
         if (saleId) {
-            await orgFetch(`/api/agent/sales/${saleId}`, {
+            const res = await orgFetch(`/api/agent/sales/${saleId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fullName, accessHours, groupIds }),
             });
+            targetSaleId = res.sale?.id || saleId;
             setOrgStatus('Đã cập nhật thông tin Sale thành công.');
         } else {
-            await orgFetch('/api/agent/sales', {
+            const res = await orgFetch('/api/agent/sales', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fullName, email, accessHours, groupIds }),
             });
+            targetSaleId = res.sale?.id;
             setOrgStatus('Đã tạo Sale mới thành công.');
         }
+
+        // Upload avatar cho Sale nếu có chọn file
+        const avatarFile = document.getElementById('org-sale-avatar-file')?.files?.[0];
+        if (avatarFile && targetSaleId) {
+            try {
+                const formData = new FormData();
+                formData.append('file', avatarFile);
+                await authFetch(`${API_BASE}/api/agent/sales/${targetSaleId}/avatar`, {
+                    method: 'POST',
+                    body: formData
+                });
+            } catch (avatarErr) {
+                console.error('Không tải được ảnh Sale:', avatarErr.message);
+            }
+        }
+
         resetOrgSaleForm();
         await loadOrgSales();
         await loadOrgGroups(true);
@@ -1739,6 +1792,21 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         describeShift('org-sale-start', 'org-sale-end', 'org-sale-shift-hint');
         if (submitBtn) submitBtn.innerHTML = '<i class="ri-save-line"></i> Lưu thay đổi Sale';
         document.getElementById('org-sale-cancel-btn')?.classList.remove('hide');
+
+        // Hiển thị avatar hiện tại của Sale nếu có
+        const previewEl = document.getElementById('org-sale-avatar-preview');
+        const avatarFilenameEl = document.getElementById('org-sale-avatar-filename');
+        const clearBtn = document.getElementById('org-sale-avatar-clear-btn');
+        if (avatarFilenameEl) avatarFilenameEl.textContent = sale.avatar_url ? 'Ảnh đại diện hiện tại' : 'Chưa chọn ảnh';
+        if (clearBtn) clearBtn.classList.add('hide');
+        if (previewEl) {
+            if (sale.avatar_url) {
+                previewEl.innerHTML = `<img src="${escapeHtml(sale.avatar_url)}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
+            } else {
+                previewEl.innerHTML = `<span>${escapeHtml((sale.full_name || 'S').trim().charAt(0).toUpperCase())}</span>`;
+            }
+        }
+
         switchOrgTab('sales');
         document.getElementById('org-sale-form')?.scrollIntoView({ behavior: 'smooth' });
         return;
@@ -1781,6 +1849,21 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
                 body: JSON.stringify({ isActive: !isActive }),
             });
             setOrgStatus(isActive ? 'Đã khóa tài khoản Agent.' : 'Đã mở lại tài khoản Agent.');
+            await loadOrgAgents();
+        } catch (error) { setOrgStatus(error.message, 'error'); }
+        return;
+    }
+
+    const agentMenuToggle = event.target.closest('[data-agent-menu-toggle]');
+    if (agentMenuToggle) {
+        const isDisabled = agentMenuToggle.dataset.menuDisabled === 'true';
+        try {
+            await orgFetch(`/api/superadmin/agents/${agentMenuToggle.dataset.agentMenuToggle}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ superadminMenuDisabled: !isDisabled }),
+            });
+            setOrgStatus(!isDisabled ? 'Đã tắt tính năng thực đơn cho Agent này.' : 'Đã cho phép tính năng thực đơn cho Agent này.');
             await loadOrgAgents();
         } catch (error) { setOrgStatus(error.message, 'error'); }
         return;

@@ -1339,8 +1339,8 @@ function setSelfProfileStatus(message, kind = '') {
 
 async function handleSelfDisplayNameSubmit(event) {
     event.preventDefault();
-    if (CURRENT_ADMIN?.role === 'agent') {
-        setSelfProfileStatus('Agent không có quyền tự đổi tên hiển thị. Vui lòng liên hệ Superadmin.', 'error');
+    if (CURRENT_ADMIN?.role === 'agent' || CURRENT_ADMIN?.role === 'sale') {
+        setSelfProfileStatus('Bạn không có quyền tự đổi tên hiển thị. Vui lòng liên hệ Quản lý.', 'error');
         return;
     }
     const input = document.getElementById('self-display-name-input');

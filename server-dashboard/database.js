@@ -1308,6 +1308,11 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
       );
     `);
 
+    // Cấu hình hiển thị và tùy biến nút Thực đơn cho Agent & Superadmin
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS agent_menu_enabled BOOLEAN NOT NULL DEFAULT TRUE;`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS superadmin_menu_disabled BOOLEAN NOT NULL DEFAULT FALSE;`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS menu_custom_label VARCHAR(100);`);
+
     await migrateQrAgentsToSales();
 
     console.log('Database tables verified/created successfully.');

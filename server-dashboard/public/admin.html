@@ -421,6 +421,19 @@
                                 <small class="org-field-hint" id="org-sale-shift-hint"></small>
                             </label>
                         </div>
+                        <div class="org-form-row avatar-upload-row" style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+                            <div id="org-sale-avatar-preview" style="width:42px;height:42px;border-radius:50%;overflow:hidden;border:1.5px solid var(--accent-color);display:flex;align-items:center;justify-content:center;background:var(--panel-bg);flex-shrink:0;font-size:14px;font-weight:700;">
+                                <span id="org-sale-avatar-char">S</span>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:3px;">
+                                <input type="file" id="org-sale-avatar-file" accept="image/*" style="display:none;">
+                                <div style="display:flex;gap:6px;align-items:center;">
+                                    <button type="button" id="org-sale-avatar-pick-btn" class="secondary-btn" style="width:auto;padding:5px 10px;font-size:11.5px;"><i class="ri-image-add-line"></i> Chọn ảnh đại diện</button>
+                                    <button type="button" id="org-sale-avatar-clear-btn" class="icon-btn hide" title="Bỏ ảnh" style="font-size:12px;padding:3px 6px;"><i class="ri-close-line"></i></button>
+                                </div>
+                                <span id="org-sale-avatar-filename" style="font-size:11px;color:var(--text-muted);">Chưa chọn ảnh</span>
+                            </div>
+                        </div>
                         <div style="display:flex;gap:8px;align-items:center;">
                             <button type="submit" class="org-submit" id="org-sale-submit-btn"><i class="ri-user-add-line"></i> Thêm Sale</button>
                             <button type="button" class="secondary-btn hide" id="org-sale-cancel-btn" style="width:auto;padding:8px 14px;font-size:12px;"><i class="ri-close-line"></i> Hủy</button>
@@ -465,6 +478,24 @@
 
                 <!-- Thực đơn: chỉ Agent quản lý dự án QR -->
                 <section class="org-pane hide" data-org-pane="menu">
+                    <!-- Cấu hình hiển thị và tên nút Thực đơn phía Khách -->
+                    <div id="agent-menu-settings-card" class="glass-panel" style="margin-bottom:14px;padding:12px 14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);">
+                        <div id="agent-menu-superadmin-warning" class="hide" style="margin-bottom:10px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#ef4444;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">
+                            <i class="ri-error-warning-line"></i>
+                            <span>Tính năng thực đơn đã bị Quản trị viên cấp cao (Superadmin) tắt cho cơ sở của bạn.</span>
+                        </div>
+                        <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;">
+                                <input type="checkbox" id="agent-menu-toggle-checkbox" style="width:16px;height:16px;accent-color:var(--accent-color);">
+                                <span>Hiển thị Thực đơn cho khách quét QR</span>
+                            </label>
+                            <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:320px;">
+                                <input type="text" id="agent-menu-label-input" maxlength="100" placeholder="Chữ hiển thị (VD: Thực đơn, Menu, Gọi món...)" style="font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);flex:1;">
+                                <button type="button" id="agent-menu-save-btn" class="primary-btn" style="width:auto;padding:6px 12px;font-size:12px;white-space:nowrap;"><i class="ri-save-line"></i> Lưu</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="org-list-header">
                         <h4>Các món trong thực đơn</h4>
                         <span id="menu-count-badge" class="org-count-badge">0 món</span>
@@ -1217,10 +1248,25 @@
                         <div class="self-devices-list" id="self-devices-list"></div>
                         <p class="self-devices-note" id="self-devices-note"></p>
                     </section>
+                    <!-- Tải ảnh đại diện cá nhân -->
+                    <div class="self-avatar-section" style="display:flex;align-items:center;gap:14px;margin:14px 0;padding:12px 14px;border:1px solid var(--panel-border);border-radius:12px;background:rgba(255,255,255,0.03);">
+                        <div id="self-avatar-preview" style="width:52px;height:52px;border-radius:50%;overflow:hidden;border:2px solid var(--accent-color);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;background:var(--panel-bg);flex-shrink:0;">
+                            <span id="self-avatar-initial">P</span>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:4px;">
+                            <span style="font-size:12px;font-weight:600;color:var(--text-primary);">Ảnh đại diện</span>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input type="file" id="self-avatar-file-input" accept="image/*" style="display:none;">
+                                <button type="button" id="self-avatar-pick-btn" class="secondary-btn" style="width:auto;padding:5px 12px;font-size:12px;"><i class="ri-image-edit-line"></i> Đổi ảnh đại diện</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <form id="self-profile-form" class="self-profile-form">
                         <label for="self-display-name-input">Tên hiển thị</label>
                         <input type="text" id="self-display-name-input" maxlength="255" placeholder="Nhập tên hiển thị..." autocomplete="off" required>
-                        <button type="submit" id="self-display-name-save" class="primary-btn"><i class="ri-save-line"></i> Lưu</button>
+                        <p id="self-display-name-hint" style="font-size:11.5px;color:var(--text-muted);margin:4px 0 0 0;"></p>
+                        <button type="submit" id="self-display-name-save" class="primary-btn" style="margin-top:8px;"><i class="ri-save-line"></i> Lưu</button>
                     </form>
                     <p id="self-profile-status" class="self-profile-status"></p>
                 </section>

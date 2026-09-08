@@ -2585,7 +2585,6 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
                         </div>
                         <div class="message-time"><span>${timeStr}</span></div>
                     </div>
-                    ${renderMsgAvatarHtml(msg)}
                 `;
             } else {
                 wrapper.className = 'message-wrapper visitor internal-peer';
@@ -2644,7 +2643,6 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
                     </div>
                     <div class="message-time"><span>${timeStr}</span>${renderMsgStatusHtml(msg)}</div>
                 </div>
-                ${renderMsgAvatarHtml(msg)}
             `;
         } else {
             // System message
