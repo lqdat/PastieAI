@@ -5068,7 +5068,13 @@ app.get('/api/admin/menu/view', checkAdminAuth, async (req, res) => {
         WHERE agent_id = $1 ORDER BY is_promo DESC, sort_order, id`,
       [agentId]
     );
-    res.json({ readOnly: true, categories: categories.rows, items: items.rows });
+    const agentRow = (await db.query('SELECT menu_custom_label FROM admins WHERE id = $1', [agentId])).rows[0];
+    res.json({
+      readOnly: true,
+      menuCustomLabel: agentRow?.menu_custom_label || null,
+      categories: categories.rows,
+      items: items.rows
+    });
   } catch (error) {
     console.error('Staff menu view error:', error);
     res.status(500).json({ error: 'Không tải được thực đơn.' });
@@ -11465,9 +11471,14 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
       image_key, image_url_expires_at, source_name, source_description,
       translation_is_manual, name_translated, description_translated, ...item
     }) => item);
+    let customMenuLabel = null;
+    if (owner.menu_custom_label) {
+      customMenuLabel = await localizeQrText(owner.menu_custom_label, useLang, owner.agent_id);
+    }
     res.json({
       language: useLang,
       vatRate: QR_MENU_VAT_RATE,
+      menuLabel: customMenuLabel || owner.menu_custom_label || null,
       categories: categories.rows.map(({ source_name, translated, ...category }) => category),
       // Món ưu đãi tách riêng để cổng khách dựng slider đầu trang mà không phải
       // tự đoán nhóm nào là nhóm ưu đãi.

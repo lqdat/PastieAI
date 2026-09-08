@@ -746,19 +746,64 @@ button:focus-visible {
 }
 .visitor-avatar-wrap {
     position: relative;
-    flex-shrink: 0;
+    flex: 0 0 42px;
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
+    max-width: 42px;
+    max-height: 42px;
+    border-radius: var(--radius-sm, 12px);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
 }
+.session-card.is-pinned-agent .visitor-avatar-wrap,
+.internal-avatar-img,
+.internal-avatar-initials {
+    border-radius: 50% !important;
+}
+.visitor-avatar-wrap .visitor-avatar {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
+    max-width: 42px;
+    max-height: 42px;
+    border-radius: inherit;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.visitor-avatar-wrap img,
 .visitor-avatar-img {
     width: 42px;
     height: 42px;
-    border-radius: var(--radius-sm, 12px);
+    min-width: 42px;
+    min-height: 42px;
+    max-width: 42px;
+    max-height: 42px;
+    border-radius: inherit;
     object-fit: cover;
     border: 1.5px solid rgba(239, 43, 157, 0.22);
     display: block;
+    box-sizing: border-box;
+}
+.session-card.is-pinned-agent .visitor-avatar-img,
+.session-card.is-pinned-agent .visitor-avatar-wrap img,
+.internal-avatar-img {
+    border-color: rgba(99, 102, 241, 0.35);
 }
 .visitor-avatar-initials {
     width: 42px;
     height: 42px;
+    min-width: 42px;
+    min-height: 42px;
+    max-width: 42px;
+    max-height: 42px;
     border-radius: var(--radius-sm, 12px);
     background: linear-gradient(135deg, #fff0f8 0%, #fbeff9 100%);
     display: flex;
@@ -769,6 +814,12 @@ button:focus-visible {
     color: var(--accent-color);
     border: 1.5px solid rgba(239, 43, 157, 0.24);
     box-shadow: 0 3px 8px rgba(239, 43, 157, 0.08);
+    box-sizing: border-box;
+}
+.internal-avatar-initials {
+    background: linear-gradient(135deg, #6366f1, #a855f7) !important;
+    color: #fff !important;
+    border-color: rgba(99, 102, 241, 0.35) !important;
 }
 .visitor-platform-badge {
     position: absolute;

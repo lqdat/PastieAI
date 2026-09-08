@@ -78,8 +78,9 @@ function createInternalSessionCard(chat, isPinned = false) {
 
     const peerInitial = (chat.peerName || '?')[0].toUpperCase();
     const avatarHtml = chat.peerAvatar
-        ? `<div class="visitor-avatar"><img src="${escapeHtml(chat.peerAvatar)}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;"></div>`
-        : `<div class="visitor-avatar visitor-initials" style="background:linear-gradient(135deg, #6366f1, #a855f7);color:#fff;font-weight:700;">${escapeHtml(peerInitial)}</div>`;
+        ? `<img src="${escapeHtml(chat.peerAvatar)}" class="visitor-avatar-img internal-avatar-img" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+          + `<div class="visitor-avatar-initials internal-avatar-initials" style="display:none;">${escapeHtml(peerInitial)}</div>`
+        : `<div class="visitor-avatar-initials internal-avatar-initials">${escapeHtml(peerInitial)}</div>`;
 
     const preview = chat.lastMessage ? chat.lastMessage : 'Chưa có tin nhắn...';
 

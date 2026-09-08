@@ -331,8 +331,6 @@
             if (trigger) trigger.disabled = false;
         }
     }
-        }
-    }
 
     async function load(body) {
         body.innerHTML = '<p class="cart-loading"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
@@ -587,6 +585,13 @@
             const res = await authFetch(`${API_BASE}/api/admin/menu/view`);
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || 'Không tải được thực đơn.');
+            const customName = data.menuCustomLabel || '';
+            if (customName) {
+                const titleEl = menuOverlay?.querySelector('.staff-menu-title h3');
+                if (titleEl) titleEl.textContent = customName;
+                const saleBtn = document.querySelector('#sale-menu-btn span');
+                if (saleBtn) saleBtn.textContent = customName;
+            }
             menuState.items = Array.isArray(data.items) ? data.items : [];
             // Chỉ liệt kê nhóm CÓ MÓN: một hàng thẻ lọc bấm vào ra danh sách
             // rỗng thì thà đừng có thẻ đó.
@@ -595,7 +600,7 @@
                 if (used.has(String(category.id))) menuState.categories.set(category.id, category.name);
             }
             if (menuState.items.length === 0) {
-                list.innerHTML = '<p class="cart-empty">Cơ sở chưa có món nào trong thực đơn.</p>';
+                list.innerHTML = `<p class="cart-empty">Cơ sở chưa có món nào trong ${customName ? customName.toLowerCase() : 'thực đơn'}.</p>`;
                 return;
             }
             paintMenuView();

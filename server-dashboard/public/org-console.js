@@ -862,6 +862,14 @@ async function loadAgentMenuSettings() {
         if (warning) {
             warning.classList.toggle('hide', !data.superadmin_menu_disabled);
         }
+
+        const customName = data.menu_custom_label || '';
+        const tabSpan = document.querySelector('[data-org-tab="menu"] span');
+        if (tabSpan) tabSpan.textContent = customName || 'Thực đơn';
+        const paneHeader = document.querySelector('[data-org-pane="menu"] .org-list-header h4');
+        if (paneHeader) paneHeader.textContent = customName ? `Các món trong ${customName.toLowerCase()}` : 'Các món trong thực đơn';
+        const saleBtnText = document.querySelector('#sale-menu-btn span');
+        if (saleBtnText) saleBtnText.textContent = customName || 'Thực đơn';
     } catch (err) {
         console.error('loadAgentMenuSettings error:', err.message);
     }
