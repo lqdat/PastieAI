@@ -657,9 +657,12 @@ function handleVisitorTypingRealtime(data) {
 }
 
 function renderVisitorTypingIndicator(isTyping) {
-    let el = document.getElementById('visitor-typing-bubble');
+    const bar = document.getElementById('visitor-typing-indicator-bar');
+    const legacy = document.getElementById('visitor-typing-bubble');
+
     if (!isTyping) {
-        if (el) el.remove();
+        if (bar) bar.classList.add('hide');
+        if (legacy) legacy.remove();
         if (visitorTypingHideTimer) {
             clearTimeout(visitorTypingHideTimer);
             visitorTypingHideTimer = null;
@@ -667,44 +670,42 @@ function renderVisitorTypingIndicator(isTyping) {
         return;
     }
 
-    if (!el) {
+    if (bar) {
+        bar.classList.remove('hide');
+    } else {
         const inputContainer = document.getElementById('chat-input-container') || document.querySelector('.chat-input-area');
         const chatFormEl = document.getElementById('chat-form');
-        const msgContainer = document.getElementById('chat-messages-container');
-
-        el = document.createElement('div');
-        el.id = 'visitor-typing-bubble';
-        el.className = 'visitor-typing-indicator';
-        el.style.margin = '0 0 6px 6px';
-        el.innerHTML = `
-            <div class="visitor-typing-bubble-inner" style="padding: 5px 13px; border-radius: 20px; box-shadow: 0 4px 14px rgba(239, 43, 157, 0.12); border: 1px solid rgba(239, 43, 157, 0.35); background: #ffffff;">
-                <div class="visitor-typing-icon-wrap" style="width: 20px; height: 20px;">
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="visitor-typing-svg">
-                        <path d="M12 20h9"/>
-                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                    </svg>
+        let el = document.getElementById('visitor-typing-bubble');
+        if (!el && inputContainer && chatFormEl) {
+            el = document.createElement('div');
+            el.id = 'visitor-typing-bubble';
+            el.className = 'visitor-typing-bar';
+            el.innerHTML = `
+                <div class="visitor-typing-bubble-inner">
+                    <div class="visitor-typing-icon-wrap">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="visitor-typing-svg">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                        </svg>
+                    </div>
+                    <span class="visitor-typing-label">Đang nhập...</span>
+                    <div class="visitor-typing-dots">
+                        <span class="v-dot"></span>
+                        <span class="v-dot"></span>
+                        <span class="v-dot"></span>
+                    </div>
                 </div>
-                <span class="visitor-typing-label" style="font-size: 12.5px; font-weight: 600; color: #ef2b9d;">Đang nhập...</span>
-                <div class="visitor-typing-dots">
-                    <span class="v-dot"></span>
-                    <span class="v-dot"></span>
-                    <span class="v-dot"></span>
-                </div>
-            </div>
-        `;
-
-        if (inputContainer && chatFormEl) {
+            `;
             inputContainer.insertBefore(el, chatFormEl);
-        } else if (msgContainer) {
-            msgContainer.appendChild(el);
-            msgContainer.scrollTop = msgContainer.scrollHeight;
         }
     }
 
     if (visitorTypingHideTimer) clearTimeout(visitorTypingHideTimer);
     visitorTypingHideTimer = setTimeout(() => {
-        const bubble = document.getElementById('visitor-typing-bubble');
-        if (bubble) bubble.remove();
+        const b = document.getElementById('visitor-typing-indicator-bar');
+        if (b) b.classList.add('hide');
+        const l = document.getElementById('visitor-typing-bubble');
+        if (l) l.remove();
         visitorTypingHideTimer = null;
     }, 4500);
 }
