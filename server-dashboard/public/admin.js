@@ -62,7 +62,11 @@ const TRANSLATIONS = {
         deleteChat: "Xóa cuộc chat",
         deleteConfirm: "Bạn có chắc chắn muốn XÓA VĨNH VIỄN cuộc trò chuyện này cùng toàn bộ tin nhắn lịch sử? Thao tác này không thể hoàn tác.",
         deleteSuccess: "Đã xóa cuộc trò chuyện thành công.",
-        deleteError: "Lỗi khi xóa cuộc trò chuyện."
+        deleteError: "Lỗi khi xóa cuộc trò chuyện.",
+        msgStatusSeen: "Đã xem",
+        msgStatusDelivered: "Đã nhận",
+        msgStatusSent: "Đã gửi",
+        msgStatusSeenAt: "Đã xem lúc {t}"
     },
     en: {
         loginTitle: "Pastie AI Admin",
@@ -118,7 +122,11 @@ const TRANSLATIONS = {
         deleteChat: "Delete chat",
         deleteConfirm: "Are you sure you want to PERMANENTLY DELETE this conversation along with all messages? This action cannot be undone.",
         deleteSuccess: "Conversation deleted successfully.",
-        deleteError: "Failed to delete conversation."
+        deleteError: "Failed to delete conversation.",
+        msgStatusSeen: "Seen",
+        msgStatusDelivered: "Delivered",
+        msgStatusSent: "Sent",
+        msgStatusSeenAt: "Seen at {t}"
     },
     ru: {
         loginTitle: "Панель Pastie AI",
@@ -174,7 +182,11 @@ const TRANSLATIONS = {
         deleteChat: "Удалить чат",
         deleteConfirm: "Вы уверены, что хотите НАВСЕГДА УДАЛИТЬ этот диалог и всю историю сообщений? Это действие нельзя отменить.",
         deleteSuccess: "Диалог успешно удален.",
-        deleteError: "Не удалось удалить диалог."
+        deleteError: "Не удалось удалить диалог.",
+        msgStatusSeen: "Просмотрено",
+        msgStatusDelivered: "Доставлено",
+        msgStatusSent: "Отправлено",
+        msgStatusSeenAt: "Просмотрено в {t}"
     },
     zh: {
         loginTitle: "Pastie AI 管理员",
@@ -230,7 +242,11 @@ const TRANSLATIONS = {
         deleteChat: "删除会话",
         deleteConfirm: "您确定要永久删除此会话以及所有历史消息吗？此操作无法撤销。",
         deleteSuccess: "会话已成功删除。",
-        deleteError: "删除会话失败。"
+        deleteError: "删除会话失败。",
+        msgStatusSeen: "已读",
+        msgStatusDelivered: "已送达",
+        msgStatusSent: "已发送",
+        msgStatusSeenAt: "已读于 {t}"
     },
     ko: {
         loginTitle: "Pastie AI 관리자",
@@ -284,7 +300,11 @@ const TRANSLATIONS = {
         deleteChat: "대화 삭제",
         deleteConfirm: "이 대화와 모든 메시지를 영구히 삭제하시겠습니까? 되돌릴 수 없습니다.",
         deleteSuccess: "대화가 삭제되었습니다.",
-        deleteError: "대화를 삭제하지 못했습니다."
+        deleteError: "대화를 삭제하지 못했습니다.",
+        msgStatusSeen: "읽음",
+        msgStatusDelivered: "전송 완료",
+        msgStatusSent: "보냄",
+        msgStatusSeenAt: "{t}에 읽음"
     }
 };
 

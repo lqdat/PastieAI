@@ -922,21 +922,29 @@ function handleMessageStatusUpdate(data) {
             if (status === 'seen') msg.seen_at = data.seenAt || new Date().toISOString();
         }
     }
+function getMsgStatusInfo(status, seenTime) {
+    const dict = (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[typeof currentLang !== 'undefined' ? currentLang : 'vi']) || (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS.vi) || {};
+    if (status === 'seen') {
+        const label = dict.msgStatusSeen || 'Đã xem';
+        const title = seenTime ? (dict.msgStatusSeenAt ? dict.msgStatusSeenAt.replace('{t}', seenTime) : `Đã xem lúc ${seenTime}`) : label;
+        return { label, title, icon: 'ri-check-double-line' };
+    }
+    if (status === 'delivered') {
+        const label = dict.msgStatusDelivered || 'Đã nhận';
+        return { label, title: label, icon: 'ri-check-double-line' };
+    }
+    const label = dict.msgStatusSent || 'Đã gửi';
+    return { label, title: label, icon: 'ri-check-line' };
+}
+
     messageIds.forEach(id => {
         const el = chatMessagesContainer.querySelector(`.msg-status[data-msg-id="${id}"]`);
         if (el) {
             el.className = `msg-status is-${status}`;
-            if (status === 'delivered') {
-                el.title = 'Đã nhận';
-                el.innerHTML = '<i class="ri-check-double-line"></i> <small class="status-label">Đã nhận</small>';
-            } else if (status === 'seen') {
-                const seenTime = data.seenAt ? new Date(data.seenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-                el.title = `Đã xem ${seenTime ? 'lúc ' + seenTime : ''}`;
-                el.innerHTML = '<i class="ri-check-double-line"></i> <small class="status-label">Đã xem</small>';
-            } else {
-                el.title = 'Đã gửi';
-                el.innerHTML = '<i class="ri-check-line"></i> <small class="status-label">Đã gửi</small>';
-            }
+            const seenTime = (status === 'seen' && data.seenAt) ? new Date(data.seenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+            const info = getMsgStatusInfo(status, seenTime);
+            el.title = info.title;
+            el.innerHTML = `<i class="${info.icon}"></i> <small class="status-label">${escapeHtml(info.label)}</small>`;
         }
     });
 }
@@ -946,6 +954,7 @@ function handleMessagesSeen(data) {
     const lastId = Number(data.lastSeenMessageId) || 0;
     const seenAt = data.seenAt || new Date().toISOString();
     const seenTime = new Date(seenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const info = getMsgStatusInfo('seen', seenTime);
     for (const msg of adminMessages) {
         if ((msg.sender === 'agent' || msg.sender === 'ai') && (lastId === 0 || Number(msg.id) <= lastId)) {
             msg.status = 'seen';
@@ -957,8 +966,8 @@ function handleMessagesSeen(data) {
         const id = Number(rawId);
         if (!isNaN(id) && (lastId === 0 || id <= lastId)) {
             el.className = 'msg-status is-seen';
-            el.title = `Đã xem lúc ${seenTime}`;
-            el.innerHTML = '<i class="ri-check-double-line"></i> <small class="status-label">Đã xem</small>';
+            el.title = info.title;
+            el.innerHTML = `<i class="${info.icon}"></i> <small class="status-label">${escapeHtml(info.label)}</small>`;
         }
     });
 }
@@ -967,13 +976,8 @@ function renderMsgStatusHtml(msg) {
     if (!msg || (msg.sender !== 'agent' && msg.sender !== 'ai')) return '';
     const status = msg.status || 'sent';
     const seenTimeStr = msg.seen_at ? new Date(msg.seen_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-    if (status === 'seen') {
-        return `<span class="msg-status is-seen" title="Đã xem ${seenTimeStr ? 'lúc ' + seenTimeStr : ''}" data-msg-id="${msg.id}"><i class="ri-check-double-line"></i> <small class="status-label">Đã xem</small></span>`;
-    }
-    if (status === 'delivered') {
-        return `<span class="msg-status is-delivered" title="Đã nhận" data-msg-id="${msg.id}"><i class="ri-check-double-line"></i> <small class="status-label">Đã nhận</small></span>`;
-    }
-    return `<span class="msg-status is-sent" title="Đã gửi" data-msg-id="${msg.id}"><i class="ri-check-line"></i> <small class="status-label">Đã gửi</small></span>`;
+    const info = getMsgStatusInfo(status, seenTimeStr);
+    return `<span class="msg-status is-${status}" title="${escapeHtml(info.title)}" data-msg-id="${msg.id}"><i class="${info.icon}"></i> <small class="status-label">${escapeHtml(info.label)}</small></span>`;
 }
 
 // ── Typing Indicator (Real-time Agent & Visitor Typing) ─────────────────

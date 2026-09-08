@@ -3066,6 +3066,14 @@ button:focus-visible {
     border-radius: var(--radius-lg, 14px);
     background: #fff;
     box-shadow: var(--shadow-sm);
+    box-sizing: border-box;
+}
+@media (max-width: 720px) {
+    .admin-invoice-block {
+        max-width: 100% !important;
+        margin: 8px 0;
+        padding: 12px 10px;
+    }
 }
 .admin-invoice-head {
     display: flex;

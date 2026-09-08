@@ -117,7 +117,11 @@
             btnCloseCSKH: 'Kết thúc',
             confirmEndChat: 'Bạn có chắc chắn muốn kết thúc cuộc trò chuyện?',
             backToAI: 'Quay lại trợ lý',
-            sessionEnded: 'Cuộc trò chuyện đã kết thúc. Hệ thống tiếp tục hỗ trợ bạn ↓'
+            sessionEnded: 'Cuộc trò chuyện đã kết thúc. Hệ thống tiếp tục hỗ trợ bạn ↓',
+            msgStatusSeen: 'Đã xem',
+            msgStatusDelivered: 'Đã nhận',
+            msgStatusSent: 'Đã gửi',
+            msgStatusSeenAt: 'Đã xem lúc {t}'
         },
         en: {
             headerTitle: 'Live Support',
@@ -158,7 +162,11 @@
             btnCloseCSKH: 'End Chat',
             confirmEndChat: 'Are you sure you want to end this conversation?',
             backToAI: 'Back to assistant',
-            sessionEnded: 'This conversation has ended. We will continue to assist you ↓'
+            sessionEnded: 'This conversation has ended. We will continue to assist you ↓',
+            msgStatusSeen: 'Seen',
+            msgStatusDelivered: 'Delivered',
+            msgStatusSent: 'Sent',
+            msgStatusSeenAt: 'Seen at {t}'
         },
         ru: {
             headerTitle: 'Живая Поддержка',
@@ -199,7 +207,11 @@
             btnCloseCSKH: 'Завершить',
             confirmEndChat: 'Вы уверены, что хотите завершить разговор?',
             backToAI: 'Назад к ассистенту',
-            sessionEnded: 'Разговор завершён. Мы продолжим вам помогать ↓'
+            sessionEnded: 'Разговор завершён. Мы продолжим вам помогать ↓',
+            msgStatusSeen: 'Просмотрено',
+            msgStatusDelivered: 'Доставлено',
+            msgStatusSent: 'Отправлено',
+            msgStatusSeenAt: 'Просмотрено в {t}'
         },
         zh: {
             headerTitle: '在线支持',
@@ -240,7 +252,11 @@
             btnCloseCSKH: '结束',
             confirmEndChat: '您确定要结束对话吗？',
             backToAI: '返回助手',
-            sessionEnded: '对话已结束，我们将继续为您服务 ↓'
+            sessionEnded: '对话已结束，我们将继续为您服务 ↓',
+            msgStatusSeen: '已读',
+            msgStatusDelivered: '已送达',
+            msgStatusSent: '已发送',
+            msgStatusSeenAt: '已读于 {t}'
         }
         ,ko: {
             headerTitle: "Pastie 고객지원",
@@ -281,7 +297,11 @@
             btnCloseCSKH: "상담 종료",
             confirmEndChat: "상담원과의 대화를 종료하시겠습니까?",
             backToAI: "상담이 종료되었습니다. Pat이 계속 도와드릴게요! 🌴",
-            sessionEnded: "상담 세션이 종료되었습니다."
+            sessionEnded: "상담 세션이 종료되었습니다.",
+            msgStatusSeen: '읽음',
+            msgStatusDelivered: '전송 완료',
+            msgStatusSent: '보냄',
+            msgStatusSeenAt: '{t}에 읽음'
         }
     };
 
@@ -1180,14 +1200,16 @@
                 const primaryText = msg.translated_text || msg.original_text;
                 const attachmentHtml = renderAttachmentHtml(msg);
                 const status = msg.status || 'sent';
+                const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS.vi;
                 let tickHtml = '';
                 if (status === 'seen') {
                     const seenTime = msg.seen_at ? new Date(msg.seen_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-                    tickHtml = `<span class="pastie-msg-status is-seen" title="Đã xem ${seenTime ? 'lúc ' + seenTime : ''}"><svg width="15" height="10" viewBox="0 0 16 11" fill="none"><path d="M10.5 1.5L5 7L2.5 4.5M14.5 1.5L9 7M1 6L3.5 8.5L7 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> <small>Đã xem</small></span>`;
+                    const title = seenTime ? (t.msgStatusSeenAt ? t.msgStatusSeenAt.replace('{t}', seenTime) : `Đã xem lúc ${seenTime}`) : (t.msgStatusSeen || 'Đã xem');
+                    tickHtml = `<span class="pastie-msg-status is-seen" title="${escapeHtml(title)}"><svg width="15" height="10" viewBox="0 0 16 11" fill="none"><path d="M10.5 1.5L5 7L2.5 4.5M14.5 1.5L9 7M1 6L3.5 8.5L7 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> <small>${escapeHtml(t.msgStatusSeen || 'Đã xem')}</small></span>`;
                 } else if (status === 'delivered') {
-                    tickHtml = `<span class="pastie-msg-status is-delivered" title="Đã nhận"><svg width="15" height="10" viewBox="0 0 16 11" fill="none"><path d="M10.5 1.5L5 7L2.5 4.5M14.5 1.5L9 7M1 6L3.5 8.5L7 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
+                    tickHtml = `<span class="pastie-msg-status is-delivered" title="${escapeHtml(t.msgStatusDelivered || 'Đã nhận')}"><svg width="15" height="10" viewBox="0 0 16 11" fill="none"><path d="M10.5 1.5L5 7L2.5 4.5M14.5 1.5L9 7M1 6L3.5 8.5L7 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
                 } else {
-                    tickHtml = `<span class="pastie-msg-status is-sent" title="Đã gửi"><svg width="11" height="9" viewBox="0 0 12 10" fill="none"><path d="M1 5L4.5 8.5L11 1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
+                    tickHtml = `<span class="pastie-msg-status is-sent" title="${escapeHtml(t.msgStatusSent || 'Đã gửi')}"><svg width="11" height="9" viewBox="0 0 12 10" fill="none"><path d="M1 5L4.5 8.5L11 1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
                 }
                 displayHtml = `<div class="pastie-msg-bubble">${attachmentHtml}<div>${escapeHtml(primaryText)}</div></div><div class="pastie-msg-time"><span>${timeStr}</span>${tickHtml}</div>`;
             } else if (msg.sender === 'agent' || msg.sender === 'ai') {

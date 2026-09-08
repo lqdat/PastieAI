@@ -4907,6 +4907,7 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
     }
     notifyAdminRealtime('new_message', { sessionId: req.params.sessionId, projectId: session?.project_id, sender: 'system', messageId: msgRes.rows[0]?.id });
     notifyAdminRealtime('order_update', { sessionId: req.params.sessionId, orderId: order.id, status: 'awaiting_payment', paymentMethod: method, projectId: session?.project_id });
+    notifyVisitorRealtime(req.params.sessionId, 'order_update', { orderId: order.id, status: 'awaiting_payment', paymentMethod: method });
   } catch (error) {
     // Ghi chú cho Agent là việc phụ — không được làm hỏng thao tác chọn thanh toán của khách.
     console.error('[Order] Không thể ghi tin nhắn phương thức thanh toán:', error.message);
@@ -5262,6 +5263,7 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
 
   notifyAdminRealtime('new_message', { sessionId: order.session_id, projectId: order.project_id, sender: 'agent', messageId: paidMsg.rows[0]?.id });
   notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: 'paid', projectId: order.project_id });
+  notifyVisitorRealtime(order.session_id, 'order_update', { orderId: order.id, status: 'paid' });
   void deliverPosEvent(order.id, 'order.paid');
   res.json({ success: true, order: updated.rows[0], nextAction: 'customer_thank_you' });
 });
@@ -11881,6 +11883,7 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
     await saveOrderBill({ ...updated, session_id: order.session_id }, updated.invoice, req.admin.id);
 
     notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: 'awaiting_payment', projectId: order.project_id });
+    notifyVisitorRealtime(order.session_id, 'order_update', { orderId: order.id, status: 'awaiting_payment' });
     // POS chỉ được gọi SAU khi khách chốt phương thức thanh toán (xem route
     // payment-method). Gọi ở đây là báo máy tính tiền một đơn mà khách còn có
     // thể sửa hoặc bỏ.
@@ -11924,6 +11927,7 @@ app.post('/api/admin/orders/:orderId/reject', checkAdminAuth, requireWorkingHour
       [order.session_id, text, req.admin.id]
     );
     notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: 'rejected', projectId: order.project_id });
+    notifyVisitorRealtime(order.session_id, 'order_update', { orderId: order.id, status: 'rejected' });
     res.json({ success: true });
   } catch (error) {
     console.error('Reject order error:', error);
@@ -11973,6 +11977,7 @@ app.put('/api/admin/orders/:orderId/notes', checkAdminAuth, requireWorkingHours,
     if (!updated.rows[0]) return res.status(409).json({ error: 'Đơn này vừa được người khác xử lý.' });
 
     notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: 'pending_confirm', projectId: order.project_id });
+    notifyVisitorRealtime(order.session_id, 'order_update', { orderId: order.id, status: 'pending_confirm' });
     res.json({ success: true, order: updated.rows[0] });
   } catch (error) {
     console.error('Update order notes error:', error);
