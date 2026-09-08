@@ -283,6 +283,7 @@ function broadcastAdminEvent(event, data) {
         continue;
       }
       client.res.write(payload);
+      if (typeof client.res.flush === 'function') client.res.flush();
     } catch (e) {
       adminEventClients.delete(client);
     }
@@ -292,6 +293,34 @@ function broadcastAdminEvent(event, data) {
 function notifyAdminRealtime(type, data = {}) {
   broadcastAdminEvent({
     type,
+    timestamp: Date.now(),
+    ...data
+  });
+}
+
+// SSE Realtime Event Bus cho Khách hàng (Visitor / Portal / Widget)
+const visitorEventClients = new Map();
+
+function broadcastVisitorEvent(sessionId, event) {
+  if (!sessionId || !event) return;
+  const key = String(sessionId);
+  const clients = visitorEventClients.get(key);
+  if (!clients || clients.size === 0) return;
+  const payload = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+  for (const client of clients) {
+    try {
+      client.res.write(payload);
+      if (typeof client.res.flush === 'function') client.res.flush();
+    } catch (e) {
+      clients.delete(client);
+    }
+  }
+}
+
+function notifyVisitorRealtime(sessionId, type, data = {}) {
+  broadcastVisitorEvent(sessionId, {
+    type,
+    sessionId,
     timestamp: Date.now(),
     ...data
   });
@@ -2736,6 +2765,12 @@ app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req,
 
     setSessionTyping(sessionId, {}, false);
     notifyAdminRealtime('typing_status', { sessionId, isTyping: false, sender });
+    notifyVisitorRealtime(sessionId, 'typing_status', { isTyping: false });
+    notifyVisitorRealtime(sessionId, 'new_message', {
+      messageId: msgRes.rows[0]?.id,
+      sender,
+      status: initialStatus
+    });
 
     // THÔNG BÁO NGOÀI GIỜ LÀM VIỆC (Dự án QR Concierge):
     // Khi khách nhắn tin mà trong nhóm không có bất kỳ Sale nào đang trong ca trực,
@@ -3859,33 +3894,53 @@ const visitorMessageFilter = (prefix = '') => `
   ))`;
 
 // In-memory typing tracker for active chat sessions
-// key: sessionId, value: { sender: 'agent'|'visitor', role: string, name: string, until: number }
+// key: `${sessionId}:${sender}`, value: { sender: 'agent'|'visitor', role: string, name: string, until: number }
 const sessionTypingState = new Map();
 
 function setSessionTyping(sessionId, { sender, role, name }, isTyping) {
   if (!sessionId) return;
+  const s = sender || 'agent';
+  const key = `${sessionId}:${s}`;
   if (!isTyping) {
-    sessionTypingState.delete(sessionId);
+    sessionTypingState.delete(key);
+    if (!sender) {
+      sessionTypingState.delete(`${sessionId}:agent`);
+      sessionTypingState.delete(`${sessionId}:visitor`);
+    }
     return;
   }
-  sessionTypingState.set(sessionId, {
-    sender: sender || 'agent',
+  sessionTypingState.set(key, {
+    sender: s,
     role: role || 'agent',
     name: name || '',
-    until: Date.now() + 4500
+    until: Date.now() + 3000
   });
 }
 
 function getSessionTyping(sessionId, forSender = null) {
   if (!sessionId) return null;
-  const state = sessionTypingState.get(sessionId);
-  if (!state) return null;
-  if (Date.now() > state.until) {
-    sessionTypingState.delete(sessionId);
-    return null;
+  if (forSender) {
+    const key = `${sessionId}:${forSender}`;
+    const state = sessionTypingState.get(key);
+    if (!state) return null;
+    if (Date.now() > state.until) {
+      sessionTypingState.delete(key);
+      return null;
+    }
+    return state;
   }
-  if (forSender && state.sender !== forSender) return null;
-  return state;
+  for (const s of ['agent', 'visitor']) {
+    const key = `${sessionId}:${s}`;
+    const state = sessionTypingState.get(key);
+    if (state) {
+      if (Date.now() > state.until) {
+        sessionTypingState.delete(key);
+      } else {
+        return state;
+      }
+    }
+  }
+  return null;
 }
 
 function isSessionTyping(sessionId, sender = null) {
@@ -4136,6 +4191,67 @@ app.get('/api/chats/:sessionId/typing', async (req, res) => {
   const typingState = getSessionTyping(sessionId, 'agent');
   res.json({
     typing: typingState ? { isTyping: true, name: typingState.name, role: typingState.role } : { isTyping: false }
+  });
+});
+
+// SSE Realtime Stream cho Khách hàng (Portal / Widget)
+// Nhận sự kiện tức thì (<20ms): typing_status, new_message, messages_seen, order_update
+app.get('/api/chats/:sessionId/events', async (req, res) => {
+  const { sessionId } = req.params;
+  if (!sessionId) return res.status(400).json({ error: 'Thiếu sessionId' });
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+    'Access-Control-Allow-Origin': '*'
+  });
+  res.write(':connected\n\n');
+  if (typeof res.flush === 'function') res.flush();
+
+  const key = String(sessionId);
+  if (!visitorEventClients.has(key)) {
+    visitorEventClients.set(key, new Set());
+  }
+  const client = { req, res };
+  visitorEventClients.get(key).add(client);
+
+  // Đẩy ngay trạng thái đang gõ của Sale nếu đang có
+  const currentTyping = getSessionTyping(sessionId, 'agent');
+  if (currentTyping) {
+    const initPayload = `event: typing_status\ndata: ${JSON.stringify({
+      type: 'typing_status',
+      sessionId,
+      isTyping: true,
+      name: currentTyping.name,
+      role: currentTyping.role
+    })}\n\n`;
+    res.write(initPayload);
+    if (typeof res.flush === 'function') res.flush();
+  }
+
+  const keepAliveInterval = setInterval(() => {
+    try {
+      res.write(':keepalive\n\n');
+      if (typeof res.flush === 'function') res.flush();
+    } catch (e) {
+      clearInterval(keepAliveInterval);
+      const set = visitorEventClients.get(key);
+      if (set) {
+        set.delete(client);
+        if (set.size === 0) visitorEventClients.delete(key);
+      }
+    }
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(keepAliveInterval);
+    const set = visitorEventClients.get(key);
+    if (set) {
+      set.delete(client);
+      if (set.size === 0) visitorEventClients.delete(key);
+    }
   });
 });
 
@@ -8931,6 +9047,12 @@ app.post('/api/admin/chats/:sessionId/read', checkAdminAuth, requireWorkingHours
         messageIds: seenRes.rows.map(r => r.id),
         lastSeenMessageId: lastSeenMessageId || (seenRes.rows[seenRes.rows.length - 1].id)
       });
+      notifyVisitorRealtime(sessionId, 'messages_seen', {
+        sessionId,
+        seenBy: 'admin',
+        seenAt: new Date().toISOString(),
+        messageIds: seenRes.rows.map(r => r.id)
+      });
     }
 
     res.json({ success: true, seen_message_count: count });
@@ -8948,6 +9070,11 @@ app.post('/api/admin/chats/:sessionId/typing', checkAdminAuth, requireWorkingHou
   const role = req.admin?.role || 'agent';
 
   setSessionTyping(sessionId, { sender: 'agent', role, name: adminName }, isTyping);
+  notifyVisitorRealtime(sessionId, 'typing_status', {
+    isTyping,
+    name: adminName,
+    role
+  });
   res.json({ success: true, isTyping });
 });
 

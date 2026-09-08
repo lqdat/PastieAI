@@ -696,7 +696,7 @@ function renderVisitorTypingIndicator(isTyping) {
         const l = document.getElementById('visitor-typing-bubble');
         if (l) l.remove();
         visitorTypingHideTimer = null;
-    }, 4500);
+    }, 2200);
 }
 
 let agentTypingPingTimer = null;
@@ -744,7 +744,7 @@ function handleAgentChatInputTyping() {
                     clearInterval(agentTypingPingTimer);
                     agentTypingPingTimer = null;
                 }
-            }, 2500);
+            }, 1500);
         }
     }
 
@@ -758,7 +758,7 @@ function handleAgentChatInputTyping() {
                 agentTypingPingTimer = null;
             }
         }
-    }, 3500);
+    }, 1800);
 }
 
 function stopAgentTyping() {
