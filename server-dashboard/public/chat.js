@@ -551,6 +551,14 @@ function handleAdminRealtimeEvent(data) {
     if (currentSessionId && String(data.sessionId) === String(currentSessionId)) {
         if (data.type === 'new_message' || data.type === 'session_update') {
             loadMessages(currentSessionId);
+            // Đang mở xem phiên chat thì tự động báo đã đọc tin mới từ khách
+            if (data.sender === 'visitor' && document.visibilityState === 'visible') {
+                authFetch(`${API_BASE}/api/admin/chats/${currentSessionId}/read`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lastSeenMessageId: data.messageId })
+                }).catch(() => {});
+            }
             if (data.summary && detailSummary) {
                 detailSummary.textContent = data.summary;
                 detailSummary.style.color = 'var(--text-primary)';
@@ -560,18 +568,80 @@ function handleAdminRealtimeEvent(data) {
                 renderTags(data.tags);
             }
         }
+        if (data.type === 'message_status_update') {
+            handleMessageStatusUpdate(data);
+        }
+        if (data.type === 'messages_seen') {
+            handleMessagesSeen(data);
+        }
         if (data.type === 'order_update') {
             adminOrderSignature = '';
-            // TẢI LẠI CẢ HOÁ ĐƠN ĐÃ LƯU, không chỉ tin nhắn.
-            //
-            // Trước đây chỉ gọi loadMessages(), mà danh sách bill chỉ được nạp
-            // đúng một lần lúc MỞ đoạn chat. Nên tờ bill Sale vừa gửi — hoặc tờ
-            // đầu tiên trước khi khách sửa món — không hiện ra cho tới khi thoát
-            // ra vào lại. Hàm nạp bill tự vẽ lại khi dữ liệu về nên gọi thẳng.
             loadBillsForAdmin(currentSessionId);
             loadMessages(currentSessionId);
         }
     }
+}
+
+function handleMessageStatusUpdate(data) {
+    if (!data || String(data.sessionId) !== String(currentSessionId)) return;
+    const { status, messageIds } = data;
+    if (!messageIds || !Array.isArray(messageIds)) return;
+    const idSet = new Set(messageIds.map(Number));
+    for (const msg of adminMessages) {
+        if (idSet.has(Number(msg.id))) {
+            msg.status = status;
+            if (status === 'delivered') msg.delivered_at = data.deliveredAt || new Date().toISOString();
+            if (status === 'seen') msg.seen_at = data.seenAt || new Date().toISOString();
+        }
+    }
+    messageIds.forEach(id => {
+        const el = chatMessagesContainer.querySelector(`.msg-status[data-msg-id="${id}"]`);
+        if (el) {
+            el.className = `msg-status is-${status}`;
+            if (status === 'delivered') {
+                el.title = 'Đã nhận';
+                el.innerHTML = '<i class="ri-check-double-line"></i>';
+            } else if (status === 'seen') {
+                const seenTime = data.seenAt ? new Date(data.seenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                el.title = `Đã xem ${seenTime ? 'lúc ' + seenTime : ''}`;
+                el.innerHTML = '<i class="ri-check-double-line"></i> <small class="seen-text">Đã xem</small>';
+            }
+        }
+    });
+}
+
+function handleMessagesSeen(data) {
+    if (!data || String(data.sessionId) !== String(currentSessionId)) return;
+    const lastId = Number(data.lastSeenMessageId) || 0;
+    const seenAt = data.seenAt || new Date().toISOString();
+    const seenTime = new Date(seenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    for (const msg of adminMessages) {
+        if ((msg.sender === 'agent' || msg.sender === 'ai') && (lastId === 0 || Number(msg.id) <= lastId)) {
+            msg.status = 'seen';
+            msg.seen_at = seenAt;
+        }
+    }
+    chatMessagesContainer.querySelectorAll('.msg-status').forEach(el => {
+        const id = Number(el.getAttribute('data-msg-id'));
+        if (id && (lastId === 0 || id <= lastId)) {
+            el.className = 'msg-status is-seen';
+            el.title = `Đã xem lúc ${seenTime}`;
+            el.innerHTML = '<i class="ri-check-double-line"></i> <small class="seen-text">Đã xem</small>';
+        }
+    });
+}
+
+function renderMsgStatusHtml(msg) {
+    if (!msg || (msg.sender !== 'agent' && msg.sender !== 'ai')) return '';
+    const status = msg.status || 'sent';
+    const seenTimeStr = msg.seen_at ? new Date(msg.seen_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    if (status === 'seen') {
+        return `<span class="msg-status is-seen" title="Đã xem ${seenTimeStr ? 'lúc ' + seenTimeStr : ''}" data-msg-id="${msg.id}"><i class="ri-check-double-line"></i> <small class="seen-text">Đã xem</small></span>`;
+    }
+    if (status === 'delivered') {
+        return `<span class="msg-status is-delivered" title="Đã nhận" data-msg-id="${msg.id}"><i class="ri-check-double-line"></i></span>`;
+    }
+    return `<span class="msg-status is-sent" title="Đã gửi" data-msg-id="${msg.id}"><i class="ri-check-line"></i></span>`;
 }
 
 
@@ -615,6 +685,20 @@ function connectAdminEvents() {
             try {
                 const data = JSON.parse(event.data || '{}');
                 handleAdminRealtimeEvent({ type: 'new_message', ...data });
+            } catch (e) {}
+        });
+
+        adminEventSource.addEventListener('message_status_update', (event) => {
+            try {
+                const data = JSON.parse(event.data || '{}');
+                handleAdminRealtimeEvent({ type: 'message_status_update', ...data });
+            } catch (e) {}
+        });
+
+        adminEventSource.addEventListener('messages_seen', (event) => {
+            try {
+                const data = JSON.parse(event.data || '{}');
+                handleAdminRealtimeEvent({ type: 'messages_seen', ...data });
             } catch (e) {}
         });
 
@@ -1904,7 +1988,7 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
                     ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(readableOrderText(msg.original_text))}</div>`}
                     ${hasTranslation && !isAttachmentPlaceholder(msg.original_text) ? `<div class="translated-text-wrapper" data-label="${dict.labelAiTranslation} ">${escapeHtml(readableOrderText(msg.translated_text))}</div>` : ''}
                 </div>
-                <div class="message-time">${timeStr}</div>
+                <div class="message-time"><span>${timeStr}</span>${renderMsgStatusHtml(msg)}</div>
             `;
         } else {
             // System message

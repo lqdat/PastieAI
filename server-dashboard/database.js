@@ -469,6 +469,25 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
                    ON messages(session_id, system_kind, created_at DESC)
                  WHERE system_kind IS NOT NULL;`);
 
+    // Migration: Add message status tracking (sent, delivered, seen)
+    await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'sent';`);
+    await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;`);
+    await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS seen_at TIMESTAMPTZ;`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_messages_session_status ON messages(session_id, status);`);
+
+    // Migration: Add visitor seen tracking to sessions
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS visitor_last_seen_at TIMESTAMPTZ;`);
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS visitor_last_seen_msg_id INT;`);
+
+    // Tự động đánh dấu seen cho các tin nhắn cũ hơn 1 giờ để không bị kẹt ở trạng thái 'sent'
+    await query(`
+      UPDATE messages 
+         SET status = 'seen', 
+             delivered_at = COALESCE(delivered_at, created_at), 
+             seen_at = COALESCE(seen_at, created_at)
+       WHERE status = 'sent' AND created_at < NOW() - INTERVAL '1 hour';
+    `).catch(() => {});
+
     // Danh dau lai nhung tin da ghi TRUOC khi co cot nay.
     //
     // Khong lam buoc nay thi bo loc chi an duoc tin moi: dong "[Dat mon] Khach

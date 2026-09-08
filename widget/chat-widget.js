@@ -638,6 +638,18 @@
             const miniEl = document.getElementById('pastie-chat-mini-bubble');
             if (miniEl) miniEl.classList.remove('show');
 
+            // Báo đã đọc tin nhắn của Agent/AI
+            if (state.sessionId && state.messages && state.messages.length > 0) {
+                const lastStaffMsg = [...state.messages].reverse().find(m => m.sender === 'agent' || m.sender === 'ai');
+                if (lastStaffMsg) {
+                    fetch(`${BASE_URL}/api/chats/${state.sessionId}/seen`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ lastSeenMessageId: lastStaffMsg.id })
+                    }).catch(() => {});
+                }
+            }
+
             // Decide which view to show
             if (state.sessionId && (state.mode === 'ai' || state.mode === 'human')) {
                 switchView('chat');
@@ -1140,7 +1152,17 @@
             if (msg.sender === 'visitor') {
                 const primaryText = msg.translated_text || msg.original_text;
                 const attachmentHtml = renderAttachmentHtml(msg);
-                displayHtml = `<div class="pastie-msg-bubble">${attachmentHtml}<div>${escapeHtml(primaryText)}</div></div><div class="pastie-msg-time">${timeStr}</div>`;
+                const status = msg.status || 'sent';
+                let tickHtml = '';
+                if (status === 'seen') {
+                    const seenTime = msg.seen_at ? new Date(msg.seen_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                    tickHtml = `<span class="pastie-msg-status is-seen" title="Đã xem ${seenTime ? 'lúc ' + seenTime : ''}"><svg width="15" height="10" viewBox="0 0 16 11" fill="none"><path d="M10.5 1.5L5 7L2.5 4.5M14.5 1.5L9 7M1 6L3.5 8.5L7 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> <small>Đã xem</small></span>`;
+                } else if (status === 'delivered') {
+                    tickHtml = `<span class="pastie-msg-status is-delivered" title="Đã nhận"><svg width="15" height="10" viewBox="0 0 16 11" fill="none"><path d="M10.5 1.5L5 7L2.5 4.5M14.5 1.5L9 7M1 6L3.5 8.5L7 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
+                } else {
+                    tickHtml = `<span class="pastie-msg-status is-sent" title="Đã gửi"><svg width="11" height="9" viewBox="0 0 12 10" fill="none"><path d="M1 5L4.5 8.5L11 1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
+                }
+                displayHtml = `<div class="pastie-msg-bubble">${attachmentHtml}<div>${escapeHtml(primaryText)}</div></div><div class="pastie-msg-time"><span>${timeStr}</span>${tickHtml}</div>`;
             } else if (msg.sender === 'agent' || msg.sender === 'ai') {
                 const primaryText = msg.translated_text || msg.original_text;
                 const attachmentHtml = renderAttachmentHtml(msg);

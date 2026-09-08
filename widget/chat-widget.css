@@ -401,12 +401,43 @@
 }
 .visitor .pastie-msg-time {
     align-self: flex-end;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 .agent .pastie-msg-time {
     align-self: flex-start;
 }
 .ai .pastie-msg-time {
     align-self: flex-start;
+}
+
+/* --- Message Status Ticks --- */
+.pastie-msg-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: #a397a4;
+    line-height: 1;
+    transition: all 0.2s ease;
+}
+.pastie-msg-status.is-sent {
+    color: #a397a4;
+}
+.pastie-msg-status.is-delivered {
+    color: #6b7280;
+}
+.pastie-msg-status.is-seen {
+    color: var(--widget-accent);
+}
+.pastie-msg-status.is-seen svg {
+    color: var(--widget-accent);
+}
+.pastie-msg-status.is-seen small {
+    font-size: 9px;
+    font-weight: 750;
+    color: var(--widget-accent);
+    letter-spacing: 0.2px;
 }
 
 /* --- Input Bar --- */

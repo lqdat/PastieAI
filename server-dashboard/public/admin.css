@@ -1107,6 +1107,9 @@ button:focus-visible {
     font-weight: 600;
     margin-top: 4px;
     align-self: flex-end;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
 }
 .visitor .message-time {
     align-self: flex-start;
@@ -1119,6 +1122,36 @@ button:focus-visible {
 .ai .message-time {
     align-self: flex-end;
     margin-right: 4px;
+}
+
+/* --- Message Delivery & Read Status --- */
+.msg-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 13.5px;
+    line-height: 1;
+    color: #9ca3af;
+    vertical-align: middle;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.msg-status.is-sent {
+    color: #9ca3af;
+}
+.msg-status.is-delivered {
+    color: #6b7280;
+}
+.msg-status.is-seen {
+    color: var(--accent-color);
+}
+.msg-status.is-seen i {
+    color: var(--accent-color);
+}
+.msg-status.is-seen .seen-text {
+    font-size: 10px;
+    font-weight: 750;
+    color: var(--accent-color);
+    letter-spacing: 0.15px;
 }
 
 /* --- Empty / Welcome States --- */
@@ -2093,6 +2126,18 @@ button:focus-visible {
     height: 1px;
     background: rgba(239, 43, 157, 0.10);
     margin: 8px 6px 4px;
+}
+.sdm-item-logout .sdm-text span {
+    color: #dc2626;
+    font-weight: 750;
+}
+.sdm-item-logout:hover {
+    background: linear-gradient(110deg, #ffffff 0%, #fff1f2 100%) !important;
+    border-color: rgba(239, 68, 68, 0.25) !important;
+    box-shadow: 0 4px 14px rgba(239, 68, 68, 0.08) !important;
+}
+.sdm-item-logout:hover::after {
+    color: #ef4444 !important;
 }
 
 /* Desktop: menu vận hành dạng panel hai cột, ưu tiên thao tác nhanh. */
@@ -5037,6 +5082,26 @@ button:focus-visible {
 .header-menu-panel .header-menu-item span { display: inline !important; }
 .header-menu-panel .header-menu-item i { font-size: 17px; }
 .header-menu-panel .header-menu-item:hover { background: rgba(0, 0, 0, .05); }
+.header-menu-divider {
+    height: 1px;
+    background: rgba(239, 43, 157, 0.12);
+    margin: 4px 6px;
+}
+.header-menu-panel .header-menu-logout {
+    color: #dc2626 !important;
+    font-weight: 700;
+}
+.header-menu-panel .header-menu-logout i {
+    color: #ef4444;
+}
+.header-menu-panel .header-menu-logout:hover {
+    background: #fef2f2 !important;
+    color: #b91c1c !important;
+}
+
+#logout-btn {
+    display: none !important;
+}
 @media (max-width: 720px) {
     .header-menu-panel { min-width: min(272px, calc(100vw - 24px)); }
 }

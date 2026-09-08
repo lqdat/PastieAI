@@ -909,14 +909,28 @@ exportCsvBtn?.addEventListener('click', () => handleExport('csv'));
 exportJsonlBtn?.addEventListener('click', () => handleExport('jsonl'));
 
 
-logoutBtn?.addEventListener('click', () => {
+function handleAdminLogout() {
+    const token = localStorage.getItem('pastie_admin_token');
+    if (token) {
+        fetch(`${API_BASE}/api/admin/logout`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        }).catch(() => {});
+    }
     adminAuthGeneration++;
     localStorage.removeItem('pastie_admin_token');
     sessionsList = [];
     adminMessages = [];
     CURRENT_ADMIN = null;
+    document.getElementById('settings-dropdown-menu')?.classList.add('hide');
+    document.getElementById('settings-trigger-btn')?.classList.remove('open');
+    if (typeof closeHeaderQuickMenu === 'function') closeHeaderQuickMenu();
     resetActiveChatUI();
     showLogin();
+}
+
+document.querySelectorAll('#logout-btn, #superadmin-logout-btn, #agent-logout-btn, [data-action="logout"]').forEach(btn => {
+    btn.addEventListener('click', handleAdminLogout);
 });
 
 

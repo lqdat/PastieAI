@@ -1204,6 +1204,12 @@ function layoutHeaderQuickMenu(grouped) {
             if (home?.parent && btn.parentElement !== home.parent) home.parent.insertBefore(btn, home.next);
         }
     }
+    if (grouped) {
+        const divider = document.getElementById('agent-logout-divider');
+        const logoutBtn = document.getElementById('agent-logout-btn');
+        if (divider && panel) panel.appendChild(divider);
+        if (logoutBtn && panel) panel.appendChild(logoutBtn);
+    }
     wrap.classList.toggle('hide', !grouped);
     if (!grouped) closeHeaderQuickMenu();
 }

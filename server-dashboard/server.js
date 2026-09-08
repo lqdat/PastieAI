@@ -2626,14 +2626,35 @@ app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req,
       senderAdminId = sendingAdmin.id;
     }
 
-    // Save message to database
+    // Save message to database with delivery status tracking
+    let initialStatus = 'sent';
+    let deliveredAt = null;
+    if (sender === 'visitor') {
+      if (adminEventClients && adminEventClients.size > 0) {
+        initialStatus = 'delivered';
+        deliveredAt = new Date();
+      }
+    } else if (sender === 'agent' || sender === 'ai') {
+      const lastActive = sessionRes.rows[0]?.last_active_at || sessionRes.rows[0]?.updated_at;
+      if (lastActive && (Date.now() - new Date(lastActive).getTime()) < 60000) {
+        initialStatus = 'delivered';
+        deliveredAt = new Date();
+      }
+    }
+
     const msgRes = await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id) 
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [sessionId, sender, text, translatedText, detectedLang, senderAdminId]
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id, status, delivered_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [sessionId, sender, text, translatedText, detectedLang, senderAdminId, initialStatus, deliveredAt]
     );
     const sessionExpiresAt = await extendQrSessionOnActivity(sessionRes.rows[0]);
-    notifyAdminRealtime('new_message', { sessionId, projectId: sessionRes.rows[0].project_id, sender, messageId: msgRes.rows[0]?.id });
+    notifyAdminRealtime('new_message', { 
+      sessionId, 
+      projectId: sessionRes.rows[0].project_id, 
+      sender, 
+      messageId: msgRes.rows[0]?.id,
+      status: initialStatus
+    });
 
     // THÔNG BÁO NGOÀI GIỜ LÀM VIỆC (Dự án QR Concierge):
     // Khi khách nhắn tin mà trong nhóm không có bất kỳ Sale nào đang trong ca trực,
@@ -3761,12 +3782,15 @@ const visitorMessageFilter = (prefix = '') => `
 // nên không có chuyện nội dung một tin đổi về sau mà dấu vân không đổi theo.
 async function conversationFingerprint(sessionId) {
   const result = await db.query(
-    `SELECT COALESCE(MAX(id), 0) AS max_id, COUNT(*)::int AS n
+    `SELECT COALESCE(MAX(id), 0) AS max_id, 
+            COUNT(*)::int AS n,
+            COALESCE(MAX(EXTRACT(EPOCH FROM seen_at)::int), 0) AS last_seen,
+            COALESCE(MAX(EXTRACT(EPOCH FROM delivered_at)::int), 0) AS last_delivered
        FROM messages WHERE session_id = $1`,
     [sessionId]
   );
-  const row = result.rows[0] || { max_id: 0, n: 0 };
-  return `${row.max_id}.${row.n}`;
+  const row = result.rows[0] || { max_id: 0, n: 0, last_seen: 0, last_delivered: 0 };
+  return `${row.max_id}.${row.n}.${row.last_seen}.${row.last_delivered}`;
 }
 
 app.get('/api/chats/:sessionId/messages', async (req, res) => {
@@ -3793,13 +3817,6 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
     await touchQrPresence(session);
 
     // ĐƯỜNG TẮT CHO LƯỢT HỎI KHÔNG CÓ GÌ MỚI.
-    //
-    // Cổng khách hỏi lại mỗi 3,5 giây; phần lớn những lượt ấy không có tin nào
-    // mới. Trước đây mỗi lượt vẫn đọc 50 dòng, nạp bản dịch, ký lại link đính
-    // kèm và đóng gói ~29 KB JSON — rồi khách nhận về đúng thứ họ đang có.
-    //
-    // Nay: một truy vấn trên chỉ mục, so dấu vân, hết. Khách nào chưa gửi dấu
-    // vân (bản cũ, hoặc lần tải đầu) thì vẫn đi đường cũ — không phá tương thích.
     const known = String(req.query.known || '').trim();
     if (known) {
       const fingerprint = await conversationFingerprint(sessionId);
@@ -3813,8 +3830,6 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
     const phone = (session.visitor_phone || '').trim();
     let result;
     if (session.qr_account_id) {
-      // Mỗi lần đăng nhập QR là một cuộc chat độc lập. Không gộp lịch sử theo
-      // email như widget cũ, nếu không khách sẽ thấy lại tin của phiên đã đóng.
       result = await db.query(
         `SELECT * FROM messages
          WHERE session_id = $1
@@ -3875,6 +3890,33 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
 
     await swapOrderIdsForCodes(sessionId, messages);
 
+    // Đánh dấu 'delivered' cho các tin nhắn của Agent/AI mà khách vừa nhận về
+    const deliveredRes = await db.query(
+      `UPDATE messages
+          SET status = 'delivered', delivered_at = NOW()
+        WHERE session_id = $1
+          AND sender IN ('agent', 'ai')
+          AND status = 'sent'
+        RETURNING id`,
+      [sessionId]
+    ).catch(() => ({ rows: [] }));
+
+    if (deliveredRes.rows && deliveredRes.rows.length > 0) {
+      notifyAdminRealtime('message_status_update', {
+        sessionId,
+        status: 'delivered',
+        deliveredAt: new Date().toISOString(),
+        messageIds: deliveredRes.rows.map(r => r.id)
+      });
+      const deliveredIds = new Set(deliveredRes.rows.map(r => r.id));
+      for (const m of messages) {
+        if (deliveredIds.has(m.id)) {
+          m.status = 'delivered';
+          m.delivered_at = new Date();
+        }
+      }
+    }
+
     // Gửi kèm dấu vân để lượt hỏi sau chỉ cần so một chuỗi.
     const fingerprint = await conversationFingerprint(sessionId);
     res.setHeader('X-Conversation', fingerprint);
@@ -3882,6 +3924,60 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
   } catch (error) {
     console.error('Fetch visitor messages error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi tải tin nhắn.' });
+  }
+});
+
+// Khách hàng đánh dấu đã xem tin nhắn của Agent / AI
+app.post('/api/chats/:sessionId/seen', async (req, res) => {
+  const { sessionId } = req.params;
+  const { lastSeenMessageId } = req.body || {};
+
+  try {
+    const sessionRes = await db.query('SELECT id, status FROM sessions WHERE id = $1', [sessionId]);
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
+    }
+
+    let queryStr = `
+      UPDATE messages 
+         SET status = 'seen', 
+             seen_at = NOW(), 
+             delivered_at = COALESCE(delivered_at, NOW())
+       WHERE session_id = $1 
+         AND sender IN ('agent', 'ai') 
+         AND status <> 'seen'
+    `;
+    const params = [sessionId];
+    if (lastSeenMessageId && Number.isInteger(Number(lastSeenMessageId))) {
+      queryStr += ` AND id <= $2`;
+      params.push(Number(lastSeenMessageId));
+    }
+    queryStr += ` RETURNING id`;
+
+    const seenRes = await db.query(queryStr, params).catch(() => ({ rows: [] }));
+
+    await db.query(
+      `UPDATE sessions 
+          SET visitor_last_seen_at = NOW(), 
+              visitor_last_seen_msg_id = COALESCE($2, visitor_last_seen_msg_id)
+        WHERE id = $1`,
+      [sessionId, lastSeenMessageId || null]
+    ).catch(() => {});
+
+    if (seenRes.rows && seenRes.rows.length > 0) {
+      notifyAdminRealtime('messages_seen', {
+        sessionId,
+        seenBy: 'visitor',
+        seenAt: new Date().toISOString(),
+        messageIds: seenRes.rows.map(r => r.id),
+        lastSeenMessageId: lastSeenMessageId || (seenRes.rows[seenRes.rows.length - 1].id)
+      });
+    }
+
+    res.json({ success: true, count: seenRes.rows.length });
+  } catch (error) {
+    console.error('Customer seen error:', error);
+    res.status(500).json({ error: 'Lỗi hệ thống khi cập nhật trạng thái đã xem.' });
   }
 });
 
@@ -6764,6 +6860,16 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
     // chiếu tin nhắn với tờ hoá đơn nhiều nhất.
     await swapOrderIdsForCodes(req.params.sessionId, messages);
 
+    // Đánh dấu 'delivered' cho các tin nhắn của Khách
+    await db.query(
+      `UPDATE messages 
+          SET status = 'delivered', delivered_at = NOW() 
+        WHERE session_id = $1 
+          AND sender = 'visitor' 
+          AND status = 'sent'`,
+      [sessionId]
+    ).catch(() => {});
+
     res.json(messages);
   } catch (error) {
     console.error('Fetch messages error:', error);
@@ -8591,6 +8697,7 @@ async function ensureReadReceiptsTable() {
 app.post('/api/admin/chats/:sessionId/read', checkAdminAuth, requireWorkingHours, async (req, res) => {
   const { sessionId } = req.params;
   const adminId = req.admin.id;
+  const { lastSeenMessageId } = req.body || {};
   try {
     const countRes = await db.query('SELECT COUNT(*) FROM messages WHERE session_id = $1', [sessionId]);
     const count = parseInt(countRes.rows[0].count) || 0;
@@ -8601,6 +8708,37 @@ app.post('/api/admin/chats/:sessionId/read', checkAdminAuth, requireWorkingHours
        SET seen_message_count = $3, last_seen_at = NOW()`,
       [sessionId, adminId, count]
     );
+
+    // Cập nhật trạng thái 'seen' cho các tin nhắn của Khách
+    let seenQuery = `
+      UPDATE messages 
+         SET status = 'seen', 
+             seen_at = NOW(), 
+             delivered_at = COALESCE(delivered_at, NOW())
+       WHERE session_id = $1 
+         AND sender = 'visitor' 
+         AND status <> 'seen'
+    `;
+    const seenParams = [sessionId];
+    if (lastSeenMessageId && Number.isInteger(Number(lastSeenMessageId))) {
+      seenQuery += ` AND id <= $2`;
+      seenParams.push(Number(lastSeenMessageId));
+    }
+    seenQuery += ` RETURNING id`;
+
+    const seenRes = await db.query(seenQuery, seenParams).catch(() => ({ rows: [] }));
+
+    if (seenRes.rows && seenRes.rows.length > 0) {
+      notifyAdminRealtime('messages_seen', {
+        sessionId,
+        seenBy: 'admin',
+        adminId,
+        seenAt: new Date().toISOString(),
+        messageIds: seenRes.rows.map(r => r.id),
+        lastSeenMessageId: lastSeenMessageId || (seenRes.rows[seenRes.rows.length - 1].id)
+      });
+    }
+
     res.json({ success: true, seen_message_count: count });
   } catch (e) {
     console.error('[Read receipt] error:', e.message);

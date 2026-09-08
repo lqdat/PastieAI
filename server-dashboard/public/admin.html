@@ -181,6 +181,10 @@
                         <button id="app-reload-btn" class="header-quick-btn header-menu-item header-menu-fixed" type="button" title="Tải lại ứng dụng">
                             <i class="ri-refresh-line"></i><span>Tải lại ứng dụng</span>
                         </button>
+                        <div class="header-menu-divider header-menu-fixed" id="agent-logout-divider"></div>
+                        <button id="agent-logout-btn" class="header-quick-btn header-menu-item header-menu-fixed header-menu-logout" type="button" title="Đăng xuất" data-action="logout" data-i18n-title="logoutTitle">
+                            <i class="ri-logout-box-r-line"></i><span data-i18n="logoutTitle">Đăng xuất</span>
+                        </button>
                     </div>
                 </div>
 
@@ -259,6 +263,13 @@
                                 <div class="sdm-text"><span data-i18n="exportJsonl">Xuất JSONL</span><small>Dữ liệu huấn luyện</small></div>
                             </button>
                         </div>
+                        <div class="sdm-divider"></div>
+                        <div class="sdm-group">
+                            <button id="superadmin-logout-btn" class="sdm-item sdm-item-logout" data-action="logout" type="button" title="Đăng xuất" data-i18n-title="logoutTitle">
+                                <span class="sdm-icon sdm-icon-logout" style="background:rgba(239,68,68,0.12);color:#ef4444;"><i class="ri-logout-box-r-line"></i></span>
+                                <div class="sdm-text"><span data-i18n="logoutTitle">Đăng xuất</span><small>Đăng xuất khỏi tài khoản</small></div>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -284,7 +295,7 @@
                     <span id="admin-profile-name">Admin</span>
                 </div>
 
-                <button id="logout-btn" class="icon-btn" title="Đăng xuất" data-i18n-title="logoutTitle"><i class="ri-logout-box-r-line"></i></button>
+                <button id="logout-btn" class="icon-btn hide" title="Đăng xuất" data-i18n-title="logoutTitle" style="display:none !important;" aria-hidden="true"><i class="ri-logout-box-r-line"></i></button>
             </div>
             <!-- Wordmark chỉ hiện ở header Agent/Sale, cùng vị trí góc phải
                  phía dưới như header cổng khách. -->
