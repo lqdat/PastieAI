@@ -4760,7 +4760,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   // i18n4: ghi chú món giờ cũng được dịch (kể cả sang tiếng Việt), nên vân tay
   // và cache cũ phải hết hiệu lực — nếu không khách vẫn nhận lại đúng tờ bill
   // đã render trước đó với ghi chú nguyên văn.
-  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${language}.i18n4`;
+  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${order.status || ''}.${language}.i18n4`;
   if (String(req.query.known || '').trim() === orderPrint) {
     res.setHeader('X-Order-Print', orderPrint);
     return res.status(200).json({ unchanged: true, fingerprint: orderPrint });
@@ -4810,6 +4810,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
       tableLabel,
       saleName: row.sale_name || order.invoice?.saleName || '',
       paymentMethod: order.payment_method || order.invoice?.paymentMethod || '',
+      isPaid: order.status === 'paid',
     };
     invoice = await prepareInvoiceDelivery(invoiceSource, language);
     // Chỉ lưu khi thật sự vừa render (generated: true). Trường hợp hoá đơn đã có
@@ -5227,11 +5228,22 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
   if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
   if (!canAccessProject(req.admin, order.project_id)) return res.status(403).json({ error: 'Bạn không có quyền xác nhận đơn này.' });
   if (order.status !== 'awaiting_payment') return res.status(409).json({ error: 'Đơn không ở trạng thái chờ thanh toán.' });
+  const assignedMethod = req.body?.paymentMethod || order.payment_method || 'cash';
   const updated = await db.query(
-    `UPDATE chat_orders SET status = 'paid', payment_reference = $1, paid_at = NOW(), updated_at = NOW()
+    `UPDATE chat_orders
+        SET status = 'paid',
+            payment_method = COALESCE(payment_method, $3),
+            payment_reference = $1,
+            invoice_render = NULL,
+            paid_at = NOW(),
+            updated_at = NOW()
       WHERE id = $2 RETURNING *`,
-    [String(req.body?.reference || '').trim().slice(0, 255) || null, order.id]
+    [String(req.body?.reference || '').trim().slice(0, 255) || null, order.id, assignedMethod]
   );
+  await db.query(
+    `UPDATE chat_order_bills SET payment_method = COALESCE(payment_method, $2) WHERE order_id = $1`,
+    [order.id, assignedMethod]
+  ).catch(() => {});
   // Báo vào ĐÚNG cuộc trò chuyện đó, kèm MÃ ĐƠN.
   //
   // Trước đây route này chỉ đổi trạng thái trong database rồi im lặng: khách
@@ -5245,8 +5257,9 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
   //
   // Trước đây chỉ có một tin mang cả "Cảm ơn quý khách!" hiện ở khung chat của
   // Sale, tức là bắt họ đọc lời cảm ơn nói với người khác.
-  const method = order.payment_method
-    ? ` bằng ${invoiceHelper.paymentMethodLabel(order.payment_method, 'vi')}` : '';
+  const finalMethod = updated.rows[0]?.payment_method || assignedMethod;
+  const method = finalMethod
+    ? ` bằng ${invoiceHelper.paymentMethodLabel(finalMethod, 'vi')}` : '';
   const staffText = `[Thanh toán] Đã thu đủ tiền${method} (mã đơn ${order.order_code}).`;
   const paidMsg = await db.query(
     `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id, system_kind, visible_to)
@@ -7158,7 +7171,7 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
           ORDER BY m.created_at ASC`,
         [sessionId]
       );
-      return res.json({ messages: msgs.rows, total: msgs.rows.length });
+      return res.json(msgs.rows);
     }
 
     // Check if session has a locked admin_language
@@ -12074,9 +12087,14 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
     const subtotal = nextItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
     const invoiceObj = typeof order.invoice === 'object' && order.invoice !== null ? order.invoice : {};
     const chargesObj = typeof order.charges === 'object' && order.charges !== null ? order.charges : {};
-    const vatRate = Number(chargesObj.vatRate || invoiceObj.vatRate || 10);
+    const vatRate = req.body?.vatRate != null ? Math.max(0, Math.min(100, Number(req.body.vatRate))) : Number(chargesObj.vatRate || invoiceObj.vatRate || 10);
     const vatAmount = Math.round(subtotal * vatRate / 100);
     const totalAmount = subtotal + vatAmount;
+
+    chargesObj.subtotal = subtotal;
+    chargesObj.vatRate = vatRate;
+    chargesObj.vatAmount = vatAmount;
+    chargesObj.totalAmount = totalAmount;
 
     invoiceObj.items = nextItems;
     invoiceObj.subtotal = subtotal;
@@ -12086,28 +12104,53 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
 
     const updated = await db.query(
       `UPDATE chat_orders
-          SET items = $1, total_amount = $2, invoice = $3,
-              notes_updated_by_admin_id = $4, notes_updated_at = NOW(), updated_at = NOW()
-        WHERE id = $5 RETURNING *`,
-      [JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), req.admin.id, order.id]
+          SET items = $1, total_amount = $2, invoice = $3, charges = $4, invoice_render = NULL,
+              notes_updated_by_admin_id = $5, notes_updated_at = NOW(), updated_at = NOW()
+        WHERE id = $6 RETURNING *`,
+      [JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), JSON.stringify(chargesObj), req.admin.id, order.id]
     );
 
     // Ghi vào chat_order_bills nếu đã có bill
     const billCheck = await db.query('SELECT MAX(version) AS max_v FROM chat_order_bills WHERE order_id = $1', [order.id]);
-    if (billCheck.rows.length && billCheck.rows[0].max_v != null) {
-      const nextV = Number(billCheck.rows[0].max_v) + 1;
-      await db.query(
-        `INSERT INTO chat_order_bills (session_id, order_id, version, items, total_amount, invoice, confirmed_by_admin_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [order.session_id, order.id, nextV, JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), req.admin.id]
-      ).catch(() => {});
-    }
+    const nextV = (billCheck.rows.length && billCheck.rows[0].max_v != null)
+      ? Number(billCheck.rows[0].max_v) + 1 : 1;
+    await db.query(
+      `INSERT INTO chat_order_bills (session_id, order_id, version, items, total_amount, invoice, payment_method, confirmed_by_admin_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [order.session_id, order.id, nextV, JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), order.payment_method || null, req.admin.id]
+    ).catch(() => {});
+
+    // Gửi thông báo cập nhật bill vào cuộc trò chuyện cho khách
+    const billMsgText = `[Hóa đơn] Quản lý đã cập nhật lại chi tiết hóa đơn (Tổng cộng: ${Number(totalAmount).toLocaleString('vi-VN')}₫). Quý khách vui lòng kiểm tra lại.`;
+    const insertedMsg = await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id)
+       VALUES ($1, 'agent', $2, $2, 'vi', $3) RETURNING id`,
+      [order.session_id, billMsgText, req.admin.id]
+    ).catch(() => null);
 
     notifyAdminRealtime('order_update', {
       sessionId: order.session_id,
       orderId: order.id,
       status: order.status,
       projectId: order.project_id
+    });
+    if (insertedMsg?.rows?.[0]) {
+      notifyAdminRealtime('new_message', {
+        sessionId: order.session_id,
+        projectId: order.project_id,
+        sender: 'agent',
+        messageId: insertedMsg.rows[0].id
+      });
+    }
+
+    notifyVisitorRealtime(order.session_id, 'order_update', {
+      orderId: order.id,
+      status: order.status,
+      totalAmount
+    });
+    notifyVisitorRealtime(order.session_id, 'new_message', {
+      sessionId: order.session_id,
+      sender: 'agent'
     });
 
     res.json({ success: true, order: updated.rows[0] });
@@ -12627,6 +12670,7 @@ async function loadSessionBills(sessionId, language) {
           tableLabel,
           saleName: row.sale_name || row.invoice?.saleName || '',
           paymentMethod: row.payment_method || row.invoice?.paymentMethod || '',
+          isPaid: row.order_status === 'paid',
         }, language
       ).catch(() => row.invoice);
       return {

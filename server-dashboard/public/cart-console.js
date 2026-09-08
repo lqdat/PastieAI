@@ -172,6 +172,43 @@
         });
     }
 
+    function choosePaymentMethodDialog(currentMethod) {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML = `
+                <div class="confirm-card" role="dialog" aria-modal="true" style="max-width:360px;">
+                    <h3 class="confirm-title">Xác nhận thu tiền</h3>
+                    <p style="margin:6px 0 12px;font-size:13px;color:var(--text-secondary);">Vui lòng chọn hình thức thanh toán:</p>
+                    <div style="display:grid;gap:8px;margin-bottom:16px;">
+                        <label style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid rgba(84,62,100,.15);border-radius:10px;cursor:pointer;">
+                            <input type="radio" name="pay-method" value="cash" ${!currentMethod || currentMethod === 'cash' ? 'checked' : ''}>
+                            <span>💵 Tiền mặt</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid rgba(84,62,100,.15);border-radius:10px;cursor:pointer;">
+                            <input type="radio" name="pay-method" value="bank_transfer" ${currentMethod === 'bank_transfer' ? 'checked' : ''}>
+                            <span>🏦 Chuyển khoản</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid rgba(84,62,100,.15);border-radius:10px;cursor:pointer;">
+                            <input type="radio" name="pay-method" value="credit_card" ${currentMethod === 'credit_card' ? 'checked' : ''}>
+                            <span>💳 Quẹt thẻ</span>
+                        </label>
+                    </div>
+                    <div class="confirm-actions">
+                        <button type="button" class="confirm-cancel">Huỷ</button>
+                        <button type="button" class="confirm-ok" style="background:#059669;color:#fff;border:none;">Xác nhận đã thu</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+            const close = (val) => { overlay.remove(); resolve(val); };
+            overlay.querySelector('.confirm-cancel').onclick = () => close(null);
+            overlay.querySelector('.confirm-ok').onclick = () => {
+                const selected = overlay.querySelector('input[name="pay-method"]:checked')?.value || 'cash';
+                close(selected);
+            };
+        });
+    }
+
     async function showOrderDetails(orderId, trigger) {
         if (trigger) trigger.disabled = true;
         try {
@@ -222,13 +259,18 @@
                         </div>` : ''}
                         <div class="order-detail-summary">
                             <span>Tạm tính <b>${money(charges.subtotal ?? order.total_amount)}</b></span>
-                            ${Number(charges.vatAmount || 0) > 0 ? `<span>VAT (${Number(charges.vatRate || 0)}%) <b>${money(charges.vatAmount)}</b></span>` : ''}
+                            <span>VAT (${Number(charges.vatRate || 0)}%)
+                                ${canEdit ? `<button type="button" class="icon-btn" id="order-edit-vat-btn" title="Đổi % VAT" style="width:20px;height:20px;font-size:11px;padding:0;margin-left:4px;"><i class="ri-edit-line"></i></button>` : ''}
+                                <b>${money(charges.vatAmount || 0)}</b>
+                            </span>
                             <span class="is-total">Tổng cộng <b>${money(order.total_amount)}</b></span>
                         </div>
                         <div class="order-detail-history"></div>
-                        <div class="order-detail-actions">
+                        <div class="order-detail-actions" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
                             <button type="button" class="secondary-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
                             <button type="button" class="primary-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem bill</button>
+                            ${canEdit ? `<button type="button" class="primary-btn is-resend-bill" id="order-send-bill-btn" data-order-id="${escapeHtml(order.id)}" style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;"><i class="ri-send-plane-fill"></i> Gửi lại bill cho khách</button>` : ''}
+                            ${canMarkPaid && order.status === 'awaiting_payment' ? `<button type="button" class="cart-paid-btn" data-paid="${escapeHtml(order.id)}" data-method="${escapeHtml(order.payment_method || '')}"><i class="ri-check-double-line"></i> Xác nhận đã thu tiền</button>` : ''}
                         </div>
                     </div>
                 </section>`;
@@ -271,7 +313,7 @@
                         });
                         const data = await res.json();
                         if (!res.ok) throw new Error(data.error || 'Không thể xóa món.');
-                        showToast('Đã xóa món khỏi bill.');
+                        showToast('Đã xóa món khỏi bill và cập nhật.');
                         await showOrderDetails(order.id);
                     } catch (e) { showToast(e.message, 'error'); }
                     return;
@@ -322,6 +364,50 @@
                         showToast('Đã thêm món vào bill.');
                         await showOrderDetails(order.id);
                     } catch (e) { showToast(e.message, 'error'); }
+                    return;
+                }
+
+                const editVatBtn = event.target.closest('#order-edit-vat-btn');
+                if (editVatBtn) {
+                    const currentVat = Number(charges.vatRate || 0);
+                    const input = prompt('Nhập thuế VAT mới (%) (0 - 100):', String(currentVat));
+                    if (input === null) return;
+                    const newVat = Number(input);
+                    if (isNaN(newVat) || newVat < 0 || newVat > 100) {
+                        alert('Thuế VAT không hợp lệ.');
+                        return;
+                    }
+                    try {
+                        const res = await authFetch(`${API_BASE}/api/admin/orders/${order.id}/agent-items`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ items, vatRate: newVat })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Không thể cập nhật VAT.');
+                        showToast('Đã cập nhật thuế VAT.');
+                        await showOrderDetails(order.id);
+                    } catch (e) { showToast(e.message, 'error'); }
+                    return;
+                }
+
+                const sendBillBtn = event.target.closest('#order-send-bill-btn');
+                if (sendBillBtn) {
+                    sendBillBtn.disabled = true;
+                    try {
+                        const res = await authFetch(`${API_BASE}/api/admin/orders/${order.id}/agent-items`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ items })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Không thể gửi lại bill.');
+                        showToast('Đã lưu và gửi lại bill cho khách!', 'success');
+                        await showOrderDetails(order.id);
+                    } catch (e) {
+                        showToast(e.message, 'error');
+                        sendBillBtn.disabled = false;
+                    }
                     return;
                 }
             });
@@ -376,6 +462,7 @@
                             ? { label: 'Chưa thu tiền', cls: 'is-awaiting' }
                             : { label: 'Khách chưa chọn cách trả', cls: 'is-awaiting' })
                         : (STATUS[order.status] || { label: order.status, cls: '' });
+                const canEdit = (CURRENT_ADMIN?.role === 'agent' || CURRENT_ADMIN?.role === 'superadmin' || CURRENT_ADMIN?.role === 'admin') && order.status !== 'paid';
                 // Đơn của phiên chat ĐÃ ĐÓNG vẫn hiện: đó thường là đơn cần đối
                 // chiếu nhất, và ẩn đi thì Agent tưởng nó biến mất.
                 const closed = order.session_status !== 'active' ? '<span class="cart-closed">Chat đã đóng</span>' : '';
@@ -401,13 +488,13 @@
                     <div class="cart-row-time">Cập nhật: ${when(order.updated_at)}</div>
                     <div class="cart-row-actions">
                         <button type="button" class="cart-action-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem bill</button>
-                        <button type="button" class="cart-action-btn" data-details="${escapeHtml(order.id)}"><i class="ri-eye-line"></i> Chi tiết</button>
+                        <button type="button" class="cart-action-btn" data-details="${escapeHtml(order.id)}"><i class="${canEdit ? 'ri-edit-line' : 'ri-eye-line'}"></i> ${canEdit ? 'Sửa bill' : 'Chi tiết'}</button>
                         <button type="button" class="cart-action-btn is-primary" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Hội thoại</button>
                     </div>
-                    ${canMarkPaid && order.status === 'awaiting_payment' && order.payment_method
-                        ? `<button type="button" class="cart-paid-btn" data-paid="${escapeHtml(order.id)}"><i class="ri-check-double-line"></i> Đã thanh toán</button>`
+                    ${order.status === 'paid'
+                        ? `<div class="cart-paid-status" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#059669;margin-top:6px;"><i class="ri-checkbox-circle-fill"></i> Đã thanh toán (${escapeHtml(methodLabel || 'Tiền mặt')})</div>`
                         : (canMarkPaid && order.status === 'awaiting_payment'
-                            ? '<p class="cart-paid-hint">Chờ khách chọn cách trả rồi mới xác nhận được đã thu tiền.</p>'
+                            ? `<button type="button" class="cart-paid-btn" data-paid="${escapeHtml(order.id)}" data-method="${escapeHtml(order.payment_method || '')}"><i class="ri-check-double-line"></i> Xác nhận đã thu tiền</button>`
                             : '')}
                 </article>`;
             };
@@ -447,12 +534,6 @@
             const open = event.target.closest('[data-open]');
             if (open) {
                 close();
-                // Mở thẳng cuộc trò chuyện của đơn: từ giỏ hàng nhìn thấy mã đơn
-                // rồi phải tự đi tìm chat là bước thừa trong lúc đang đông khách.
-                // selectSession khai báo ở cấp cao nhất của chat.js. Các file
-                // này nạp bằng thẻ <script> thường nên dùng chung phạm vi từ
-                // vựng, NHƯNG hàm khai báo kiểu đó không gắn vào window —
-                // window.selectSession là undefined.
                 if (typeof selectSession === 'function') selectSession(open.dataset.open);
                 return;
             }
@@ -473,14 +554,20 @@
             if (paid) {
                 const row = paid.closest('.cart-row');
                 const visibleCode = row?.querySelector('.cart-code')?.textContent?.trim() || paid.dataset.paid;
-                const ok = await pastieConfirm(`Xác nhận đã nhận tiền của đơn ${visibleCode}? Khách và nhân viên trực sẽ thấy thông báo trong cuộc trò chuyện.`);
-                if (!ok) return;
+                const currentMethod = paid.dataset.method || '';
+                const selectedMethod = await choosePaymentMethodDialog(currentMethod);
+                if (!selectedMethod) return;
                 paid.disabled = true;
                 try {
-                    const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(paid.dataset.paid)}/received-payment`, { method: 'POST' });
+                    const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(paid.dataset.paid)}/received-payment`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ paymentMethod: selectedMethod })
+                    });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data?.error || 'Không xác nhận được.');
                     showToast('Đã ghi nhận thanh toán.', 'success');
+                    if (detailOverlay) { detailOverlay.remove(); detailOverlay = null; }
                     await load(body);
                 } catch (error) {
                     showToast(error.message, 'error');

@@ -66,35 +66,35 @@ const INVOICE_I18N = {
     phone: 'Điện thoại', address: 'Địa chỉ', item: 'Mặt hàng', unitPrice: 'Đơn giá', quantity: 'SL',
     discount: 'Chiết khấu', lineTotal: 'Thành tiền', subtotal: 'Tổng tiền hàng',
     totalDiscount: 'Chiết khấu', vat: 'VAT', grandTotal: 'TỔNG CỘNG', paymentMethod: 'Thanh toán',
-    thanks: 'Cảm ơn quý khách!', note: 'Hóa đơn được tạo tự động từ hệ thống Pastie Chat.',
+    thanks: 'Cảm ơn quý khách!', note: 'Hóa đơn được tạo tự động từ hệ thống Pastie Chat.', paidStamp: 'ĐÃ THANH TOÁN',
   },
   en: {
     title: 'SALES INVOICE', invoiceNo: 'Invoice No.', date: 'Date', customer: 'Customer', email: 'Email', table: 'Table', openedAt: 'Time in', printedAt: 'Printed', sale: 'Served by',
     phone: 'Phone', address: 'Address', item: 'Item', unitPrice: 'Unit price', quantity: 'Qty',
     discount: 'Discount', lineTotal: 'Amount', subtotal: 'Subtotal',
     totalDiscount: 'Discount', vat: 'VAT', grandTotal: 'TOTAL', paymentMethod: 'Payment',
-    thanks: 'Thank you!', note: 'This invoice was generated automatically by Pastie Chat.',
+    thanks: 'Thank you!', note: 'This invoice was generated automatically by Pastie Chat.', paidStamp: 'PAID',
   },
   ru: {
     title: 'СЧЁТ НА ОПЛАТУ', invoiceNo: 'Номер счёта', date: 'Дата', customer: 'Клиент', email: 'Email', table: 'Стол', openedAt: 'Время входа', printedAt: 'Напечатано', sale: 'Обслужил',
     phone: 'Телефон', address: 'Адрес', item: 'Наименование', unitPrice: 'Цена', quantity: 'Кол-во',
     discount: 'Скидка', lineTotal: 'Сумма', subtotal: 'Итого по товарам',
     totalDiscount: 'Скидка', vat: 'НДС', grandTotal: 'ИТОГО', paymentMethod: 'Оплата',
-    thanks: 'Спасибо за покупку!', note: 'Счёт сформирован автоматически системой Pastie Chat.',
+    thanks: 'Спасибо за покупку!', note: 'Счёт сформирован автоматически системой Pastie Chat.', paidStamp: 'ОПЛАЧЕНО',
   },
   zh: {
     title: '销售发票', invoiceNo: '发票号', date: '日期', customer: '客户', email: '邮箱', table: '桌号', openedAt: '入座时间', printedAt: '打印时间', sale: '服务员',
     phone: '电话', address: '地址', item: '商品', unitPrice: '单价', quantity: '数量',
     discount: '折扣', lineTotal: '金额', subtotal: '商品合计',
     totalDiscount: '折扣', vat: '增值税', grandTotal: '总计', paymentMethod: '付款方式',
-    thanks: '感谢惠顾！', note: '本发票由 Pastie Chat 系统自动生成。',
+    thanks: '感谢惠顾！', note: '本发票由 Pastie Chat 系统自动生成。', paidStamp: '已付款',
   },
   ko: {
     title: '판매 영수증', invoiceNo: '영수증 번호', date: '발행일', customer: '고객', email: '이메일', table: '테이블', openedAt: '입장 시간', printedAt: '출력 시간', sale: '담당 직원',
     phone: '전화번호', address: '주소', item: '품목', unitPrice: '단가', quantity: '수량',
     discount: '할인', lineTotal: '금액', subtotal: '상품 합계',
     totalDiscount: '할인', vat: 'VAT', grandTotal: '총 합계', paymentMethod: '결제 수단',
-    thanks: '이용해 주셔서 감사합니다!', note: '본 영수증은 Pastie Chat 시스템에서 자동 발행되었습니다.',
+    thanks: '이용해 주셔서 감사합니다!', note: '본 영수증은 Pastie Chat 시스템에서 자동 발행되었습니다.', paidStamp: '결제 완료',
   },
 };
 
@@ -225,6 +225,7 @@ function buildInvoiceData(invoice, language) {
     sellerName: invoice?.sellerName || invoice?.seller_name || '',
     currency: invoice?.currency || 'VND',
     paymentMethod: invoice?.paymentMethod || invoice?.payment_method || '',
+    isPaid: !!(invoice?.isPaid || invoice?.is_paid || invoice?.status === 'paid'),
     items, subtotal, totalDiscount, vatRate, vatAmount, totalAmount,
     language: normalizeLanguage(language),
   };
@@ -589,6 +590,7 @@ function createInvoiceSvg(invoice, language) {
   // Ảnh xem trước phải khớp với PDF tải về, nếu không khách tưởng hai bản là
   // hai hoá đơn khác nhau.
   infoLine(copy.table, data.tableLabel);
+  if (data.paymentMethod) infoLine(copy.paymentMethod, paymentMethodLabel(data.paymentMethod, code));
   infoLine(copy.openedAt, data.openedAt ? formatIssuedAt(data.openedAt, code) : '');
   infoLine(copy.printedAt, formatIssuedAt(data.issuedAt, code));
   infoLine(copy.customer, data.buyerName);
@@ -596,6 +598,18 @@ function createInvoiceSvg(invoice, language) {
   infoLine(copy.phone, data.buyerPhone);
   infoLine(copy.address, data.buyerAddress);
   infoLine(copy.sale, data.saleName);
+
+  // Đóng dấu ĐÃ THANH TOÁN bên phải cạnh info khi đơn đã thanh toán
+  if (data.isPaid) {
+    const stampText = copy.paidStamp || 'ĐÃ THANH TOÁN';
+    const stampX = W - PAD - 10;
+    const stampY = headerBottom + 40;
+    parts.push(`<g transform="rotate(-18, ${stampX - 50}, ${stampY - 6})">`
+      + `<rect x="${stampX - 108}" y="${stampY - 18}" width="116" height="28" rx="4" fill="none" stroke="#d32f2f" stroke-width="2.5" opacity="0.85"/>`
+      + `<rect x="${stampX - 105}" y="${stampY - 15}" width="110" height="22" rx="3" fill="none" stroke="#d32f2f" stroke-width="1" opacity="0.7"/>`
+      + `<text x="${stampX - 50}" y="${stampY + 3}" font-size="13" font-weight="800" fill="#d32f2f" text-anchor="middle" opacity="0.85">${escapeXml(stampText)}</text>`
+      + `</g>`);
+  }
 
   y += 6; line(y); y += 20;
 
@@ -653,7 +667,7 @@ function createInvoiceSvg(invoice, language) {
   if (data.totalDiscount > 0) summary(copy.totalDiscount, `- ${money(data.totalDiscount)}`);
   if (data.vatAmount > 0) summary(`${copy.vat} (${data.vatRate}%)`, money(data.vatAmount));
   summary(copy.grandTotal, money(data.totalAmount), { bold: true });
-  if (data.paymentMethod) summary(copy.paymentMethod, paymentMethodLabel(data.paymentMethod, code));
+  // Payment method moved to info section above; no longer repeated in summary.
 
   y += 8;
   text(copy.thanks, W / 2, y, { size: 13, weight: 700, fill: '#b20c69', anchor: 'middle' });

@@ -1230,23 +1230,9 @@
         const isHumanAgentTyping = !!state.agentTyping?.isTyping;
         const typingBar = document.getElementById('pastie-typing-indicator-bar');
 
-        if (isHumanAgentTyping) {
-            state.isTyping = true;
-            if (typingBar) {
-                const barText = typingBar.querySelector('.pastie-typing-bar-text');
-                if (barText) barText.textContent = t.typingText || 'Đang nhập...';
-                typingBar.classList.remove('pastie-chat-hide');
-            }
-            removeTypingBubble();
-        } else if (isAiGenerating) {
-            state.isTyping = true;
-            if (typingBar) typingBar.classList.add('pastie-chat-hide');
-            appendTypingBubble(t.chatThinking);
-        } else {
-            state.isTyping = false;
-            if (typingBar) typingBar.classList.add('pastie-chat-hide');
-            removeTypingBubble();
-        }
+        state.isTyping = false;
+        if (typingBar) typingBar.classList.add('pastie-chat-hide');
+        removeTypingBubble();
 
         if (isLoadMore) {
             const heightDiff = threadContainer.scrollHeight - previousScrollHeight;

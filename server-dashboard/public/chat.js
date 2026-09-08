@@ -136,8 +136,9 @@ function initSessionCategoryTabs() {
 
     const isAgent = CURRENT_ADMIN && CURRENT_ADMIN.role === 'agent';
     const isSuper = CURRENT_ADMIN && ['superadmin', 'project_admin'].includes(CURRENT_ADMIN.role);
+    const isSaleWithAgent = CURRENT_ADMIN && CURRENT_ADMIN.role === 'sale';
 
-    if (isAgent || isSuper) {
+    if (isAgent || isSuper || isSaleWithAgent) {
         tabsContainer.classList.remove('hide');
     } else {
         tabsContainer.classList.add('hide');
@@ -989,43 +990,16 @@ function handleVisitorTypingRealtime(data) {
     renderVisitorTypingIndicator(!!data.isTyping);
 }
 
-function renderVisitorTypingIndicator(isTyping) {
+function renderVisitorTypingIndicator(/* isTyping */) {
+    // Typing indicators disabled per design decision.
     const bar = document.getElementById('visitor-typing-indicator-bar');
     const legacy = document.getElementById('visitor-typing-bubble');
-
-    if (!isTyping) {
-        if (bar) bar.classList.add('hide');
-        if (legacy) legacy.remove();
-        if (visitorTypingHideTimer) {
-            clearTimeout(visitorTypingHideTimer);
-            visitorTypingHideTimer = null;
-        }
-        return;
-    }
-
-    if (bar) {
-        bar.classList.remove('hide');
-    } else {
-        const inputContainer = document.getElementById('chat-input-container') || document.querySelector('.chat-input-area');
-        const chatFormEl = document.getElementById('chat-form');
-        let el = document.getElementById('visitor-typing-bubble');
-        if (!el && inputContainer && chatFormEl) {
-            el = document.createElement('div');
-            el.id = 'visitor-typing-bubble';
-            el.className = 'visitor-typing-bar';
-            el.innerHTML = `<span class="visitor-typing-text">Đang nhập...</span>`;
-            inputContainer.insertBefore(el, chatFormEl);
-        }
-    }
-
-    if (visitorTypingHideTimer) clearTimeout(visitorTypingHideTimer);
-    visitorTypingHideTimer = setTimeout(() => {
-        const b = document.getElementById('visitor-typing-indicator-bar');
-        if (b) b.classList.add('hide');
-        const l = document.getElementById('visitor-typing-bubble');
-        if (l) l.remove();
+    if (bar) bar.classList.add('hide');
+    if (legacy) legacy.remove();
+    if (visitorTypingHideTimer) {
+        clearTimeout(visitorTypingHideTimer);
         visitorTypingHideTimer = null;
-    }, 2200);
+    }
 }
 
 let agentTypingPingTimer = null;
@@ -2365,7 +2339,12 @@ async function loadMessages(sessionId, isLoadMore = false) {
         } finally {
             clearTimeout(slowTimer);
         }
-        const fetchedMessages = await response.json();
+        let fetchedMessages = await response.json();
+
+        // Normalize: internal chats may return { messages: [...] } instead of a flat array
+        if (!Array.isArray(fetchedMessages) && fetchedMessages && Array.isArray(fetchedMessages.messages)) {
+            fetchedMessages = fetchedMessages.messages;
+        }
 
         // Prevent a late response from the previous chat/account from being
         // rendered after the user has changed account or selected another chat.
