@@ -88,6 +88,90 @@
             </details>`;
     }
 
+    function editItemDialog(item) {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML = `
+                <div class="confirm-card" role="dialog" aria-modal="true" style="max-width:380px;">
+                    <h3 class="confirm-title">Sửa giá &amp; số lượng món</h3>
+                    <p style="margin:4px 0 12px;font-size:13px;font-weight:600;color:var(--accent-color);">${escapeHtml(item.name || '')}</p>
+                    <div style="display:grid;gap:10px;margin-bottom:14px;text-align:left;">
+                        <label style="font-size:12px;display:grid;gap:4px;">
+                            <span>Đơn giá (₫):</span>
+                            <input type="number" id="edit-item-price" min="0" step="1000" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);" value="${Number(item.unitPrice || 0)}">
+                        </label>
+                        <label style="font-size:12px;display:grid;gap:4px;">
+                            <span>Số lượng:</span>
+                            <input type="number" id="edit-item-qty" min="1" max="99" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);" value="${Number(item.quantity || 1)}">
+                        </label>
+                        <label style="font-size:12px;display:grid;gap:4px;">
+                            <span>Ghi chú thêm:</span>
+                            <input type="text" id="edit-item-note" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);" value="${escapeHtml(String(item.note || '').replace(/^\(|\)$/g, ''))}">
+                        </label>
+                    </div>
+                    <div class="confirm-actions">
+                        <button type="button" class="confirm-cancel">Huỷ</button>
+                        <button type="button" class="confirm-ok" style="background:var(--accent-color);color:#fff;border:none;">Lưu</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+            const close = (res) => { overlay.remove(); resolve(res); };
+            overlay.querySelector('.confirm-cancel').onclick = () => close(null);
+            overlay.querySelector('.confirm-ok').onclick = () => {
+                const price = Number(overlay.querySelector('#edit-item-price').value);
+                const qty = Number(overlay.querySelector('#edit-item-qty').value);
+                const note = overlay.querySelector('#edit-item-note').value.trim();
+                close({ price, quantity: qty, note });
+            };
+        });
+    }
+
+    function addItemDialog() {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML = `
+                <div class="confirm-card" role="dialog" aria-modal="true" style="max-width:380px;">
+                    <h3 class="confirm-title">Thêm món vào bill</h3>
+                    <div style="display:grid;gap:10px;margin:12px 0 14px;text-align:left;">
+                        <label style="font-size:12px;display:grid;gap:4px;">
+                            <span>Tên món *:</span>
+                            <input type="text" id="add-item-name" required placeholder="Ví dụ: Cơm chiên hải sản" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);">
+                        </label>
+                        <label style="font-size:12px;display:grid;gap:4px;">
+                            <span>Đơn giá (₫) *:</span>
+                            <input type="number" id="add-item-price" min="0" step="1000" placeholder="Ví dụ: 85000" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);">
+                        </label>
+                        <label style="font-size:12px;display:grid;gap:4px;">
+                            <span>Số lượng *:</span>
+                            <input type="number" id="add-item-qty" min="1" max="99" value="1" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);">
+                        </label>
+                        <label style="font-size:12px;display:grid;gap:4px;">
+                            <span>Ghi chú:</span>
+                            <input type="text" id="add-item-note" placeholder="Ví dụ: Ít cay, thêm đá" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);">
+                        </label>
+                    </div>
+                    <div class="confirm-actions">
+                        <button type="button" class="confirm-cancel">Huỷ</button>
+                        <button type="button" class="confirm-ok" style="background:var(--accent-color);color:#fff;border:none;">Thêm món</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+            const close = (res) => { overlay.remove(); resolve(res); };
+            overlay.querySelector('.confirm-cancel').onclick = () => close(null);
+            overlay.querySelector('.confirm-ok').onclick = () => {
+                const name = overlay.querySelector('#add-item-name').value.trim();
+                const price = Number(overlay.querySelector('#add-item-price').value);
+                const qty = Number(overlay.querySelector('#add-item-qty').value);
+                const note = overlay.querySelector('#add-item-note').value.trim();
+                if (!name) { alert('Vui lòng nhập tên món.'); return; }
+                if (isNaN(price) || price < 0) { alert('Vui lòng nhập đơn giá hợp lệ.'); return; }
+                close({ name, unitPrice: price, quantity: qty || 1, note });
+            };
+        });
+    }
+
     async function showOrderDetails(orderId, trigger) {
         if (trigger) trigger.disabled = true;
         try {
@@ -95,6 +179,8 @@
             const items = Array.isArray(order.items) ? order.items : [];
             const charges = order.charges || {};
             const payment = order.payment_method ? PAYMENT[order.payment_method] || order.payment_method : 'Khách chưa chọn';
+            const canEdit = (CURRENT_ADMIN?.role === 'agent' || CURRENT_ADMIN?.role === 'superadmin' || CURRENT_ADMIN?.role === 'admin') && order.status !== 'paid';
+
             detailOverlay?.remove();
             detailOverlay = document.createElement('div');
             detailOverlay.className = 'cart-overlay order-detail-overlay';
@@ -112,15 +198,28 @@
                             <span><i class="ri-map-pin-line"></i>${escapeHtml(order.qr_label || order.group_name || '—')}</span>
                             <span><i class="ri-user-line"></i>${escapeHtml(order.visitor_name || order.visitor_email || 'Khách')}</span>
                             <span><i class="ri-bank-card-line"></i>${escapeHtml(payment)}</span>
+                            <span><i class="ri-user-star-line"></i>Sale tiếp nhận: <strong>${escapeHtml(order.sale_name || 'Chưa tiếp nhận')}</strong></span>
                         </div>
                         <div class="order-detail-items">
-                            ${items.map((item) => `
-                                <div class="order-detail-item">
-                                    <div><strong>${escapeHtml(item.name || 'Món')}</strong>${item.note ? `<small>${escapeHtml(item.note)}</small>` : ''}</div>
+                            ${items.map((item, index) => `
+                                <div class="order-detail-item" data-item-idx="${index}">
+                                    <div>
+                                        <strong>${escapeHtml(item.name || 'Món')}</strong>
+                                        ${item.note ? `<small class="item-note" style="font-style:italic;color:#7a6880;"><em>(${escapeHtml(String(item.note).replace(/^\(|\)$/g, ''))})</em></small>` : ''}
+                                    </div>
                                     <span>×${Number(item.quantity || 0)}</span>
                                     <b>${money(item.lineTotal ?? Number(item.unitPrice || 0) * Number(item.quantity || 0))}</b>
+                                    ${canEdit ? `
+                                    <div style="display:flex;gap:4px;margin-left:4px;">
+                                        <button type="button" class="icon-btn edit-item-btn" data-edit-item="${index}" title="Sửa giá / SL" style="width:24px;height:24px;font-size:13px;padding:0;"><i class="ri-edit-line"></i></button>
+                                        <button type="button" class="icon-btn del-item-btn" data-del-item="${index}" title="Xóa món" style="width:24px;height:24px;font-size:13px;padding:0;color:#ef4444;"><i class="ri-delete-bin-line"></i></button>
+                                    </div>` : ''}
                                 </div>`).join('') || '<p class="cart-empty">Đơn chưa có món.</p>'}
                         </div>
+                        ${canEdit ? `
+                        <div style="padding:6px 0;">
+                            <button type="button" class="secondary-btn" id="order-add-item-btn" style="width:100%;padding:8px;font-size:12.5px;"><i class="ri-add-line"></i> Thêm món vào bill</button>
+                        </div>` : ''}
                         <div class="order-detail-summary">
                             <span>Tạm tính <b>${money(charges.subtotal ?? order.total_amount)}</b></span>
                             ${Number(charges.vatAmount || 0) > 0 ? `<span>VAT (${Number(charges.vatRate || 0)}%) <b>${money(charges.vatAmount)}</b></span>` : ''}
@@ -152,12 +251,86 @@
                     return;
                 }
                 const bill = event.target.closest('[data-bill]');
-                if (bill) await openBill(bill.dataset.bill, bill);
+                if (bill) {
+                    await openBill(bill.dataset.bill, bill);
+                    return;
+                }
+
+                const delBtn = event.target.closest('[data-del-item]');
+                if (delBtn) {
+                    const idx = Number(delBtn.dataset.delItem);
+                    const it = items[idx];
+                    const ok = await pastieConfirm(`Xóa món "${it?.name || 'này'}" khỏi bill?`, { title: 'Xóa món khỏi bill', confirmText: 'Xóa', danger: true });
+                    if (!ok) return;
+                    const nextItems = items.filter((_, i) => i !== idx);
+                    try {
+                        const res = await authFetch(`${API_BASE}/api/admin/orders/${order.id}/agent-items`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ items: nextItems })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Không thể xóa món.');
+                        showToast('Đã xóa món khỏi bill.');
+                        await showOrderDetails(order.id);
+                    } catch (e) { showToast(e.message, 'error'); }
+                    return;
+                }
+
+                const editBtn = event.target.closest('[data-edit-item]');
+                if (editBtn) {
+                    const idx = Number(editBtn.dataset.editItem);
+                    const it = items[idx];
+                    const result = await editItemDialog(it);
+                    if (!result) return;
+                    const nextItems = items.map((oldIt, i) => {
+                        if (i !== idx) return oldIt;
+                        return {
+                            ...oldIt,
+                            unitPrice: result.price,
+                            quantity: result.quantity,
+                            note: result.note || oldIt.note
+                        };
+                    });
+                    try {
+                        const res = await authFetch(`${API_BASE}/api/admin/orders/${order.id}/agent-items`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ items: nextItems })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Không thể cập nhật món.');
+                        showToast('Đã cập nhật món trong bill.');
+                        await showOrderDetails(order.id);
+                    } catch (e) { showToast(e.message, 'error'); }
+                    return;
+                }
+
+                const addBtn = event.target.closest('#order-add-item-btn');
+                if (addBtn) {
+                    const result = await addItemDialog();
+                    if (!result) return;
+                    const nextItems = [...items, result];
+                    try {
+                        const res = await authFetch(`${API_BASE}/api/admin/orders/${order.id}/agent-items`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ items: nextItems })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Không thể thêm món.');
+                        showToast('Đã thêm món vào bill.');
+                        await showOrderDetails(order.id);
+                    } catch (e) { showToast(e.message, 'error'); }
+                    return;
+                }
             });
         } catch (error) {
             showToast(error.message, 'error');
         } finally {
             if (trigger) trigger.disabled = false;
+        }
+    }
         }
     }
 

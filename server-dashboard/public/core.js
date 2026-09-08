@@ -1093,6 +1093,7 @@ function updateAgentHeaderUI() {
     if (isAgentManagerRole()) void refreshAgentSaleCount();
 
     layoutHeaderQuickMenu(isAgentRole);
+    if (typeof initSessionCategoryTabs === 'function') initSessionCategoryTabs();
 }
 
 function bindSaleAvatarUpload() {

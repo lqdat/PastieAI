@@ -7,6 +7,296 @@
 // Phụ thuộc core.js (authFetch, showToast, escapeHtml...). Xem chú thích thứ tự
 // nạp ở đầu core.js.
 
+// =====================================================================
+// KÊNH CHAT NỘI BỘ (AGENT - SUPERADMIN, AGENT - SALE)
+// =====================================================================
+let internalChats = [];
+let currentCategoryTab = 'customers'; // 'customers' | 'internal'
+let currentInternalChat = null;
+
+async function fetchInternalChats() {
+    try {
+        const token = getToken();
+        if (!token) return;
+        const res = await authFetch(`${API_BASE}/api/admin/internal-chats?_=${Date.now()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && Array.isArray(data.chats)) {
+            internalChats = data.chats;
+            renderInternalBadge();
+            if (currentCategoryTab === 'internal') {
+                renderInternalSessionsList();
+            }
+            if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'sale') {
+                if (typeof renderSessionsList === 'function' && Array.isArray(sessionsList)) {
+                    renderSessionsList(sessionsList);
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Lỗi tải danh sách chat nội bộ:', e);
+    }
+}
+
+function renderInternalBadge() {
+    const badge = document.getElementById('internal-unread-badge');
+    if (!badge) return;
+    const totalUnread = internalChats.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+    if (totalUnread > 0) {
+        badge.textContent = totalUnread > 99 ? '99+' : totalUnread;
+        badge.classList.remove('hide');
+    } else {
+        badge.classList.add('hide');
+    }
+}
+
+function createInternalSessionCard(chat, isPinned = false) {
+    const card = document.createElement('div');
+    const isSelected = currentSessionId === chat.sessionId;
+    const hasUnread = (chat.unreadCount || 0) > 0;
+    card.className = `session-card ${isPinned ? 'is-pinned-agent' : ''} ${isSelected ? 'active-selected' : ''} ${hasUnread ? 'has-unread' : ''}`;
+    card.setAttribute('data-id', chat.sessionId);
+
+    const locale = currentLang === 'vi' ? 'vi-VN' : 'en-US';
+    let dateStr = '';
+    if (chat.lastMessageTime) {
+        const msgTime = new Date(chat.lastMessageTime);
+        dateStr = msgTime.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) + ' ' + msgTime.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
+    }
+
+    const unreadBadge = hasUnread ? `<span class="session-unread-badge">${chat.unreadCount > 99 ? '99+' : chat.unreadCount}</span>` : '';
+
+    let roleBadgeClass = 'internal-badge-sale';
+    let roleBadgeText = chat.badgeLabel || 'Nội bộ';
+    if (chat.peerRole === 'superadmin') {
+        roleBadgeClass = 'internal-badge-superadmin';
+        roleBadgeText = 'SuperAdmin';
+    } else if (chat.peerRole === 'agent') {
+        roleBadgeClass = 'internal-badge-agent';
+        roleBadgeText = isPinned ? '📌 Agent Quản Lý' : 'Agent';
+    }
+
+    const peerInitial = (chat.peerName || '?')[0].toUpperCase();
+    const avatarHtml = chat.peerAvatar
+        ? `<div class="visitor-avatar"><img src="${escapeHtml(chat.peerAvatar)}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;"></div>`
+        : `<div class="visitor-avatar visitor-initials" style="background:linear-gradient(135deg, #6366f1, #a855f7);color:#fff;font-weight:700;">${escapeHtml(peerInitial)}</div>`;
+
+    const preview = chat.lastMessage ? chat.lastMessage : 'Chưa có tin nhắn...';
+
+    card.innerHTML = `
+        <div class="session-card-header">
+            <div class="visitor-avatar-wrap">${avatarHtml}</div>
+            <div class="session-card-info">
+                <div class="session-card-top-row">
+                    <span class="session-name" title="${escapeHtml(chat.peerName || '')}">${escapeHtml(chat.peerName || 'Nội bộ')}</span>
+                    <span class="session-card-time">${dateStr}</span>
+                </div>
+                <div class="session-card-bottom-row">
+                    <span class="internal-role-badge ${roleBadgeClass}">${roleBadgeText}</span>
+                    ${unreadBadge}
+                </div>
+            </div>
+        </div>
+        <div class="session-card-preview${chat.lastMessage ? '' : ' is-empty'}">${escapeHtml(preview)}</div>
+        <div class="session-meta-footer">
+            <span class="session-group-tag" style="background:rgba(99,102,241,0.12);color:#818cf8;border:1px solid rgba(99,102,241,0.25);font-size:10px;padding:1px 6px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:3px;"><i class="ri-team-line"></i> Hội thoại nội bộ</span>
+        </div>
+    `;
+
+    card.addEventListener('click', () => selectInternalSession(chat));
+    return card;
+}
+
+function renderInternalSessionsList() {
+    const container = document.getElementById('internal-sessions-list-container');
+    if (!container) return;
+
+    if (!internalChats || internalChats.length === 0) {
+        container.innerHTML = `<div class="empty-state">Chưa có hội thoại nội bộ nào.</div>`;
+        return;
+    }
+
+    container.innerHTML = '';
+    internalChats.forEach(chat => {
+        const card = createInternalSessionCard(chat, false);
+        container.appendChild(card);
+    });
+}
+
+function initSessionCategoryTabs() {
+    const tabsContainer = document.getElementById('session-category-tabs');
+    const tabCustomers = document.getElementById('tab-cat-customers');
+    const tabInternal = document.getElementById('tab-cat-internal');
+    const statusFilter = document.getElementById('session-status-filter');
+    const customerList = document.getElementById('sessions-list-container');
+    const internalList = document.getElementById('internal-sessions-list-container');
+
+    if (!tabsContainer || !tabCustomers || !tabInternal) return;
+
+    const isAgent = CURRENT_ADMIN && CURRENT_ADMIN.role === 'agent';
+    const isSuper = CURRENT_ADMIN && ['superadmin', 'project_admin'].includes(CURRENT_ADMIN.role);
+
+    if (isAgent || isSuper) {
+        tabsContainer.classList.remove('hide');
+    } else {
+        tabsContainer.classList.add('hide');
+    }
+
+    tabCustomers.onclick = () => {
+        currentCategoryTab = 'customers';
+        tabCustomers.classList.add('is-active');
+        tabInternal.classList.remove('is-active');
+        statusFilter?.classList.remove('hide');
+        customerList?.classList.remove('hide');
+        internalList?.classList.add('hide');
+    };
+
+    tabInternal.onclick = () => {
+        currentCategoryTab = 'internal';
+        tabInternal.classList.add('is-active');
+        tabCustomers.classList.remove('is-active');
+        statusFilter?.classList.add('hide');
+        customerList?.classList.add('hide');
+        internalList?.classList.remove('hide');
+        fetchInternalChats();
+        renderInternalSessionsList();
+    };
+}
+
+async function selectInternalSession(chat) {
+    if (!chat) return;
+    currentSessionId = chat.sessionId;
+    currentInternalChat = chat;
+
+    // Highlight card
+    document.querySelectorAll('.session-card').forEach(c => {
+        c.classList.remove('active-selected');
+        if (c.getAttribute('data-id') === chat.sessionId) {
+            c.classList.add('active-selected');
+        }
+    });
+
+    // Reset pagination & message state
+    adminMessages = [];
+    adminOffset = 0;
+    adminHasMore = false;
+    adminOrder = null;
+    adminBills = [];
+    adminOrderRevisions = [];
+
+    // Header updates
+    if (chatTitleName) chatTitleName.textContent = chat.peerName;
+    if (chatTitleEmail) chatTitleEmail.textContent = chat.peerRole === 'superadmin' ? 'SuperAdmin hệ thống' : (chat.peerRole === 'agent' ? 'Agent quản lý' : 'Nhân viên Sale');
+    document.getElementById('chat-header-group-badge')?.classList.add('hide');
+    document.getElementById('chat-header-project-badge')?.classList.add('hide');
+    document.getElementById('chat-header-qr-info')?.classList.add('hide');
+
+    const chatHeaderAvatar = document.getElementById('chat-header-avatar');
+    if (chatHeaderAvatar) {
+        chatHeaderAvatar.style.display = 'block';
+        if (chat.peerAvatar) {
+            chatHeaderAvatar.innerHTML = `<img src="${escapeHtml(chat.peerAvatar)}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid rgba(99,102,241,0.4);" alt="">`;
+        } else {
+            const initial = (chat.peerName || '?')[0].toUpperCase();
+            chatHeaderAvatar.innerHTML = `<div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg, #6366f1, #a855f7);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;border:2px solid rgba(255,255,255,0.2);">${initial}</div>`;
+        }
+    }
+
+    // Permission & input controls
+    const supervisorBar = document.getElementById('chat-supervisor-bar');
+    if (supervisorBar) supervisorBar.style.display = 'none';
+
+    document.getElementById('claim-chat-btn')?.classList.add('hide');
+    document.getElementById('close-session-btn')?.classList.add('hide');
+    document.getElementById('handover-session-btn')?.classList.add('hide');
+    document.getElementById('assignee-selector-container')?.classList.add('hide');
+    document.getElementById('shift-draining-banner')?.classList.add('hide');
+    document.getElementById('delete-session-btn')?.classList.add('hide');
+
+    chatInputContainer?.classList.remove('hide');
+    chatForm?.classList.remove('hide');
+    if (chatInput) {
+        chatInput.disabled = false;
+        chatInput.classList.remove('is-supervisor-mode');
+        chatInput.placeholder = 'Nhập tin nhắn nội bộ...';
+    }
+    const sendBtn = chatForm?.querySelector('button[type="submit"]');
+    if (sendBtn) sendBtn.disabled = false;
+
+    // Load messages
+    await loadMessages(chat.sessionId);
+
+    // Mark read
+    authFetch(`${API_BASE}/api/admin/chats/${chat.sessionId}/read`, { method: 'POST' }).catch(() => {});
+    chat.unreadCount = 0;
+    renderInternalBadge();
+    if (currentCategoryTab === 'internal') {
+        renderInternalSessionsList();
+    } else if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'sale') {
+        renderSessionsList(sessionsList);
+    }
+}
+
+async function sendInternalMessage(text) {
+    if (adminIsSending) return;
+    adminIsSending = true;
+    stopAgentTyping();
+
+    chatInput.value = '';
+    resizeAgentChatInput();
+
+    const tempId = 'temp_' + Date.now();
+    const newMsgObj = {
+        id: tempId,
+        session_id: currentSessionId,
+        sender: CURRENT_ADMIN?.role || 'agent',
+        sender_admin_id: CURRENT_ADMIN?.id,
+        sender_admin_name: CURRENT_ADMIN?.full_name || CURRENT_ADMIN?.username,
+        sender_admin_avatar: CURRENT_ADMIN?.avatar_url,
+        original_text: text,
+        created_at: new Date(),
+        is_internal: true
+    };
+    adminMessages.push(newMsgObj);
+    renderAdminMessages(false, true);
+
+    try {
+        const response = await authFetch(`${API_BASE}/api/admin/internal-chats/message`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sessionId: currentSessionId,
+                text
+            })
+        });
+        const data = await response.json();
+        if (data.success && data.message) {
+            const idx = adminMessages.findIndex(m => m.id === tempId);
+            if (idx !== -1) {
+                adminMessages[idx] = data.message;
+            }
+            renderAdminMessages(false, true);
+            const ch = internalChats.find(c => c.sessionId === currentSessionId);
+            if (ch) {
+                ch.lastMessage = text;
+                ch.lastMessageTime = new Date().toISOString();
+                if (currentCategoryTab === 'internal') renderInternalSessionsList();
+                else if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'sale') renderSessionsList(sessionsList);
+            }
+        } else {
+            adminMessages = adminMessages.filter(m => m.id !== tempId);
+            renderAdminMessages(false);
+            toastError('Không thể gửi tin nhắn nội bộ: ' + (data.error || ''));
+        }
+    } catch (e) {
+        console.error('Lỗi gửi tin nhắn nội bộ:', e);
+        adminMessages = adminMessages.filter(m => m.id !== tempId);
+        renderAdminMessages(false);
+    } finally {
+        adminIsSending = false;
+    }
+}
+
 // Translation Function
 function applyTranslations(lang) {
     currentLang = lang;
@@ -583,6 +873,40 @@ function handleAdminRealtimeEvent(data) {
             loadMessages(currentSessionId);
         }
     }
+
+    // 3. Tin nhắn nội bộ real-time
+    if (data.type === 'internal_message') {
+        const { sessionId, message } = data;
+        if (sessionId && message) {
+            let chat = internalChats.find(c => c.sessionId === sessionId);
+            if (chat) {
+                chat.lastMessage = message.original_text;
+                chat.lastMessageTime = message.created_at;
+            }
+
+            if (currentSessionId === sessionId) {
+                const exists = adminMessages.some(m => m.id === message.id || (m.id && String(m.id).startsWith('temp_') && m.original_text === message.original_text));
+                if (!exists) {
+                    adminMessages.push(message);
+                    renderAdminMessages(false, true);
+                }
+                authFetch(`${API_BASE}/api/admin/chats/${sessionId}/read`, { method: 'POST' }).catch(() => {});
+            } else {
+                if (chat && Number(message.sender_admin_id) !== Number(CURRENT_ADMIN?.id)) {
+                    chat.unreadCount = (chat.unreadCount || 0) + 1;
+                    playAlertSound();
+                }
+            }
+
+            renderInternalBadge();
+            if (currentCategoryTab === 'internal') {
+                renderInternalSessionsList();
+            } else if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'sale') {
+                renderSessionsList(sessionsList);
+            }
+        }
+        return;
+    }
 }
 
 function handleMessageStatusUpdate(data) {
@@ -858,6 +1182,13 @@ function connectAdminEvents() {
             } catch (e) {}
         });
 
+        adminEventSource.addEventListener('internal_message', (event) => {
+            try {
+                const data = JSON.parse(event.data || '{}');
+                handleAdminRealtimeEvent({ type: 'internal_message', ...data });
+            } catch (e) {}
+        });
+
         adminEventSource.addEventListener('message_status_update', (event) => {
             try {
                 const data = JSON.parse(event.data || '{}');
@@ -911,6 +1242,8 @@ function connectAdminEvents() {
 
 async function fetchSessions() {
     const requestGeneration = adminAuthGeneration;
+    initSessionCategoryTabs();
+    fetchInternalChats().catch(() => {});
     try {
         const response = await authFetch(`${API_BASE}/api/admin/chats?_=${Date.now()}`);
         if (requestGeneration !== adminAuthGeneration) return;
@@ -925,7 +1258,7 @@ async function fetchSessions() {
 
         // A previous account/project may have had this chat selected. If it is
         // not visible to the current account, clear every part of the panel.
-        if (currentSessionId && !data.some(s => s.id === currentSessionId)) {
+        if (currentSessionId && !String(currentSessionId).startsWith('internal_') && !data.some(s => s.id === currentSessionId)) {
             resetActiveChatUI();
         }
 
@@ -999,12 +1332,25 @@ function renderSessionsList(sessions) {
         ? byProject.filter(s => s.status === 'closed')
         : byProject;
 
-    if (filtered.length === 0) {
-        sessionsListContainer.innerHTML = `<div class="empty-state" data-i18n="emptyConversations">${dict.emptyConversations}</div>`;
-        return;
+    sessionsListContainer.innerHTML = '';
+
+    // Nếu là Sale: ghim hội thoại của Sale với Agent quản lý lên đầu danh sách chat
+    if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'sale' && internalChats && internalChats.length > 0) {
+        const managingAgentChat = internalChats[0];
+        if (managingAgentChat) {
+            const pinnedCard = createInternalSessionCard(managingAgentChat, true);
+            sessionsListContainer.appendChild(pinnedCard);
+        }
     }
 
-    sessionsListContainer.innerHTML = '';
+    if (filtered.length === 0) {
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'empty-state';
+        emptyDiv.setAttribute('data-i18n', 'emptyConversations');
+        emptyDiv.textContent = dict.emptyConversations;
+        sessionsListContainer.appendChild(emptyDiv);
+        return;
+    }
 
     // Grouping logic by visitor_email
     const emailGroups = new Map(); // key: email (lowercase) -> { email, name, sessions: [] }
@@ -1229,6 +1575,28 @@ function applyDetailsPanelMode(session) {
 
 function applyChatPermissionUI(session) {
     if (!session) return;
+    if (session.platform === 'internal' || (session.id && String(session.id).startsWith('internal_'))) {
+        const supervisorBar = document.getElementById('chat-supervisor-bar');
+        if (supervisorBar) supervisorBar.style.display = 'none';
+        document.getElementById('claim-chat-btn')?.classList.add('hide');
+        document.getElementById('close-session-btn')?.classList.add('hide');
+        document.getElementById('handover-session-btn')?.classList.add('hide');
+        document.getElementById('assignee-selector-container')?.classList.add('hide');
+        document.getElementById('shift-draining-banner')?.classList.add('hide');
+        document.getElementById('delete-session-btn')?.classList.add('hide');
+
+        chatInputContainer?.classList.remove('hide');
+        chatForm?.classList.remove('hide');
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) {
+            chatInput.disabled = false;
+            chatInput.classList.remove('is-supervisor-mode');
+            chatInput.placeholder = 'Nhập tin nhắn nội bộ...';
+        }
+        const sendBtn = chatForm?.querySelector('button[type="submit"]');
+        if (sendBtn) sendBtn.disabled = false;
+        return;
+    }
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
     const isAgent = CURRENT_ADMIN && CURRENT_ADMIN.role === 'agent';
@@ -1344,6 +1712,16 @@ function applyChatPermissionUI(session) {
 
 
 async function selectSession(sessionId) {
+    if (sessionId && String(sessionId).startsWith('internal_')) {
+        let chat = internalChats.find(c => c.sessionId === sessionId);
+        if (!chat) {
+            await fetchInternalChats();
+            chat = internalChats.find(c => c.sessionId === sessionId);
+        }
+        if (chat) {
+            return selectInternalSession(chat);
+        }
+    }
     currentSessionId = sessionId;
     renderVisitorTypingIndicator(false);
     bindAgentChatInputEvents();
@@ -1708,7 +2086,9 @@ async function selectSession(sessionId) {
         // nơi vẽ chúng vào dòng hội thoại. Tải sau thì lượt vẽ đầu tiên không
         // có gì để vẽ, và đoạn chat đã đóng thì không còn lượt vẽ nào nữa —
         // đúng lỗi "mở đoạn chat cũ không thấy hoá đơn đâu".
-        await Promise.all([loadOrderForAdmin(sessionId), loadBillsForAdmin(sessionId)]);
+        if (!String(sessionId).startsWith('internal_')) {
+            await Promise.all([loadOrderForAdmin(sessionId), loadBillsForAdmin(sessionId)]);
+        }
         await loadMessages(sessionId);
     } catch (error) {
         console.error('Mở cuộc trò chuyện lỗi:', error);
@@ -1795,6 +2175,7 @@ function showChatLoadFailed(sessionId) {
 let adminOrderRevisions = [];
 let adminBills = [];
 async function loadBillsForAdmin(sessionId) {
+    if (String(sessionId).startsWith('internal_')) return;
     try {
         const response = await fetchWithTimeout(`${API_BASE}/api/chats/${sessionId}/bills?lang=${currentLang}`);
         adminBills = response.ok ? ((await response.json()).bills || []) : [];
@@ -2044,7 +2425,7 @@ async function loadMessages(sessionId, isLoadMore = false) {
                 recalculateAppBadge();
             }
 
-            const orderChanged = await loadOrderForAdmin(sessionId);
+            const orderChanged = String(sessionId).startsWith('internal_') ? false : await loadOrderForAdmin(sessionId);
 
             if (isDiff || hasLoadingState || orderChanged) {
                 renderAdminMessages(false);
@@ -2177,6 +2558,8 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
         return;
     }
 
+    const isInternal = currentSessionId && String(currentSessionId).startsWith('internal_');
+
     adminMessages.forEach(msg => {
         const wrapper = document.createElement('div');
         const staffOnly = msg.visible_to === 'staff';
@@ -2187,6 +2570,45 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
 
         const locale = currentLang === 'vi' ? 'vi-VN' : currentLang === 'zh' ? 'zh-CN' : currentLang === 'ru' ? 'ru-RU' : 'en-US';
         const timeStr = new Date(msg.created_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+
+        if (isInternal) {
+            const isMe = msg.sender_admin_id
+                ? (Number(msg.sender_admin_id) === Number(CURRENT_ADMIN?.id))
+                : (msg.sender === CURRENT_ADMIN?.role);
+
+            if (isMe) {
+                wrapper.className = 'message-wrapper agent';
+                wrapper.innerHTML = `
+                    <div class="msg-body-wrap">
+                        <div class="message-bubble">
+                            <div class="original-text">${escapeHtml(msg.original_text)}</div>
+                        </div>
+                        <div class="message-time"><span>${timeStr}</span></div>
+                    </div>
+                    ${renderMsgAvatarHtml(msg)}
+                `;
+            } else {
+                wrapper.className = 'message-wrapper visitor internal-peer';
+                const peerName = msg.sender_admin_name || currentInternalChat?.peerName || 'Nội bộ';
+                const peerInitial = (peerName ? peerName.trim().charAt(0) : 'N').toUpperCase();
+                const peerAvatar = msg.sender_admin_avatar || currentInternalChat?.peerAvatar;
+                const peerAvatarHtml = peerAvatar
+                    ? `<div class="msg-avatar visitor-avatar" title="${escapeHtml(peerName)}"><img src="${escapeHtml(peerAvatar)}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;"></div>`
+                    : `<div class="msg-avatar visitor-avatar" style="background:linear-gradient(135deg, #6366f1, #a855f7);color:#fff;font-weight:700;" title="${escapeHtml(peerName)}">${escapeHtml(peerInitial)}</div>`;
+                wrapper.innerHTML = `
+                    ${peerAvatarHtml}
+                    <div class="msg-body-wrap">
+                        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:3px;font-weight:600;">${escapeHtml(peerName)}</div>
+                        <div class="message-bubble">
+                            <div class="original-text">${escapeHtml(msg.original_text)}</div>
+                        </div>
+                        <div class="message-time">${timeStr}</div>
+                    </div>
+                `;
+            }
+            chatMessagesContainer.appendChild(wrapper);
+            return;
+        }
 
         const readableOrderText = (value) => {
             const text = String(value || '');
@@ -2238,12 +2660,14 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
         chatMessagesContainer.appendChild(wrapper);
     });
 
-    renderAdminInvoice();
-    renderAdminSavedBills();
-    renderAdminOrderRevisions();
-    // Đơn CHỜ XÁC NHẬN do order-console.js vẽ; đơn đã xác nhận thì hàm trên vẽ
-    // hoá đơn. Hai trạng thái loại trừ nhau nên không chồng lên nhau.
-    window.OrderConsole?.renderPending(adminOrder, chatMessagesContainer);
+    if (!isInternal) {
+        renderAdminInvoice();
+        renderAdminSavedBills();
+        renderAdminOrderRevisions();
+        // Đơn CHỜ XÁC NHẬN do order-console.js vẽ; đơn đã xác nhận thì hàm trên vẽ
+        // hoá đơn. Hai trạng thái loại trừ nhau nên không chồng lên nhau.
+        window.OrderConsole?.renderPending(adminOrder, chatMessagesContainer);
+    }
 
     if (isLoadMore) {
         const heightDiff = chatMessagesContainer.scrollHeight - previousScrollHeight;
@@ -2374,6 +2798,10 @@ async function sendMessage(e) {
     if (adminIsSending) return;
     const text = chatInput.value.trim();
     if (!text || !currentSessionId) return;
+
+    if (String(currentSessionId).startsWith('internal_')) {
+        return sendInternalMessage(text);
+    }
 
     if (voiceRecorder?.state === 'recording') {
         voiceSkipBatch = true;

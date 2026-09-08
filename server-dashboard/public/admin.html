@@ -624,6 +624,16 @@
                     <h3 data-i18n="chatListTitle">Hội thoại chat</h3>
                     <button id="refresh-sessions-btn" class="icon-btn" title="Tải lại" data-i18n-title="refreshTitle"><i class="ri-refresh-line"></i></button>
                 </div>
+                <!-- Category Tabs (Agent / SuperAdmin): Khách hàng & Nội bộ -->
+                <div class="session-category-tabs hide" id="session-category-tabs" role="tablist">
+                    <button type="button" class="sct-tab is-active" data-tab="customers" id="tab-cat-customers" role="tab">
+                        <i class="ri-chat-3-line"></i> <span>Khách hàng</span>
+                    </button>
+                    <button type="button" class="sct-tab" data-tab="internal" id="tab-cat-internal" role="tab">
+                        <i class="ri-team-line"></i> <span>Nội bộ</span>
+                        <span class="sct-badge hide" id="internal-unread-badge">0</span>
+                    </button>
+                </div>
                 <div class="session-status-filter" id="session-status-filter" role="tablist">
                     <button type="button" class="ssf-btn is-active" data-status="all" role="tab"><span class="ssf-label">Tất cả</span><span class="ssf-count" id="ssf-count-all">0</span></button>
                     <button type="button" class="ssf-btn" data-status="active" role="tab"><span class="ssf-label">Đang mở</span><span class="ssf-count" id="ssf-count-active">0</span></button>
@@ -631,6 +641,10 @@
                 </div>
                 <div class="sessions-list" id="sessions-list-container">
                     <div class="empty-state" data-i18n="loadingConversations">Đang tải cuộc hội thoại...</div>
+                </div>
+                <!-- Danh sách hội thoại nội bộ (cho Agent & SuperAdmin) -->
+                <div class="sessions-list hide" id="internal-sessions-list-container">
+                    <div class="empty-state">Đang tải cuộc trò chuyện nội bộ...</div>
                 </div>
             </aside>
 

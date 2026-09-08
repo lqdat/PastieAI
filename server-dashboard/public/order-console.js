@@ -59,7 +59,7 @@
                             <span class="order-qty">×${Number(line.quantity || 0)}</span>
                             <span class="order-line-total">${money(line.lineTotal)}</span>
                         </div>
-                        ${note ? `<p class="order-line-note"><i class="ri-sticky-note-line"></i> ${escapeHtml(note)}</p>` : ''}
+                        ${note ? `<p class="order-line-note"><i class="ri-sticky-note-line"></i> <em>(${escapeHtml(String(note).replace(/^\(|\)$/g, ''))})</em></p>` : ''}
                         <input type="text" class="order-note" data-note-for="${escapeHtml(key)}"
                                maxlength="300" value="${escapeHtml(note)}"
                                placeholder="Ghi chú cho bếp: không hành, ít cay…">

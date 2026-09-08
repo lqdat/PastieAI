@@ -52,6 +52,14 @@ function findCjkFont(language) {
   return (CJK_FONT_CANDIDATES[language] || []).find(fileExists) || null;
 }
 
+function formatBillNote(raw) {
+  if (!raw) return '';
+  const trimmed = String(raw).trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('(') && trimmed.endsWith(')')) return trimmed;
+  return `(${trimmed})`;
+}
+
 const INVOICE_I18N = {
   vi: {
     title: 'HÓA ĐƠN BÁN HÀNG', invoiceNo: 'Số hóa đơn', date: 'Ngày bán', customer: 'Khách hàng', email: 'Email', table: 'Bàn', openedAt: 'Giờ vào', printedAt: 'Giờ in', sale: 'Nhân viên',
@@ -354,10 +362,11 @@ function createInvoicePdfDataUrl(invoice, language) {
       // giữ lại được. Chữ nhỏ và nhạt hơn để không tranh chỗ với tên món.
       let noteHeight = 0;
       if (item.note) {
+        const noteText = formatBillNote(item.note);
         const noteY = y + nameHeight + 2;
         doc.fontSize(8.5).fillColor('#6f6070');
-        noteHeight = doc.heightOfString(item.note, { width: colNameW }) + 2;
-        doc.text(item.note, xName, noteY, { width: colNameW });
+        noteHeight = doc.heightOfString(noteText, { width: colNameW }) + 2;
+        doc.text(noteText, xName, noteY, { width: colNameW });
         doc.fontSize(8.7).fillColor('#222');
       }
       doc.y = y + Math.max(nameHeight, 12) + noteHeight + 7;
@@ -527,9 +536,10 @@ function createInvoiceSvg(invoice, language) {
   const text = (content, x, y, options = {}) => {
     const anchor = options.anchor ? ` text-anchor="${options.anchor}"` : '';
     const weight = options.weight ? ` font-weight="${options.weight}"` : '';
+    const fontStyle = options.style ? ` font-style="${options.style}"` : '';
     const size = options.size || 13;
     const fill = options.fill || '#2d2335';
-    parts.push(`<text x="${x}" y="${y}" font-size="${size}" fill="${fill}"${weight}${anchor}>${escapeXml(content)}</text>`);
+    parts.push(`<text x="${x}" y="${y}" font-size="${size}" fill="${fill}"${weight}${anchor}${fontStyle}>${escapeXml(content)}</text>`);
   };
   const line = (y) => parts.push(`<line x1="${PAD}" y1="${y}" x2="${W - PAD}" y2="${y}" stroke="#e6cede" stroke-width="1"/>`);
 
@@ -610,9 +620,10 @@ function createInvoiceSvg(invoice, language) {
     // Ảnh xem trước phải khớp với PDF tải về, nếu không khách sẽ tưởng hai bản
     // là hai hoá đơn khác nhau.
     if (item.note) {
-      const noteLines = wrapToWidth(item.note, 10, colNameW - 8, 2);
+      const noteText = formatBillNote(item.note);
+      const noteLines = wrapToWidth(noteText, 10, colNameW - 8, 2);
       noteLines.forEach((lineText, index) => {
-        text(lineText, xName, y - 6 + index * 12, { size: 10, fill: '#6f6070' });
+        text(lineText, xName, y - 6 + index * 12, { size: 10, fill: '#6f6070', style: 'italic' });
       });
       y += 13 + Math.max(0, noteLines.length - 1) * 12;
     }

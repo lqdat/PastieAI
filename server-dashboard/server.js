@@ -276,6 +276,9 @@ function broadcastAdminEvent(event, data) {
   for (const client of adminEventClients) {
     try {
       const admin = client.admin;
+      if (Array.isArray(event.targetAdminIds) && admin && !event.targetAdminIds.map(Number).includes(Number(admin.id))) {
+        continue;
+      }
       if (event.adminId && admin && Number(admin.id) !== Number(event.adminId) && event.type === 'session_revoked') {
         continue;
       }
@@ -1712,8 +1715,8 @@ async function checkWorkingHours(admin, graceMinutes = 0) {
   if (isWithinAnyWindow(rows, graceMinutes)) return null;
   const windows = describeWindows(rows);
   return windows
-    ? `Tài khoản của bạn chỉ được phép đăng nhập từ ${windows}.`
-    : 'Tài khoản của bạn hiện không nằm trong khung giờ làm việc.';
+    ? `Ngoài ca trực (${windows}), bạn chỉ có thể xem thông tin mà không thể gửi tin nhắn.`
+    : 'Ngoài ca trực, bạn chỉ có thể xem thông tin mà không thể gửi tin nhắn.';
 }
 
 // Thời gian gia hạn hoàn tất phiên dở dang khi hết ca (mặc định 25 phút)
@@ -1750,12 +1753,14 @@ async function requireWorkingHours(req, res, next) {
       }
     }
 
-    // 3. Ngoài ca và không có phiên chat dở trong thời gian gia hạn -> Đăng xuất an toàn
-    const message = onShiftMsg;
-    if (req.admin?.token) {
-      await db.query('DELETE FROM admin_sessions WHERE token = $1', [req.admin.token]).catch(() => {});
+    // 3. Ngoài ca trực:
+    // Cho phép xem thông tin (GET), chỉ chặn các thao tác gửi tin / can thiệp (POST/PUT/DELETE)
+    // KHÔNG đăng xuất hay xóa token phiên của Sale.
+    req.isOnShift = false;
+    if (req.method === 'GET' || req.path.endsWith('/read')) {
+      return next();
     }
-    return res.status(403).json({ error: message, code: 'OUT_OF_HOURS' });
+    return res.status(403).json({ error: onShiftMsg, code: 'OUT_OF_HOURS' });
   } catch (error) {
     console.error('Working-hours check error:', error);
     return next(); // lỗi tra cứu giờ không được khóa người đang làm việc
@@ -1869,7 +1874,7 @@ function buildQrGreeting({ lang, guestName, venueName, placeLabel }) {
     vi: {
       hi: name ? `Xin chào ${name}!` : 'Xin chào!',
       at: place ? ` tại ${place}` : '',
-      body: (v, at) => `${v ? v + ' r' : 'R'}ất vui được đón bạn${at}. Bạn cần gì cứ nhắn ngay tại đây nhé.`,
+      body: (v, at) => `${v ? v + ' r' : 'R'}ất vui được đón bạn${at}. Chúng tôi có thể giúp gì cho bạn ? Nhắn tin cho chúng tôi ngay nhé !`,
     },
     en: {
       hi: name ? `Hi ${name}!` : 'Hello!',
@@ -2637,7 +2642,7 @@ async function blockStaffOutOfHours(req, res, sender, sessionId = null) {
       }
     }
 
-    await db.query('DELETE FROM admin_sessions WHERE token = $1', [token]).catch(() => {});
+    // Ngoài ca trực: chỉ chặn gửi tin nhắn, KHÔNG xóa phiên đăng nhập của Sale
     res.status(403).json({ error: onShiftMsg, code: 'OUT_OF_HOURS' });
     return true;
   } catch (error) {
@@ -5449,18 +5454,8 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null, 
   }
 
   // 4. Tạo token session
-    // Chặn cấp token ngoài khung giờ (mục 8 kế hoạch). Không có đệm ở bước đăng
-    // nhập: đệm chỉ dành cho người đang làm dở, không phải để vào ca muộn.
-  // Chặn cấp token ngoài khung giờ (mục 8 kế hoạch). Không có đệm ở bước đăng
-  // nhập: đệm chỉ dành cho người đang làm dở, không phải để vào ca muộn.
-  // Ném lỗi thay vì trả về object vì cả hai nơi gọi hàm này đều bắt lỗi theo
-  // error.status, giống nhánh tài khoản DealPhuQuoc bị khóa ở trên.
-  const hoursError = await checkWorkingHours(admin);
-  if (hoursError) {
-    const err = new Error(hoursError);
-    err.status = 403;
-    throw err;
-  }
+  // Không giới hạn đăng nhập theo ca trực nữa — Sale có thể đăng nhập bất cứ lúc nào để xem menu/bill/thông tin.
+  // Thao tác gửi tin nhắn sẽ bị chặn khi ngoài ca trực.
 
   // Lớp 2 license: kiểm tra thiết bị trước khi cấp token. Ném lỗi thay vì trả
   // object, vì cả hai nơi gọi hàm này đều bắt lỗi theo error.status.
@@ -7017,9 +7012,8 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
       ) latest_order ON TRUE
     `;
 
-    // Chỉ hiện multichannel session khi đã chuyển sang agent (show_in_dashboard=true)
-    // Live chat widget (platform='widget' hoặc null) luôn hiện
-    const conditions = [`(s.platform IS NULL OR s.platform = 'widget' OR s.show_in_dashboard = true)`];
+    // Không trộn lẫn chat nội bộ vào danh sách chat khách hàng
+    const conditions = [`COALESCE(s.platform, 'widget') <> 'internal'`, `(s.platform IS NULL OR s.platform = 'widget' OR s.show_in_dashboard = true)`];
     // Phân quyền: tài khoản gắn project (không phải superadmin) BẮT BUỘC chỉ xem project của mình.
     const scopedProject = req.admin.role !== 'superadmin' && req.admin.project_id ? req.admin.project_id : projectId;
     if (scopedProject) {
@@ -7124,6 +7118,25 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
   const offset = parseInt(req.query.offset) || 0;
 
   try {
+    if (sessionId.startsWith('internal_')) {
+      let allowed = isSuperAdmin(req.admin);
+      if (!allowed) {
+        if (sessionId.includes(`agent_${req.admin.id}`)) allowed = true;
+        if (sessionId.includes(`sale_${req.admin.id}`)) allowed = true;
+      }
+      if (!allowed) return res.status(403).json({ error: 'Bạn không có quyền xem hội thoại nội bộ này.' });
+
+      const msgs = await db.query(
+        `SELECT m.*, a.full_name AS sender_admin_name, a.avatar_url AS sender_admin_avatar, a.role AS sender_admin_role
+           FROM messages m
+           LEFT JOIN admins a ON a.id = m.sender_admin_id
+          WHERE m.session_id = $1
+          ORDER BY m.created_at ASC`,
+        [sessionId]
+      );
+      return res.json({ messages: msgs.rows, total: msgs.rows.length });
+    }
+
     // Check if session has a locked admin_language
     const sessionRes = await db.query('SELECT admin_language, project_id, assigned_admin_id, group_id, claimed_by_admin_id, qr_account_id FROM sessions WHERE id = $1', [sessionId]);
     if (sessionRes.rows.length === 0) {
@@ -11809,6 +11822,336 @@ app.put('/api/admin/orders/:orderId/notes', checkAdminAuth, requireWorkingHours,
   } catch (error) {
     console.error('Update order notes error:', error);
     res.status(500).json({ error: 'Không lưu được ghi chú.' });
+  }
+});
+
+// --- Agent toàn quyền quản lý bill: thêm, xóa, sửa giá món ---
+app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, res) => {
+  if (isSale(req.admin)) {
+    return res.status(403).json({ error: 'Chỉ Agent quản lý hoặc SuperAdmin mới có quyền chỉnh sửa món và giá trong bill.' });
+  }
+  const { items } = req.body || {};
+  if (!Array.isArray(items)) {
+    return res.status(400).json({ error: 'items phải là một mảng danh sách món.' });
+  }
+
+  try {
+    const orderRes = await db.query('SELECT * FROM chat_orders WHERE id = $1', [req.params.orderId]);
+    const order = orderRes.rows[0];
+    if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+    if (order.status === 'paid') {
+      return res.status(400).json({ error: 'Không thể chỉnh sửa đơn hàng đã hoàn tất thanh toán.' });
+    }
+    if (!canAccessProject(req.admin, order.project_id)) {
+      return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa đơn hàng của dự án này.' });
+    }
+
+    const prevItems = Array.isArray(order.items) ? order.items : [];
+    const prevMap = new Map();
+    prevItems.forEach((p, idx) => {
+      const k = p.menuItemId != null ? `id_${p.menuItemId}` : `name_${p.name || idx}`;
+      prevMap.set(k, p);
+    });
+
+    const formatNote = (note) => {
+      if (!note) return null;
+      const trimmed = String(note).trim();
+      if (!trimmed) return null;
+      if (trimmed.startsWith('(') && trimmed.endsWith(')')) return trimmed;
+      return `(${trimmed})`;
+    };
+
+    const nextItems = items.map((item, index) => {
+      const k = item.menuItemId != null ? `id_${item.menuItemId}` : `name_${item.name || index}`;
+      const prev = prevMap.get(k);
+      let note = item.note ? String(item.note).trim() : '';
+
+      const unitPrice = Math.max(0, Number(item.unitPrice ?? item.price ?? 0));
+      const quantity = Math.max(1, Number(item.quantity || 1));
+      const discount = Math.max(0, Number(item.discount || 0));
+      const lineTotal = Math.max(0, unitPrice * quantity - discount);
+
+      if (!prev) {
+        // Món mới do Agent thêm
+        if (!note.toLowerCase().includes('agent thêm')) {
+          note = note ? `Agent thêm: ${note}` : 'Agent thêm món';
+        }
+      } else {
+        // Món cũ được sửa giá
+        const prevPrice = Math.max(0, Number(prev.unitPrice ?? prev.price ?? 0));
+        if (prevPrice !== unitPrice && !note.toLowerCase().includes('agent sửa giá')) {
+          const priceChange = `Agent sửa giá: ${prevPrice.toLocaleString('vi-VN')}₫ -> ${unitPrice.toLocaleString('vi-VN')}₫`;
+          note = note ? `${note} | ${priceChange}` : priceChange;
+        }
+      }
+
+      return {
+        ...item,
+        name: String(item.name || 'Món').trim(),
+        unitPrice,
+        quantity,
+        discount,
+        lineTotal,
+        note: formatNote(note)
+      };
+    });
+
+    const subtotal = nextItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
+    const invoiceObj = typeof order.invoice === 'object' && order.invoice !== null ? order.invoice : {};
+    const chargesObj = typeof order.charges === 'object' && order.charges !== null ? order.charges : {};
+    const vatRate = Number(chargesObj.vatRate || invoiceObj.vatRate || 10);
+    const vatAmount = Math.round(subtotal * vatRate / 100);
+    const totalAmount = subtotal + vatAmount;
+
+    invoiceObj.items = nextItems;
+    invoiceObj.subtotal = subtotal;
+    invoiceObj.vatRate = vatRate;
+    invoiceObj.vatAmount = vatAmount;
+    invoiceObj.totalAmount = totalAmount;
+
+    const updated = await db.query(
+      `UPDATE chat_orders
+          SET items = $1, total_amount = $2, invoice = $3,
+              notes_updated_by_admin_id = $4, notes_updated_at = NOW(), updated_at = NOW()
+        WHERE id = $5 RETURNING *`,
+      [JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), req.admin.id, order.id]
+    );
+
+    // Ghi vào chat_order_bills nếu đã có bill
+    const billCheck = await db.query('SELECT MAX(version) AS max_v FROM chat_order_bills WHERE order_id = $1', [order.id]);
+    if (billCheck.rows.length && billCheck.rows[0].max_v != null) {
+      const nextV = Number(billCheck.rows[0].max_v) + 1;
+      await db.query(
+        `INSERT INTO chat_order_bills (session_id, order_id, version, items, total_amount, invoice, confirmed_by_admin_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [order.session_id, order.id, nextV, JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), req.admin.id]
+      ).catch(() => {});
+    }
+
+    notifyAdminRealtime('order_update', {
+      sessionId: order.session_id,
+      orderId: order.id,
+      status: order.status,
+      projectId: order.project_id
+    });
+
+    res.json({ success: true, order: updated.rows[0] });
+  } catch (error) {
+    console.error('Agent update order items error:', error);
+    res.status(500).json({ error: 'Không thể cập nhật món trong bill: ' + error.message });
+  }
+});
+
+// --- Kênh chat nội bộ (Agent - SuperAdmin & Agent - Sale) ---
+
+async function ensureInternalSession(sessionId, title, projectId = 'qr-concierge') {
+  await db.query(
+    `INSERT INTO sessions (id, project_id, visitor_name, platform, status, expires_at, show_in_dashboard)
+     VALUES ($1, $2, $3, 'internal', 'active', NULL, FALSE)
+     ON CONFLICT (id) DO UPDATE SET status = 'active', expires_at = NULL`,
+    [sessionId, projectId || 'qr-concierge', title]
+  );
+}
+
+app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
+  try {
+    const current = req.admin;
+    const chats = [];
+
+    if (current.role === 'agent') {
+      // 1. Hội thoại với SuperAdmin
+      const superAdmin = (await db.query(
+        "SELECT id, full_name, avatar_url, role FROM admins WHERE role = 'superadmin' AND is_active = TRUE ORDER BY id ASC LIMIT 1"
+      )).rows[0];
+
+      if (superAdmin) {
+        const sId = `internal_agent_${current.id}_superadmin`;
+        await ensureInternalSession(sId, `SuperAdmin (${superAdmin.full_name})`, current.project_id);
+        chats.push({
+          sessionId: sId,
+          peerId: superAdmin.id,
+          peerName: superAdmin.full_name || 'SuperAdmin',
+          peerRole: 'superadmin',
+          peerAvatar: superAdmin.avatar_url || null,
+          badgeLabel: 'SuperAdmin'
+        });
+      }
+
+      // 2. Hội thoại với mỗi Sale do Agent quản lý
+      const sales = (await db.query(
+        "SELECT id, full_name, avatar_url, role, username FROM admins WHERE role = 'sale' AND managed_by_admin_id = $1 AND is_active = TRUE ORDER BY full_name ASC",
+        [current.id]
+      )).rows;
+
+      for (const sale of sales) {
+        const sId = `internal_agent_${current.id}_sale_${sale.id}`;
+        await ensureInternalSession(sId, `Sale (${sale.full_name})`, current.project_id);
+        chats.push({
+          sessionId: sId,
+          peerId: sale.id,
+          peerName: sale.full_name || sale.username,
+          peerRole: 'sale',
+          peerAvatar: sale.avatar_url || null,
+          badgeLabel: 'Sale'
+        });
+      }
+    } else if (current.role === 'sale') {
+      // Hội thoại với Agent quản lý
+      const manager = (await db.query(
+        "SELECT a.id, a.full_name, a.avatar_url, a.role FROM admins s JOIN admins a ON a.id = s.managed_by_admin_id WHERE s.id = $1 AND a.is_active = TRUE",
+        [current.id]
+      )).rows[0];
+
+      if (manager) {
+        const sId = `internal_agent_${manager.id}_sale_${current.id}`;
+        await ensureInternalSession(sId, `Agent Quản Lý (${manager.full_name})`, current.project_id);
+        chats.push({
+          sessionId: sId,
+          peerId: manager.id,
+          peerName: manager.full_name || 'Agent Quản Lý',
+          peerRole: 'agent',
+          peerAvatar: manager.avatar_url || null,
+          badgeLabel: 'Agent Quản Lý'
+        });
+      }
+    } else if (current.role === 'superadmin') {
+      // SuperAdmin thấy danh sách tất cả Agent
+      const agents = (await db.query(
+        "SELECT id, full_name, avatar_url, role, project_id FROM admins WHERE role = 'agent' AND is_active = TRUE ORDER BY full_name ASC"
+      )).rows;
+
+      for (const agent of agents) {
+        const sId = `internal_agent_${agent.id}_superadmin`;
+        await ensureInternalSession(sId, `Agent (${agent.full_name})`, agent.project_id);
+        chats.push({
+          sessionId: sId,
+          peerId: agent.id,
+          peerName: agent.full_name || 'Agent',
+          peerRole: 'agent',
+          peerAvatar: agent.avatar_url || null,
+          badgeLabel: 'Agent'
+        });
+      }
+    }
+
+    // Nạp tin nhắn cuối và số tin chưa đọc cho từng chat
+    for (const chat of chats) {
+      const lastMsg = (await db.query(
+        `SELECT original_text, created_at, sender, sender_admin_id FROM messages WHERE session_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [chat.sessionId]
+      )).rows[0];
+
+      const readReceipt = (await db.query(
+        `SELECT last_seen_at FROM session_read_receipts WHERE session_id = $1 AND admin_id = $2`,
+        [chat.sessionId, current.id]
+      )).rows[0];
+
+      const unreadCount = (await db.query(
+        `SELECT COUNT(*)::int AS count FROM messages
+          WHERE session_id = $1
+            AND (sender_admin_id IS NULL OR sender_admin_id <> $2)
+            AND created_at > COALESCE($3, to_timestamp(0))`,
+        [chat.sessionId, current.id, readReceipt?.last_seen_at || null]
+      )).rows[0]?.count || 0;
+
+      chat.lastMessage = lastMsg?.original_text || '';
+      chat.lastMessageTime = lastMsg?.created_at || null;
+      chat.lastSender = lastMsg?.sender || null;
+      chat.unreadCount = unreadCount;
+    }
+
+    res.json({ success: true, chats });
+  } catch (error) {
+    console.error('List internal chats error:', error);
+    res.status(500).json({ error: 'Không thể tải danh sách chat nội bộ.' });
+  }
+});
+
+app.post('/api/admin/internal-chats/message', checkAdminAuth, async (req, res) => {
+  const { sessionId, text } = req.body || {};
+  if (!sessionId || !text || !String(text).trim()) {
+    return res.status(400).json({ error: 'Thiếu sessionId hoặc text tin nhắn.' });
+  }
+
+  try {
+    const current = req.admin;
+    let targetAdminId = null;
+
+    if (sessionId.endsWith('_superadmin')) {
+      const agentIdMatch = sessionId.match(/internal_agent_(\d+)_superadmin/);
+      if (!agentIdMatch) return res.status(400).json({ error: 'Session ID không hợp lệ.' });
+      const agentId = Number(agentIdMatch[1]);
+
+      if (current.role === 'superadmin') {
+        targetAdminId = agentId;
+      } else if (current.role === 'agent' && Number(current.id) === agentId) {
+        const sa = (await db.query("SELECT id FROM admins WHERE role = 'superadmin' LIMIT 1")).rows[0];
+        targetAdminId = sa ? sa.id : null;
+      } else {
+        return res.status(403).json({ error: 'Bạn không có quyền tham gia hội thoại này.' });
+      }
+    } else if (sessionId.includes('_sale_')) {
+      const match = sessionId.match(/internal_agent_(\d+)_sale_(\d+)/);
+      if (!match) return res.status(400).json({ error: 'Session ID không hợp lệ.' });
+      const agentId = Number(match[1]);
+      const saleId = Number(match[2]);
+
+      if (Number(current.id) === agentId) {
+        targetAdminId = saleId;
+      } else if (Number(current.id) === saleId) {
+        targetAdminId = agentId;
+      } else if (current.role === 'superadmin') {
+        targetAdminId = agentId;
+      } else {
+        return res.status(403).json({ error: 'Bạn không có quyền tham gia hội thoại này.' });
+      }
+    } else {
+      return res.status(400).json({ error: 'Session ID nội bộ không hợp lệ.' });
+    }
+
+    await ensureInternalSession(sessionId, 'Nội bộ', current.project_id);
+
+    const inserted = await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id)
+       VALUES ($1, $2, $3, $3, 'vi', $4) RETURNING *`,
+      [sessionId, current.role, String(text).trim(), current.id]
+    );
+    const msg = inserted.rows[0];
+
+    // Cập nhật read receipt cho người gửi
+    await db.query(
+      `INSERT INTO session_read_receipts (session_id, admin_id, last_seen_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (session_id, admin_id) DO UPDATE SET last_seen_at = NOW()`,
+      [sessionId, current.id]
+    );
+
+    const msgPayload = {
+      id: msg.id,
+      session_id: sessionId,
+      sender: current.role,
+      sender_admin_id: current.id,
+      sender_admin_name: current.full_name,
+      sender_admin_avatar: current.avatar_url,
+      original_text: msg.original_text,
+      translated_text: msg.translated_text,
+      created_at: msg.created_at,
+      is_internal: true
+    };
+
+    const targetIds = [Number(current.id)];
+    if (targetAdminId) targetIds.push(Number(targetAdminId));
+
+    broadcastAdminEvent('internal_message', {
+      targetAdminIds: targetIds,
+      sessionId,
+      message: msgPayload
+    });
+
+    res.json({ success: true, message: msgPayload });
+  } catch (error) {
+    console.error('Send internal message error:', error);
+    res.status(500).json({ error: 'Không thể gửi tin nhắn nội bộ: ' + error.message });
   }
 });
 
