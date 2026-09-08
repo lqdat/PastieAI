@@ -394,28 +394,22 @@
     text-align: center;
 }
 
-.pastie-msg-meta {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin-top: 5px;
-}
-.visitor .pastie-msg-meta {
-    justify-content: flex-end;
-}
-.visitor .pastie-msg-time {
-    font-size: 9.5px;
-    color: rgba(255, 255, 255, 0.88);
-    margin-top: 0;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
-}
-.agent .pastie-msg-meta, .ai .pastie-msg-meta {
-    justify-content: flex-end;
-}
-.agent .pastie-msg-time, .ai .pastie-msg-time {
+.pastie-msg-time {
     font-size: 9.5px;
     color: var(--widget-text-sec);
-    margin-top: 0;
+    margin-top: 4px;
+}
+.visitor .pastie-msg-time {
+    align-self: flex-end;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.agent .pastie-msg-time {
+    align-self: flex-start;
+}
+.ai .pastie-msg-time {
+    align-self: flex-start;
 }
 
 /* --- Message Status Ticks --- */
@@ -423,32 +417,26 @@
     display: inline-flex;
     align-items: center;
     gap: 3px;
+    color: #a397a4;
     line-height: 1;
     transition: all 0.2s ease;
 }
-.visitor .pastie-msg-status {
-    color: rgba(255, 255, 255, 0.95);
+.pastie-msg-status.is-sent {
+    color: #a397a4;
 }
-.visitor .pastie-msg-status.is-sent {
-    color: rgba(255, 255, 255, 0.78);
+.pastie-msg-status.is-delivered {
+    color: #6b7280;
 }
-.visitor .pastie-msg-status.is-delivered {
-    color: rgba(255, 255, 255, 0.95);
+.pastie-msg-status.is-seen {
+    color: var(--widget-accent);
 }
-.visitor .pastie-msg-status.is-seen {
-    color: #ffffff;
+.pastie-msg-status.is-seen svg {
+    color: var(--widget-accent);
 }
-.visitor .pastie-msg-status.is-seen svg {
-    color: #ffffff;
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
-}
-.visitor .pastie-msg-status.is-seen small {
-    font-size: 8.5px;
+.pastie-msg-status.is-seen small {
+    font-size: 9px;
     font-weight: 750;
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.28);
-    padding: 1px 5px;
-    border-radius: 999px;
+    color: var(--widget-accent);
     letter-spacing: 0.2px;
 }
 

@@ -1085,7 +1085,7 @@
                 const isDiff = state.messages.length !== merged.length ||
                                state.messages.some((m, idx) => {
                                    const o = merged[idx];
-                                   return !o || o.id !== m.id || o.original_text !== m.original_text || o.translated_text !== m.translated_text || o.status !== m.status || o.seen_at !== m.seen_at;
+                                   return !o || o.id !== m.id || o.original_text !== m.original_text || o.translated_text !== m.translated_text;
                                });
 
                 state.messages = merged;
@@ -1102,19 +1102,6 @@
                         updateHeaderActionButton();
                     }
                 } catch {}
-
-                // Nếu đang mở khung chat, tự động đánh dấu đã xem các tin nhắn của nhân viên/AI
-                if (state.isOpen && state.sessionId) {
-                    const lastStaffMsg = [...merged].reverse().find(m => m.sender === 'agent' || m.sender === 'ai');
-                    if (lastStaffMsg && (!state.lastSeenAgentMsgId || Number(lastStaffMsg.id) > state.lastSeenAgentMsgId)) {
-                        state.lastSeenAgentMsgId = Number(lastStaffMsg.id);
-                        fetch(`${CONFIG.BACKEND_URL || BASE_URL}/api/chats/${state.sessionId}/seen`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ lastSeenMessageId: lastStaffMsg.id })
-                        }).catch(() => {});
-                    }
-                }
 
                 if (isDiff) {
                     renderMessageThread(false);
@@ -1202,11 +1189,11 @@
                 } else {
                     tickHtml = `<span class="pastie-msg-status is-sent" title="Đã gửi"><svg width="11" height="9" viewBox="0 0 12 10" fill="none"><path d="M1 5L4.5 8.5L11 1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
                 }
-                displayHtml = `<div class="pastie-msg-bubble">${attachmentHtml}<div>${escapeHtml(primaryText)}</div><div class="pastie-msg-meta"><span class="pastie-msg-time">${timeStr}</span>${tickHtml}</div></div>`;
+                displayHtml = `<div class="pastie-msg-bubble">${attachmentHtml}<div>${escapeHtml(primaryText)}</div></div><div class="pastie-msg-time"><span>${timeStr}</span>${tickHtml}</div>`;
             } else if (msg.sender === 'agent' || msg.sender === 'ai') {
                 const primaryText = msg.translated_text || msg.original_text;
                 const attachmentHtml = renderAttachmentHtml(msg);
-                displayHtml = `<div class="pastie-msg-bubble">${attachmentHtml}<div>${escapeHtml(primaryText)}</div><div class="pastie-msg-meta"><span class="pastie-msg-time">${timeStr}</span></div></div>`;
+                displayHtml = `<div class="pastie-msg-bubble">${attachmentHtml}<div>${escapeHtml(primaryText)}</div></div><div class="pastie-msg-time">${timeStr}</div>`;
             } else {
                 const primaryText = msg.translated_text || msg.original_text;
                 displayHtml = `<div class="pastie-msg-bubble"><div>${escapeHtml(primaryText)}</div></div>`;
