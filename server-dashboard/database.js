@@ -307,6 +307,8 @@ async function initializeDatabase() {
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS operator_no INT;`);
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS qr_account_id INT;`);
     await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;`);
+    await query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS active_identity_token VARCHAR(255);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_sessions_active_customer ON sessions(project_id, LOWER(visitor_email), status);`);
 
     await query(`
       CREATE TABLE IF NOT EXISTS qr_chat_accounts (

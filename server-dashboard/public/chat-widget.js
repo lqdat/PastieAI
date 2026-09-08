@@ -377,6 +377,15 @@
                     <div class="pastie-chat-view" id="view-chat" style="padding: 0;">
                         <div class="pastie-chat-thread" id="pastie-chat-thread"></div>
                         <div class="pastie-chat-footer">
+                            <div id="pastie-typing-indicator-bar" class="pastie-typing-bar pastie-chat-hide">
+                                <span class="pastie-typing-pen-icon">✍</span>
+                                <span class="pastie-typing-bar-text">Đang nhập...</span>
+                                <span class="pastie-typing-dots">
+                                    <span class="pastie-typing-dot"></span>
+                                    <span class="pastie-typing-dot"></span>
+                                    <span class="pastie-typing-dot"></span>
+                                </span>
+                            </div>
                             <a id="pastie-wa-link" class="pastie-wa-link pastie-chat-hide" target="_blank" rel="noopener">
                                 <i class="ri-whatsapp-line"></i> <span id="pastie-wa-label">Chat qua WhatsApp</span>
                             </a>
@@ -972,6 +981,14 @@
                 body: formData,
             });
 
+            if (res.status === 409) {
+                storage.remove('session_id');
+                state.sessionId = null;
+                state.messages = [];
+                alert('Tài khoản của bạn đã được đăng nhập trên một thiết bị khác. Phiên kết nối trên thiết bị này đã kết thúc.');
+                switchScreen('welcome');
+                return;
+            }
             if (res.status === 404 || res.status === 410) {
                 await autoRestartAISession();
                 return;
@@ -1189,15 +1206,23 @@
         const lastMsg = state.messages[state.messages.length - 1];
         const isAiGenerating = lastMsg && lastMsg.sender === 'visitor' && state.mode === 'ai';
         const isHumanAgentTyping = !!state.agentTyping?.isTyping;
+        const typingBar = document.getElementById('pastie-typing-indicator-bar');
 
-        if (isAiGenerating || isHumanAgentTyping) {
+        if (isHumanAgentTyping) {
             state.isTyping = true;
-            const typingLabel = isHumanAgentTyping
-                ? (state.agentTyping.name ? `${state.agentTyping.name} ${t.typingText || 'đang nhập...'}` : (t.typingText || 'Nhân viên đang nhập...'))
-                : t.chatThinking;
-            appendTypingBubble(typingLabel);
+            if (typingBar) {
+                const barText = typingBar.querySelector('.pastie-typing-bar-text');
+                if (barText) barText.textContent = t.typingText || 'Đang nhập...';
+                typingBar.classList.remove('pastie-chat-hide');
+            }
+            removeTypingBubble();
+        } else if (isAiGenerating) {
+            state.isTyping = true;
+            if (typingBar) typingBar.classList.add('pastie-chat-hide');
+            appendTypingBubble(t.chatThinking);
         } else {
             state.isTyping = false;
+            if (typingBar) typingBar.classList.add('pastie-chat-hide');
             removeTypingBubble();
         }
 
