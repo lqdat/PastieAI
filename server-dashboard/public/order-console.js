@@ -146,9 +146,12 @@
         if (busyOrderId) return;
         setBusy(orderId, true);
         try {
-            // Lưu ghi chú TRƯỚC khi xác nhận. Xác nhận là lúc bếp nhận đơn — ghi
-            // chú đến sau thì món đã lên chảo rồi.
-            await saveNotes(orderId, { quiet: true });
+            // Lưu ghi chú TRƯỚC khi xác nhận nếu có ghi chú đang soạn dở. Xác nhận là lúc
+            // bếp nhận đơn — ghi chú đến sau thì món đã lên chảo rồi.
+            const hasDraft = editingOrderId === orderId || [...noteDraft.keys()].some((k) => k.startsWith(`${orderId}::`));
+            if (hasDraft) {
+                await saveNotes(orderId, { quiet: true });
+            }
             await orderFetch(`${orderId}/confirm`, { method: 'POST' });
             showToast('Đã xác nhận. Bếp đã nhận đơn và bill tạm tính đã gửi khách.', 'success');
         } catch (error) {

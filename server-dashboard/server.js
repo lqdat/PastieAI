@@ -4789,7 +4789,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   // moi don dang cho.
   if (order.status === 'pending_confirm') {
     invoice = null;
-  } else if (cached && Number(cached.orderStamp) === orderStamp && Number(cached.translationVersion) === 4) {
+  } else if (cached && (Number(cached.orderStamp) === orderStamp || Math.abs(Number(cached.orderStamp) - orderStamp) < 5000) && Number(cached.translationVersion) === 4) {
     invoice = cached.invoice;
   } else {
     // TÊN CƠ SỞ VÀ TÊN BÀN CŨNG PHẢI DỊCH.
@@ -11815,6 +11815,21 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
       order.order_code
     );
 
+    const targetLang = invoiceLanguageFor(session, session?.detected_language || 'vi');
+    let initialRender = {};
+    try {
+      const initialSvg = invoiceHelper.createInvoiceSvgDataUrl(invoice, targetLang);
+      if (initialSvg) {
+        initialRender[targetLang] = {
+          orderStamp: Date.now(),
+          translationVersion: 4,
+          invoice: { ...invoice, svgDataUrl: initialSvg, renderType: 'pdf', generated: true, renderedLanguage: targetLang }
+        };
+      }
+    } catch (renderErr) {
+      console.error('[Invoice] Không thể pre-cache SVG:', renderErr.message);
+    }
+
     const client = await db.pool.connect();
     let updated;
     try {
@@ -11851,12 +11866,12 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
 
       const result = await client.query(
         `UPDATE chat_orders
-            SET status = 'awaiting_payment', invoice = $2, invoice_render = '{}'::jsonb,
+            SET status = 'awaiting_payment', invoice = $2, invoice_render = $4,
                 confirmed_by_admin_id = $3, confirmed_at = NOW(), bill_sent_at = NOW(),
                 payment_paused_at = NULL, payment_paused_ms = 0, updated_at = NOW()
           WHERE id = $1 AND status = 'pending_confirm'
           RETURNING *`,
-        [order.id, JSON.stringify(invoice), req.admin.id]
+        [order.id, JSON.stringify(invoice), req.admin.id, JSON.stringify(initialRender)]
       );
       // Đơn đã bị người khác xử lý xen vào giữa: trả tồn lại bằng cách huỷ cả
       // giao dịch, không được để tồn bị trừ mà đơn thì không đổi trạng thái.

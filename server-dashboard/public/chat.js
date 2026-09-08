@@ -2735,34 +2735,44 @@ function renderAdminInvoice() {
     const pdf = invoice.pdfUrl || invoice.pdfDataUrl || '';
     if (!preview && !pdf) return;
 
+    const dict = (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[currentLang]) || {};
     const statusLabels = {
-        pending_confirm: 'Chờ xác nhận',
-        awaiting_payment: 'Chờ thanh toán',
-        paid: 'Đã thanh toán',
-        rejected: 'Đã từ chối',
-        superseded: 'Đã thay bằng đơn mới',
+        pending_confirm: dict.invoiceStatusPending || 'Chờ xác nhận',
+        awaiting_payment: dict.invoiceStatusAwaiting || 'Chờ thanh toán',
+        paid: dict.invoiceStatusPaid || 'Đã thanh toán',
+        rejected: dict.invoiceStatusRejected || 'Đã từ chối',
+        superseded: dict.invoiceStatusSuperseded || 'Đã thay bằng đơn mới',
     };
-    const methodLabels = { cash: 'Tiền mặt', bank_qr: 'Chuyển khoản QR', card: 'Thẻ', room_charge: 'Cộng vào tiền phòng', pay_later: 'Thanh toán sau' };
+    const methodLabels = {
+        cash: dict.payMethodCash || 'Tiền mặt',
+        bank_qr: dict.payMethodBankQr || 'Chuyển khoản QR',
+        card: dict.payMethodCard || 'Thẻ',
+        room_charge: dict.payMethodRoomCharge || 'Cộng vào tiền phòng',
+        pay_later: dict.payMethodPayLater || 'Thanh toán sau',
+    };
     const methodText = adminOrder.payment_method ? methodLabels[adminOrder.payment_method] || adminOrder.payment_method : '';
     const paymentSelected = adminOrder.status === 'awaiting_payment' && !!methodText;
+    const chosenLabel = dict.invoiceChosen || 'Đã chọn';
     const statusText = paymentSelected
-        ? `Đã chọn ${methodText}`
+        ? `${chosenLabel} ${methodText}`
         : (statusLabels[adminOrder.status] || adminOrder.status || '');
     const statusClass = adminOrder.status === 'paid' ? 'is-paid' : (paymentSelected ? 'is-selected' : 'is-waiting');
     const totalText = new Intl.NumberFormat('vi-VN').format(Number(adminOrder.total_amount || 0));
+    const kickerText = dict.invoiceSentToCustomer || 'Hóa đơn đã gửi khách';
+    const openPdfText = dict.invoiceOpenPdf || 'Mở PDF';
 
     const wrapper = document.createElement('div');
     wrapper.className = 'admin-invoice-block';
     wrapper.innerHTML = `
         <div class="admin-invoice-head">
-            <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> Hóa đơn đã gửi khách</span>
+            <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> ${escapeHtml(kickerText)}</span>
             <span class="admin-invoice-status ${statusClass}">${escapeHtml(statusText)}</span>
         </div>
-        ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(pdf || preview)}" data-preview-type="document" data-preview-title="Hóa đơn"><img src="${escapeHtml(preview)}" alt="Hóa đơn"></button>` : ''}
+        ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(pdf || preview)}" data-preview-type="document" data-preview-title="${escapeHtml(kickerText)}"><img src="${escapeHtml(preview)}" alt="${escapeHtml(kickerText)}"></button>` : ''}
         <div class="admin-invoice-meta">
             <span><strong>${escapeHtml(totalText)} ₫</strong></span>
             ${methodText ? `<span><i class="ri-bank-card-line"></i> ${escapeHtml(methodText)}</span>` : ''}
-            ${pdf ? `<button type="button" class="attachment-preview-trigger admin-invoice-open" data-preview-url="${escapeHtml(pdf)}" data-preview-type="document" data-preview-title="Hóa đơn"><i class="ri-file-pdf-2-line"></i> Mở PDF</button>` : ''}
+            ${pdf ? `<button type="button" class="attachment-preview-trigger admin-invoice-open" data-preview-url="${escapeHtml(pdf)}" data-preview-type="document" data-preview-title="${escapeHtml(kickerText)}"><i class="ri-file-pdf-2-line"></i> ${escapeHtml(openPdfText)}</button>` : ''}
         </div>
     `;
     // Mốc của hoá đơn là lúc GỬI BILL cho khách, không phải lúc tạo đơn: giữa
