@@ -910,6 +910,9 @@ closeSessionBtn?.addEventListener('click', closeActiveSession);
 deleteSessionBtn?.addEventListener('click', deleteActiveSession);
 
 chatForm?.addEventListener('submit', sendMessage);
+if (typeof bindAgentChatInputEvents === 'function') {
+    bindAgentChatInputEvents();
+}
 
 
 exportCsvBtn?.addEventListener('click', () => handleExport('csv'));

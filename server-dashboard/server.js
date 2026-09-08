@@ -8951,6 +8951,14 @@ app.post('/api/admin/chats/:sessionId/typing', checkAdminAuth, requireWorkingHou
   res.json({ success: true, isTyping });
 });
 
+app.get('/api/admin/chats/:sessionId/typing', checkAdminAuth, requireWorkingHours, async (req, res) => {
+  const { sessionId } = req.params;
+  const typingState = getSessionTyping(sessionId, 'visitor');
+  res.json({
+    typing: typingState ? { isTyping: true, name: typingState.name, role: typingState.role } : { isTyping: false }
+  });
+});
+
 // ============================================================================
 // Phân cấp Agent - Sale - Nhóm - QR  (chỉ áp dụng project qr_concierge)
 //

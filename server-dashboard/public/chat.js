@@ -667,19 +667,24 @@ function renderVisitorTypingIndicator(isTyping) {
         return;
     }
 
-    if (!el && chatMessagesContainer) {
+    if (!el) {
+        const inputContainer = document.getElementById('chat-input-container') || document.querySelector('.chat-input-area');
+        const chatFormEl = document.getElementById('chat-form');
+        const msgContainer = document.getElementById('chat-messages-container');
+
         el = document.createElement('div');
         el.id = 'visitor-typing-bubble';
         el.className = 'visitor-typing-indicator';
+        el.style.margin = '0 0 6px 6px';
         el.innerHTML = `
-            <div class="visitor-typing-bubble-inner">
-                <div class="visitor-typing-icon-wrap">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="visitor-typing-svg">
+            <div class="visitor-typing-bubble-inner" style="padding: 5px 13px; border-radius: 20px; box-shadow: 0 4px 14px rgba(239, 43, 157, 0.12); border: 1px solid rgba(239, 43, 157, 0.35); background: #ffffff;">
+                <div class="visitor-typing-icon-wrap" style="width: 20px; height: 20px;">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="visitor-typing-svg">
                         <path d="M12 20h9"/>
                         <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                     </svg>
                 </div>
-                <span class="visitor-typing-label">Khách đang soạn tin…</span>
+                <span class="visitor-typing-label" style="font-size: 12.5px; font-weight: 600; color: #ef2b9d;">Đang nhập...</span>
                 <div class="visitor-typing-dots">
                     <span class="v-dot"></span>
                     <span class="v-dot"></span>
@@ -687,8 +692,13 @@ function renderVisitorTypingIndicator(isTyping) {
                 </div>
             </div>
         `;
-        chatMessagesContainer.appendChild(el);
-        chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+
+        if (inputContainer && chatFormEl) {
+            inputContainer.insertBefore(el, chatFormEl);
+        } else if (msgContainer) {
+            msgContainer.appendChild(el);
+            msgContainer.scrollTop = msgContainer.scrollHeight;
+        }
     }
 
     if (visitorTypingHideTimer) clearTimeout(visitorTypingHideTimer);
@@ -777,6 +787,42 @@ function stopAgentTyping() {
 }
 window.handleAgentChatInputTyping = handleAgentChatInputTyping;
 window.stopAgentTyping = stopAgentTyping;
+
+let adminVisitorTypingPollTimer = null;
+function pollVisitorTyping(sessionId) {
+    if (!sessionId || sessionId !== currentSessionId) return;
+    authFetch(`${API_BASE}/api/admin/chats/${sessionId}/typing`)
+        .then(r => r.json())
+        .then(data => {
+            if (sessionId === currentSessionId && data && data.typing) {
+                renderVisitorTypingIndicator(!!data.typing.isTyping);
+            }
+        })
+        .catch(() => {});
+}
+
+function bindAgentChatInputEvents() {
+    const input = document.getElementById('chat-input');
+    if (!input || input.dataset.typingBound === 'true') return;
+    input.dataset.typingBound = 'true';
+    input.addEventListener('input', () => {
+        if (typeof resizeAgentChatInput === 'function') resizeAgentChatInput();
+        handleAgentChatInputTyping();
+    });
+    input.addEventListener('blur', stopAgentTyping);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            document.getElementById('chat-form')?.requestSubmit();
+        }
+    });
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindAgentChatInputEvents);
+} else {
+    bindAgentChatInputEvents();
+}
+window.bindAgentChatInputEvents = bindAgentChatInputEvents;
 
 
 function connectAdminEvents() {
@@ -1309,6 +1355,13 @@ function applyChatPermissionUI(session) {
 
 async function selectSession(sessionId) {
     currentSessionId = sessionId;
+    renderVisitorTypingIndicator(false);
+    bindAgentChatInputEvents();
+    if (adminVisitorTypingPollTimer) clearInterval(adminVisitorTypingPollTimer);
+    adminVisitorTypingPollTimer = setInterval(() => {
+        if (currentSessionId) pollVisitorTyping(currentSessionId);
+    }, 2500);
+    pollVisitorTyping(sessionId);
 
     // Mark session as read in DB (async, no need to await)
     authFetch(`${API_BASE}/api/admin/chats/${sessionId}/read`, { method: 'POST' })
@@ -2766,6 +2819,10 @@ async function closeActiveSession() {
 
 
 function resetActiveChatUI() {
+    if (adminVisitorTypingPollTimer) {
+        clearInterval(adminVisitorTypingPollTimer);
+        adminVisitorTypingPollTimer = null;
+    }
     stopAgentTyping();
     renderVisitorTypingIndicator(false);
     adminOrder = null;
