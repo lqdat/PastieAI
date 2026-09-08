@@ -1062,23 +1062,26 @@ function updateAgentHeaderUI() {
     // mình — header là để nhận ra ĐANG Ở CƠ SỞ NÀO.
     const badge = document.getElementById('agent-avatar-badge');
     const avatarChar = document.getElementById('agent-avatar-char');
-    const avatarUrl = isSaleView
-        ? (CURRENT_ADMIN.manager_avatar_url || '')
-        : (CURRENT_ADMIN.avatar_url || '');
+    const avatarUrl = CURRENT_ADMIN.avatar_url || (isSaleView ? (CURRENT_ADMIN.manager_avatar_url || '') : '');
     if (badge) {
-        const img = badge.querySelector('img');
+        let img = badge.querySelector('img');
         if (/^https?:\/\/|^\//.test(String(avatarUrl))) {
             if (avatarChar) avatarChar.classList.add('hide');
-            if (img) img.src = avatarUrl;
-            else badge.insertAdjacentHTML('afterbegin', `<img src="${avatarUrl}" alt="">`);
+            if (img) {
+                img.src = avatarUrl;
+                img.style.display = 'block';
+            } else {
+                badge.insertAdjacentHTML('afterbegin', `<img src="${avatarUrl}" alt="">`);
+            }
         } else {
-            img?.remove();
+            if (img) img.style.display = 'none';
             if (avatarChar) {
                 avatarChar.classList.remove('hide');
-                const src = (isSaleView ? managerName : visibleName) || 'P';
+                const src = visibleName || (isSaleView ? managerName : '') || 'P';
                 avatarChar.textContent = src.trim().charAt(0).toUpperCase() || 'P';
             }
         }
+        bindSaleAvatarUpload();
     }
     badge?.classList.toggle('hide', !visibleName);
 
@@ -1090,6 +1093,48 @@ function updateAgentHeaderUI() {
     if (isAgentManagerRole()) void refreshAgentSaleCount();
 
     layoutHeaderQuickMenu(isAgentRole);
+}
+
+function bindSaleAvatarUpload() {
+    const badge = document.getElementById('agent-avatar-badge');
+    const uploadInput = document.getElementById('sale-avatar-upload-input');
+    if (!badge || !uploadInput || badge.dataset.uploadBound === 'true') return;
+    badge.dataset.uploadBound = 'true';
+
+    badge.addEventListener('click', (e) => {
+        e.stopPropagation();
+        uploadInput.click();
+    });
+
+    uploadInput.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            if (typeof toastInfo === 'function') toastInfo('Đang tải ảnh đại diện lên...');
+            const res = await authFetch(`${API_BASE}/api/admin/me/avatar`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (data.success && data.avatarUrl) {
+                if (CURRENT_ADMIN) CURRENT_ADMIN.avatar_url = data.avatarUrl;
+                renderAgentIdentityHeader();
+                if (typeof renderAdminMessages === 'function' && typeof currentSessionId !== 'undefined' && currentSessionId) {
+                    renderAdminMessages(false);
+                }
+                if (typeof toastSuccess === 'function') toastSuccess('Đã cập nhật ảnh đại diện thành công!');
+            } else {
+                if (typeof toastError === 'function') toastError('Không thể tải ảnh: ' + (data.error || 'Lỗi server'));
+            }
+        } catch (err) {
+            if (typeof toastError === 'function') toastError('Lỗi kết nối tải ảnh: ' + err.message);
+        } finally {
+            uploadInput.value = '';
+        }
+    });
 }
 
 

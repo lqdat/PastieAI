@@ -2678,8 +2678,9 @@ app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req,
 
     // Resolve sender_admin_id if sent by an agent with a valid session token
     let senderAdminId = null;
+    let sendingAdmin = null;
     if (sender === 'agent') {
-      const sendingAdmin = await getAdminFromToken(req);
+      sendingAdmin = await getAdminFromToken(req);
       if (!sendingAdmin?.is_active || !isChatStaff(sendingAdmin)) {
         return res.status(401).json({ error: 'Cần đăng nhập bằng tài khoản nhân viên hợp lệ để trả lời.' });
       }
@@ -2986,9 +2987,17 @@ app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req,
       notifyAdminRealtime('new_message', { sessionId, projectId: sessionRes.rows[0].project_id, sender: aiReplyMsg.sender || 'system', messageId: aiReplyMsg.id });
     }
 
+    const returnedMsg = {
+      ...msgRes.rows[0],
+      sender_admin_name: sendingAdmin?.full_name || sendingAdmin?.username || null,
+      sender_admin_avatar: sendingAdmin?.avatar_url || null,
+      visitor_email: sessionRes.rows[0]?.visitor_email || null,
+      visitor_name: sessionRes.rows[0]?.visitor_name || null
+    };
+
     res.json({
       success: true,
-      message: msgRes.rows[0],
+      message: returnedMsg,
       aiReply: aiReplyMsg,
       expiresAt: sessionExpiresAt
     });
@@ -4015,10 +4024,12 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
     let result;
     if (session.qr_account_id) {
       result = await db.query(
-        `SELECT * FROM messages
-         WHERE session_id = $1
-           AND ${visitorMessageFilter()}
-         ORDER BY created_at DESC
+        `SELECT m.*, a.full_name as sender_admin_name, a.avatar_url as sender_admin_avatar
+         FROM messages m
+         LEFT JOIN admins a ON m.sender_admin_id = a.id
+         WHERE m.session_id = $1
+           AND ${visitorMessageFilter('m.')}
+         ORDER BY m.created_at DESC
          LIMIT $2 OFFSET $3`,
         [sessionId, limit, offset]
       );
@@ -4037,8 +4048,10 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
       identityParams.push(limit, offset);
 
       result = await db.query(
-        `SELECT m.* FROM messages m 
+        `SELECT m.*, a.full_name as sender_admin_name, a.avatar_url as sender_admin_avatar
+         FROM messages m 
          JOIN sessions s ON m.session_id = s.id 
+         LEFT JOIN admins a ON m.sender_admin_id = a.id
          WHERE s.project_id = $1
            AND (${identityConditions.join(' OR ')})
            AND ${visitorMessageFilter('m.')}
@@ -4048,16 +4061,22 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
       );
     } else {
       result = await db.query(
-        `SELECT * FROM messages
-         WHERE session_id = $1
-           AND ${visitorMessageFilter()}
-         ORDER BY created_at DESC
+        `SELECT m.*, a.full_name as sender_admin_name, a.avatar_url as sender_admin_avatar
+         FROM messages m
+         LEFT JOIN admins a ON m.sender_admin_id = a.id
+         WHERE m.session_id = $1
+           AND ${visitorMessageFilter('m.')}
+         ORDER BY m.created_at DESC
          LIMIT $2 OFFSET $3`,
         [sessionId, limit, offset]
       );
     }
     
     const messages = result.rows.reverse();
+    for (const m of messages) {
+      m.visitor_email = session.visitor_email || null;
+      m.visitor_name = session.visitor_name || null;
+    }
 
     // Nạp cache dịch một lượt cho cả danh sách, thay vì mỗi tin một truy vấn.
     const translationCache = await preloadTranslations(messages, visitorLang);
@@ -4971,6 +4990,33 @@ app.post('/api/superadmin/accounts/:adminId/avatar', checkAdminAuth, uploadAttac
     res.json({ success: true, avatarUrl: url });
   } catch (error) {
     console.error('Upload avatar error:', error);
+    res.status(500).json({ error: 'Không tải được ảnh lên.' });
+  }
+});
+
+// Sale / Admin tự tải ảnh đại diện của chính mình lên
+app.post('/api/admin/me/avatar', checkAdminAuth, uploadAttachmentMiddleware, async (req, res) => {
+  const adminId = Number(req.admin.id);
+  if (!req.file) return res.status(400).json({ error: 'Chưa chọn ảnh.' });
+  if (!String(req.file.mimetype || '').startsWith('image/')) {
+    return res.status(400).json({ error: 'Chỉ nhận tệp ảnh.' });
+  }
+  try {
+    const found = await db.query('SELECT id, project_id, avatar_key FROM admins WHERE id = $1', [adminId]);
+    if (!found.rows[0]) return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
+
+    const key = s3.buildMenuImageKey(found.rows[0].project_id || 'system', adminId, req.file.originalname);
+    await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
+    const url = await s3.getMenuImageUrl(key);
+    const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
+    await db.query(
+      'UPDATE admins SET avatar_key = $2, avatar_url = $3, avatar_url_expires_at = $4 WHERE id = $1',
+      [adminId, key, url, expiresAt]
+    );
+    if (found.rows[0].avatar_key) void s3.deleteObject(found.rows[0].avatar_key).catch(() => {});
+    res.json({ success: true, avatarUrl: url });
+  } catch (error) {
+    console.error('Upload self avatar error:', error);
     res.status(500).json({ error: 'Không tải được ảnh lên.' });
   }
 });

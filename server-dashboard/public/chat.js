@@ -2071,6 +2071,50 @@ async function loadMessages(sessionId, isLoadMore = false) {
 }
 
 
+function renderMsgAvatarHtml(msg) {
+    if (msg.sender === 'visitor') {
+        const curSession = (typeof sessionsList !== 'undefined' && Array.isArray(sessionsList))
+            ? sessionsList.find(s => String(s.id) === String(currentSessionId))
+            : null;
+        const email = (msg.visitor_email || curSession?.visitor_email || '').trim();
+        const name = (msg.visitor_name || curSession?.visitor_name || '').trim();
+        if (email) {
+            const initial = (name ? name.charAt(0) : email.charAt(0)).toUpperCase();
+            return `<div class="msg-avatar visitor-avatar" data-type="email" title="${escapeHtml(name ? `${name} (${email})` : email)}">
+                <span class="msg-avatar-initial">${escapeHtml(initial)}</span>
+            </div>`;
+        }
+        return `<div class="msg-avatar visitor-avatar is-anonymous" title="${escapeHtml(name || 'Khách hàng')}">
+            <span class="msg-avatar-initial">${escapeHtml(name ? name.charAt(0).toUpperCase() : 'K')}</span>
+        </div>`;
+    }
+
+    if (msg.sender === 'agent') {
+        const isMe = CURRENT_ADMIN && (Number(msg.sender_admin_id) === Number(CURRENT_ADMIN.id) || !msg.sender_admin_id);
+        const avatarUrl = msg.sender_admin_avatar || (isMe ? CURRENT_ADMIN.avatar_url : '');
+        const name = msg.sender_admin_name || (isMe ? (CURRENT_ADMIN.full_name || CURRENT_ADMIN.username) : 'Tư vấn viên');
+        const initial = (name ? name.trim().charAt(0) : 'S').toUpperCase();
+
+        if (avatarUrl && /^https?:\/\//i.test(avatarUrl)) {
+            return `<div class="msg-avatar agent-avatar" title="${escapeHtml(name)}">
+                <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(name)}" class="msg-avatar-img" onerror="this.style.display='none';if(this.nextElementSibling)this.nextElementSibling.style.display='inline-block';">
+                <span class="msg-avatar-initial" style="display:none;">${escapeHtml(initial)}</span>
+            </div>`;
+        }
+        return `<div class="msg-avatar agent-avatar" title="${escapeHtml(name)}">
+            <span class="msg-avatar-initial">${escapeHtml(initial)}</span>
+        </div>`;
+    }
+
+    if (msg.sender === 'ai') {
+        return `<div class="msg-avatar ai-avatar" title="Trợ lý AI Pat">
+            <i class="ri-sparkling-fill"></i>
+        </div>`;
+    }
+
+    return '';
+}
+
 function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     const previousScrollHeight = chatMessagesContainer.scrollHeight;
@@ -2156,23 +2200,29 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
             const primaryText = readableOrderText(hasTranslation ? msg.translated_text : msg.original_text);
             const attachmentHtml = renderAttachmentHtml(msg);
             innerHtml = `
-                <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
-                    ${attachmentHtml}
-                    ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(primaryText)}</div>`}
-                    ${hasTranslation && !isAttachmentPlaceholder(msg.original_text) ? `<div class="translated-text-wrapper" data-label="${dict.labelOriginal} ">${escapeHtml(readableOrderText(msg.original_text))}</div>` : ''}
+                ${renderMsgAvatarHtml(msg)}
+                <div class="msg-body-wrap">
+                    <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
+                        ${attachmentHtml}
+                        ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(primaryText)}</div>`}
+                        ${hasTranslation && !isAttachmentPlaceholder(msg.original_text) ? `<div class="translated-text-wrapper" data-label="${dict.labelOriginal} ">${escapeHtml(readableOrderText(msg.original_text))}</div>` : ''}
+                    </div>
+                    <div class="message-time">${timeStr}</div>
                 </div>
-                <div class="message-time">${timeStr}</div>
             `;
         } else if (msg.sender === 'agent' || msg.sender === 'ai') {
             const hasTranslation = msg.translated_text && msg.translated_text !== msg.original_text;
             const attachmentHtml = renderAttachmentHtml(msg);
             innerHtml = `
-                <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
-                    ${attachmentHtml}
-                    ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(readableOrderText(msg.original_text))}</div>`}
-                    ${hasTranslation && !isAttachmentPlaceholder(msg.original_text) ? `<div class="translated-text-wrapper" data-label="${dict.labelAiTranslation} ">${escapeHtml(readableOrderText(msg.translated_text))}</div>` : ''}
+                <div class="msg-body-wrap">
+                    <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
+                        ${attachmentHtml}
+                        ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(readableOrderText(msg.original_text))}</div>`}
+                        ${hasTranslation && !isAttachmentPlaceholder(msg.original_text) ? `<div class="translated-text-wrapper" data-label="${dict.labelAiTranslation} ">${escapeHtml(readableOrderText(msg.translated_text))}</div>` : ''}
+                    </div>
+                    <div class="message-time"><span>${timeStr}</span>${renderMsgStatusHtml(msg)}</div>
                 </div>
-                <div class="message-time"><span>${timeStr}</span>${renderMsgStatusHtml(msg)}</div>
+                ${renderMsgAvatarHtml(msg)}
             `;
         } else {
             // System message

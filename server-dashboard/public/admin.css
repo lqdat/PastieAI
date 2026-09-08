@@ -1018,21 +1018,82 @@ button:focus-visible {
 /* --- Chat Bubbles (UI/UX Pro Max) --- */
 .message-wrapper {
     display: flex;
-    flex-direction: column;
-    max-width: 75%;
+    flex-direction: row;
+    align-items: flex-end;
+    gap: 8px;
+    max-width: 82%;
+    margin-bottom: 6px;
 }
 .message-wrapper.visitor {
     align-self: flex-start;
 }
-.message-wrapper.agent {
-    align-self: flex-end;
-}
+.message-wrapper.agent,
 .message-wrapper.ai {
     align-self: flex-end;
 }
 .message-wrapper.system {
     align-self: center;
     max-width: 90%;
+    flex-direction: column;
+}
+.msg-body-wrap {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.message-wrapper.visitor .msg-body-wrap {
+    align-items: flex-start;
+}
+.message-wrapper.agent .msg-body-wrap,
+.message-wrapper.ai .msg-body-wrap {
+    align-items: flex-end;
+}
+
+/* --- Small Message Avatar (Sale & Khách) --- */
+.msg-avatar {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    overflow: hidden;
+    flex-shrink: 0;
+    margin-bottom: 18px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    user-select: none;
+}
+.msg-avatar img,
+.msg-avatar .msg-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
+    display: block;
+}
+.msg-avatar.visitor-avatar {
+    background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+    color: #ffffff;
+}
+.msg-avatar.visitor-avatar[data-type="email"] {
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+    color: #ffffff;
+}
+.msg-avatar.visitor-avatar.is-anonymous {
+    background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%);
+    color: #ffffff;
+}
+.msg-avatar.agent-avatar {
+    background: linear-gradient(135deg, #ef2b9d 0%, #be185d 100%);
+    color: #ffffff;
+}
+.msg-avatar.ai-avatar {
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    color: #ffffff;
+    font-size: 12px;
 }
 
 .message-bubble {
@@ -4899,6 +4960,34 @@ button:focus-visible {
     content: ""; position: absolute; right: -2px; bottom: -2px;
     width: 12px; height: 12px; border-radius: 50%;
     background: #10b981; box-shadow: 0 0 0 2px var(--panel-bg, #fff);
+    z-index: 2;
+}
+.agent-avatar-badge {
+    cursor: pointer;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.agent-avatar-badge:hover {
+    transform: scale(1.04);
+    box-shadow: 0 8px 20px rgba(192, 38, 164, 0.35);
+}
+.agent-avatar-edit-icon {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 1;
+}
+.agent-avatar-badge:hover .agent-avatar-edit-icon {
+    opacity: 1;
 }
 .agent-identity-sub {
     display: inline-flex; align-items: center; gap: 5px;
