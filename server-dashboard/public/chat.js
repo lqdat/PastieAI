@@ -603,11 +603,14 @@ function handleMessageStatusUpdate(data) {
             el.className = `msg-status is-${status}`;
             if (status === 'delivered') {
                 el.title = 'Đã nhận';
-                el.innerHTML = '<i class="ri-check-double-line"></i>';
+                el.innerHTML = '<i class="ri-check-double-line"></i> <small class="status-label">Đã nhận</small>';
             } else if (status === 'seen') {
                 const seenTime = data.seenAt ? new Date(data.seenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
                 el.title = `Đã xem ${seenTime ? 'lúc ' + seenTime : ''}`;
-                el.innerHTML = '<i class="ri-check-double-line"></i> <small class="seen-text">Đã xem</small>';
+                el.innerHTML = '<i class="ri-check-double-line"></i> <small class="status-label">Đã xem</small>';
+            } else {
+                el.title = 'Đã gửi';
+                el.innerHTML = '<i class="ri-check-line"></i> <small class="status-label">Đã gửi</small>';
             }
         }
     });
@@ -625,11 +628,12 @@ function handleMessagesSeen(data) {
         }
     }
     chatMessagesContainer.querySelectorAll('.msg-status').forEach(el => {
-        const id = Number(el.getAttribute('data-msg-id'));
-        if (id && (lastId === 0 || id <= lastId)) {
+        const rawId = el.getAttribute('data-msg-id');
+        const id = Number(rawId);
+        if (!isNaN(id) && (lastId === 0 || id <= lastId)) {
             el.className = 'msg-status is-seen';
             el.title = `Đã xem lúc ${seenTime}`;
-            el.innerHTML = '<i class="ri-check-double-line"></i> <small class="seen-text">Đã xem</small>';
+            el.innerHTML = '<i class="ri-check-double-line"></i> <small class="status-label">Đã xem</small>';
         }
     });
 }
@@ -639,12 +643,12 @@ function renderMsgStatusHtml(msg) {
     const status = msg.status || 'sent';
     const seenTimeStr = msg.seen_at ? new Date(msg.seen_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
     if (status === 'seen') {
-        return `<span class="msg-status is-seen" title="Đã xem ${seenTimeStr ? 'lúc ' + seenTimeStr : ''}" data-msg-id="${msg.id}"><i class="ri-check-double-line"></i> <small class="seen-text">Đã xem</small></span>`;
+        return `<span class="msg-status is-seen" title="Đã xem ${seenTimeStr ? 'lúc ' + seenTimeStr : ''}" data-msg-id="${msg.id}"><i class="ri-check-double-line"></i> <small class="status-label">Đã xem</small></span>`;
     }
     if (status === 'delivered') {
-        return `<span class="msg-status is-delivered" title="Đã nhận" data-msg-id="${msg.id}"><i class="ri-check-double-line"></i></span>`;
+        return `<span class="msg-status is-delivered" title="Đã nhận" data-msg-id="${msg.id}"><i class="ri-check-double-line"></i> <small class="status-label">Đã nhận</small></span>`;
     }
-    return `<span class="msg-status is-sent" title="Đã gửi" data-msg-id="${msg.id}"><i class="ri-check-line"></i></span>`;
+    return `<span class="msg-status is-sent" title="Đã gửi" data-msg-id="${msg.id}"><i class="ri-check-line"></i> <small class="status-label">Đã gửi</small></span>`;
 }
 
 // ── Typing Indicator (Real-time Agent & Visitor Typing) ─────────────────
@@ -2043,7 +2047,7 @@ async function loadMessages(sessionId, isLoadMore = false) {
             const isDiff = adminMessages.length !== merged.length ||
                            adminMessages.some((m, idx) => {
                                const o = merged[idx];
-                               return !o || o.id !== m.id || o.translated_text !== m.translated_text || o.original_text !== m.original_text;
+                               return !o || o.id !== m.id || o.translated_text !== m.translated_text || o.original_text !== m.original_text || o.status !== m.status || o.seen_at !== m.seen_at || o.delivered_at !== m.delivered_at;
                            });
 
             adminMessages = merged;
