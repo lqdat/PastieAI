@@ -574,6 +574,9 @@ function handleAdminRealtimeEvent(data) {
         if (data.type === 'messages_seen') {
             handleMessagesSeen(data);
         }
+        if (data.type === 'typing_status' || data.type === 'visitor_typing') {
+            handleVisitorTypingRealtime(data);
+        }
         if (data.type === 'order_update') {
             adminOrderSignature = '';
             loadBillsForAdmin(currentSessionId);
@@ -644,6 +647,137 @@ function renderMsgStatusHtml(msg) {
     return `<span class="msg-status is-sent" title="Đã gửi" data-msg-id="${msg.id}"><i class="ri-check-line"></i></span>`;
 }
 
+// ── Typing Indicator (Real-time Agent & Visitor Typing) ─────────────────
+let visitorTypingHideTimer = null;
+
+function handleVisitorTypingRealtime(data) {
+    if (!data || !currentSessionId || String(data.sessionId) !== String(currentSessionId)) return;
+    if (data.sender !== 'visitor') return;
+    renderVisitorTypingIndicator(!!data.isTyping);
+}
+
+function renderVisitorTypingIndicator(isTyping) {
+    let el = document.getElementById('visitor-typing-bubble');
+    if (!isTyping) {
+        if (el) el.remove();
+        if (visitorTypingHideTimer) {
+            clearTimeout(visitorTypingHideTimer);
+            visitorTypingHideTimer = null;
+        }
+        return;
+    }
+
+    if (!el && chatMessagesContainer) {
+        el = document.createElement('div');
+        el.id = 'visitor-typing-bubble';
+        el.className = 'visitor-typing-indicator';
+        el.innerHTML = `
+            <div class="visitor-typing-bubble-inner">
+                <div class="visitor-typing-icon-wrap">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="visitor-typing-svg">
+                        <path d="M12 20h9"/>
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                    </svg>
+                </div>
+                <span class="visitor-typing-label">Khách đang soạn tin…</span>
+                <div class="visitor-typing-dots">
+                    <span class="v-dot"></span>
+                    <span class="v-dot"></span>
+                    <span class="v-dot"></span>
+                </div>
+            </div>
+        `;
+        chatMessagesContainer.appendChild(el);
+        chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+    }
+
+    if (visitorTypingHideTimer) clearTimeout(visitorTypingHideTimer);
+    visitorTypingHideTimer = setTimeout(() => {
+        const bubble = document.getElementById('visitor-typing-bubble');
+        if (bubble) bubble.remove();
+        visitorTypingHideTimer = null;
+    }, 4500);
+}
+
+let agentTypingPingTimer = null;
+let agentTypingSilenceTimer = null;
+let isAgentCurrentlyTyping = false;
+
+function sendAgentTypingPing(isTyping) {
+    if (!currentSessionId) return;
+    const token = getToken();
+    if (!token) return;
+    authFetch(`${API_BASE}/api/admin/chats/${currentSessionId}/typing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isTyping })
+    }).catch(() => {});
+}
+
+function handleAgentChatInputTyping() {
+    if (!currentSessionId) return;
+    const text = chatInput?.value?.trim() || '';
+    if (!text) {
+        if (isAgentCurrentlyTyping) {
+            isAgentCurrentlyTyping = false;
+            sendAgentTypingPing(false);
+        }
+        if (agentTypingPingTimer) {
+            clearInterval(agentTypingPingTimer);
+            agentTypingPingTimer = null;
+        }
+        if (agentTypingSilenceTimer) {
+            clearTimeout(agentTypingSilenceTimer);
+            agentTypingSilenceTimer = null;
+        }
+        return;
+    }
+
+    if (!isAgentCurrentlyTyping) {
+        isAgentCurrentlyTyping = true;
+        sendAgentTypingPing(true);
+        if (!agentTypingPingTimer) {
+            agentTypingPingTimer = setInterval(() => {
+                if (isAgentCurrentlyTyping && currentSessionId && chatInput?.value?.trim()) {
+                    sendAgentTypingPing(true);
+                } else {
+                    clearInterval(agentTypingPingTimer);
+                    agentTypingPingTimer = null;
+                }
+            }, 2500);
+        }
+    }
+
+    if (agentTypingSilenceTimer) clearTimeout(agentTypingSilenceTimer);
+    agentTypingSilenceTimer = setTimeout(() => {
+        if (isAgentCurrentlyTyping) {
+            isAgentCurrentlyTyping = false;
+            sendAgentTypingPing(false);
+            if (agentTypingPingTimer) {
+                clearInterval(agentTypingPingTimer);
+                agentTypingPingTimer = null;
+            }
+        }
+    }, 3500);
+}
+
+function stopAgentTyping() {
+    if (isAgentCurrentlyTyping) {
+        isAgentCurrentlyTyping = false;
+        sendAgentTypingPing(false);
+    }
+    if (agentTypingPingTimer) {
+        clearInterval(agentTypingPingTimer);
+        agentTypingPingTimer = null;
+    }
+    if (agentTypingSilenceTimer) {
+        clearTimeout(agentTypingSilenceTimer);
+        agentTypingSilenceTimer = null;
+    }
+}
+window.handleAgentChatInputTyping = handleAgentChatInputTyping;
+window.stopAgentTyping = stopAgentTyping;
+
 
 function connectAdminEvents() {
     if (adminEventSource) {
@@ -713,6 +847,13 @@ function connectAdminEvents() {
             try {
                 const data = JSON.parse(event.data || '{}');
                 handleAdminRealtimeEvent({ type: 'order_update', ...data });
+            } catch (e) {}
+        });
+
+        adminEventSource.addEventListener('typing_status', (event) => {
+            try {
+                const data = JSON.parse(event.data || '{}');
+                handleAdminRealtimeEvent({ type: 'typing_status', ...data });
             } catch (e) {}
         });
 
@@ -2147,6 +2288,7 @@ async function sendMessage(e) {
     }
 
     adminIsSending = true;
+    stopAgentTyping();
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
 
     chatInput.value = '';
@@ -2624,6 +2766,8 @@ async function closeActiveSession() {
 
 
 function resetActiveChatUI() {
+    stopAgentTyping();
+    renderVisitorTypingIndicator(false);
     adminOrder = null;
     adminBills = [];
     adminOrderSignature = '';

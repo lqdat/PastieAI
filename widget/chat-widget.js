@@ -62,6 +62,10 @@
             try { return localStorage.getItem('pastie-lang') || 'vi'; } catch(e) { return 'vi'; }
         })(),
         isTyping: false,
+        agentTyping: { isTyping: false },
+        isVisitorTyping: false,
+        visitorTypingTimer: null,
+        visitorTypingSilenceTimer: null,
         typingTimeout: null,
         isSending: false,
         isSyncing: false,
@@ -874,6 +878,7 @@
 
         state.isSending = true;
         inputEl.value = '';
+        stopVisitorTyping();
 
         if ((state.mode === 'ai' || state.mode === 'human') && state.sessionId) {
             // Add temp message to show immediately
@@ -1012,6 +1017,11 @@
             }
             const fetchedMessages = await res.json();
             if (!Array.isArray(fetchedMessages)) return;
+
+            const isAgentTyping = res.headers.get('X-Typing-Agent') === '1';
+            const agentTypingName = res.headers.get('X-Typing-Name') ? decodeURIComponent(res.headers.get('X-Typing-Name')) : '';
+            const agentTypingRole = res.headers.get('X-Typing-Role') || 'agent';
+            state.agentTyping = { isTyping: isAgentTyping, name: agentTypingName, role: agentTypingRole };
 
             if (isLoadMore) {
                 const existingIds = new Set(state.messages.map(m => m.id));
@@ -1175,13 +1185,20 @@
             threadContainer.appendChild(bubbleWrap);
         });
 
-        // Show typing indicator only in AI mode (human agents don't need it)
+        // Show typing indicator if AI is generating OR if human agent/sale is typing
         const lastMsg = state.messages[state.messages.length - 1];
-        if (lastMsg && lastMsg.sender === 'visitor' && state.mode === 'ai') {
+        const isAiGenerating = lastMsg && lastMsg.sender === 'visitor' && state.mode === 'ai';
+        const isHumanAgentTyping = !!state.agentTyping?.isTyping;
+
+        if (isAiGenerating || isHumanAgentTyping) {
             state.isTyping = true;
-            appendTypingBubble();
+            const typingLabel = isHumanAgentTyping
+                ? (state.agentTyping.name ? `${state.agentTyping.name} ${t.typingText || 'đang nhập...'}` : (t.typingText || 'Nhân viên đang nhập...'))
+                : t.chatThinking;
+            appendTypingBubble(typingLabel);
         } else {
             state.isTyping = false;
+            removeTypingBubble();
         }
 
         if (isLoadMore) {
@@ -1192,12 +1209,19 @@
         }
     }
 
-    function appendTypingBubble() {
+    function appendTypingBubble(customText) {
         const threadContainer = document.getElementById('pastie-chat-thread');
         if (!threadContainer) return;
-        const existing = threadContainer.querySelector('.pastie-typing-indicator-bubble');
-        if (existing) return;
+        let existing = threadContainer.querySelector('.pastie-typing-indicator-bubble');
         const t = TRANSLATIONS[state.detectedLang] || TRANSLATIONS['vi'];
+        const text = customText || t.chatThinking;
+
+        if (existing) {
+            const textEl = existing.querySelector('.pastie-typing-text');
+            if (textEl && textEl.textContent !== text) textEl.textContent = text;
+            return;
+        }
+
         const typingBubble = document.createElement('div');
         typingBubble.className = 'pastie-msg agent';
         typingBubble.innerHTML = `
@@ -1206,12 +1230,95 @@
                     <span class="pastie-typing-dot"></span>
                     <span class="pastie-typing-dot"></span>
                     <span class="pastie-typing-dot"></span>
-                    <span class="pastie-typing-text" style="font-size:11.5px;margin-left:6px;color:var(--widget-text-sec);font-weight:500;">${t.chatThinking}</span>
+                    <span class="pastie-typing-text" style="font-size:11.5px;margin-left:6px;color:var(--widget-text-sec);font-weight:500;">${escapeHtml(text)}</span>
                 </div>
             </div>
         `;
         threadContainer.appendChild(typingBubble);
         threadContainer.scrollTop = threadContainer.scrollHeight;
+    }
+
+    function removeTypingBubble() {
+        const threadContainer = document.getElementById('pastie-chat-thread');
+        if (!threadContainer) return;
+        const existing = threadContainer.querySelector('.pastie-typing-indicator-bubble');
+        if (existing) {
+            const parentMsg = existing.closest('.pastie-msg');
+            if (parentMsg) parentMsg.remove();
+            else existing.remove();
+        }
+    }
+
+    function sendVisitorTyping(isTyping) {
+        if (!state.sessionId) return;
+        fetch(`${CONFIG.BACKEND_URL}/api/chats/${state.sessionId}/typing`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isTyping, sender: 'visitor' })
+        }).catch(() => {});
+    }
+
+    function handleVisitorInputTyping() {
+        if (!state.sessionId) return;
+        const inputEl = document.getElementById('pastie-chat-input');
+        const text = inputEl ? inputEl.value.trim() : '';
+        if (!text) {
+            if (state.isVisitorTyping) {
+                state.isVisitorTyping = false;
+                sendVisitorTyping(false);
+            }
+            if (state.visitorTypingTimer) {
+                clearInterval(state.visitorTypingTimer);
+                state.visitorTypingTimer = null;
+            }
+            if (state.visitorTypingSilenceTimer) {
+                clearTimeout(state.visitorTypingSilenceTimer);
+                state.visitorTypingSilenceTimer = null;
+            }
+            return;
+        }
+
+        if (!state.isVisitorTyping) {
+            state.isVisitorTyping = true;
+            sendVisitorTyping(true);
+            if (!state.visitorTypingTimer) {
+                state.visitorTypingTimer = setInterval(() => {
+                    if (state.isVisitorTyping && state.sessionId) {
+                        sendVisitorTyping(true);
+                    } else if (state.visitorTypingTimer) {
+                        clearInterval(state.visitorTypingTimer);
+                        state.visitorTypingTimer = null;
+                    }
+                }, 2500);
+            }
+        }
+
+        if (state.visitorTypingSilenceTimer) clearTimeout(state.visitorTypingSilenceTimer);
+        state.visitorTypingSilenceTimer = setTimeout(() => {
+            if (state.isVisitorTyping) {
+                state.isVisitorTyping = false;
+                sendVisitorTyping(false);
+                if (state.visitorTypingTimer) {
+                    clearInterval(state.visitorTypingTimer);
+                    state.visitorTypingTimer = null;
+                }
+            }
+        }, 3500);
+    }
+
+    function stopVisitorTyping() {
+        if (state.isVisitorTyping) {
+            state.isVisitorTyping = false;
+            sendVisitorTyping(false);
+        }
+        if (state.visitorTypingTimer) {
+            clearInterval(state.visitorTypingTimer);
+            state.visitorTypingTimer = null;
+        }
+        if (state.visitorTypingSilenceTimer) {
+            clearTimeout(state.visitorTypingSilenceTimer);
+            state.visitorTypingSilenceTimer = null;
+        }
     }
 
     // --- Helpers ---
@@ -1353,6 +1460,12 @@
         // Chat form
         const chatForm = document.getElementById('pastie-chat-form');
         if (chatForm) chatForm.addEventListener('submit', (e) => { e.preventDefault(); sendMessage(); });
+
+        const chatInput = document.getElementById('pastie-chat-input');
+        if (chatInput) {
+            chatInput.addEventListener('input', handleVisitorInputTyping);
+            chatInput.addEventListener('blur', stopVisitorTyping);
+        }
 
         // Attachment button
         const attachBtn = document.getElementById('btn-attach-file');

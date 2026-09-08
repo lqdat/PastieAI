@@ -2656,6 +2656,9 @@ app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req,
       status: initialStatus
     });
 
+    setSessionTyping(sessionId, {}, false);
+    notifyAdminRealtime('typing_status', { sessionId, isTyping: false, sender });
+
     // THÔNG BÁO NGOÀI GIỜ LÀM VIỆC (Dự án QR Concierge):
     // Khi khách nhắn tin mà trong nhóm không có bất kỳ Sale nào đang trong ca trực,
     // và phiên chat chưa có ai tiếp nhận -> gửi 1 thông báo hệ thống lịch sự (tối đa 1 lần / 6 giờ).
@@ -3316,7 +3319,14 @@ app.get('/api/chats/:sessionId/state', async (req, res) => {
       const available = await listAvailableSales(s.group_id);
       waitingForStaff = available.length === 0;
     }
-    res.json({ status: s.status, mode, routingStatus, waitingForStaff });
+    const typingState = getSessionTyping(req.params.sessionId, 'agent');
+    res.json({ 
+      status: s.status, 
+      mode, 
+      routingStatus, 
+      waitingForStaff,
+      typing: typingState ? { isTyping: true, name: typingState.name, role: typingState.role } : { isTyping: false }
+    });
   } catch (e) {
     res.status(500).json({ error: 'state error' });
   }
@@ -3770,6 +3780,40 @@ const visitorMessageFilter = (prefix = '') => `
     OR ${prefix}original_text ILIKE 'The conversation has been assigned to:%'
   ))`;
 
+// In-memory typing tracker for active chat sessions
+// key: sessionId, value: { sender: 'agent'|'visitor', role: string, name: string, until: number }
+const sessionTypingState = new Map();
+
+function setSessionTyping(sessionId, { sender, role, name }, isTyping) {
+  if (!sessionId) return;
+  if (!isTyping) {
+    sessionTypingState.delete(sessionId);
+    return;
+  }
+  sessionTypingState.set(sessionId, {
+    sender: sender || 'agent',
+    role: role || 'agent',
+    name: name || '',
+    until: Date.now() + 4500
+  });
+}
+
+function getSessionTyping(sessionId, forSender = null) {
+  if (!sessionId) return null;
+  const state = sessionTypingState.get(sessionId);
+  if (!state) return null;
+  if (Date.now() > state.until) {
+    sessionTypingState.delete(sessionId);
+    return null;
+  }
+  if (forSender && state.sender !== forSender) return null;
+  return state;
+}
+
+function isSessionTyping(sessionId, sender = null) {
+  return !!getSessionTyping(sessionId, sender);
+}
+
 // Dấu vân của một cuộc hội thoại: tin mới nhất là tin nào, và có tất cả bao
 // nhiêu tin. Hai con số này đủ để biết "có gì thay đổi không" mà không phải đọc
 // một dòng nội dung nào — chạy trên đúng chỉ mục idx_messages_session_created.
@@ -3790,7 +3834,8 @@ async function conversationFingerprint(sessionId) {
     [sessionId]
   );
   const row = result.rows[0] || { max_id: 0, n: 0, last_seen: 0, last_delivered: 0 };
-  return `${row.max_id}.${row.n}.${row.last_seen}.${row.last_delivered}`;
+  const typingFlag = isSessionTyping(sessionId, 'agent') ? '1' : '0';
+  return `${row.max_id}.${row.n}.${row.last_seen}.${row.last_delivered}.${typingFlag}`;
 }
 
 app.get('/api/chats/:sessionId/messages', async (req, res) => {
@@ -3821,8 +3866,14 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
     if (known) {
       const fingerprint = await conversationFingerprint(sessionId);
       if (fingerprint === known) {
+        const typingState = getSessionTyping(sessionId, 'agent');
         res.setHeader('X-Conversation', fingerprint);
-        return res.status(200).json({ unchanged: true, fingerprint });
+        res.setHeader('X-Typing-Agent', typingState ? '1' : '0');
+        return res.status(200).json({ 
+          unchanged: true, 
+          fingerprint,
+          typing: typingState ? { isTyping: true, name: typingState.name, role: typingState.role } : { isTyping: false }
+        });
       }
     }
 
@@ -3919,7 +3970,13 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
 
     // Gửi kèm dấu vân để lượt hỏi sau chỉ cần so một chuỗi.
     const fingerprint = await conversationFingerprint(sessionId);
+    const typingState = getSessionTyping(sessionId, 'agent');
     res.setHeader('X-Conversation', fingerprint);
+    res.setHeader('X-Typing-Agent', typingState ? '1' : '0');
+    if (typingState) {
+      res.setHeader('X-Typing-Name', encodeURIComponent(typingState.name || ''));
+      res.setHeader('X-Typing-Role', encodeURIComponent(typingState.role || ''));
+    }
     res.json(messages);
   } catch (error) {
     console.error('Fetch visitor messages error:', error);
@@ -3979,6 +4036,29 @@ app.post('/api/chats/:sessionId/seen', async (req, res) => {
     console.error('Customer seen error:', error);
     res.status(500).json({ error: 'Lỗi hệ thống khi cập nhật trạng thái đã xem.' });
   }
+});
+
+// Khách hàng thông báo đang gõ tin nhắn
+app.post('/api/chats/:sessionId/typing', async (req, res) => {
+  const { sessionId } = req.params;
+  const isTyping = req.body?.isTyping !== false;
+
+  setSessionTyping(sessionId, { sender: 'visitor', role: 'visitor', name: 'Khách hàng' }, isTyping);
+  notifyAdminRealtime('typing_status', {
+    sessionId,
+    isTyping,
+    sender: 'visitor'
+  });
+  res.json({ success: true, isTyping });
+});
+
+// Kiểm tra trạng thái đang gõ của phiên chat
+app.get('/api/chats/:sessionId/typing', async (req, res) => {
+  const { sessionId } = req.params;
+  const typingState = getSessionTyping(sessionId, 'agent');
+  res.json({
+    typing: typingState ? { isTyping: true, name: typingState.name, role: typingState.role } : { isTyping: false }
+  });
 });
 
 
@@ -8744,6 +8824,17 @@ app.post('/api/admin/chats/:sessionId/read', checkAdminAuth, requireWorkingHours
     console.error('[Read receipt] error:', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// Cập nhật trạng thái đang gõ từ Agent / Sale
+app.post('/api/admin/chats/:sessionId/typing', checkAdminAuth, requireWorkingHours, async (req, res) => {
+  const { sessionId } = req.params;
+  const isTyping = req.body?.isTyping !== false;
+  const adminName = req.admin?.full_name || req.admin?.username || 'Tư vấn viên';
+  const role = req.admin?.role || 'agent';
+
+  setSessionTyping(sessionId, { sender: 'agent', role, name: adminName }, isTyping);
+  res.json({ success: true, isTyping });
 });
 
 // ============================================================================

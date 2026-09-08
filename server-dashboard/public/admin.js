@@ -711,7 +711,15 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !document.getElementById('voice-live-panel')?.classList.contains('hide')) cancelVoiceRecording();
 });
 
-chatInput?.addEventListener('input', () => { resizeAgentChatInput(); updateVoiceSendState(); });
+chatInput?.addEventListener('input', () => {
+    resizeAgentChatInput();
+    updateVoiceSendState();
+    if (typeof handleAgentChatInputTyping === 'function') handleAgentChatInputTyping();
+});
+
+chatInput?.addEventListener('blur', () => {
+    if (typeof stopAgentTyping === 'function') stopAgentTyping();
+});
 
 resizeAgentChatInput();
 
