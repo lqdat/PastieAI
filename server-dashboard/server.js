@@ -2641,13 +2641,8 @@ app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req,
       return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
     }
 
-    if (sender === 'visitor') {
-      const deviceCheck = await validateVisitorDeviceToken(req, sessionRes.rows[0]);
-      if (!deviceCheck.valid) {
-        return res.status(deviceCheck.status).json({ error: deviceCheck.error, code: deviceCheck.code });
-      }
-      void notifyAgentMessage(sessionRes.rows[0], text);
-    }
+    // Báo agent MỌI tin KHÁCH gửi đến (tin nhắn đến). KHÔNG báo tin AI/nhân viên trả lời.
+    if (sender === 'visitor') void notifyAgentMessage(sessionRes.rows[0], text);
 
     // Call Gemini to translate and detect language
     const { translatedText, detectedLang } = await gemini.translateText(text, targetLang);
@@ -3940,11 +3935,6 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
 
     const session = sessionRes.rows[0];
 
-    const deviceCheck = await validateVisitorDeviceToken(req, session);
-    if (!deviceCheck.valid) {
-      return res.status(deviceCheck.status).json({ error: deviceCheck.error, code: deviceCheck.code });
-    }
-
     // Đặt TRƯỚC đường tắt: lượt hỏi "không có gì mới" vẫn là bằng chứng khách
     // đang mở trang, và đó chính là những lượt chiếm đa số.
     await touchQrPresence(session);
@@ -4078,13 +4068,9 @@ app.post('/api/chats/:sessionId/seen', async (req, res) => {
   const { lastSeenMessageId } = req.body || {};
 
   try {
-    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    const sessionRes = await db.query('SELECT id, status FROM sessions WHERE id = $1', [sessionId]);
     if (sessionRes.rows.length === 0) {
       return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
-    }
-    const deviceCheck = await validateVisitorDeviceToken(req, sessionRes.rows[0]);
-    if (!deviceCheck.valid) {
-      return res.status(deviceCheck.status).json({ error: deviceCheck.error, code: deviceCheck.code });
     }
 
     let queryStr = `
@@ -4133,13 +4119,6 @@ app.post('/api/chats/:sessionId/seen', async (req, res) => {
 // Khách hàng thông báo đang gõ tin nhắn
 app.post('/api/chats/:sessionId/typing', async (req, res) => {
   const { sessionId } = req.params;
-  const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
-  if (sessionRes.rows.length > 0) {
-    const deviceCheck = await validateVisitorDeviceToken(req, sessionRes.rows[0]);
-    if (!deviceCheck.valid) {
-      return res.status(deviceCheck.status).json({ error: deviceCheck.error, code: deviceCheck.code });
-    }
-  }
   const isTyping = req.body?.isTyping !== false;
 
   setSessionTyping(sessionId, { sender: 'visitor', role: 'visitor', name: 'Khách hàng' }, isTyping);
