@@ -4832,9 +4832,15 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
     return [];   // lịch sử hỏng không được làm chết cả tấm hoá đơn
   });
 
+  const bills = await loadSessionBills(req.params.sessionId, language).catch((error) => {
+    console.error('[Bills] Không tải được bills:', error.message);
+    return [];
+  });
+
   res.setHeader('X-Order-Print', orderPrint);
   res.json({
     revisions,
+    bills,
     fingerprint: orderPrint,
     order: { ...localizedOrder, invoice },
     paymentMethods: (await paymentMethodsForSession(req.params.sessionId, language)).map((entry) => entry.id),
@@ -5234,7 +5240,7 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
         SET status = 'paid',
             payment_method = COALESCE(payment_method, $3),
             payment_reference = $1,
-            invoice_render = NULL,
+            invoice_render = '{}'::jsonb,
             paid_at = NOW(),
             updated_at = NOW()
       WHERE id = $2 RETURNING *`,
@@ -12104,29 +12110,34 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
 
     const updated = await db.query(
       `UPDATE chat_orders
-          SET items = $1, total_amount = $2, invoice = $3, charges = $4, invoice_render = NULL,
+          SET items = $1, total_amount = $2, invoice = $3, charges = $4, invoice_render = '{}'::jsonb,
               notes_updated_by_admin_id = $5, notes_updated_at = NOW(), updated_at = NOW()
         WHERE id = $6 RETURNING *`,
       [JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), JSON.stringify(chargesObj), req.admin.id, order.id]
     );
 
-    // Ghi vào chat_order_bills nếu đã có bill
-    const billCheck = await db.query('SELECT MAX(version) AS max_v FROM chat_order_bills WHERE order_id = $1', [order.id]);
-    const nextV = (billCheck.rows.length && billCheck.rows[0].max_v != null)
-      ? Number(billCheck.rows[0].max_v) + 1 : 1;
-    await db.query(
-      `INSERT INTO chat_order_bills (session_id, order_id, version, items, total_amount, invoice, payment_method, confirmed_by_admin_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [order.session_id, order.id, nextV, JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), order.payment_method || null, req.admin.id]
-    ).catch(() => {});
+    const shouldSendBill = req.body?.sendBill === true || req.body?.sendBill === 'true';
+    let insertedMsg = null;
 
-    // Gửi thông báo cập nhật bill vào cuộc trò chuyện cho khách
-    const billMsgText = `[Hóa đơn] Quản lý đã cập nhật lại chi tiết hóa đơn (Tổng cộng: ${Number(totalAmount).toLocaleString('vi-VN')}₫). Quý khách vui lòng kiểm tra lại.`;
-    const insertedMsg = await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id)
-       VALUES ($1, 'agent', $2, $2, 'vi', $3) RETURNING id`,
-      [order.session_id, billMsgText, req.admin.id]
-    ).catch(() => null);
+    if (shouldSendBill) {
+      // Ghi vào chat_order_bills nếu có yêu cầu gửi lại bill
+      const billCheck = await db.query('SELECT MAX(version) AS max_v FROM chat_order_bills WHERE order_id = $1', [order.id]);
+      const nextV = (billCheck.rows.length && billCheck.rows[0].max_v != null)
+        ? Number(billCheck.rows[0].max_v) + 1 : 1;
+      await db.query(
+        `INSERT INTO chat_order_bills (session_id, order_id, version, items, total_amount, invoice, payment_method, confirmed_by_admin_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [order.session_id, order.id, nextV, JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), order.payment_method || null, req.admin.id]
+      ).catch(() => {});
+
+      // Gửi thông báo cập nhật bill vào cuộc trò chuyện cho khách
+      const billMsgText = `[Hóa đơn] Quản lý đã cập nhật lại chi tiết hóa đơn (Tổng cộng: ${Number(totalAmount).toLocaleString('vi-VN')}₫). Quý khách vui lòng kiểm tra lại.`;
+      insertedMsg = await db.query(
+        `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id)
+         VALUES ($1, 'agent', $2, $2, 'vi', $3) RETURNING id`,
+        [order.session_id, billMsgText, req.admin.id]
+      ).catch(() => null);
+    }
 
     notifyAdminRealtime('order_update', {
       sessionId: order.session_id,
@@ -12143,17 +12154,19 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
       });
     }
 
-    notifyVisitorRealtime(order.session_id, 'order_update', {
-      orderId: order.id,
-      status: order.status,
-      totalAmount
-    });
-    notifyVisitorRealtime(order.session_id, 'new_message', {
-      sessionId: order.session_id,
-      sender: 'agent'
-    });
+    if (shouldSendBill) {
+      notifyVisitorRealtime(order.session_id, 'order_update', {
+        orderId: order.id,
+        status: order.status,
+        totalAmount
+      });
+      notifyVisitorRealtime(order.session_id, 'new_message', {
+        sessionId: order.session_id,
+        sender: 'agent'
+      });
+    }
 
-    res.json({ success: true, order: updated.rows[0] });
+    res.json({ success: true, order: updated.rows[0], billSent: shouldSendBill });
   } catch (error) {
     console.error('Agent update order items error:', error);
     res.status(500).json({ error: 'Không thể cập nhật món trong bill: ' + error.message });
@@ -12184,14 +12197,14 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
 
       if (superAdmin) {
         const sId = `internal_agent_${current.id}_superadmin`;
-        await ensureInternalSession(sId, `SuperAdmin (${superAdmin.full_name})`, current.project_id);
+        await ensureInternalSession(sId, `superadmin`, current.project_id);
         chats.push({
           sessionId: sId,
           peerId: superAdmin.id,
-          peerName: superAdmin.full_name || 'SuperAdmin',
+          peerName: 'superadmin',
           peerRole: 'superadmin',
           peerAvatar: superAdmin.avatar_url || null,
-          badgeLabel: 'SuperAdmin'
+          badgeLabel: 'superadmin'
         });
       }
 

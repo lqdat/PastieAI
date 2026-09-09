@@ -463,8 +463,23 @@ const detailsSidebar = document.getElementById('details-sidebar-container');
 
 const dashboardBody = document.getElementById('dashboard-body');
 
-// Responsive: nút quay lại (mobile) + nút xem chi tiết (tablet)
-document.getElementById('mobile-back-btn')?.addEventListener('click', () => dashboardBody?.classList.remove('chat-open'));
+document.getElementById('mobile-back-btn')?.addEventListener('click', () => {
+    dashboardBody?.classList.remove('chat-open');
+    if (typeof currentSessionId !== 'undefined' && currentSessionId) {
+        if (typeof sessionsList !== 'undefined' && Array.isArray(sessionsList)) {
+            const s = sessionsList.find(x => x.id === currentSessionId);
+            if (s) {
+                s.unread_visitor = 0;
+                s.unread_count = 0;
+            }
+        }
+        const card = document.querySelector(`.session-card[data-id="${currentSessionId}"]`);
+        if (card) {
+            card.classList.remove('has-unread');
+            card.querySelector('.session-unread-badge')?.remove();
+        }
+    }
+});
 
 document.getElementById('details-toggle-btn')?.addEventListener('click', () => dashboardBody?.classList.toggle('details-open'));
 
@@ -1533,7 +1548,13 @@ const adminFormSubmitBtn = document.getElementById('admin-form-submit-btn');
 
 const adminFormCancelBtn = document.getElementById('admin-form-cancel-btn');
 
-if (adminFormCancelBtn) adminFormCancelBtn.addEventListener('click', resetAdminForm);
+if (adminFormCancelBtn) {
+    adminFormCancelBtn.addEventListener('click', () => {
+        resetAdminForm();
+        document.getElementById('admin-management-modal')?.classList.add('hide');
+        document.querySelector('[data-addbox="staff"]')?.classList.add('hide');
+    });
+}
 
 adminFormProject?.addEventListener('change', updateAdminFormRoleVisibility);
 
@@ -1609,7 +1630,10 @@ document.getElementById('sale-menu-btn')?.addEventListener('click', () => window
 
 document.getElementById('org-close-btn')?.addEventListener('click', closeOrgModal);
 
-document.getElementById('org-sale-cancel-btn')?.addEventListener('click', resetOrgSaleForm);
+document.getElementById('org-sale-cancel-btn')?.addEventListener('click', () => {
+    resetOrgSaleForm();
+    document.querySelector('[data-addbox="sales"]')?.classList.add('hide');
+});
 
 // Xử lý chọn ảnh đại diện cho Sale trong form của Agent
 document.getElementById('org-sale-avatar-pick-btn')?.addEventListener('click', () => {

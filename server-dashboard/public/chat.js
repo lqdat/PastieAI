@@ -70,7 +70,7 @@ function createInternalSessionCard(chat, isPinned = false) {
     let roleBadgeText = chat.badgeLabel || 'Nội bộ';
     if (chat.peerRole === 'superadmin') {
         roleBadgeClass = 'internal-badge-superadmin';
-        roleBadgeText = 'SuperAdmin';
+        roleBadgeText = 'superadmin';
     } else if (chat.peerRole === 'agent') {
         roleBadgeClass = 'internal-badge-agent';
         roleBadgeText = isPinned ? '📌 Agent Quản Lý' : 'Agent';
@@ -170,11 +170,16 @@ async function selectInternalSession(chat) {
     currentSessionId = chat.sessionId;
     currentInternalChat = chat;
 
-    // Highlight card
+    dashboardBody?.classList.add('chat-open');
+    bindAgentChatInputEvents();
+
+    // Highlight card & clear unread badge in DOM
     document.querySelectorAll('.session-card').forEach(c => {
         c.classList.remove('active-selected');
         if (c.getAttribute('data-id') === chat.sessionId) {
             c.classList.add('active-selected');
+            c.classList.remove('has-unread');
+            c.querySelector('.session-unread-badge')?.remove();
         }
     });
 
@@ -187,8 +192,9 @@ async function selectInternalSession(chat) {
     adminOrderRevisions = [];
 
     // Header updates
-    if (chatTitleName) chatTitleName.textContent = chat.peerName;
-    if (chatTitleEmail) chatTitleEmail.textContent = chat.peerRole === 'superadmin' ? 'SuperAdmin hệ thống' : (chat.peerRole === 'agent' ? 'Agent quản lý' : 'Nhân viên Sale');
+    const peerDisplay = chat.peerName || (chat.peerRole === 'superadmin' ? 'superadmin' : 'Nội bộ');
+    if (chatTitleName) chatTitleName.textContent = peerDisplay;
+    if (chatTitleEmail) chatTitleEmail.textContent = chat.peerRole === 'superadmin' ? 'superadmin' : (chat.peerRole === 'agent' ? 'Agent quản lý' : 'Nhân viên Sale');
     document.getElementById('chat-header-group-badge')?.classList.add('hide');
     document.getElementById('chat-header-project-badge')?.classList.add('hide');
     document.getElementById('chat-header-qr-info')?.classList.add('hide');
@@ -199,7 +205,7 @@ async function selectInternalSession(chat) {
         if (chat.peerAvatar) {
             chatHeaderAvatar.innerHTML = `<img src="${escapeHtml(chat.peerAvatar)}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid rgba(99,102,241,0.4);" alt="">`;
         } else {
-            const initial = (chat.peerName || '?')[0].toUpperCase();
+            const initial = (peerDisplay || '?')[0].toUpperCase();
             chatHeaderAvatar.innerHTML = `<div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg, #6366f1, #a855f7);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;border:2px solid rgba(255,255,255,0.2);">${initial}</div>`;
         }
     }
@@ -215,15 +221,24 @@ async function selectInternalSession(chat) {
     document.getElementById('shift-draining-banner')?.classList.add('hide');
     document.getElementById('delete-session-btn')?.classList.add('hide');
 
+    chatHeaderActions?.classList.remove('hide');
     chatInputContainer?.classList.remove('hide');
     chatForm?.classList.remove('hide');
+    detailsSidebar?.classList.add('hide');
+
     if (chatInput) {
         chatInput.disabled = false;
         chatInput.classList.remove('is-supervisor-mode');
         chatInput.placeholder = 'Nhập tin nhắn nội bộ...';
+        setTimeout(() => chatInput?.focus(), 150);
     }
     const sendBtn = chatForm?.querySelector('button[type="submit"]');
     if (sendBtn) sendBtn.disabled = false;
+
+    // Loading placeholder in messages container
+    if (chatMessagesContainer) {
+        chatMessagesContainer.innerHTML = '<div class="chat-loading-state" style="display:flex;align-items:center;justify-content:center;height:200px;color:var(--text-muted);"><i class="ri-loader-4-line rotating" style="font-size:24px;margin-right:8px;"></i> Đang tải tin nhắn...</div>';
+    }
 
     // Load messages
     await loadMessages(chat.sessionId);
@@ -1313,15 +1328,6 @@ function renderSessionsList(sessions) {
 
     sessionsListContainer.innerHTML = '';
 
-    // Nếu là Sale: ghim hội thoại của Sale với Agent quản lý lên đầu danh sách chat
-    if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'sale' && internalChats && internalChats.length > 0) {
-        const managingAgentChat = internalChats[0];
-        if (managingAgentChat) {
-            const pinnedCard = createInternalSessionCard(managingAgentChat, true);
-            sessionsListContainer.appendChild(pinnedCard);
-        }
-    }
-
     if (filtered.length === 0) {
         const emptyDiv = document.createElement('div');
         emptyDiv.className = 'empty-state';
@@ -1717,6 +1723,8 @@ async function selectSession(sessionId) {
     // Optimistically clear badge in UI immediately
     const sess = sessionsList.find(s => s.id === sessionId);
     if (sess) {
+        sess.unread_visitor = 0;
+        sess.unread_count = 0;
         seenMessageCount[sessionId] = parseInt(sess.message_count) || 0;
         const remainingUnread = sessionsList.filter(s => {
             const seen = seenMessageCount[s.id];
@@ -1725,6 +1733,11 @@ async function selectSession(sessionId) {
             return unread > 0;
         }).length;
         updateAppBadge(remainingUnread);
+    }
+    const targetCard = document.querySelector(`.session-card[data-id="${sessionId}"]`);
+    if (targetCard) {
+        targetCard.classList.remove('has-unread');
+        targetCard.querySelector('.session-unread-badge')?.remove();
     }
 
     // Reset pagination states for the newly selected session
@@ -2406,6 +2419,11 @@ async function loadMessages(sessionId, isLoadMore = false) {
             // Keep local seen count in sync while admin is viewing
             if (currentSessionId) {
                 seenMessageCount[currentSessionId] = adminMessages.length;
+                const activeSess = sessionsList.find(s => s.id === currentSessionId);
+                if (activeSess) {
+                    activeSess.unread_visitor = 0;
+                    activeSess.unread_count = 0;
+                }
                 recalculateAppBadge();
             }
 

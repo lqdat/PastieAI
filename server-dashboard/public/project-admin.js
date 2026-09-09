@@ -883,7 +883,7 @@ function resetAdminForm() {
     }
     if (adminFormTitle) adminFormTitle.innerHTML = '<i class="ri-user-add-line" style="color:var(--accent-color);"></i> Thêm nhân viên mới';
     if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-user-add-line"></i> Lưu nhân viên';
-    if (adminFormCancelBtn) adminFormCancelBtn.style.display = 'none';
+    if (adminFormCancelBtn) adminFormCancelBtn.style.display = 'inline-flex';
     if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'none';
     
     if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin') {

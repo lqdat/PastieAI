@@ -213,10 +213,81 @@
         if (trigger) trigger.disabled = true;
         try {
             const order = await fetchOrderDetails(orderId);
-            const items = Array.isArray(order.items) ? order.items : [];
+            let draftItems = Array.isArray(order.items) ? JSON.parse(JSON.stringify(order.items)) : [];
             const charges = order.charges || {};
+            let draftVatRate = charges.vatRate != null ? Number(charges.vatRate) : 10;
+            let isDirty = false;
+            let isSaving = false;
+            let isSending = false;
+
             const payment = order.payment_method ? PAYMENT[order.payment_method] || order.payment_method : 'Khách chưa chọn';
             const canEdit = (CURRENT_ADMIN?.role === 'agent' || CURRENT_ADMIN?.role === 'superadmin' || CURRENT_ADMIN?.role === 'admin') && order.status !== 'paid';
+
+            function recalculateCharges() {
+                const subtotal = draftItems.reduce((acc, it) => acc + (Number(it.lineTotal != null ? it.lineTotal : Number(it.unitPrice || 0) * Number(it.quantity || 1))), 0);
+                const vatAmount = Math.round(subtotal * draftVatRate / 100);
+                const totalAmount = subtotal + vatAmount;
+                return { subtotal, vatRate: draftVatRate, vatAmount, totalAmount };
+            }
+
+            function renderDraftItemsHtml() {
+                if (!draftItems.length) {
+                    return '<p class="cart-empty" style="padding:16px;text-align:center;">Đơn chưa có món.</p>';
+                }
+                return draftItems.map((item, index) => `
+                    <div class="order-detail-item" data-item-idx="${index}">
+                        <div class="order-item-info">
+                            <strong>${escapeHtml(item.name || 'Món')}</strong>
+                            ${item.note ? `<small class="item-note" style="font-style:italic;color:#7a6880;"><em>(${escapeHtml(String(item.note).replace(/^\(|\)$/g, ''))})</em></small>` : ''}
+                        </div>
+                        <span class="order-item-qty">×${Number(item.quantity || 0)}</span>
+                        <b class="order-item-total">${money(item.lineTotal ?? Number(item.unitPrice || 0) * Number(item.quantity || 0))}</b>
+                        ${canEdit ? `
+                        <div class="order-item-actions">
+                            <button type="button" class="icon-btn edit-item-btn" data-edit-item="${index}" title="Sửa giá / SL" style="width:28px;height:28px;font-size:13px;padding:0;"><i class="ri-edit-line"></i></button>
+                            <button type="button" class="icon-btn del-item-btn" data-del-item="${index}" title="Xóa món" style="width:28px;height:28px;font-size:13px;padding:0;color:#ef4444;"><i class="ri-delete-bin-line"></i></button>
+                        </div>` : ''}
+                    </div>`).join('');
+            }
+
+            function updateSummaryHtml() {
+                const calc = recalculateCharges();
+                const summaryEl = detailOverlay?.querySelector('.order-detail-summary');
+                if (summaryEl) {
+                    summaryEl.innerHTML = `
+                        <span>Tạm tính <b>${money(calc.subtotal)}</b></span>
+                        <span>VAT (${Number(calc.vatRate)}%)
+                            ${canEdit ? `<button type="button" class="icon-btn" id="order-edit-vat-btn" title="Đổi % VAT" style="width:20px;height:20px;font-size:11px;padding:0;margin-left:4px;"><i class="ri-edit-line"></i></button>` : ''}
+                            <b>${money(calc.vatAmount)}</b>
+                        </span>
+                        <span class="is-total">Tổng cộng <b>${money(calc.totalAmount)}</b></span>
+                    `;
+                }
+                const saveStatusEl = detailOverlay?.querySelector('#order-save-status-wrap');
+                if (saveStatusEl) {
+                    saveStatusEl.innerHTML = isDirty
+                        ? `<span class="order-save-status"><i class="ri-alert-line"></i> Có thay đổi chưa lưu</span>`
+                        : `<span class="order-save-status is-saved"><i class="ri-checkbox-circle-line"></i> Đã lưu</span>`;
+                }
+                const saveBtn = detailOverlay?.querySelector('#order-save-bill-btn');
+                if (saveBtn) {
+                    saveBtn.classList.toggle('primary-btn', isDirty);
+                    saveBtn.classList.toggle('secondary-btn', !isDirty);
+                    saveBtn.style.background = isDirty ? 'var(--accent-color)' : '';
+                    saveBtn.style.color = isDirty ? '#fff' : '';
+                    saveBtn.innerHTML = isSaving
+                        ? `<i class="ri-loader-4-line ri-spin"></i> Đang lưu…`
+                        : (isDirty ? `<i class="ri-save-line"></i> <strong>Lưu thay đổi</strong>` : `<i class="ri-check-line"></i> Đã lưu`);
+                }
+            }
+
+            function refreshDraftView() {
+                const itemsContainer = detailOverlay?.querySelector('.order-detail-items');
+                if (itemsContainer) {
+                    itemsContainer.innerHTML = renderDraftItemsHtml();
+                }
+                updateSummaryHtml();
+            }
 
             detailOverlay?.remove();
             detailOverlay = document.createElement('div');
@@ -238,24 +309,14 @@
                             <span><i class="ri-user-star-line"></i>Sale tiếp nhận: <strong>${escapeHtml(order.sale_name || 'Chưa tiếp nhận')}</strong></span>
                         </div>
                         <div class="order-detail-items">
-                            ${items.map((item, index) => `
-                                <div class="order-detail-item" data-item-idx="${index}">
-                                    <div>
-                                        <strong>${escapeHtml(item.name || 'Món')}</strong>
-                                        ${item.note ? `<small class="item-note" style="font-style:italic;color:#7a6880;"><em>(${escapeHtml(String(item.note).replace(/^\(|\)$/g, ''))})</em></small>` : ''}
-                                    </div>
-                                    <span>×${Number(item.quantity || 0)}</span>
-                                    <b>${money(item.lineTotal ?? Number(item.unitPrice || 0) * Number(item.quantity || 0))}</b>
-                                    ${canEdit ? `
-                                    <div style="display:flex;gap:4px;margin-left:4px;">
-                                        <button type="button" class="icon-btn edit-item-btn" data-edit-item="${index}" title="Sửa giá / SL" style="width:24px;height:24px;font-size:13px;padding:0;"><i class="ri-edit-line"></i></button>
-                                        <button type="button" class="icon-btn del-item-btn" data-del-item="${index}" title="Xóa món" style="width:24px;height:24px;font-size:13px;padding:0;color:#ef4444;"><i class="ri-delete-bin-line"></i></button>
-                                    </div>` : ''}
-                                </div>`).join('') || '<p class="cart-empty">Đơn chưa có món.</p>'}
+                            ${renderDraftItemsHtml()}
                         </div>
                         ${canEdit ? `
-                        <div style="padding:6px 0;">
-                            <button type="button" class="secondary-btn" id="order-add-item-btn" style="width:100%;padding:8px;font-size:12.5px;"><i class="ri-add-line"></i> Thêm món vào bill</button>
+                        <div style="padding:6px 0;display:flex;gap:8px;align-items:center;">
+                            <button type="button" class="secondary-btn" id="order-add-item-btn" style="flex:1;padding:8px;font-size:12.5px;"><i class="ri-add-line"></i> Thêm món vào bill</button>
+                            <div id="order-save-status-wrap">
+                                <span class="order-save-status is-saved"><i class="ri-checkbox-circle-line"></i> Đã lưu</span>
+                            </div>
                         </div>` : ''}
                         <div class="order-detail-summary">
                             <span>Tạm tính <b>${money(charges.subtotal ?? order.total_amount)}</b></span>
@@ -266,23 +327,29 @@
                             <span class="is-total">Tổng cộng <b>${money(order.total_amount)}</b></span>
                         </div>
                         <div class="order-detail-history"></div>
-                        <div class="order-detail-actions" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                        <div class="order-detail-actions">
                             <button type="button" class="secondary-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
-                            <button type="button" class="primary-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem bill</button>
-                            ${canEdit ? `<button type="button" class="primary-btn is-resend-bill" id="order-send-bill-btn" data-order-id="${escapeHtml(order.id)}" style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;"><i class="ri-send-plane-fill"></i> Gửi lại bill cho khách</button>` : ''}
-                            ${canMarkPaid && order.status === 'awaiting_payment' ? `<button type="button" class="cart-paid-btn" data-paid="${escapeHtml(order.id)}" data-method="${escapeHtml(order.payment_method || '')}"><i class="ri-check-double-line"></i> Xác nhận đã thu tiền</button>` : ''}
+                            <button type="button" class="secondary-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem bill</button>
+                            ${canEdit ? `
+                                <button type="button" class="secondary-btn is-full-width" id="order-save-bill-btn"><i class="ri-save-line"></i> Lưu thay đổi</button>
+                                <button type="button" class="primary-btn is-full-width is-resend-bill" id="order-send-bill-btn" data-order-id="${escapeHtml(order.id)}" style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;"><i class="ri-send-plane-fill"></i> Gửi lại bill cho khách</button>
+                            ` : ''}
+                            ${canMarkPaid && order.status === 'awaiting_payment' ? `<button type="button" class="cart-paid-btn is-full-width" data-paid="${escapeHtml(order.id)}" data-method="${escapeHtml(order.payment_method || '')}"><i class="ri-check-double-line"></i> Xác nhận đã thu tiền</button>` : ''}
                         </div>
                     </div>
                 </section>`;
             document.body.appendChild(detailOverlay);
-            // Tải sau khi đã vẽ: lịch sử là thông tin phụ, không nên bắt Sale
-            // chờ thêm một lượt gọi mạng mới thấy được chi tiết đơn.
+            // Tải lịch sử đơn hàng
             void loadOrderHistory(order).then((history) => {
                 const host = detailOverlay?.querySelector('.order-detail-history');
                 if (host) host.innerHTML = orderHistoryHtml(history);
             });
             detailOverlay.addEventListener('click', async (event) => {
                 if (event.target === detailOverlay || event.target.closest('.detail-close')) {
+                    if (isDirty) {
+                        const leave = await pastieConfirm('Bạn có thay đổi chưa lưu trên bill. Bạn có chắc muốn đóng mà không lưu?', { title: 'Thay đổi chưa lưu', confirmText: 'Đóng không lưu', danger: true });
+                        if (!leave) return;
+                    }
                     detailOverlay.remove(); detailOverlay = null; return;
                 }
                 const direct = event.target.closest('[data-open]');
@@ -301,50 +368,35 @@
                 const delBtn = event.target.closest('[data-del-item]');
                 if (delBtn) {
                     const idx = Number(delBtn.dataset.delItem);
-                    const it = items[idx];
+                    const it = draftItems[idx];
                     const ok = await pastieConfirm(`Xóa món "${it?.name || 'này'}" khỏi bill?`, { title: 'Xóa món khỏi bill', confirmText: 'Xóa', danger: true });
                     if (!ok) return;
-                    const nextItems = items.filter((_, i) => i !== idx);
-                    try {
-                        const res = await authFetch(`${API_BASE}/api/admin/orders/${order.id}/agent-items`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ items: nextItems })
-                        });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data.error || 'Không thể xóa món.');
-                        showToast('Đã xóa món khỏi bill và cập nhật.');
-                        await showOrderDetails(order.id);
-                    } catch (e) { showToast(e.message, 'error'); }
+                    draftItems = draftItems.filter((_, i) => i !== idx);
+                    isDirty = true;
+                    refreshDraftView();
+                    showToast('Đã xóa món. Vui lòng bấm "Lưu thay đổi" để lưu vào bill.');
                     return;
                 }
 
                 const editBtn = event.target.closest('[data-edit-item]');
                 if (editBtn) {
                     const idx = Number(editBtn.dataset.editItem);
-                    const it = items[idx];
+                    const it = draftItems[idx];
                     const result = await editItemDialog(it);
                     if (!result) return;
-                    const nextItems = items.map((oldIt, i) => {
+                    draftItems = draftItems.map((oldIt, i) => {
                         if (i !== idx) return oldIt;
                         return {
                             ...oldIt,
                             unitPrice: result.price,
                             quantity: result.quantity,
+                            lineTotal: result.price * result.quantity,
                             note: result.note || oldIt.note
                         };
                     });
-                    try {
-                        const res = await authFetch(`${API_BASE}/api/admin/orders/${order.id}/agent-items`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ items: nextItems })
-                        });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data.error || 'Không thể cập nhật món.');
-                        showToast('Đã cập nhật món trong bill.');
-                        await showOrderDetails(order.id);
-                    } catch (e) { showToast(e.message, 'error'); }
+                    isDirty = true;
+                    refreshDraftView();
+                    showToast('Đã sửa món. Vui lòng bấm "Lưu thay đổi" để lưu vào bill.');
                     return;
                 }
 
@@ -352,61 +404,86 @@
                 if (addBtn) {
                     const result = await addItemDialog();
                     if (!result) return;
-                    const nextItems = [...items, result];
-                    try {
-                        const res = await authFetch(`${API_BASE}/api/admin/orders/${order.id}/agent-items`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ items: nextItems })
-                        });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data.error || 'Không thể thêm món.');
-                        showToast('Đã thêm món vào bill.');
-                        await showOrderDetails(order.id);
-                    } catch (e) { showToast(e.message, 'error'); }
+                    draftItems.push({
+                        ...result,
+                        lineTotal: Number(result.unitPrice || 0) * Number(result.quantity || 1)
+                    });
+                    isDirty = true;
+                    refreshDraftView();
+                    showToast('Đã thêm món vào danh sách. Vui lòng bấm "Lưu thay đổi" để hoàn tất.');
                     return;
                 }
 
                 const editVatBtn = event.target.closest('#order-edit-vat-btn');
                 if (editVatBtn) {
-                    const currentVat = Number(charges.vatRate || 0);
-                    const input = prompt('Nhập thuế VAT mới (%) (0 - 100):', String(currentVat));
+                    const input = prompt('Nhập thuế VAT mới (%) (0 - 100):', String(draftVatRate));
                     if (input === null) return;
                     const newVat = Number(input);
                     if (isNaN(newVat) || newVat < 0 || newVat > 100) {
                         alert('Thuế VAT không hợp lệ.');
                         return;
                     }
+                    draftVatRate = newVat;
+                    isDirty = true;
+                    refreshDraftView();
+                    showToast('Đã đổi mức VAT. Vui lòng bấm "Lưu thay đổi" để hoàn tất.');
+                    return;
+                }
+
+                const saveBillBtn = event.target.closest('#order-save-bill-btn');
+                if (saveBillBtn) {
+                    if (isSaving) return;
+                    isSaving = true;
+                    updateSummaryHtml();
                     try {
                         const res = await authFetch(`${API_BASE}/api/admin/orders/${order.id}/agent-items`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ items, vatRate: newVat })
+                            body: JSON.stringify({ items: draftItems, vatRate: draftVatRate, sendBill: false })
                         });
                         const data = await res.json();
-                        if (!res.ok) throw new Error(data.error || 'Không thể cập nhật VAT.');
-                        showToast('Đã cập nhật thuế VAT.');
-                        await showOrderDetails(order.id);
-                    } catch (e) { showToast(e.message, 'error'); }
+                        if (!res.ok) throw new Error(data.error || 'Không thể lưu thay đổi.');
+                        isDirty = false;
+                        showToast('Đã lưu thay đổi vào bill! Bạn có thể bấm "Gửi lại bill cho khách".', 'success');
+                    } catch (e) {
+                        showToast(e.message, 'error');
+                    } finally {
+                        isSaving = false;
+                        updateSummaryHtml();
+                    }
                     return;
                 }
 
                 const sendBillBtn = event.target.closest('#order-send-bill-btn');
                 if (sendBillBtn) {
+                    if (isDirty) {
+                        const wantSaveAndSend = await pastieConfirm(
+                            'Bạn có thay đổi chưa lưu trên bill. Bạn cần lưu thay đổi trước khi gửi lại cho khách.\n\nLưu thay đổi và gửi lại bill ngay?',
+                            { title: 'Lưu và gửi lại bill', confirmText: 'Lưu & Gửi ngay', cancelText: 'Xem lại' }
+                        );
+                        if (!wantSaveAndSend) return;
+                    }
+                    if (isSending) return;
+                    isSending = true;
                     sendBillBtn.disabled = true;
+                    sendBillBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang gửi lại bill…`;
                     try {
                         const res = await authFetch(`${API_BASE}/api/admin/orders/${order.id}/agent-items`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ items })
+                            body: JSON.stringify({ items: draftItems, vatRate: draftVatRate, sendBill: true })
                         });
                         const data = await res.json();
                         if (!res.ok) throw new Error(data.error || 'Không thể gửi lại bill.');
-                        showToast('Đã lưu và gửi lại bill cho khách!', 'success');
+                        isDirty = false;
+                        showToast('Đã lưu và gửi lại bill mới nhất cho khách thành công!', 'success');
                         await showOrderDetails(order.id);
                     } catch (e) {
                         showToast(e.message, 'error');
                         sendBillBtn.disabled = false;
+                        sendBillBtn.innerHTML = `<i class="ri-send-plane-fill"></i> Gửi lại bill cho khách`;
+                    } finally {
+                        isSending = false;
                     }
                     return;
                 }

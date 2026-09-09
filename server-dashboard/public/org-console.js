@@ -512,8 +512,8 @@ function resetOrgSaleForm() {
     if (previewEl) previewEl.innerHTML = '<span id="org-sale-avatar-char">S</span>';
 
     const submitBtn = document.getElementById('org-sale-submit-btn');
-    if (submitBtn) submitBtn.innerHTML = '<i class="ri-user-add-line"></i> Thêm Sale';
-    document.getElementById('org-sale-cancel-btn')?.classList.add('hide');
+    // Giữ nút Hủy luôn hiện diện để người dùng có thể thoát ra bất cứ lúc nào
+    document.getElementById('org-sale-cancel-btn')?.classList.remove('hide');
 }
 
 

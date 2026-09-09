@@ -9,6 +9,7 @@
     --accent-glow: rgba(239, 43, 157, 0.24);
     --accent-soft: #fdf1f8;
     --accent-subtle: rgba(239, 43, 157, 0.05);
+    --primary-gradient: linear-gradient(135deg, #ef2b9d 0%, #db2777 100%);
 
     /* --- Glassmorphism & Depth Tokens (UI/UX Pro Max) --- */
     --glass-surface: rgba(255, 255, 255, 0.88);
@@ -3562,18 +3563,19 @@ button:focus-visible {
     justify-self: start;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     padding: 8px 18px;
     height: 38px;
     border: 0;
     border-radius: var(--radius-xs, 10px);
-    background: var(--primary-gradient);
-    color: #ffffff;
+    background: linear-gradient(135deg, #ef2b9d 0%, #db2777 100%) !important;
+    color: #ffffff !important;
     font: inherit;
     font-size: 12.5px;
     font-weight: 750;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(239, 43, 157, 0.28);
+    box-shadow: 0 4px 14px rgba(239, 43, 157, 0.32);
     transition: transform 0.15s, box-shadow 0.15s;
 }
 .org-submit:hover {
@@ -6543,5 +6545,194 @@ button:focus-visible {
     flex-shrink: 0;
 }
 
+/* ==========================================================================
+   UI/UX PRO MAX — AGENT & SALE MOBILE ENHANCEMENTS & COMPACT POPUPS
+   ========================================================================== */
 
+/* 1. Primary Button Design System */
+.primary-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 9px 18px;
+    min-height: 38px;
+    border: none;
+    border-radius: var(--radius-xs, 10px);
+    background: linear-gradient(135deg, #ef2b9d 0%, #db2777 100%);
+    color: #ffffff !important;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(239, 43, 157, 0.32);
+    transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+    user-select: none;
+    text-decoration: none;
+}
+.primary-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(239, 43, 157, 0.42);
+    filter: brightness(1.05);
+}
+.primary-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(239, 43, 157, 0.28);
+}
+.primary-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+.primary-btn i {
+    font-size: 15px;
+}
 
+/* Secondary Button refinement */
+.secondary-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 16px;
+    min-height: 38px;
+    border-radius: var(--radius-xs, 10px);
+    border: 1px solid rgba(80, 45, 69, 0.14);
+    background: #fdfafc;
+    color: var(--text-primary, #2d1829);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.16s ease;
+}
+.secondary-btn:hover {
+    background: #f4ecf2;
+    border-color: rgba(239, 43, 157, 0.25);
+    color: var(--accent-color, #ef2b9d);
+}
+.secondary-btn:active {
+    transform: scale(0.98);
+}
+
+/* 2. Compact, Pro Max Mobile Popups & Management Modals */
+@media (max-width: 720px) {
+    .modal-overlay {
+        align-items: flex-end !important;
+        padding: 0 !important;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+    }
+
+    /* Popups không quá to, max 82dvh, chừa không gian nền phía trên */
+    #admin-management-modal .admin-management-box,
+    #org-modal .login-box,
+    #report-modal .report-card,
+    #monitor-modal .admin-management-box,
+    .modal-box,
+    .login-box.admin-management-box {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 82dvh !important;
+        border-radius: 22px 22px 0 0 !important;
+        padding: 14px 16px calc(14px + env(safe-area-inset-bottom)) !important;
+        box-shadow: 0 -10px 36px rgba(45, 20, 38, 0.2) !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+
+    /* Header modal gọn gàng, tinh tế */
+    .staff-modal-head,
+    .brand-header,
+    .report-head {
+        padding: 4px 0 10px !important;
+        margin-bottom: 8px !important;
+        border-bottom: 1px solid rgba(80, 45, 69, 0.08) !important;
+    }
+    .brand-logo.admin-mgmt-brand-icon,
+    .staff-modal-heading .brand-logo {
+        width: 36px !important;
+        height: 36px !important;
+        font-size: 18px !important;
+        margin-bottom: 0 !important;
+        border-radius: 10px !important;
+    }
+    .staff-modal-title-copy h2,
+    .brand-header h2,
+    .report-head h2 {
+        font-size: 15.5px !important;
+        font-weight: 800 !important;
+        line-height: 1.2 !important;
+        margin: 0 !important;
+    }
+    .staff-modal-title-copy p,
+    .brand-header p,
+    .report-head p {
+        font-size: 11px !important;
+        margin: 2px 0 0 !important;
+        color: var(--text-secondary) !important;
+    }
+
+    /* Cuộn nội dung modal */
+    .admin-mgmt-scroll,
+    .org-modal-scroll {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        max-height: calc(82dvh - 110px) !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+        padding-right: 2px;
+    }
+
+    /* Các ô nhập form không quá to */
+    .form-group input,
+    .form-group select,
+    .org-form input,
+    .org-form select {
+        height: 38px !important;
+        font-size: 12.5px !important;
+        padding: 0 11px !important;
+        border-radius: 9px !important;
+    }
+    .form-group {
+        gap: 4px !important;
+        margin-bottom: 8px !important;
+    }
+    .form-group label,
+    .org-form label {
+        font-size: 11.5px !important;
+        font-weight: 700 !important;
+        margin-bottom: 3px !important;
+    }
+
+    /* Addbox gọn gàng, bo góc mềm */
+    .addbox {
+        padding: 12px 14px !important;
+        border-radius: 14px !important;
+        margin: 8px 0 !important;
+        background: #fdf8fb !important;
+        border: 1px solid rgba(239, 43, 157, 0.15) !important;
+    }
+}
+
+/* 3. Mobile Navigation & Tabs Refinements */
+@media (max-width: 720px) {
+    .org-tabs, .staff-tabs {
+        padding: 4px !important;
+        gap: 4px !important;
+        border-radius: 12px !important;
+        background: rgba(80, 45, 69, 0.05) !important;
+    }
+    .org-tab {
+        padding: 6px 12px !important;
+        font-size: 12px !important;
+        border-radius: 8px !important;
+    }
+    .org-tab.is-active {
+        background: #ffffff !important;
+        box-shadow: 0 2px 8px rgba(80, 45, 69, 0.08) !important;
+    }
+}
