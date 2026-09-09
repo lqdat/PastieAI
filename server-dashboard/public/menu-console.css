@@ -2048,8 +2048,16 @@
         box-shadow: 0 -10px 36px rgba(0, 0, 0, 0.32) !important;
         animation: cartSheetSlideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
     }
+    .confirm-overlay.order-history-overlay {
+        z-index: 5200 !important;
+        background: rgba(15, 23, 42, 0.75) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+    }
     .order-history-modal-card {
+        background: #ffffff !important;
         max-height: 88dvh !important;
+        box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.4) !important;
     }
 }
 

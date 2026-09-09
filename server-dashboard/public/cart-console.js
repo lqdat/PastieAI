@@ -87,9 +87,10 @@
         if (!Array.isArray(history) || history.length < 2) return;
         const editCount = Math.max(0, history.length - 1);
         const modal = document.createElement('div');
-        modal.className = 'confirm-overlay';
+        modal.className = 'confirm-overlay order-history-overlay';
         modal.innerHTML = `
-            <div class="confirm-card order-history-modal-card" role="dialog" aria-modal="true" style="max-width:440px;width:92%;max-height:85vh;display:flex;flex-direction:column;border-radius:20px;padding:20px;text-align:left;">
+            <div class="confirm-card order-history-modal-card" role="dialog" aria-modal="true" style="max-width:480px;width:94%;max-height:88vh;display:flex;flex-direction:column;border-radius:20px;padding:16px 18px max(18px, env(safe-area-inset-bottom));text-align:left;background:#ffffff !important;box-shadow:0 24px 60px rgba(0,0,0,0.35);border:1px solid rgba(84,62,100,0.12);">
+                <div class="sheet-drag-handle" style="margin-bottom:8px;"></div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(84,62,100,0.12);">
                     <div>
                         <h3 style="font-size:16px;font-weight:800;color:var(--text-primary);margin:0;display:flex;align-items:center;gap:6px;">
@@ -97,10 +98,10 @@
                         </h3>
                         <small style="color:var(--text-secondary);font-size:12px;">Mã đơn: <strong>${escapeHtml(orderCode || '')}</strong> • ${editCount} lần thay đổi</small>
                     </div>
-                    <button type="button" class="icon-btn order-history-close" style="width:32px;height:32px;border-radius:8px;border:none;background:rgba(84,62,100,0.06);cursor:pointer;" title="Đóng"><i class="ri-close-line" style="font-size:18px;"></i></button>
+                    <button type="button" class="icon-btn order-history-close" style="width:34px;height:34px;border-radius:10px;border:none;background:rgba(84,62,100,0.08);cursor:pointer;display:grid;place-items:center;" title="Đóng"><i class="ri-close-line" style="font-size:18px;"></i></button>
                 </div>
-                <div style="flex:1;overflow-y:auto;padding-right:4px;">
-                    <ol class="bill-history-list" style="margin:0;padding:0;list-style:none;">
+                <div style="flex:1;overflow-y:auto;padding-right:2px;overscroll-behavior:contain;">
+                    <div class="order-history-list" style="display:flex;flex-direction:column;gap:10px;margin:0;padding:2px 0;">
                         ${history.slice().reverse().map((step) => {
                             const dateObj = new Date(step.createdAt);
                             const timeStr = !isNaN(dateObj.getTime())
@@ -110,42 +111,74 @@
                             const role = step.editorRole || (step.version === 1 ? 'customer' : 'admin');
                             let badgeHtml = '';
                             if (role === 'customer') {
-                                badgeHtml = `<span class="bill-hist-actor is-customer" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(100,116,139,0.12);color:#475569;"><i class="ri-user-line"></i> Khách hàng</span>`;
+                                badgeHtml = `<span class="bill-hist-actor is-customer" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:7px;font-size:11.5px;font-weight:700;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;"><i class="ri-user-line"></i> Khách hàng</span>`;
                             } else if (role === 'sale') {
-                                badgeHtml = `<span class="bill-hist-actor is-sale" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(147,51,234,0.12);color:#7e22ce;"><i class="ri-briefcase-line"></i> ${escapeHtml(step.editorName || 'Sale')}</span>`;
+                                badgeHtml = `<span class="bill-hist-actor is-sale" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:7px;font-size:11.5px;font-weight:700;background:#faf5ff;color:#7e22ce;border:1px solid #e9d5ff;"><i class="ri-briefcase-line"></i> ${escapeHtml(step.editorName || 'Sale')}</span>`;
                             } else if (role === 'agent') {
-                                badgeHtml = `<span class="bill-hist-actor is-agent" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(217,119,6,0.12);color:#b45309;"><i class="ri-store-2-line"></i> ${escapeHtml(step.editorName || 'Agent')}</span>`;
+                                badgeHtml = `<span class="bill-hist-actor is-agent" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:7px;font-size:11.5px;font-weight:700;background:#fffbeb;color:#b45309;border:1px solid #fde68a;"><i class="ri-store-2-line"></i> ${escapeHtml(step.editorName || 'Agent')}</span>`;
                             } else {
-                                badgeHtml = `<span class="bill-hist-actor is-superadmin" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(225,29,72,0.12);color:#be123c;"><i class="ri-shield-user-line"></i> ${escapeHtml(step.editorName || 'Quản trị viên')}</span>`;
+                                badgeHtml = `<span class="bill-hist-actor is-superadmin" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:7px;font-size:11.5px;font-weight:700;background:#fff1f2;color:#be123c;border:1px solid #fecdd3;"><i class="ri-shield-user-line"></i> ${escapeHtml(step.editorName || 'Quản trị viên')}</span>`;
                             }
                             return `
-                            <li style="padding:10px 12px;margin-bottom:8px;background:rgba(84,62,100,0.03);border:1px solid rgba(84,62,100,0.08);border-radius:12px;">
-                                <div class="bill-hist-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                                    <div style="display:flex;align-items:center;gap:6px;">
-                                        <span class="bill-hist-ver" style="font-weight:700;color:var(--accent-color);font-size:12.5px;">#v${step.version || 1}</span>
+                            <article class="order-history-card-item" style="background:#ffffff !important;border:1px solid #e2e8f0;border-radius:14px;padding:12px 14px;box-shadow:0 2px 8px rgba(0,0,0,0.04);display:flex;flex-direction:column;gap:8px;">
+                                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                        <span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:6px;background:#f3e8ff;color:#7e22ce;font-weight:800;font-size:12px;">#v${step.version || 1}</span>
                                         ${badgeHtml}
                                     </div>
-                                    <span class="bill-hist-when" style="font-size:11.5px;color:var(--text-secondary);">${escapeHtml(timeStr)}</span>
+                                    <span style="font-size:11.5px;color:#64748b;white-space:nowrap;font-weight:500;">
+                                        <i class="ri-time-line" style="vertical-align:middle;"></i> ${escapeHtml(timeStr)}
+                                    </span>
                                 </div>
-                                <div class="bill-hist-what" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;">
+                                <div style="display:flex;flex-direction:column;gap:6px;margin:2px 0;">
                                     ${hasChanges ? step.changes.map((line) => {
-                                        let cls = 'is-mod';
-                                        if (line.startsWith('+')) cls = 'is-add';
-                                        else if (line.startsWith('-')) cls = 'is-del';
-                                        return `<span class="bill-change-tag ${cls}">${escapeHtml(line)}</span>`;
-                                    }).join('') : '<span class="bill-change-tag is-initial">Bản ban đầu (Khách đặt)</span>'}
+                                        let icon = 'ri-edit-line';
+                                        let bg = '#fffbeb';
+                                        let border = '#fde68a';
+                                        let color = '#b45309';
+                                        if (line.startsWith('+')) {
+                                            icon = 'ri-add-line';
+                                            bg = '#ecfdf5';
+                                            border = '#a7f3d0';
+                                            color = '#047857';
+                                        } else if (line.startsWith('-')) {
+                                            icon = 'ri-subtract-line';
+                                            bg = '#fef2f2';
+                                            border = '#fecaca';
+                                            color = '#b91c1c';
+                                        } else if (line.includes('Đã thanh toán')) {
+                                            icon = 'ri-checkbox-circle-fill';
+                                            bg = '#ecfdf5';
+                                            border = '#a7f3d0';
+                                            color = '#047857';
+                                        }
+                                        return `
+                                        <div style="display:flex;align-items:flex-start;gap:7px;padding:7px 10px;border-radius:8px;font-size:12px;font-weight:500;line-height:1.4;background:${bg};border:1px solid ${border};color:${color};word-break:break-word;">
+                                            <i class="${icon}" style="margin-top:2px;flex-shrink:0;font-size:13px;"></i>
+                                            <span>${escapeHtml(line)}</span>
+                                        </div>`;
+                                    }).join('') : `
+                                    <div style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:600;background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1;">
+                                        <i class="ri-file-list-3-line"></i> Bản ban đầu (Khách đặt món)
+                                    </div>`}
                                 </div>
-                                <div class="bill-hist-total" style="font-weight:800;color:var(--text-primary);font-size:13.5px;text-align:right;">${money(step.totalAmount)}</div>
-                            </li>`;
+                                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px dashed #e2e8f0;font-size:12.5px;margin-top:2px;">
+                                    <span style="color:#64748b;font-weight:500;">Tổng hóa đơn bản này:</span>
+                                    <strong style="font-size:14.5px;font-weight:800;color:var(--accent-color, #c90c6c);">${money(step.totalAmount)}</strong>
+                                </div>
+                            </article>`;
                         }).join('')}
-                    </ol>
+                    </div>
                 </div>
-                <div style="margin-top:14px;text-align:right;">
-                    <button type="button" class="order-history-close-btn primary-btn" style="width:100%;height:40px;border-radius:10px;font-weight:600;font-size:13.5px;">Đóng</button>
+                <div style="margin-top:14px;padding-top:8px;border-top:1px solid rgba(84,62,100,0.08);">
+                    <button type="button" class="order-history-close-btn primary-btn" style="width:100%;height:44px;border-radius:12px;font-weight:700;font-size:14px;background:var(--accent-color);color:#fff;border:none;box-shadow:0 4px 14px rgba(201,12,108,0.25);cursor:pointer;">Đóng</button>
                 </div>
             </div>`;
         document.body.appendChild(modal);
-        const close = () => modal.remove();
+        const close = () => {
+            modal.classList.add('is-leaving');
+            setTimeout(() => modal.remove(), 160);
+        };
         modal.querySelector('.order-history-close').onclick = close;
         modal.querySelector('.order-history-close-btn').onclick = close;
         modal.onclick = (e) => { if (e.target === modal) close(); };

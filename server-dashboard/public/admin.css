@@ -7481,7 +7481,14 @@ button:focus-visible {
 }
 
 /* Lịch sử chỉnh sửa popup */
+.confirm-overlay.order-history-overlay {
+    z-index: 5200 !important;
+    background: rgba(15, 23, 42, 0.75) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+}
 .order-history-modal-card {
+    background: #ffffff !important;
     box-shadow: 0 16px 44px rgba(0, 0, 0, 0.24) !important;
     animation: confirmPop 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
