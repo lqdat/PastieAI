@@ -4496,14 +4496,18 @@ function buildSampleInvoice(orderId, session, items, totalAmount, charges = null
 }
 
 async function getChatOrderForVisitor(sessionId) {
+  // KHÔNG đòi phiên còn 'active': đơn đã thanh toán nằm trong phiên đã đóng,
+  // cả Sale lẫn khách đều cần mở lại xem hoá đơn — ép active là hoá đơn biến
+  // mất ngay khi nhân viên đóng phiên.
   const result = await db.query(
     `SELECT o.* FROM chat_orders o JOIN sessions s ON s.id = o.session_id
-      WHERE o.session_id = $1 AND s.status = 'active'
+      WHERE o.session_id = $1
       ORDER BY o.created_at DESC LIMIT 1`,
     [sessionId]
   );
   return result.rows[0] || null;
 }
+
 
 // Dịch ghi chú món của Sale, cache theo NỘI DUNG.
 //
