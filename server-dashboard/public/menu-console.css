@@ -144,13 +144,19 @@
     pointer-events: none;
 }
 
-/* Bố cục PC: hàng 1 tên + giá, hàng 2 danh mục + tồn + khi hết, hàng 3 mô tả. */
-.menu-field-name  { grid-column: span 8; }
-.menu-field-price { grid-column: span 4; }
+/* Bố cục PC: 12 cột cân đối:
+   - Hàng 1: Tên món (6 cột), Giá (3 cột), Thuế VAT (3 cột) -> Tổng 12 cột.
+   - Hàng 2: Danh mục (4 cột), Tồn kho (4 cột), Khi hết hàng (4 cột) -> Tổng 12 cột.
+   - Hàng 3: Mô tả (12 cột).
+   - Hàng 4: Hình ảnh (12 cột). */
+.menu-field-name  { grid-column: span 6; }
+.menu-field-price { grid-column: span 3; }
+.menu-field-vat   { grid-column: span 3; }
 .menu-field-cat   { grid-column: span 4; }
 .menu-field-stock { grid-column: span 4; }
 .menu-field-hide  { grid-column: span 4; }
 .menu-field-desc  { grid-column: span 12; }
+.menu-field-photo { grid-column: span 12; }
 .menu-field-catname { grid-column: span 9; }
 .menu-field-catbtn  { grid-column: span 3; justify-content: flex-end; }
 .menu-field-catbtn button { width: 100%; }
@@ -450,17 +456,14 @@
 /* --- Màn hình hẹp -------------------------------------------------------- */
 
 @media (max-width: 720px) {
-    /* Ghép cặp theo ĐÚNG thứ tự trong DOM: name / price+cat / stock / hide / desc.
-       Lần đầu tôi cho price và stock cùng span 6 mà quên rằng giữa chúng còn ô
-       danh mục span 12, nên mỗi ô lại nằm một hàng lẻ nửa chiều ngang. */
     .menu-field-name,
-    .menu-field-hide,
-    .menu-field-desc { grid-column: span 12; }
-    .menu-field-price { grid-column: span 5; }
-    .menu-field-cat   { grid-column: span 7; }
-    /* Tồn kho để nguyên chiều ngang: chữ "Không giới hạn" là chỗ dễ hiểu nhầm
-       nhất của cả tính năng, cắt cụt nó thì mất luôn tác dụng. */
-    .menu-field-stock { grid-column: span 12; }
+    .menu-field-desc,
+    .menu-field-photo,
+    .menu-field-cat { grid-column: span 12; }
+    .menu-field-price { grid-column: span 7; }
+    .menu-field-vat   { grid-column: span 5; }
+    .menu-field-stock { grid-column: span 6; }
+    .menu-field-hide  { grid-column: span 6; }
     .menu-field-catname { grid-column: span 12; }
     .menu-field-catbtn  { grid-column: span 12; }
     .menu-field-catbtn > span { display: none; }

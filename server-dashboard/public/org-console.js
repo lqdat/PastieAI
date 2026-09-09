@@ -4,6 +4,9 @@
 // menu-console.js: cả hai là phần QR Console tương lai.
 //
 // Phụ thuộc core.js. Xem chú thích thứ tự nạp ở đầu core.js.
+window.ORG_SALES = window.ORG_SALES || [];
+window.ORG_GROUPS = window.ORG_GROUPS || [];
+window.CURRENT_QR_ACCOUNTS = window.CURRENT_QR_ACCOUNTS || [];
 
 async function refreshQrAccounts() {
     const projectId = getAdminMgmtProjectId();
@@ -516,6 +519,7 @@ function resetOrgSaleForm() {
     if (previewEl) previewEl.innerHTML = '<span id="org-sale-avatar-char">S</span>';
 
     const submitBtn = document.getElementById('org-sale-submit-btn');
+    if (submitBtn) submitBtn.innerHTML = '<i class="ri-user-add-line"></i> Thêm Sale';
     // Giữ nút Hủy luôn hiện diện để người dùng có thể thoát ra bất cứ lúc nào
     document.getElementById('org-sale-cancel-btn')?.classList.remove('hide');
 }
@@ -537,8 +541,8 @@ async function loadOrgSales() {
             }
         } catch (e) {}
 
-        ORG_SALES = await orgFetch('/api/agent/sales');
-        const count = ORG_SALES.length;
+        window.ORG_SALES = await orgFetch('/api/agent/sales');
+        const count = window.ORG_SALES.length;
         if (badge) badge.textContent = `${count} Sale`;
         if (quotaCount) {
             // Trước đây khi không có trần thì hiện "Hạn mức: 2 (Không giới hạn)" —
@@ -559,9 +563,9 @@ async function loadOrgSales() {
         }
 
         // Cập nhật select Sale trong Form Tạo Nhóm
-        renderSalePicker(ORG_SALES);
+        renderSalePicker(window.ORG_SALES);
 
-        box.innerHTML = ORG_SALES.length ? ORG_SALES.map((sale) => `
+        box.innerHTML = window.ORG_SALES.length ? window.ORG_SALES.map((sale) => `
             <article class="org-item sale-card">
                 <div class="sale-card-profile">
                     ${sale.avatar_url 
@@ -607,20 +611,20 @@ async function loadOrgGroups(quiet) {
     const badge = document.getElementById('org-group-count-badge');
     if (!quiet && box) box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
     try {
-        if (ORG_SALES.length === 0) {
-            try { ORG_SALES = await orgFetch('/api/agent/sales'); } catch(e) {}
+        if ((window.ORG_SALES || []).length === 0) {
+            try { window.ORG_SALES = await orgFetch('/api/agent/sales'); } catch(e) {}
         }
-        ORG_GROUPS = await orgFetch('/api/agent/groups');
-        if (badge) badge.textContent = `${ORG_GROUPS.length} Nhóm`;
+        window.ORG_GROUPS = await orgFetch('/api/agent/groups');
+        if (badge) badge.textContent = `${window.ORG_GROUPS.length} Nhóm`;
 
         // Cập nhật select Sale trong Form Tạo Nhóm
-        renderSalePicker(ORG_SALES);
+        renderSalePicker(window.ORG_SALES || []);
 
         if (box && !quiet) {
-            box.innerHTML = ORG_GROUPS.length ? ORG_GROUPS.map((group) => {
+            box.innerHTML = window.ORG_GROUPS.length ? window.ORG_GROUPS.map((group) => {
                 const groupSales = group.sales || [];
                 const groupSaleIds = new Set(groupSales.map(s => Number(s.sale_id)));
-                const notInGroupSales = ORG_SALES.filter(s => !groupSaleIds.has(Number(s.id)));
+                const notInGroupSales = (window.ORG_SALES || []).filter(s => !groupSaleIds.has(Number(s.id)));
 
                 const chipsHtml = groupSales.length ? groupSales.map(s => `
                     <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;color:var(--text-primary);">
@@ -664,16 +668,22 @@ async function loadOrgGroups(quiet) {
             }).join('') : '<p class="org-empty">Chưa có nhóm nào.</p>';
         }
 
-        const groupOptions = ORG_GROUPS.map((group) => `<option value="${group.id}">${escapeHtml(group.name)}</option>`).join('');
-        const saleGroup = document.getElementById('org-sale-group');
-        if (saleGroup) saleGroup.innerHTML = '<option value="">— Chưa gán nhóm —</option>' + groupOptions;
-        const qrGroup = document.getElementById('org-qr-group');
-        if (qrGroup) qrGroup.innerHTML = groupOptions || '<option value="">Chưa có nhóm</option>';
-        const qrGroupFilter = document.getElementById('org-qr-group-filter');
-        if (qrGroupFilter) {
-            const currentFilterVal = qrGroupFilter.value;
-            qrGroupFilter.innerHTML = '<option value="">— Tất cả nhóm —</option>' + groupOptions;
-            if (currentFilterVal) qrGroupFilter.value = currentFilterVal;
+        const groupOptions = (window.ORG_GROUPS || []).map((group) => `<option value="${group.id}">${escapeHtml(group.name)}</option>`).join('');
+        const saleGroupSelect = document.getElementById('org-sale-group');
+        if (saleGroupSelect) {
+            saleGroupSelect.innerHTML = '<option value="">— Chưa gán nhóm —</option>' + groupOptions;
+        }
+        const qrGroupSelect = document.getElementById('org-qr-group');
+        if (qrGroupSelect) {
+            qrGroupSelect.innerHTML = groupOptions || '<option value="">Chưa có nhóm nào</option>';
+        }
+        const qrFilterSelect = document.getElementById('org-qr-group-filter');
+        if (qrFilterSelect) {
+            const currentFilter = qrFilterSelect.value;
+            qrFilterSelect.innerHTML = '<option value="">— Tất cả nhóm —</option>' + groupOptions;
+            if (currentFilter && [...qrFilterSelect.options].some(o => o.value === currentFilter)) {
+                qrFilterSelect.value = currentFilter;
+            }
         }
     } catch (error) {
         if (badge) badge.textContent = '0 Nhóm';
@@ -688,8 +698,8 @@ async function loadOrgQr() {
     if (!box) return;
     box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
     try {
-        if (ORG_SALES.length === 0) await loadOrgSales();
-        CURRENT_QR_ACCOUNTS = await orgFetch('/api/agent/qr-accounts');
+        if ((window.ORG_SALES || []).length === 0) await loadOrgSales();
+        window.CURRENT_QR_ACCOUNTS = await orgFetch('/api/agent/qr-accounts');
         renderOrgQrList();
     } catch (error) {
         if (badge) badge.textContent = '0 QR';
@@ -705,9 +715,10 @@ function renderOrgQrList() {
     if (!box) return;
 
     const selectedGroupId = filterSelect ? filterSelect.value : '';
+    const allQr = window.CURRENT_QR_ACCOUNTS || [];
     const filtered = selectedGroupId
-        ? CURRENT_QR_ACCOUNTS.filter(a => Number(a.group_id) === Number(selectedGroupId))
-        : CURRENT_QR_ACCOUNTS;
+        ? allQr.filter(a => Number(a.group_id) === Number(selectedGroupId))
+        : allQr;
 
     if (badge) badge.textContent = `${filtered.length} QR`;
     const eventValue = (value) => encodeURIComponent(value ?? '').replace(/'/g, '%27');

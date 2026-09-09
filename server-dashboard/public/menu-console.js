@@ -337,6 +337,8 @@
         // Form mặc định gập lại. Bấm "Sửa" mà form vẫn đóng thì người dùng không
         // thấy gì xảy ra; bấm "Huỷ sửa" thì thu lại cho gọn.
         window.toggleAddBox?.('menu-item', Boolean(item));
+        const addboxTitle = document.getElementById('addbox-title');
+        if (addboxTitle) addboxTitle.textContent = item ? 'Sửa món' : 'Thêm món';
         editingItemId = item ? item.id : null;
         $('menu-item-name').value = item ? item.name : '';
         $('menu-item-price').value = item ? Number(item.price) : '';

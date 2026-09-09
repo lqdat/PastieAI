@@ -5581,7 +5581,7 @@ button:focus-visible {
    Nằm bên trong #org-modal nên các trình xử lý sự kiện ủy quyền trên cửa sổ ấy
    vẫn bắt được form; z-index cao hơn .org-card để nổi lên trên danh sách. */
 .addbox-modal {
-    position: absolute; inset: 0; z-index: 40;
+    position: absolute; inset: 0; z-index: 100;
     display: flex; align-items: center; justify-content: center;
     padding: 18px;
     background: rgba(18, 8, 20, .45);

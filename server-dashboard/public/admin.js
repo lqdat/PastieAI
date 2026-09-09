@@ -1592,27 +1592,15 @@ verifyAuthAndInit();
 // Backend kiểm tra quyền lại ở mọi endpoint — phần ẩn/hiện dưới đây chỉ để
 // giao diện gọn, không phải lớp bảo mật.
 // =====================================================================
-let ORG_SALES = [];
-
-let ORG_GROUPS = [];
-
-
-// --- QR ----------------------------------------------------------------------
-
-let CURRENT_QR_ACCOUNTS = [];
-
-
+// Quản lý Sale, Nhóm, QR dùng dữ liệu toàn cục window.ORG_SALES, window.ORG_GROUPS, window.CURRENT_QR_ACCOUNTS từ org-console.js
 document.getElementById('org-qr-group-filter')?.addEventListener('change', renderOrgQrList);
 
 
-// Nút "Xem poster". Trước đây khối này gọi openQrPreviewModal(id) — một hàm KHÔNG
-// tồn tại, nên bấm vào chỉ ném ReferenceError trong console và không mở gì cả.
-// Hàm thật là window.openQrPreview(imageUrl, label, owner, chatUrl), dùng chung với
-// màn hình QR cũ; ảnh QR sinh từ quickchart.io đúng như bên đó.
+// Nút "Xem poster". Gọi window.openQrPreview(imageUrl, label, owner, chatUrl).
 document.getElementById('org-qr-list')?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-qr-poster]');
     if (!button) return;
-    const account = CURRENT_QR_ACCOUNTS.find((item) => String(item.id) === button.dataset.qrPoster);
+    const account = (window.CURRENT_QR_ACCOUNTS || []).find((item) => String(item.id) === button.dataset.qrPoster);
     if (!account) return;
     const imageUrl = `https://quickchart.io/qr?size=360&text=${encodeURIComponent(account.chat_url)}`;
     const enc = (value) => encodeURIComponent(value ?? '').replace(/'/g, '%27');
@@ -1632,7 +1620,7 @@ document.getElementById('org-close-btn')?.addEventListener('click', closeOrgModa
 
 document.getElementById('org-sale-cancel-btn')?.addEventListener('click', () => {
     resetOrgSaleForm();
-    document.querySelector('[data-addbox="sales"]')?.classList.add('hide');
+    closeAddBoxModal();
 });
 
 // Xử lý chọn ảnh đại diện cho Sale trong form của Agent
@@ -1754,6 +1742,7 @@ document.getElementById('org-sale-form')?.addEventListener('submit', async (even
         }
 
         resetOrgSaleForm();
+        closeAddBoxModal();
         await loadOrgSales();
         await loadOrgGroups(true);
     } catch (error) { setOrgStatus(error.message, 'error'); }
@@ -1876,7 +1865,7 @@ function addBoxPortal(name, box, open) {
     // Chỉ các form trong cửa sổ Quản lý mới có cửa sổ con này; những chỗ khác
     // (form nhân sự của superadmin) vẫn mở tại chỗ như cũ.
     if (!modal || !slot || !document.getElementById('org-modal')?.contains(box)) return false;
-    if (!addBoxHome.has(name)) addBoxHome.set(name, { parent: box.parentElement, next: box.nextElementSibling });
+    if (!addBoxHome.has(name) && box.parentElement !== slot) addBoxHome.set(name, { parent: box.parentElement, next: box.nextElementSibling });
     if (open) {
         const currentInSlot = slot.firstElementChild;
         if (currentInSlot && currentInSlot !== box) {
@@ -1954,10 +1943,12 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
     const saleEdit = event.target.closest('[data-sale-edit]');
     if (saleEdit) {
         const id = Number(saleEdit.dataset.saleEdit);
-        const sale = ORG_SALES.find((s) => s.id === id);
+        const sale = (window.ORG_SALES || []).find((s) => Number(s.id) === id);
         if (!sale) return;
-        // Form gập mặc định; bấm Sửa mà không mở ra thì không thấy gì xảy ra.
+        // Form gập mặc định; bấm Sửa mở addbox modal lên
         toggleAddBox('sales', true);
+        const title = document.getElementById('addbox-title');
+        if (title) title.textContent = 'Sửa tài khoản Sale';
         const idEl = document.getElementById('org-sale-id');
         const nameEl = document.getElementById('org-sale-name');
         const emailEl = document.getElementById('org-sale-email');
@@ -1999,7 +1990,6 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
             }
         }
 
-        switchOrgTab('sales');
         document.getElementById('org-sale-form')?.scrollIntoView({ behavior: 'smooth' });
         return;
     }
@@ -2077,7 +2067,7 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
     const groupEdit = event.target.closest('[data-group-edit]');
     if (groupEdit) {
         const id = Number(groupEdit.dataset.groupEdit);
-        const group = (ORG_GROUPS || []).find((g) => g.id === id);
+        const group = (window.ORG_GROUPS || []).find((g) => Number(g.id) === id);
         if (!group) return;
         toggleAddBox('groups', true);
         const title = document.getElementById('addbox-title');
@@ -2092,7 +2082,6 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         if (submitBtn) submitBtn.innerHTML = '<i class="ri-save-line"></i> Lưu thay đổi';
         document.getElementById('org-group-cancel-btn')?.classList.remove('hide');
         document.getElementById('org-group-sales-row')?.classList.add('hide');
-        switchOrgTab('groups');
         document.getElementById('org-group-form')?.scrollIntoView({ behavior: 'smooth' });
         return;
     }
@@ -2112,7 +2101,7 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
     const qrEdit = event.target.closest('[data-qr-edit]');
     if (qrEdit) {
         const id = Number(qrEdit.dataset.qrEdit);
-        const qr = (CURRENT_QR_ACCOUNTS || []).find((item) => Number(item.id) === id);
+        const qr = (window.CURRENT_QR_ACCOUNTS || []).find((item) => Number(item.id) === id);
         if (!qr) return;
         toggleAddBox('qr', true);
         const title = document.getElementById('addbox-title');
@@ -2126,7 +2115,6 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         if (groupEl) groupEl.value = qr.group_id ?? '';
         if (submitBtn) submitBtn.innerHTML = '<i class="ri-save-line"></i> Lưu thay đổi';
         document.getElementById('org-qr-cancel-btn')?.classList.remove('hide');
-        switchOrgTab('qr');
         document.getElementById('org-qr-form')?.scrollIntoView({ behavior: 'smooth' });
         return;
     }
