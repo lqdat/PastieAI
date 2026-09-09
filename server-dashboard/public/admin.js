@@ -1809,21 +1809,48 @@ document.getElementById('org-group-cancel-btn')?.addEventListener('click', () =>
 });
 
 
+function resetOrgQrForm() {
+    const form = document.getElementById('org-qr-form');
+    if (!form) return;
+    form.reset();
+    const idEl = document.getElementById('org-qr-id');
+    if (idEl) idEl.value = '';
+    const submitBtn = document.getElementById('org-qr-submit-btn');
+    if (submitBtn) submitBtn.innerHTML = '<i class="ri-qr-code-line"></i> Tạo mã QR';
+    document.getElementById('org-qr-cancel-btn')?.classList.add('hide');
+}
+
 document.getElementById('org-qr-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
+    const idEl = document.getElementById('org-qr-id');
+    const qrId = idEl && idEl.value ? Number(idEl.value) : null;
+    const label = document.getElementById('org-qr-label').value.trim();
+    const groupId = Number(document.getElementById('org-qr-group').value);
     try {
-        await orgFetch('/api/agent/qr-accounts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                label: document.getElementById('org-qr-label').value.trim(),
-                groupId: Number(document.getElementById('org-qr-group').value),
-            }),
-        });
-        document.getElementById('org-qr-label').value = '';
-        setOrgStatus('Đã tạo mã QR mới thành công.');
+        if (qrId) {
+            await orgFetch(`/api/agent/qr-accounts/${qrId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ label, groupId }),
+            });
+            setOrgStatus('Đã cập nhật thông tin mã QR thành công.');
+        } else {
+            await orgFetch('/api/agent/qr-accounts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ label, groupId }),
+            });
+            setOrgStatus('Đã tạo mã QR mới thành công.');
+        }
+        resetOrgQrForm();
+        closeAddBoxModal();
         await loadOrgQr();
     } catch (error) { setOrgStatus(error.message, 'error'); }
+});
+
+document.getElementById('org-qr-cancel-btn')?.addEventListener('click', () => {
+    resetOrgQrForm();
+    closeAddBoxModal();
 });
 
 
@@ -2082,12 +2109,34 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         return;
     }
 
+    const qrEdit = event.target.closest('[data-qr-edit]');
+    if (qrEdit) {
+        const id = Number(qrEdit.dataset.qrEdit);
+        const qr = (CURRENT_QR_ACCOUNTS || []).find((item) => Number(item.id) === id);
+        if (!qr) return;
+        toggleAddBox('qr', true);
+        const title = document.getElementById('addbox-title');
+        if (title) title.textContent = 'Sửa mã QR';
+        const idEl = document.getElementById('org-qr-id');
+        const labelEl = document.getElementById('org-qr-label');
+        const groupEl = document.getElementById('org-qr-group');
+        const submitBtn = document.getElementById('org-qr-submit-btn');
+        if (idEl) idEl.value = qr.id;
+        if (labelEl) labelEl.value = qr.label || '';
+        if (groupEl) groupEl.value = qr.group_id ?? '';
+        if (submitBtn) submitBtn.innerHTML = '<i class="ri-save-line"></i> Lưu thay đổi';
+        document.getElementById('org-qr-cancel-btn')?.classList.remove('hide');
+        switchOrgTab('qr');
+        document.getElementById('org-qr-form')?.scrollIntoView({ behavior: 'smooth' });
+        return;
+    }
+
     const qrRevoke = event.target.closest('[data-qr-revoke]');
     if (qrRevoke) {
-        if (!await pastieConfirm('Khách quét mã cũ sẽ không vào được nữa. Mã đã in cần thay lại.', { title: 'Thu hồi mã QR?', confirmText: 'Thu hồi', danger: true })) return;
+        if (!await pastieConfirm('Khách quét mã cũ sẽ không vào được nữa. Bạn có chắc muốn xóa mã QR này?', { title: 'Xóa mã QR?', confirmText: 'Xóa mã', danger: true })) return;
         try {
             await orgFetch(`/api/agent/qr-accounts/${qrRevoke.dataset.qrRevoke}/revoke`, { method: 'POST' });
-            setOrgStatus('Đã thu hồi QR thành công.');
+            setOrgStatus('Đã xóa mã QR thành công.');
             await loadOrgQr();
         } catch (error) { setOrgStatus(error.message, 'error'); }
     }

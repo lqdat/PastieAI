@@ -710,24 +710,39 @@ function renderOrgQrList() {
         : CURRENT_QR_ACCOUNTS;
 
     if (badge) badge.textContent = `${filtered.length} QR`;
-    // Bỏ liên kết "Mở Chat": đó là link dành cho KHÁCH, Agent bấm vào sẽ tự mở một
-    // phiên chat khách và làm bẩn dữ liệu. Muốn kiểm tra thì quét mã trong poster.
-    box.innerHTML = filtered.length ? filtered.map((account) => `
+    const eventValue = (value) => encodeURIComponent(value ?? '').replace(/'/g, '%27');
+    box.innerHTML = filtered.length ? filtered.map((account) => {
+        const qrThumb = `https://quickchart.io/qr?size=160&text=${encodeURIComponent(account.chat_url)}`;
+        return `
         <article class="qr-card">
-            <span class="qr-card-icon"><i class="ri-qr-code-line"></i></span>
-            <div class="qr-card-main">
-                <strong class="qr-card-title">${escapeHtml(account.label)}</strong>
-                <span class="qr-card-group"><i class="ri-team-line"></i> ${escapeHtml(account.group_name || 'Chưa gán nhóm')}</span>
+            <div class="qr-card-top">
+                <div class="qr-thumb-box" data-qr-poster="${account.id}" title="Bấm để xem và tải mã QR">
+                    <img src="${qrThumb}" alt="QR" class="qr-thumb-img" loading="lazy">
+                </div>
+                <div class="qr-card-main">
+                    <div class="qr-card-title-row">
+                        <strong class="qr-card-title">${escapeHtml(account.label)}</strong>
+                        <span class="qr-card-group"><i class="ri-team-line"></i> ${escapeHtml(account.group_name || 'Chưa gán nhóm')}</span>
+                    </div>
+                    <small class="qr-card-link-preview">${escapeHtml(account.chat_url)}</small>
+                </div>
             </div>
             <div class="qr-card-actions">
-                <button type="button" class="qr-card-poster" data-qr-poster="${account.id}">
-                    <i class="ri-image-line"></i> Xem poster
+                <button type="button" class="qr-btn-view" data-qr-poster="${account.id}" title="Xem và tải ảnh mã QR">
+                    <i class="ri-qr-code-line"></i> <span>Xem mã</span>
                 </button>
-                <button type="button" class="org-remove" data-qr-revoke="${account.id}" title="Thu hồi mã QR" aria-label="Thu hồi mã QR">
-                    <i class="ri-forbid-line"></i>
+                <button type="button" class="qr-btn-copy" onclick="window.copyQrChatLink('${eventValue(account.chat_url)}', true)" title="Sao chép link chat của mã QR">
+                    <i class="ri-file-copy-line"></i> <span>Sao chép</span>
+                </button>
+                <button type="button" class="qr-btn-edit" data-qr-edit="${account.id}" title="Sửa thông tin mã QR">
+                    <i class="ri-edit-line"></i> <span>Sửa</span>
+                </button>
+                <button type="button" class="qr-btn-delete org-remove" data-qr-revoke="${account.id}" title="Xóa mã QR này">
+                    <i class="ri-delete-bin-line"></i> <span>Xóa</span>
                 </button>
             </div>
-        </article>`).join('') : tableEmptyBlock(selectedGroupId);
+        </article>`;
+    }).join('') : tableEmptyBlock(selectedGroupId);
 }
 
 

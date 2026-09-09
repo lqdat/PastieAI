@@ -4091,67 +4091,193 @@ button:focus-visible {
    Trước đây tên nhóm và các liên kết bị nhồi chung một dòng <small>, xuống dòng
    thành ra dính dấu chấm giữa treo lơ lửng. Nay tách thành ba vùng rõ ràng:
    biểu tượng, thông tin, thao tác. */
+/* --- Thẻ mã QR trong màn hình quản lý --- */
 .qr-card {
-    display: flex;
-    align-items: center;
-    gap: 13px;
-    padding: 13px 14px;
-    border: 1px solid var(--panel-border);
-    border-radius: 13px;
-    background: var(--panel-bg, #fff);
-    transition: border-color .18s, box-shadow .18s;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    padding: 14px 16px !important;
+    background: #ffffff !important;
+    border: 1px solid rgba(73, 51, 70, 0.1) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 2px 8px rgba(35, 16, 30, 0.03) !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    transition: border-color 0.18s, box-shadow 0.18s !important;
 }
-.qr-card:hover { border-color: var(--accent-color); box-shadow: 0 4px 14px rgba(45, 35, 53, .07); }
-.qr-card-icon {
-    display: grid;
-    place-items: center;
-    flex: none;
-    width: 42px;
-    height: 42px;
-    border-radius: 11px;
-    background: var(--accent-soft, rgba(239, 63, 151, .1));
-    color: var(--accent-color);
-    font-size: 21px;
+.qr-card:hover {
+    border-color: var(--accent-color, #ef2b9d) !important;
+    box-shadow: 0 4px 14px rgba(45, 35, 53, 0.07) !important;
 }
-.qr-card-main { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.qr-card-top {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+}
+.qr-thumb-box {
+    width: 48px !important;
+    height: 48px !important;
+    border-radius: 10px !important;
+    border: 1px solid rgba(73, 51, 70, 0.12) !important;
+    background: #ffffff !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    cursor: pointer !important;
+    padding: 2px !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04) !important;
+    transition: transform 0.15s ease, border-color 0.15s ease !important;
+}
+.qr-thumb-box:hover {
+    transform: scale(1.04) !important;
+    border-color: var(--accent-color, #ef2b9d) !important;
+}
+.qr-thumb-img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    border-radius: 6px !important;
+}
+.qr-card-main {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 3px !important;
+    min-width: 0 !important;
+    flex: 1 !important;
+    overflow: hidden !important;
+}
+.qr-card-title-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-wrap: wrap !important;
+}
 .qr-card-title {
-    font-size: 14.5px;
-    line-height: 1.3;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 14px !important;
+    font-weight: 750 !important;
+    color: var(--text-primary) !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
 }
 .qr-card-group {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    color: var(--text-secondary);
-    font-size: 11.5px;
-    font-weight: 600;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 2px 7px !important;
+    border-radius: 6px !important;
+    background: rgba(99, 102, 241, 0.08) !important;
+    color: #6366f1 !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
 }
-.qr-card-group i { color: var(--text-muted); font-size: 13px; }
-.qr-card-actions { display: flex; align-items: center; gap: 7px; flex: none; }
-.qr-card-poster {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 13px;
-    border: 1px solid var(--panel-border);
-    border-radius: 9px;
-    background: transparent;
-    color: var(--text-secondary);
-    font: inherit;
-    font-size: 12px;
-    font-weight: 700;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: border-color .18s, color .18s, background .18s;
+.qr-card-link-preview {
+    color: var(--text-muted, #9ca3af) !important;
+    font-size: 11px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
 }
-.qr-card-poster:hover { border-color: var(--accent-color); color: var(--accent-color); background: var(--accent-soft, rgba(239, 63, 151, .08)); }
-@media (max-width: 560px) {
-    .qr-card { flex-wrap: wrap; }
-    .qr-card-main { flex-basis: calc(100% - 55px); }
-    .qr-card-actions { width: 100%; justify-content: flex-end; }
+.qr-card-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding-top: 10px !important;
+    border-top: 1px dashed rgba(73, 51, 70, 0.1) !important;
+    margin-top: 2px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+.qr-btn-view {
+    flex: 1.2 !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    border: 1px solid rgba(239, 43, 157, 0.3) !important;
+    background: rgba(239, 43, 157, 0.08) !important;
+    color: var(--accent-color, #ef2b9d) !important;
+    border-radius: 9px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    transition: all 0.15s ease !important;
+}
+.qr-btn-view:active {
+    transform: scale(0.97) !important;
+}
+.qr-btn-copy {
+    flex: 1 !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    border: 1px solid rgba(73, 51, 70, 0.15) !important;
+    background: #f8f6f9 !important;
+    color: var(--text-primary) !important;
+    border-radius: 9px !important;
+    font-size: 12px !important;
+    font-weight: 650 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    transition: all 0.15s ease !important;
+}
+.qr-btn-copy:active {
+    transform: scale(0.97) !important;
+}
+.qr-btn-edit {
+    flex: 0.8 !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    border: 1px solid rgba(99, 102, 241, 0.25) !important;
+    background: rgba(99, 102, 241, 0.08) !important;
+    color: #6366f1 !important;
+    border-radius: 9px !important;
+    font-size: 12px !important;
+    font-weight: 650 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    transition: all 0.15s ease !important;
+}
+.qr-btn-edit:active {
+    transform: scale(0.97) !important;
+}
+.qr-btn-delete {
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 10px !important;
+    flex-shrink: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    border: 1px solid rgba(239, 68, 68, 0.25) !important;
+    background: rgba(239, 68, 68, 0.06) !important;
+    color: #ef4444 !important;
+    border-radius: 9px !important;
+    cursor: pointer !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    transition: all 0.15s ease !important;
+}
+.qr-btn-delete:active {
+    transform: scale(0.95) !important;
 }
 
 /* --- Thẻ Sale trong màn hình quản lý --- */
