@@ -333,6 +333,7 @@ function createInvoicePdfDataUrl(invoice, language) {
       const stampH = 34;
       const stampX = right - stampW - 6;
       const stampY = 118;
+      const savedY = doc.y;
       doc.save();
       doc.rotate(-15, { origin: [stampX + stampW / 2, stampY + stampH / 2] });
       doc.roundedRect(stampX, stampY, stampW, stampH, 4).lineWidth(2.2).strokeColor('#d32f2f').opacity(0.85).stroke();
@@ -343,6 +344,7 @@ function createInvoicePdfDataUrl(invoice, language) {
         .opacity(0.88)
         .text(stampText, stampX, stampY + 11, { width: stampW, align: 'center' });
       doc.restore();
+      doc.y = savedY;
     }
 
     doc.moveDown(0.7);
