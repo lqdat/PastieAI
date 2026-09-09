@@ -6619,11 +6619,16 @@ button:focus-visible {
 
 /* 2. Compact, Pro Max Mobile Popups & Management Modals */
 @media (max-width: 720px) {
-    .modal-overlay {
+    .modal-overlay:not(#login-modal) {
         align-items: flex-end !important;
         padding: 0 !important;
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
+    }
+    #login-modal.modal-overlay {
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 16px !important;
     }
 
     /* Popups không quá to, max 82dvh, chừa không gian nền phía trên */
