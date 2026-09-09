@@ -1679,6 +1679,15 @@ document.getElementById('org-tabs')?.addEventListener('click', (event) => {
 });
 
 
+document.getElementById('org-agent-form-toggle')?.addEventListener('click', () => {
+    const form = document.getElementById('org-agent-form');
+    const toggle = document.getElementById('org-agent-form-toggle');
+    if (form) {
+        const isExpanded = form.classList.toggle('is-expanded');
+        toggle?.classList.toggle('is-open', isExpanded);
+    }
+});
+
 document.getElementById('org-agent-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     try {

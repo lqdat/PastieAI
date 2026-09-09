@@ -295,11 +295,10 @@
         const category = CATEGORIES.find((c) => c.id === Number(id));
         if (!category) return;
         const ok = await pastieConfirm(
-            'Xoá danh mục',
             category.item_count > 0
                 ? `Xoá danh mục "${category.name}"? ${category.item_count} món trong đó vẫn còn, chỉ chuyển sang "Chưa phân loại".`
                 : `Xoá danh mục "${category.name}"?`,
-            { confirmText: 'Xoá danh mục', danger: true }
+            { title: 'Xoá danh mục', confirmText: 'Xoá danh mục', danger: true }
         );
         if (!ok) return;
         try {

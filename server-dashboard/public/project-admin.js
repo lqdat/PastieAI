@@ -377,7 +377,7 @@ async function openChannelModal() {
 
 function getAdminMgmtProjectId() {
     return CURRENT_ADMIN?.role === 'superadmin'
-        ? (adminMgmtProjectSelect?.value || '')
+        ? (document.getElementById('admin-mgmt-project-select')?.value || '')
         : (CURRENT_ADMIN?.project_id || '');
 }
 
@@ -664,13 +664,14 @@ function openAdminMgmt() {
     const roleSelect = document.getElementById('admin-form-role');
 
     if (accountProjectContext) accountProjectContext.classList.toggle('hide', !isSuper);
-    if (isSuper && adminMgmtProjectSelect) {
-        adminMgmtProjectSelect.innerHTML = (PROJECTS || []).map(p =>
+    const mgmtProjectSelect = document.getElementById('admin-mgmt-project-select');
+    if (isSuper && mgmtProjectSelect) {
+        mgmtProjectSelect.innerHTML = (PROJECTS || []).map(p =>
             `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name || p.id)} · ${escapeHtml(p.id)}</option>`
         ).join('');
         const currentTopProject = document.getElementById('project-filter')?.value;
-        if (currentTopProject && [...adminMgmtProjectSelect.options].some(o => o.value === currentTopProject)) {
-            adminMgmtProjectSelect.value = currentTopProject;
+        if (currentTopProject && [...mgmtProjectSelect.options].some(o => o.value === currentTopProject)) {
+            mgmtProjectSelect.value = currentTopProject;
         }
     }
 
@@ -722,7 +723,7 @@ function closeAdminMgmt() {
     if (adminMgmtModal) adminMgmtModal.classList.add('hide');
 }
 
-adminMgmtProjectSelect?.addEventListener('change', () => {
+document.getElementById('admin-mgmt-project-select')?.addEventListener('change', () => {
     resetAdminForm();
     void loadAdminUsers();
 });

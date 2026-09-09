@@ -358,7 +358,7 @@ async function loadOrgAgents() {
                             <option value="pay_later"${agent.deferred_payment_mode === 'pay_later' ? ' selected' : ''}>Thanh toán sau (Pay later)</option>
                         </select>
                     </label>
-                    <button type="button" class="org-menu-toggle-btn" data-agent-menu-toggle="${agent.id}" data-menu-disabled="${agent.superadmin_menu_disabled}" style="padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid ${agent.superadmin_menu_disabled ? '#ef4444' : '#10b981'};background:${agent.superadmin_menu_disabled ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)'};color:${agent.superadmin_menu_disabled ? '#ef4444' : '#10b981'};font-weight:600;cursor:pointer;" title="Bật/Tắt tính năng thực đơn cho Agent này">
+                    <button type="button" class="org-menu-toggle-btn ${agent.superadmin_menu_disabled ? 'is-menu-off' : 'is-menu-on'}" data-agent-menu-toggle="${agent.id}" data-menu-disabled="${agent.superadmin_menu_disabled}" title="Bật/Tắt tính năng thực đơn cho Agent này">
                         <i class="${agent.superadmin_menu_disabled ? 'ri-restaurant-line' : 'ri-restaurant-fill'}"></i> ${agent.superadmin_menu_disabled ? 'Menu: Tắt (SA)' : 'Menu: Bật'}
                     </button>
                     <button type="button" class="org-toggle" data-agent-toggle="${agent.id}" data-active="${agent.is_active}">
