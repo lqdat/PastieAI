@@ -465,6 +465,7 @@ const dashboardBody = document.getElementById('dashboard-body');
 
 document.getElementById('mobile-back-btn')?.addEventListener('click', () => {
     dashboardBody?.classList.remove('chat-open');
+    document.getElementById('main-dashboard')?.classList.remove('chat-open');
     if (typeof currentSessionId !== 'undefined' && currentSessionId) {
         if (typeof sessionsList !== 'undefined' && Array.isArray(sessionsList)) {
             const s = sessionsList.find(x => x.id === currentSessionId);

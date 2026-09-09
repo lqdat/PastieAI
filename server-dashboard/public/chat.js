@@ -171,6 +171,7 @@ async function selectInternalSession(chat) {
     currentInternalChat = chat;
 
     dashboardBody?.classList.add('chat-open');
+    document.getElementById('main-dashboard')?.classList.add('chat-open');
     bindAgentChatInputEvents();
 
     // Highlight card & clear unread badge in DOM
@@ -2007,6 +2008,7 @@ async function selectSession(sessionId) {
     chatInputContainer.classList.remove('hide');
     detailsSidebar.classList.remove('hide');
     dashboardBody?.classList.add('chat-open'); // mobile: chuyển sang khung chat
+    document.getElementById('main-dashboard')?.classList.add('chat-open');
 
     // Update delete button visibility: strictly only superadmin can see and delete!
     if (deleteSessionBtn) {
