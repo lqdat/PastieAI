@@ -1171,17 +1171,31 @@ window.refreshAgentSaleCount = refreshAgentSaleCount;
 //
 // Tải lại bằng cách gắn thêm một tham số vào URL: location.reload() ở
 // standalone vẫn có thể lấy lại đúng bản HTML đang nằm trong cache.
-function reloadApp() {
+async function reloadApp() {
+    if ('caches' in window) {
+        try {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        } catch (_) {}
+    }
     const url = new URL(window.location.href);
     url.searchParams.set('_r', String(Date.now()));
     window.location.replace(url.toString());
 }
 window.reloadApp = reloadApp;
 
-// Phiên bản trang HIỆN ĐANG chạy, lấy từ chính đường dẫn script đã tải.
+function parseVersionNum(v) {
+    const m = String(v || '').match(/r?(\d+)/i);
+    return m ? parseInt(m[1], 10) : 0;
+}
+
+// Phiên bản trang HIỆN ĐANG chạy, lấy từ chính đường dẫn script hoặc style đã tải.
 function currentAppVersion() {
     const src = document.querySelector('script[src*="admin.js?v="]')?.getAttribute('src') || '';
-    return (src.match(/[?&]v=(r\d+)/) || [])[1] || '';
+    const sMatch = (src.match(/[?&]v=(r\d+)/) || [])[1];
+    if (sMatch) return sMatch;
+    const href = document.querySelector('link[href*="admin.css?v="]')?.getAttribute('href') || '';
+    return (href.match(/[?&]v=(r\d+)/) || [])[1] || '';
 }
 
 async function checkAppVersion() {
@@ -1191,14 +1205,25 @@ async function checkAppVersion() {
         const res = await fetch(`${API_BASE}/api/app-version`, { cache: 'no-store' });
         if (!res.ok) return;
         const { version } = await res.json();
-        if (!version || version === 'unknown' || version === mine) return;
-        // NÓI RÕ HAI CON SỐ.
-        //
-        // "Đã có bản cập nhật mới" không trả lời được câu hỏi quan trọng nhất
-        // lúc đi soi lỗi: MÁY NÀY ĐANG CHẠY BẢN NÀO? Thiếu nó thì một lỗi đã sửa
-        // rồi vẫn bị báo đi báo lại, vì không ai biết máy đang chạy bản cũ.
+        if (!version || version === 'unknown') return;
+
+        const mineNum = parseVersionNum(mine);
+        const servNum = parseVersionNum(version);
+        // Chỉ hiện thông báo khi phiên bản trên server THỰC SỰ LỚN HƠN phiên bản hiện tại
+        if (servNum <= mineNum) {
+            document.getElementById('app-update-bar')?.classList.add('hide');
+            return;
+        }
+
+        // Đã bấm bỏ qua cho phiên bản này trong phiên làm việc hiện tại thì không làm phiền nữa
+        if (sessionStorage.getItem(`dismissed_update_${version}`) === '1') {
+            return;
+        }
+
+        const badge = document.getElementById('app-update-badge');
+        if (badge) badge.textContent = version;
         const line = document.getElementById('app-update-text');
-        if (line) line.textContent = `Đã có bản mới ${version} — máy này đang chạy ${mine}.`;
+        if (line) line.textContent = `Đã có bản cập nhật mới (${version}). Bấm tải lại để nhận các cải tiến mới nhất.`;
         document.getElementById('app-update-bar')?.classList.remove('hide');
     } catch {
         // Mất mạng thì thôi, lần sau kiểm lại. Không làm phiền người dùng.
@@ -1209,13 +1234,11 @@ document.getElementById('app-reload-btn')?.addEventListener('click', reloadApp);
 document.getElementById('app-update-reload')?.addEventListener('click', reloadApp);
 document.getElementById('app-update-dismiss')?.addEventListener('click', () => {
     document.getElementById('app-update-bar')?.classList.add('hide');
-    // Ẩn là ẩn TẠM. Bỏ qua một lần rồi im luôn thì máy đó ở lại bản cũ vô thời
-    // hạn — và mọi lỗi đã sửa vẫn còn nguyên trên đúng máy ấy.
-    setTimeout(() => { void checkAppVersion(); }, 10 * 60 * 1000);
+    const badge = document.getElementById('app-update-badge')?.textContent;
+    if (badge) sessionStorage.setItem(`dismissed_update_${badge}`, '1');
 });
-// Kiểm khi mở app, mỗi 5 phút, và mỗi lần quay lại app từ nền — lúc quay lại
-// mới là lúc hay gặp bản mới nhất.
-setTimeout(checkAppVersion, 4000);
+// Kiểm khi mở app, mỗi 5 phút, và mỗi lần quay lại app từ nền
+setTimeout(checkAppVersion, 3000);
 setInterval(checkAppVersion, 5 * 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) void checkAppVersion(); });
 

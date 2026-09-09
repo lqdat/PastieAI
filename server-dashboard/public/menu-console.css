@@ -830,18 +830,22 @@
 /* --- Thanh thẻ trên máy hẹp ------------------------------------------------ */
 
 @media (max-width: 560px) {
-    /* 5 thẻ không vừa một hàng 358px. Cuộn ngang thì thẻ cuối bị khuất mà không
-       có dấu hiệu gì báo còn nữa — người dùng tưởng chỉ có bấy nhiêu. Cho xuống
-       hàng: cao thêm một chút nhưng không giấu gì cả. */
     .org-tabs {
-        flex-wrap: wrap;
-        overflow-x: visible;
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        gap: 6px;
+        padding: 5px 6px;
     }
-
+    .org-tabs::-webkit-scrollbar { display: none; }
     .org-tab {
-        flex: 1 1 calc(50% - 4px);
+        flex: 0 0 auto;
         justify-content: center;
-        padding: 9px 10px;
+        padding: 8px 14px;
+        font-size: 12.5px;
+        white-space: nowrap;
     }
 }
 

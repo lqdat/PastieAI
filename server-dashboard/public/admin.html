@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r113">
-    <link rel="stylesheet" href="menu-console.css?v=r113">
+    <link rel="stylesheet" href="admin.css?v=r116">
+    <link rel="stylesheet" href="menu-console.css?v=r116">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -107,12 +107,31 @@
     </div>
 
     <!-- Main Dashboard Container -->
-    <!-- Báo có bản mới. Hiện ở đáy màn để không che thao tác đang làm dở. -->
-    <div id="app-update-bar" class="app-update-bar hide" role="status">
-        <span id="app-update-text">Đã có bản cập nhật mới.</span>
-        <button type="button" id="app-update-reload">Tải lại ngay</button>
-        <button type="button" id="app-update-dismiss" aria-label="Để sau">✕</button>
-    </div>
+    <!-- Báo có bản mới. Thiết kế UI/UX Pro Max Floating Sheet -->
+    <aside id="app-update-bar" class="app-update-bar hide" role="alert" aria-live="polite">
+        <div class="app-update-card">
+            <div class="app-update-main">
+                <div class="app-update-sparkle">
+                    <i class="ri-sparkling-2-fill"></i>
+                </div>
+                <div class="app-update-details">
+                    <div class="app-update-heading">
+                        <strong>Bản cập nhật mới</strong>
+                        <span id="app-update-badge" class="app-update-pill">Mới</span>
+                    </div>
+                    <p id="app-update-text">Đã có phiên bản mới với nhiều cải tiến giao diện. Tải lại để cập nhật ngay.</p>
+                </div>
+                <button type="button" id="app-update-dismiss" class="app-update-close-btn" title="Để sau" aria-label="Để sau">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
+            <div class="app-update-actions">
+                <button type="button" id="app-update-reload" class="app-update-action-btn">
+                    <i class="ri-restart-line"></i> <span>Tải lại ngay</span>
+                </button>
+            </div>
+        </div>
+    </aside>
 
     <div class="dashboard-container hide" id="main-dashboard">
         <!-- Top Navigation -->
@@ -1627,15 +1646,15 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r113"></script>
-    <script src="core.js?v=r113"></script>
-    <script src="chat.js?v=r113"></script>
-    <script src="org-console.js?v=r113"></script>
-    <script src="project-admin.js?v=r114"></script>
-    <script src="menu-console.js?v=r113"></script>
-    <script src="order-console.js?v=r113"></script>
-    <script src="monitor-console.js?v=r113"></script>
-    <script src="cart-console.js?v=r113"></script>
-    <script src="admin.js?v=r114"></script>
+    <script src="config.js?v=r116"></script>
+    <script src="core.js?v=r116"></script>
+    <script src="chat.js?v=r116"></script>
+    <script src="org-console.js?v=r116"></script>
+    <script src="project-admin.js?v=r116"></script>
+    <script src="menu-console.js?v=r116"></script>
+    <script src="order-console.js?v=r116"></script>
+    <script src="monitor-console.js?v=r116"></script>
+    <script src="cart-console.js?v=r116"></script>
+    <script src="admin.js?v=r116"></script>
 </body>
 </html>

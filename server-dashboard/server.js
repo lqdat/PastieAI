@@ -768,8 +768,15 @@ setTimeout(seedSuperAdmin, 2500);
 app.get('/api/app-version', (_req, res) => {
   try {
     const html = fs.readFileSync(path.join(__dirname, 'public', 'admin.html'), 'utf8');
-    res.set('Cache-Control', 'no-store');
-    res.json({ version: (html.match(/\?v=(r\d+)/) || [])[1] || 'unknown' });
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    const matches = [...html.matchAll(/\?v=r(\d+)/g)];
+    let maxRev = 0;
+    for (const m of matches) {
+      const n = parseInt(m[1], 10);
+      if (n > maxRev) maxRev = n;
+    }
+    const version = maxRev > 0 ? `r${maxRev}` : 'unknown';
+    res.json({ version });
   } catch {
     res.json({ version: 'unknown' });
   }
@@ -787,6 +794,9 @@ app.get('/', (req, res) => {
 });
 
 app.get('/admin', (_req, res) => {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 

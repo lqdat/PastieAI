@@ -1815,6 +1815,18 @@ function addBoxPortal(name, box, open) {
     if (!modal || !slot || !document.getElementById('org-modal')?.contains(box)) return false;
     if (!addBoxHome.has(name)) addBoxHome.set(name, { parent: box.parentElement, next: box.nextElementSibling });
     if (open) {
+        const currentInSlot = slot.firstElementChild;
+        if (currentInSlot && currentInSlot !== box) {
+            const currentName = currentInSlot.dataset?.addbox;
+            if (currentName) {
+                const currentHome = addBoxHome.get(currentName);
+                if (currentHome?.parent && currentInSlot.parentElement !== currentHome.parent) {
+                    currentHome.parent.insertBefore(currentInSlot, currentHome.next);
+                }
+                currentInSlot.classList.add('hide');
+                document.querySelector(`[data-addbox-toggle="${currentName}"]`)?.classList.remove('is-open');
+            }
+        }
         const label = document.querySelector(`[data-addbox-toggle="${name}"] span`)?.textContent;
         const title = document.getElementById('addbox-title');
         if (title) title.textContent = label?.trim() || 'Thêm mới';
