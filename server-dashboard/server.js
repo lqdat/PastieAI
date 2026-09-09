@@ -2660,8 +2660,45 @@ async function blockStaffOutOfHours(req, res, sender, sessionId = null) {
   }
 }
 
+async function findNewerActiveSession(oldSession) {
+  if (!oldSession) return null;
+  const { id, qr_account_id, visitor_phone, visitor_email, active_identity_token, client_ip, browser, device } = oldSession;
+  if (!qr_account_id && !visitor_phone && !visitor_email && !active_identity_token && !client_ip) return null;
+
+  try {
+    const res = await db.query(
+      `SELECT s.*, COALESCE(p.ai_enabled, p.project_type <> 'qr_concierge') AS ai_enabled
+         FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
+        WHERE s.status = 'active'
+          AND s.id <> $1
+          AND (
+            ($2::text IS NOT NULL AND s.qr_account_id::text = $2)
+            OR ($3::text IS NOT NULL AND s.visitor_phone = $3)
+            OR ($4::text IS NOT NULL AND s.visitor_email = $4)
+            OR ($5::text IS NOT NULL AND s.active_identity_token = $5)
+            OR ($6::text IS NOT NULL AND s.client_ip = $6 AND s.browser = $7 AND s.device = $8)
+          )
+        ORDER BY s.created_at DESC LIMIT 1`,
+      [
+        id,
+        qr_account_id ? String(qr_account_id) : null,
+        visitor_phone || null,
+        visitor_email || null,
+        active_identity_token || null,
+        client_ip || null,
+        browser || null,
+        device || null
+      ]
+    );
+    return res.rows[0] || null;
+  } catch (err) {
+    console.error('findNewerActiveSession error:', err.message);
+    return null;
+  }
+}
+
 app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req, res) => {
-  const { sessionId, sender, text, targetLang, visitorLang, adminLang } = req.body;
+  let { sessionId, sender, text, targetLang, visitorLang, adminLang } = req.body;
 
   if (!sessionId || !sender || !text || !targetLang) {
     return res.status(400).json({ error: 'Thiếu thông số đầu vào bắt buộc.' });
@@ -2680,8 +2717,48 @@ app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req,
       return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
     }
     await expireQrSessionIfNeeded(sessionRes.rows[0]);
+    let currentSessionId = sessionId;
+    let sessionSwitched = false;
+
     if (sessionRes.rows[0].status === 'closed') {
-      return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
+      if (sender === 'visitor') {
+        const oldSession = sessionRes.rows[0];
+        // 1. Tìm xem đã có phiên active mới hơn của cùng khách/bàn không (ví dụ Sale đã mở phiên mới)
+        let activeSession = await findNewerActiveSession(oldSession);
+
+        // 2. Nếu chưa có phiên active nào, tự động tạo mới phiên chat cho khách
+        if (!activeSession) {
+          const newSessionId = randomUUID();
+          const createRes = await db.query(
+            `INSERT INTO sessions (
+               id, project_id, qr_account_id, visitor_phone, visitor_email,
+               visitor_name, detected_language, group_id, active_identity_token,
+               browser, device, client_ip, assigned_admin_id, claimed_by_admin_id,
+               status, created_at
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'active', NOW())
+             RETURNING *`,
+            [
+              newSessionId, oldSession.project_id || null, oldSession.qr_account_id || null,
+              oldSession.visitor_phone || null, oldSession.visitor_email || null,
+              oldSession.visitor_name || 'Khách hàng', oldSession.detected_language || visitorLang || 'vi',
+              oldSession.group_id || null, oldSession.active_identity_token || null,
+              oldSession.browser || null, oldSession.device || null, oldSession.client_ip || null,
+              oldSession.assigned_admin_id || null, oldSession.claimed_by_admin_id || null
+            ]
+          );
+          activeSession = createRes.rows[0];
+          activeSession.ai_enabled = oldSession.ai_enabled;
+        }
+
+        sessionRes.rows[0] = activeSession;
+        currentSessionId = activeSession.id;
+        sessionId = activeSession.id;
+        sessionSwitched = true;
+        res.setHeader('X-Switched-Session', currentSessionId);
+        res.setHeader('Access-Control-Expose-Headers', 'X-Switched-Session');
+      } else {
+        return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
+      }
     }
 
     // Báo agent MỌI tin KHÁCH gửi đến (tin nhắn đến). KHÔNG báo tin AI/nhân viên trả lời.
@@ -3013,7 +3090,10 @@ app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req,
       success: true,
       message: returnedMsg,
       aiReply: aiReplyMsg,
-      expiresAt: sessionExpiresAt
+      expiresAt: sessionExpiresAt,
+      sessionSwitched,
+      newSessionId: sessionId,
+      sessionId
     });
   } catch (error) {
     console.error('Message translation/logging error:', error);
@@ -3440,11 +3520,25 @@ app.post('/api/chats/session/close', async (req, res) => {
 app.get('/api/chats/:sessionId/state', async (req, res) => {
   try {
     const r = await db.query(
-      'SELECT id, status, claimed_by_admin_id, requested_agent, qr_account_id, expires_at, group_id, routing_status FROM sessions WHERE id = $1',
+      'SELECT id, status, claimed_by_admin_id, requested_agent, qr_account_id, expires_at, group_id, routing_status, visitor_phone, visitor_email, active_identity_token, client_ip, browser, device FROM sessions WHERE id = $1',
       [req.params.sessionId]
     );
     if (r.rows.length === 0) return res.status(404).json({ error: 'not found' });
     const s = await expireQrSessionIfNeeded(r.rows[0]);
+
+    if (s.status === 'closed') {
+      const newerSession = await findNewerActiveSession(s);
+      if (newerSession) {
+        res.setHeader('X-Switched-Session', newerSession.id);
+        res.setHeader('Access-Control-Expose-Headers', 'X-Switched-Session');
+        return res.json({
+          status: 'closed',
+          sessionSwitched: true,
+          newSessionId: newerSession.id
+        });
+      }
+    }
+
     const mode = (s.claimed_by_admin_id || s.requested_agent) ? 'human' : 'ai';
     // Khách cần biết đang chờ hay đã có người tiếp nhận (mục 13 kế hoạch).
     // waitingForStaff = chưa ai nhận VÀ hiện không có Sale nào trong ca, để portal
@@ -4008,6 +4102,16 @@ app.get('/api/chats/:sessionId/messages', async (req, res) => {
     }
     await expireQrSessionIfNeeded(sessionRes.rows[0]);
     if (sessionRes.rows[0].status === 'closed') {
+      const newerSession = await findNewerActiveSession(sessionRes.rows[0]);
+      if (newerSession) {
+        res.setHeader('X-Switched-Session', newerSession.id);
+        res.setHeader('Access-Control-Expose-Headers', 'X-Switched-Session');
+        return res.status(200).json({
+          messages: [],
+          sessionSwitched: true,
+          newSessionId: newerSession.id
+        });
+      }
       return res.status(410).json({ error: 'Phiên chat đã bị đóng.' });
     }
 
@@ -4730,7 +4834,30 @@ app.put('/api/admin/orders/:orderId/invoice', checkAdminAuth, requireWorkingHour
 // Customer portal polls this endpoint. Hóa đơn được vẽ lại thành PDF theo đúng
 // ngôn ngữ khách đang chọn (?lang=), nên đổi ngôn ngữ là hóa đơn đổi theo.
 app.get('/api/chats/:sessionId/order', async (req, res) => {
-  let order = await getChatOrderForVisitor(req.params.sessionId);
+  let targetSessionId = req.params.sessionId;
+  const currentSessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [targetSessionId]);
+  const currentSession = currentSessionRes.rows[0];
+
+  if (currentSession && currentSession.status === 'closed') {
+    const newerSession = await findNewerActiveSession(currentSession);
+    if (newerSession) {
+      res.setHeader('X-Switched-Session', newerSession.id);
+      res.setHeader('Access-Control-Expose-Headers', 'X-Switched-Session');
+      const newOrder = await getChatOrderForVisitor(newerSession.id);
+      if (!newOrder) {
+        // Phiên mới chưa có đơn hàng -> trả 404 kèm sessionSwitched để portal dọn sạch bill cũ
+        return res.status(404).json({
+          error: 'Chưa có đơn hàng đang hoạt động.',
+          sessionSwitched: true,
+          newSessionId: newerSession.id
+        });
+      }
+      targetSessionId = newerSession.id;
+      req.params.sessionId = newerSession.id;
+    }
+  }
+
+  let order = await getChatOrderForVisitor(targetSessionId);
   if (!order) return res.status(404).json({ error: 'Chưa có đơn hàng đang hoạt động.' });
 
   if (order.status === 'awaiting_payment' && !order.payment_method) {

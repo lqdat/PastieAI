@@ -93,26 +93,26 @@
             const overlay = document.createElement('div');
             overlay.className = 'confirm-overlay';
             overlay.innerHTML = `
-                <div class="confirm-card" role="dialog" aria-modal="true" style="max-width:380px;">
-                    <h3 class="confirm-title">Sửa giá &amp; số lượng món</h3>
-                    <p style="margin:4px 0 12px;font-size:13px;font-weight:600;color:var(--accent-color);">${escapeHtml(item.name || '')}</p>
-                    <div style="display:grid;gap:10px;margin-bottom:14px;text-align:left;">
-                        <label style="font-size:12px;display:grid;gap:4px;">
+                <div class="confirm-card" role="dialog" aria-modal="true" style="max-width:390px;width:92%;border-radius:20px;padding:20px 20px 18px;">
+                    <h3 class="confirm-title" style="font-size:17px;font-weight:800;color:var(--text-primary);margin-bottom:2px;">Sửa giá &amp; số lượng</h3>
+                    <p style="margin:2px 0 14px;font-size:13px;font-weight:700;color:var(--accent-color);">${escapeHtml(item.name || '')}</p>
+                    <div style="display:grid;gap:12px;margin-bottom:18px;text-align:left;">
+                        <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Đơn giá (₫):</span>
-                            <input type="number" id="edit-item-price" min="0" step="1000" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);" value="${Number(item.unitPrice || 0)}">
+                            <input type="number" id="edit-item-price" min="0" step="1000" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;" value="${Number(item.unitPrice || 0)}">
                         </label>
-                        <label style="font-size:12px;display:grid;gap:4px;">
+                        <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Số lượng:</span>
-                            <input type="number" id="edit-item-qty" min="1" max="99" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);" value="${Number(item.quantity || 1)}">
+                            <input type="number" id="edit-item-qty" min="1" max="99" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;" value="${Number(item.quantity || 1)}">
                         </label>
-                        <label style="font-size:12px;display:grid;gap:4px;">
+                        <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Ghi chú thêm:</span>
-                            <input type="text" id="edit-item-note" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);" value="${escapeHtml(String(item.note || '').replace(/^\(|\)$/g, ''))}">
+                            <input type="text" id="edit-item-note" placeholder="Ví dụ: Ít cay, không hành" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;" value="${escapeHtml(String(item.note || '').replace(/^\(|\)$/g, ''))}">
                         </label>
                     </div>
-                    <div class="confirm-actions">
-                        <button type="button" class="confirm-cancel">Huỷ</button>
-                        <button type="button" class="confirm-ok" style="background:var(--accent-color);color:#fff;border:none;">Lưu</button>
+                    <div class="confirm-actions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <button type="button" class="confirm-cancel" style="height:42px;border-radius:11px;font-weight:600;font-size:13.5px;">Huỷ</button>
+                        <button type="button" class="confirm-ok" style="height:42px;border-radius:11px;font-weight:700;font-size:13.5px;background:var(--accent-color);color:#fff;border:none;box-shadow:0 3px 10px rgba(239,43,157,.3);">Lưu thay đổi</button>
                     </div>
                 </div>`;
             document.body.appendChild(overlay);
@@ -132,29 +132,29 @@
             const overlay = document.createElement('div');
             overlay.className = 'confirm-overlay';
             overlay.innerHTML = `
-                <div class="confirm-card" role="dialog" aria-modal="true" style="max-width:380px;">
-                    <h3 class="confirm-title">Thêm món vào bill</h3>
-                    <div style="display:grid;gap:10px;margin:12px 0 14px;text-align:left;">
-                        <label style="font-size:12px;display:grid;gap:4px;">
-                            <span>Tên món *:</span>
-                            <input type="text" id="add-item-name" required placeholder="Ví dụ: Cơm chiên hải sản" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);">
+                <div class="confirm-card" role="dialog" aria-modal="true" style="max-width:390px;width:92%;border-radius:20px;padding:20px 20px 18px;">
+                    <h3 class="confirm-title" style="font-size:17px;font-weight:800;color:var(--text-primary);margin-bottom:14px;">Thêm món vào bill</h3>
+                    <div style="display:grid;gap:12px;margin-bottom:18px;text-align:left;">
+                        <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
+                            <span>Tên món <b style="color:#ef4444;">*</b>:</span>
+                            <input type="text" id="add-item-name" required placeholder="Ví dụ: Cơm chiên hải sản" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
                         </label>
-                        <label style="font-size:12px;display:grid;gap:4px;">
-                            <span>Đơn giá (₫) *:</span>
-                            <input type="number" id="add-item-price" min="0" step="1000" placeholder="Ví dụ: 85000" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);">
+                        <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
+                            <span>Đơn giá (₫) <b style="color:#ef4444;">*</b>:</span>
+                            <input type="number" id="add-item-price" min="0" step="1000" placeholder="Ví dụ: 85000" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
                         </label>
-                        <label style="font-size:12px;display:grid;gap:4px;">
-                            <span>Số lượng *:</span>
-                            <input type="number" id="add-item-qty" min="1" max="99" value="1" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);">
+                        <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
+                            <span>Số lượng <b style="color:#ef4444;">*</b>:</span>
+                            <input type="number" id="add-item-qty" min="1" max="99" value="1" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
                         </label>
-                        <label style="font-size:12px;display:grid;gap:4px;">
+                        <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Ghi chú:</span>
-                            <input type="text" id="add-item-note" placeholder="Ví dụ: Ít cay, thêm đá" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(84,62,100,.2);">
+                            <input type="text" id="add-item-note" placeholder="Ví dụ: Ít cay, không tiêu" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
                         </label>
                     </div>
-                    <div class="confirm-actions">
-                        <button type="button" class="confirm-cancel">Huỷ</button>
-                        <button type="button" class="confirm-ok" style="background:var(--accent-color);color:#fff;border:none;">Thêm món</button>
+                    <div class="confirm-actions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <button type="button" class="confirm-cancel" style="height:42px;border-radius:11px;font-weight:600;font-size:13.5px;">Huỷ</button>
+                        <button type="button" class="confirm-ok" style="height:42px;border-radius:11px;font-weight:700;font-size:13.5px;background:var(--accent-color);color:#fff;border:none;box-shadow:0 3px 10px rgba(239,43,157,.3);">Thêm món</button>
                     </div>
                 </div>`;
             document.body.appendChild(overlay);
@@ -232,21 +232,38 @@
 
             function renderDraftItemsHtml() {
                 if (!draftItems.length) {
-                    return '<p class="cart-empty" style="padding:16px;text-align:center;">Đơn chưa có món.</p>';
+                    return `
+                        <div class="order-items-empty">
+                            <i class="ri-shopping-basket-2-line"></i>
+                            <p>Đơn chưa có món nào.</p>
+                            <small>Bấm "Thêm món vào bill" bên dưới để bổ sung món</small>
+                        </div>`;
                 }
                 return draftItems.map((item, index) => `
                     <div class="order-detail-item" data-item-idx="${index}">
-                        <div class="order-item-info">
-                            <strong>${escapeHtml(item.name || 'Món')}</strong>
-                            ${item.note ? `<small class="item-note" style="font-style:italic;color:#7a6880;"><em>(${escapeHtml(String(item.note).replace(/^\(|\)$/g, ''))})</em></small>` : ''}
+                        <div class="order-item-left">
+                            <div class="order-item-name-wrap">
+                                <strong class="order-item-name">${escapeHtml(item.name || 'Món')}</strong>
+                                ${item.note ? `<span class="order-item-note-badge" title="${escapeHtml(item.note)}"><i class="ri-sticky-note-line"></i> ${escapeHtml(String(item.note).replace(/^\(|\)$/g, ''))}</span>` : ''}
+                            </div>
+                            <div class="order-item-qty-row">
+                                <span class="order-item-unit-price">${money(item.unitPrice || 0)}</span>
+                                <span class="order-item-cross">×</span>
+                                <span class="order-item-qty-tag">${Number(item.quantity || 0)}</span>
+                            </div>
                         </div>
-                        <span class="order-item-qty">×${Number(item.quantity || 0)}</span>
-                        <b class="order-item-total">${money(item.lineTotal ?? Number(item.unitPrice || 0) * Number(item.quantity || 0))}</b>
-                        ${canEdit ? `
-                        <div class="order-item-actions">
-                            <button type="button" class="icon-btn edit-item-btn" data-edit-item="${index}" title="Sửa giá / SL" style="width:28px;height:28px;font-size:13px;padding:0;"><i class="ri-edit-line"></i></button>
-                            <button type="button" class="icon-btn del-item-btn" data-del-item="${index}" title="Xóa món" style="width:28px;height:28px;font-size:13px;padding:0;color:#ef4444;"><i class="ri-delete-bin-line"></i></button>
-                        </div>` : ''}
+                        <div class="order-item-right">
+                            <b class="order-item-total">${money(item.lineTotal ?? Number(item.unitPrice || 0) * Number(item.quantity || 0))}</b>
+                            ${canEdit ? `
+                            <div class="order-item-actions">
+                                <button type="button" class="order-action-btn edit-item-btn" data-edit-item="${index}" title="Sửa giá / SL">
+                                    <i class="ri-pencil-line"></i>
+                                </button>
+                                <button type="button" class="order-action-btn del-item-btn is-danger" data-del-item="${index}" title="Xóa món">
+                                    <i class="ri-delete-bin-line"></i>
+                                </button>
+                            </div>` : ''}
+                        </div>
                     </div>`).join('');
             }
 
@@ -255,12 +272,21 @@
                 const summaryEl = detailOverlay?.querySelector('.order-detail-summary');
                 if (summaryEl) {
                     summaryEl.innerHTML = `
-                        <span>Tạm tính <b>${money(calc.subtotal)}</b></span>
-                        <span>VAT (${Number(calc.vatRate)}%)
-                            ${canEdit ? `<button type="button" class="icon-btn" id="order-edit-vat-btn" title="Đổi % VAT" style="width:20px;height:20px;font-size:11px;padding:0;margin-left:4px;"><i class="ri-edit-line"></i></button>` : ''}
-                            <b>${money(calc.vatAmount)}</b>
-                        </span>
-                        <span class="is-total">Tổng cộng <b>${money(calc.totalAmount)}</b></span>
+                        <div class="summary-line">
+                            <span class="summary-line-label">Tạm tính</span>
+                            <b class="summary-line-val">${money(calc.subtotal)}</b>
+                        </div>
+                        <div class="summary-line">
+                            <span class="summary-line-label">
+                                VAT (${Number(calc.vatRate)}%)
+                                ${canEdit ? `<button type="button" class="order-vat-chip" id="order-edit-vat-btn" title="Đổi % VAT"><i class="ri-pencil-line"></i> Đổi %</button>` : ''}
+                            </span>
+                            <b class="summary-line-val">${money(calc.vatAmount)}</b>
+                        </div>
+                        <div class="summary-line is-total">
+                            <span class="summary-line-label">Tổng cộng</span>
+                            <b class="summary-line-val">${money(calc.totalAmount)}</b>
+                        </div>
                     `;
                 }
                 const saveStatusEl = detailOverlay?.querySelector('#order-save-status-wrap');
@@ -273,11 +299,12 @@
                 if (saveBtn) {
                     saveBtn.classList.toggle('primary-btn', isDirty);
                     saveBtn.classList.toggle('secondary-btn', !isDirty);
+                    saveBtn.style.display = isDirty ? 'inline-flex' : 'none';
                     saveBtn.style.background = isDirty ? 'var(--accent-color)' : '';
                     saveBtn.style.color = isDirty ? '#fff' : '';
                     saveBtn.innerHTML = isSaving
                         ? `<i class="ri-loader-4-line ri-spin"></i> Đang lưu…`
-                        : (isDirty ? `<i class="ri-save-line"></i> <strong>Lưu thay đổi</strong>` : `<i class="ri-check-line"></i> Đã lưu`);
+                        : `<i class="ri-save-line"></i> <strong>Lưu thay đổi</strong>`;
                 }
             }
 
@@ -303,36 +330,50 @@
                     </div>
                     <div class="cart-body order-detail-body">
                         <div class="order-detail-meta">
-                            <span><i class="ri-map-pin-line"></i>${escapeHtml(order.qr_label || order.group_name || '—')}</span>
-                            <span><i class="ri-user-line"></i>${escapeHtml(order.visitor_name || order.visitor_email || 'Khách')}</span>
+                            <span><i class="ri-map-pin-2-line"></i>${escapeHtml(order.qr_label || order.group_name || '—')}</span>
                             <span><i class="ri-bank-card-line"></i>${escapeHtml(payment)}</span>
+                            <span><i class="ri-user-line"></i>${escapeHtml(order.visitor_name || order.visitor_email || 'Khách')}</span>
                             <span><i class="ri-user-star-line"></i>Sale tiếp nhận: <strong>${escapeHtml(order.sale_name || 'Chưa tiếp nhận')}</strong></span>
                         </div>
                         <div class="order-detail-items">
                             ${renderDraftItemsHtml()}
                         </div>
                         ${canEdit ? `
-                        <div style="padding:6px 0;display:flex;gap:8px;align-items:center;">
-                            <button type="button" class="secondary-btn" id="order-add-item-btn" style="flex:1;padding:8px;font-size:12.5px;"><i class="ri-add-line"></i> Thêm món vào bill</button>
+                        <div class="order-add-toolbar">
+                            <button type="button" class="order-add-btn" id="order-add-item-btn">
+                                <i class="ri-add-line"></i>
+                                <span>Thêm món vào bill</span>
+                            </button>
                             <div id="order-save-status-wrap">
                                 <span class="order-save-status is-saved"><i class="ri-checkbox-circle-line"></i> Đã lưu</span>
                             </div>
                         </div>` : ''}
                         <div class="order-detail-summary">
-                            <span>Tạm tính <b>${money(charges.subtotal ?? order.total_amount)}</b></span>
-                            <span>VAT (${Number(charges.vatRate || 0)}%)
-                                ${canEdit ? `<button type="button" class="icon-btn" id="order-edit-vat-btn" title="Đổi % VAT" style="width:20px;height:20px;font-size:11px;padding:0;margin-left:4px;"><i class="ri-edit-line"></i></button>` : ''}
-                                <b>${money(charges.vatAmount || 0)}</b>
-                            </span>
-                            <span class="is-total">Tổng cộng <b>${money(order.total_amount)}</b></span>
+                            <div class="summary-line">
+                                <span class="summary-line-label">Tạm tính</span>
+                                <b class="summary-line-val">${money(charges.subtotal ?? order.total_amount)}</b>
+                            </div>
+                            <div class="summary-line">
+                                <span class="summary-line-label">
+                                    VAT (${Number(charges.vatRate || 0)}%)
+                                    ${canEdit ? `<button type="button" class="order-vat-chip" id="order-edit-vat-btn" title="Đổi % VAT"><i class="ri-pencil-line"></i> Đổi %</button>` : ''}
+                                </span>
+                                <b class="summary-line-val">${money(charges.vatAmount || 0)}</b>
+                            </div>
+                            <div class="summary-line is-total">
+                                <span class="summary-line-label">Tổng cộng</span>
+                                <b class="summary-line-val">${money(order.total_amount)}</b>
+                            </div>
                         </div>
                         <div class="order-detail-history"></div>
                         <div class="order-detail-actions">
-                            <button type="button" class="secondary-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
-                            <button type="button" class="secondary-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem bill</button>
+                            <div class="order-action-nav-row">
+                                <button type="button" class="secondary-btn order-nav-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
+                                <button type="button" class="secondary-btn order-nav-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem bill</button>
+                            </div>
                             ${canEdit ? `
-                                <button type="button" class="secondary-btn is-full-width" id="order-save-bill-btn"><i class="ri-save-line"></i> Lưu thay đổi</button>
-                                <button type="button" class="primary-btn is-full-width is-resend-bill" id="order-send-bill-btn" data-order-id="${escapeHtml(order.id)}" style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;"><i class="ri-send-plane-fill"></i> Gửi lại bill cho khách</button>
+                                <button type="button" class="primary-btn is-full-width order-save-btn" id="order-save-bill-btn" style="display:none;"><i class="ri-save-line"></i> Lưu thay đổi</button>
+                                <button type="button" class="primary-btn is-full-width is-resend-bill" id="order-send-bill-btn" data-order-id="${escapeHtml(order.id)}"><i class="ri-send-plane-fill"></i> Gửi lại bill cho khách</button>
                             ` : ''}
                             ${canMarkPaid && order.status === 'awaiting_payment' ? `<button type="button" class="cart-paid-btn is-full-width" data-paid="${escapeHtml(order.id)}" data-method="${escapeHtml(order.payment_method || '')}"><i class="ri-check-double-line"></i> Xác nhận đã thu tiền</button>` : ''}
                         </div>
