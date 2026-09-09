@@ -563,28 +563,34 @@ async function loadOrgSales() {
 
         box.innerHTML = ORG_SALES.length ? ORG_SALES.map((sale) => `
             <article class="org-item sale-card">
-                <div class="org-item-main" style="display:flex;align-items:center;gap:12px;">
+                <div class="sale-card-profile">
                     ${sale.avatar_url 
-                        ? `<div style="width:38px;height:38px;border-radius:50%;overflow:hidden;flex-shrink:0;border:1.5px solid var(--accent-color);"><img src="${escapeHtml(sale.avatar_url)}" alt="" style="width:100%;height:100%;object-fit:cover;"></div>`
-                        : `<div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg, #6366f1, #a855f7);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;">${escapeHtml((sale.full_name || 'S').trim().charAt(0).toUpperCase())}</div>`
+                        ? `<div class="sale-avatar"><img src="${escapeHtml(sale.avatar_url)}" alt="" style="width:100%;height:100%;object-fit:cover;"></div>`
+                        : `<div class="sale-avatar sale-avatar-fallback">${escapeHtml((sale.full_name || 'S').trim().charAt(0).toUpperCase())}</div>`
                     }
-                    <div>
-                        <strong class="sale-card-name">${escapeHtml(sale.full_name || sale.username)}
+                    <div class="sale-info">
+                        <div class="sale-name-row">
+                            <strong class="sale-name">${escapeHtml(sale.full_name || sale.username)}</strong>
                             <span class="org-shift ${sale.on_shift ? 'is-on' : ''}">${sale.on_shift ? 'Trong ca' : 'Ngoài ca'}</span>
-                        </strong>
-                        <span class="sale-card-mail">${escapeHtml(sale.username)}</span>
-                        <span class="sale-card-facts">
-                            <span class="sale-fact"><i class="ri-time-line"></i> ${escapeHtml(formatHourWindows(sale.access_hours))}</span>
-                            <span class="sale-fact"><i class="ri-team-line"></i> ${(sale.groups || []).map((g) => escapeHtml(g.name)).join(', ') || 'Chưa gán nhóm'}</span>
-                        </span>
+                        </div>
+                        <span class="sale-email">${escapeHtml(sale.username)}</span>
                     </div>
                 </div>
-                <div class="org-item-actions" style="display:flex;gap:5px;align-items:center;">
-                    <button type="button" class="org-btn-edit" data-sale-edit="${sale.id}" title="Sửa" style="background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:4px 8px;font-size:11.5px;cursor:pointer;font-weight:600;"><i class="ri-edit-line"></i> Sửa</button>
-                    <button type="button" class="org-toggle" data-sale-toggle="${sale.id}" data-active="${sale.is_active}">
-                        ${sale.is_active ? '✓ Hoạt động' : '✗ Khóa'}
+                <div class="sale-tags">
+                    <span class="sale-tag"><i class="ri-time-line"></i> ${escapeHtml(formatHourWindows(sale.access_hours))}</span>
+                    <span class="sale-tag"><i class="ri-team-line"></i> ${(sale.groups || []).map((g) => escapeHtml(g.name)).join(', ') || 'Chưa gán nhóm'}</span>
+                </div>
+                <div class="sale-actions">
+                    <button type="button" class="sale-btn-edit" data-sale-edit="${sale.id}" title="Sửa thông tin Sale">
+                        <i class="ri-edit-line"></i> Sửa
                     </button>
-                    <button type="button" class="org-remove" data-sale-delete="${sale.id}" title="Xóa"><i class="ri-delete-bin-line"></i></button>
+                    <button type="button" class="org-toggle sale-btn-toggle ${sale.is_active ? 'is-active' : 'is-locked'}" data-sale-toggle="${sale.id}" data-active="${sale.is_active}">
+                        <i class="${sale.is_active ? 'ri-checkbox-circle-line' : 'ri-lock-line'}"></i>
+                        <span>${sale.is_active ? 'Hoạt động' : 'Đã khóa'}</span>
+                    </button>
+                    <button type="button" class="org-remove sale-btn-delete" data-sale-delete="${sale.id}" title="Xóa tài khoản Sale">
+                        <i class="ri-delete-bin-line"></i>
+                    </button>
                 </div>
             </article>`).join('') : '<p class="org-empty">Chưa có tài khoản Sale nào.</p>';
     } catch (error) {
