@@ -12303,12 +12303,60 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
     const nextV = (billCheck.rows.length && billCheck.rows[0].max_v != null)
       ? Number(billCheck.rows[0].max_v) + 1 : Math.max(2, Number(order.version || 1) + 1);
 
+    // Lấy thông tin session và người bán / phục vụ để dựng invoice hoàn chỉnh
+    const sessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [order.session_id]);
+    const session = sessionRes.rows[0] || {};
+    const billMeta = await db.query(
+      `SELECT q.label AS qr_label, g.name AS group_name, sale.full_name AS sale_name,
+              COALESCE(agent.full_name, manager.full_name, $3) AS seller_name
+         FROM sessions s
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN admins sale ON sale.id = COALESCE(s.claimed_by_admin_id, $2)
+         LEFT JOIN admins manager ON manager.id = sale.managed_by_admin_id
+         LEFT JOIN admins agent ON agent.id = COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id)
+        WHERE s.id = $1`,
+      [order.session_id, req.admin.id, req.admin.manager_name || req.admin.full_name || 'Pastie Chat']
+    ).catch(() => ({ rows: [] }));
+
+    const invoice = buildSampleInvoice(
+      order.id,
+      { ...session, ...(billMeta.rows[0] || {}) },
+      nextItems,
+      Number(totalAmount),
+      chargesObj,
+      order.order_code
+    );
+    if (order.payment_method) {
+      invoice.paymentMethod = order.payment_method;
+    }
+
+    const targetLang = invoiceLanguageFor(session, session?.detected_language || 'vi');
+    let initialRender = {};
+    try {
+      const initialSvg = invoiceHelper.createInvoiceSvgDataUrl(invoice, targetLang);
+      if (initialSvg) {
+        invoice.svgDataUrl = initialSvg;
+        initialRender[targetLang] = {
+          orderStamp: Date.now(),
+          translationVersion: 5,
+          invoice: { ...invoice, svgDataUrl: initialSvg, renderType: 'pdf', generated: true, renderedLanguage: targetLang }
+        };
+      }
+    } catch (renderErr) {
+      console.error('[Invoice] Không thể pre-cache SVG khi sửa bill:', renderErr.message);
+    }
+
+    const shouldSendBill = req.body?.sendBill === true || req.body?.sendBill === 'true';
+    const newStatus = shouldSendBill ? 'awaiting_payment' : (order.status === 'pending_confirm' ? 'awaiting_payment' : order.status);
+
     const updated = await db.query(
       `UPDATE chat_orders
-          SET items = $1, total_amount = $2, invoice = $3, charges = $4, version = $7, invoice_render = '{}'::jsonb,
+          SET items = $1, total_amount = $2, invoice = $3, charges = $4, version = $7, invoice_render = $8,
+              status = $9, bill_sent_at = CASE WHEN $10 THEN NOW() ELSE bill_sent_at END,
               notes_updated_by_admin_id = $5, notes_updated_at = NOW(), updated_at = NOW()
         WHERE id = $6 RETURNING *`,
-      [JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), JSON.stringify(chargesObj), req.admin.id, order.id, nextV]
+      [JSON.stringify(nextItems), totalAmount, JSON.stringify(invoice), JSON.stringify(chargesObj), req.admin.id, order.id, nextV, JSON.stringify(initialRender), newStatus, shouldSendBill || !order.bill_sent_at]
     );
 
     // Luôn lưu bản snapshot chỉnh sửa vào chat_order_bills để lịch sử tra cứu rõ ràng từng lần đổi
@@ -12316,13 +12364,11 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
       `INSERT INTO chat_order_bills (session_id, order_id, version, items, total_amount, invoice, payment_method, confirmed_by_admin_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (order_id, version) DO UPDATE
-         SET items = EXCLUDED.items, total_amount = EXCLUDED.total_amount, invoice = EXCLUDED.invoice`,
-      [order.session_id, order.id, nextV, JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), order.payment_method || null, req.admin.id]
+         SET items = EXCLUDED.items, total_amount = EXCLUDED.total_amount, invoice = EXCLUDED.invoice, confirmed_by_admin_id = EXCLUDED.confirmed_by_admin_id`,
+      [order.session_id, order.id, nextV, JSON.stringify(nextItems), totalAmount, JSON.stringify(invoice), order.payment_method || null, req.admin.id]
     ).catch((err) => console.error('[Bill] Lỗi lưu revision chat_order_bills:', err.message));
 
-    const shouldSendBill = req.body?.sendBill === true || req.body?.sendBill === 'true';
     let insertedMsg = null;
-
     if (shouldSendBill) {
       // Gửi thông báo cập nhật bill vào cuộc trò chuyện cho khách
       const billMsgText = `[Hóa đơn] Quản lý đã cập nhật lại chi tiết hóa đơn (Tổng cộng: ${Number(totalAmount).toLocaleString('vi-VN')}₫). Quý khách vui lòng kiểm tra lại.`;
@@ -12336,8 +12382,12 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
     notifyAdminRealtime('order_update', {
       sessionId: order.session_id,
       orderId: order.id,
-      status: order.status,
+      status: newStatus,
       projectId: order.project_id
+    });
+    notifyVisitorRealtime(order.session_id, 'order_update', {
+      orderId: order.id,
+      status: newStatus
     });
     if (insertedMsg?.rows?.[0]) {
       notifyAdminRealtime('new_message', {
@@ -12402,10 +12452,10 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
         });
       }
 
-      // 2. Hội thoại với mỗi Sale do Agent quản lý (hoặc cùng project)
+      // 2. Hội thoại với mỗi Sale do Agent quản lý
       const sales = (await db.query(
-        "SELECT id, full_name, avatar_url, role, username FROM admins WHERE role = 'sale' AND (managed_by_admin_id = $1 OR created_by_admin_id = $1 OR (project_id = $2 AND project_id IS NOT NULL)) AND is_active = TRUE ORDER BY full_name ASC",
-        [current.id, current.project_id || null]
+        "SELECT id, full_name, avatar_url, role, username FROM admins WHERE role = 'sale' AND (managed_by_admin_id = $1 OR created_by_admin_id = $1) AND is_active = TRUE ORDER BY full_name ASC",
+        [current.id]
       )).rows;
 
       for (const sale of sales) {
