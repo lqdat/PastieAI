@@ -6568,7 +6568,7 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
 
     const insertRes = await db.query(
       `INSERT INTO admins (username, password_hash, full_name, role, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, deferred_payment_mode, allow_room_charge)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9, ($9 = 'room_charge')) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9::varchar, ($9::text = 'room_charge'))
        RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, deferred_payment_mode, allow_room_charge, created_at`,
       [username, passwordHash, full_name.trim(), effectiveRole, avatar, scope, creatorId, saleLimit, deferredMode]
     );
