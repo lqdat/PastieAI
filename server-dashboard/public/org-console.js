@@ -265,6 +265,7 @@ function formatHourWindows(windows) {
 
 
 function switchOrgTab(name) {
+    window.closeAddBoxModal?.();
     document.querySelectorAll('[data-org-tab]').forEach((tab) => {
         tab.classList.toggle('is-active', tab.dataset.orgTab === name);
     });
@@ -285,6 +286,7 @@ function switchOrgTab(name) {
 
 
 function openOrgModal() {
+    window.closeAddBoxModal?.();
     initShiftSelects(); // dựng danh sách giờ 24h ở lần mở đầu tiên
     // Hai màn hình tách bạch, không chồng lấn:
     //   Superadmin -> chỉ thẻ Agent (tạo Agent + đặt trần số Sale).
@@ -321,6 +323,7 @@ function openOrgModal() {
 
 
 function closeOrgModal() {
+    window.closeAddBoxModal?.();
     document.getElementById('org-modal')?.classList.add('hide');
 }
 

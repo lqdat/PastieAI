@@ -1865,9 +1865,17 @@ function toggleAddBox(name, force) {
 
 // Đóng cửa sổ con: nút X, bấm ra nền tối, hoặc phím Esc.
 function closeAddBoxModal() {
-    const box = document.getElementById('addbox-slot')?.firstElementChild;
-    if (box?.dataset?.addbox) toggleAddBox(box.dataset.addbox, false);
+    const modal = document.getElementById('addbox-modal');
+    const slot = document.getElementById('addbox-slot');
+    const box = slot?.firstElementChild;
+    if (box?.dataset?.addbox) {
+        toggleAddBox(box.dataset.addbox, false);
+    } else if (box) {
+        box.classList.add('hide');
+    }
+    if (modal) modal.classList.add('hide');
 }
+window.closeAddBoxModal = closeAddBoxModal;
 document.getElementById('addbox-close')?.addEventListener('click', closeAddBoxModal);
 document.getElementById('addbox-modal')?.addEventListener('click', (event) => {
     if (event.target.id === 'addbox-modal') closeAddBoxModal();

@@ -6840,6 +6840,10 @@ button:focus-visible {
         backdrop-filter: blur(8px) !important;
         -webkit-backdrop-filter: blur(8px) !important;
     }
+    .addbox-modal.hide,
+    #addbox-modal.hide {
+        display: none !important;
+    }
     .addbox-card {
         width: 100% !important;
         max-height: 90dvh !important;
@@ -6891,6 +6895,13 @@ button:focus-visible {
         border: 1px solid rgba(239, 43, 157, 0.08) !important;
         flex-shrink: 0 !important;
         margin-bottom: 10px !important;
+    }
+    .org-tabs.hide,
+    .staff-tabs.hide,
+    #org-tabs.hide,
+    #admin-mgmt-tabs.hide,
+    .org-tab.hide {
+        display: none !important;
     }
     .org-tabs::-webkit-scrollbar,
     .staff-tabs::-webkit-scrollbar {
