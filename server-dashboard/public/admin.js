@@ -9,12 +9,12 @@
 // --- Translation Dictionary ---
 const TRANSLATIONS = {
     vi: {
-        loginTitle: "Pastie AI Admin",
-        loginSubtitle: "Nhập mật khẩu quản trị để kết nối console",
+        loginTitle: "Pastie Chat Console",
+        loginSubtitle: "Nhập email để kết nối console",
         passwordPlaceholder: "Mật khẩu bảo mật...",
         loginError: "Mật khẩu không hợp lệ, vui lòng thử lại.",
         loginBtn: "Kết Nối Console",
-        headerTitle: "Pastie AI Console",
+        headerTitle: "Pastie Chat Console",
         allProjects: "Tất cả dự án",
         exportCsv: "Xuất CSV (Sales Script)",
         exportJsonl: "Xuất JSONL (Huấn luyện)",

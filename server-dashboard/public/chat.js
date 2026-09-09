@@ -926,18 +926,6 @@ function handleAdminRealtimeEvent(data) {
     }
 }
 
-function handleMessageStatusUpdate(data) {
-    if (!data || String(data.sessionId) !== String(currentSessionId)) return;
-    const { status, messageIds } = data;
-    if (!messageIds || !Array.isArray(messageIds)) return;
-    const idSet = new Set(messageIds.map(Number));
-    for (const msg of adminMessages) {
-        if (idSet.has(Number(msg.id))) {
-            msg.status = status;
-            if (status === 'delivered') msg.delivered_at = data.deliveredAt || new Date().toISOString();
-            if (status === 'seen') msg.seen_at = data.seenAt || new Date().toISOString();
-        }
-    }
 function getMsgStatusInfo(status, seenTime) {
     const dict = (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[typeof currentLang !== 'undefined' ? currentLang : 'vi']) || (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS.vi) || {};
     if (status === 'seen') {
@@ -952,6 +940,19 @@ function getMsgStatusInfo(status, seenTime) {
     const label = dict.msgStatusSent || 'Đã gửi';
     return { label, title: label, icon: 'ri-check-line' };
 }
+
+function handleMessageStatusUpdate(data) {
+    if (!data || String(data.sessionId) !== String(currentSessionId)) return;
+    const { status, messageIds } = data;
+    if (!messageIds || !Array.isArray(messageIds)) return;
+    const idSet = new Set(messageIds.map(Number));
+    for (const msg of adminMessages) {
+        if (idSet.has(Number(msg.id))) {
+            msg.status = status;
+            if (status === 'delivered') msg.delivered_at = data.deliveredAt || new Date().toISOString();
+            if (status === 'seen') msg.seen_at = data.seenAt || new Date().toISOString();
+        }
+    }
 
     messageIds.forEach(id => {
         const el = chatMessagesContainer.querySelector(`.msg-status[data-msg-id="${id}"]`);
@@ -2170,8 +2171,8 @@ async function loadBillsForAdmin(sessionId) {
     if (String(sessionId).startsWith('internal_')) return;
     try {
         const response = await fetchWithTimeout(`${API_BASE}/api/chats/${sessionId}/bills?lang=${currentLang}`);
-        adminBills = response.ok ? ((await response.json()).bills || []) : [];
-    } catch { adminBills = []; }
+        if (response.ok) adminBills = (await response.json()).bills || [];
+    } catch { /* /order cũng trả bills; giữ fallback đó nếu request riêng bị lỗi. */ }
     // Vẽ lại ngay khi bill về, không phụ thuộc vào việc ai chạy trước ai.
     //
     // Trước đây hoá đơn chỉ được vẽ trong loadMessages(): tuỳ luồng mở chat của
@@ -2292,6 +2293,7 @@ async function loadOrderForAdmin(sessionId) {
             return had;
         }
         const data = await response.json();
+        if (Array.isArray(data.bills)) adminBills = data.bills;
         const order = data.order || null;
         // Các bản đơn khách đã gửi rồi sửa lại. Nhân viên phải thấy ĐÚNG những
         // gì khách thấy: khách nhớ mình từng gửi đơn khác, mà bảng của Sale chỉ
