@@ -4545,10 +4545,19 @@ const PAYMENT_METHODS = new Set(['cash', 'bank_qr', 'card', 'room_charge', 'pay_
 const escapeInvoiceHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const formatVnd = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} ₫`;
 const QR_MENU_VAT_RATE = Math.max(0, Math.min(100, Number(process.env.QR_MENU_VAT_RATE || 10)));
-const calculateQrMenuCharges = (subtotal) => {
+const calculateQrMenuCharges = (subtotal, items = []) => {
   const cleanSubtotal = Math.max(0, Math.round(Number(subtotal) || 0));
-  const vatAmount = Math.round(cleanSubtotal * QR_MENU_VAT_RATE / 100);
-  return { subtotal: cleanSubtotal, vatRate: QR_MENU_VAT_RATE, vatAmount, grandTotal: cleanSubtotal + vatAmount };
+  let vatAmount = 0;
+  if (Array.isArray(items) && items.length > 0) {
+    vatAmount = items.reduce((sum, it) => {
+      const rate = it.vatRate != null ? Number(it.vatRate) : QR_MENU_VAT_RATE;
+      const line = Number(it.lineTotal != null ? it.lineTotal : (Number(it.unitPrice || it.price || 0) * Number(it.quantity || 1)));
+      return sum + Math.round(line * rate / 100);
+    }, 0);
+  } else {
+    vatAmount = Math.round(cleanSubtotal * QR_MENU_VAT_RATE / 100);
+  }
+  return { subtotal: cleanSubtotal, vatAmount, grandTotal: cleanSubtotal + vatAmount, totalAmount: cleanSubtotal + vatAmount };
 };
 
 // htmlToPlainText / prepareInvoiceDelivery / sinh PDF đã chuyển sang
@@ -11708,10 +11717,13 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
     const items = priced.rows.map((row) => {
       const quantity = wanted.get(row.id);
       const unitPrice = Number(row.price);
-      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal: Math.round(unitPrice * quantity), note: wantedNotes.get(row.id) || null };
+      const vatRate = row.vat_rate != null ? Number(row.vat_rate) : QR_MENU_VAT_RATE;
+      const lineTotal = Math.round(unitPrice * quantity);
+      const vatAmount = Math.round(lineTotal * vatRate / 100);
+      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal, vatRate, vatAmount, note: wantedNotes.get(row.id) || null };
     });
     const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
-    const charges = calculateQrMenuCharges(subtotal);
+    const charges = calculateQrMenuCharges(subtotal, items);
     const totalAmount = charges.grandTotal;
 
     const orderId = randomUUID();
@@ -11859,10 +11871,13 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
     const items = priced.rows.map((row) => {
       const quantity = wanted.get(row.id);
       const unitPrice = Number(row.price);
-      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal: Math.round(unitPrice * quantity), note: wantedNotes.get(row.id) || null };
+      const vatRate = row.vat_rate != null ? Number(row.vat_rate) : QR_MENU_VAT_RATE;
+      const lineTotal = Math.round(unitPrice * quantity);
+      const vatAmount = Math.round(lineTotal * vatRate / 100);
+      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal, vatRate, vatAmount, note: wantedNotes.get(row.id) || null };
     });
     const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
-    const charges = calculateQrMenuCharges(subtotal);
+    const charges = calculateQrMenuCharges(subtotal, items);
     const total = charges.grandTotal;
     // CHỐT LẠI BẢN KHÁCH ĐÃ GỬI TRƯỚC ĐÓ, TRƯỚC KHI GHI ĐÈ.
     //
@@ -12210,6 +12225,9 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
         }
       }
 
+      const vatRate = Math.max(0, Math.min(100, Number(item.vatRate != null ? item.vatRate : (prev?.vatRate != null ? prev.vatRate : 10))));
+      const vatAmount = Math.round(lineTotal * vatRate / 100);
+
       return {
         ...item,
         name: String(item.name || 'Món').trim(),
@@ -12217,50 +12235,55 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
         quantity,
         discount,
         lineTotal,
+        vatRate,
+        vatAmount,
         note: formatNote(note)
       };
     });
 
     const subtotal = nextItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
+    const totalVatAmount = nextItems.reduce((acc, it) => acc + (it.vatAmount || 0), 0);
+    const totalAmount = subtotal + totalVatAmount;
+
     const invoiceObj = typeof order.invoice === 'object' && order.invoice !== null ? order.invoice : {};
     const chargesObj = typeof order.charges === 'object' && order.charges !== null ? order.charges : {};
-    const vatRate = req.body?.vatRate != null ? Math.max(0, Math.min(100, Number(req.body.vatRate))) : Number(chargesObj.vatRate || invoiceObj.vatRate || 10);
-    const vatAmount = Math.round(subtotal * vatRate / 100);
-    const totalAmount = subtotal + vatAmount;
 
     chargesObj.subtotal = subtotal;
-    chargesObj.vatRate = vatRate;
-    chargesObj.vatAmount = vatAmount;
+    chargesObj.vatAmount = totalVatAmount;
     chargesObj.totalAmount = totalAmount;
+    chargesObj.grandTotal = totalAmount;
 
     invoiceObj.items = nextItems;
     invoiceObj.subtotal = subtotal;
-    invoiceObj.vatRate = vatRate;
-    invoiceObj.vatAmount = vatAmount;
+    invoiceObj.vatAmount = totalVatAmount;
     invoiceObj.totalAmount = totalAmount;
+
+    // Tính version tiếp theo để ghi lại lịch sử chỉnh sửa rõ ràng
+    const billCheck = await db.query('SELECT MAX(version) AS max_v FROM chat_order_bills WHERE order_id = $1', [order.id]);
+    const nextV = (billCheck.rows.length && billCheck.rows[0].max_v != null)
+      ? Number(billCheck.rows[0].max_v) + 1 : Math.max(2, Number(order.version || 1) + 1);
 
     const updated = await db.query(
       `UPDATE chat_orders
-          SET items = $1, total_amount = $2, invoice = $3, charges = $4, invoice_render = '{}'::jsonb,
+          SET items = $1, total_amount = $2, invoice = $3, charges = $4, version = $7, invoice_render = '{}'::jsonb,
               notes_updated_by_admin_id = $5, notes_updated_at = NOW(), updated_at = NOW()
         WHERE id = $6 RETURNING *`,
-      [JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), JSON.stringify(chargesObj), req.admin.id, order.id]
+      [JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), JSON.stringify(chargesObj), req.admin.id, order.id, nextV]
     );
+
+    // Luôn lưu bản snapshot chỉnh sửa vào chat_order_bills để lịch sử tra cứu rõ ràng từng lần đổi
+    await db.query(
+      `INSERT INTO chat_order_bills (session_id, order_id, version, items, total_amount, invoice, payment_method, confirmed_by_admin_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (order_id, version) DO UPDATE
+         SET items = EXCLUDED.items, total_amount = EXCLUDED.total_amount, invoice = EXCLUDED.invoice`,
+      [order.session_id, order.id, nextV, JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), order.payment_method || null, req.admin.id]
+    ).catch((err) => console.error('[Bill] Lỗi lưu revision chat_order_bills:', err.message));
 
     const shouldSendBill = req.body?.sendBill === true || req.body?.sendBill === 'true';
     let insertedMsg = null;
 
     if (shouldSendBill) {
-      // Ghi vào chat_order_bills nếu có yêu cầu gửi lại bill
-      const billCheck = await db.query('SELECT MAX(version) AS max_v FROM chat_order_bills WHERE order_id = $1', [order.id]);
-      const nextV = (billCheck.rows.length && billCheck.rows[0].max_v != null)
-        ? Number(billCheck.rows[0].max_v) + 1 : 1;
-      await db.query(
-        `INSERT INTO chat_order_bills (session_id, order_id, version, items, total_amount, invoice, payment_method, confirmed_by_admin_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [order.session_id, order.id, nextV, JSON.stringify(nextItems), totalAmount, JSON.stringify(invoiceObj), order.payment_method || null, req.admin.id]
-      ).catch(() => {});
-
       // Gửi thông báo cập nhật bill vào cuộc trò chuyện cho khách
       const billMsgText = `[Hóa đơn] Quản lý đã cập nhật lại chi tiết hóa đơn (Tổng cộng: ${Number(totalAmount).toLocaleString('vi-VN')}₫). Quý khách vui lòng kiểm tra lại.`;
       insertedMsg = await db.query(
@@ -12842,59 +12865,108 @@ async function loadSessionBills(sessionId, language) {
   // Sửa đơn có thể còn mở một ĐƠN MỚI và đánh dấu đơn cũ 'superseded'. Về mặt
   // nghiệp vụ đó vẫn là một chuỗi, nên chuỗi được cắt ở tờ còn sống.
   const DEAD = new Set(['superseded', 'rejected', 'cancelled']);
-  bills.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)
-    || Number(a.version || 0) - Number(b.version || 0));
-
-  const chain = [];
-  const closeChain = (steps) => {
-    const history = steps.map((step, index) => ({
-      version: step.version,
-      // Kèm mã đơn của CHÍNH bản đó: một lần sửa có thể đã sang một đơn khác,
-      // nên giỏ hàng cần biết bản nào của đơn nào.
-      orderId: step.orderId,
-      orderCode: step.orderCode,
-      createdAt: step.createdAt,
-      totalAmount: step.totalAmount,
-      changes: index === 0 ? [] : diffBillItems(steps[index - 1].items, step.items),
-    }));
-    for (const step of steps) step.history = history;
-  };
+  // Nhóm các bản bill theo order_id để xây dựng lịch sử chính xác cho từng đơn
+  const billsByOrder = new Map();
   for (const bill of bills) {
-    chain.push(bill);
-    if (DEAD.has(String(bill.orderStatus || ''))) continue;
-    closeChain(chain.splice(0, chain.length));
+    const k = String(bill.orderId || bill.id);
+    if (!billsByOrder.has(k)) billsByOrder.set(k, []);
+    billsByOrder.get(k).push(bill);
   }
-  if (chain.length) closeChain(chain);
+
+  for (const [orderId, orderBills] of billsByOrder) {
+    orderBills.sort((a, b) => Number(a.version || 0) - Number(b.version || 0)
+      || new Date(a.createdAt) - new Date(b.createdAt));
+
+    const history = orderBills.map((step, index) => {
+      let changes = [];
+      if (index === 0) {
+        changes = ['Bản ban đầu (Tạo bill)'];
+      } else {
+        const prev = orderBills[index - 1];
+        changes = diffBillItems(prev.items, step.items);
+        if (!changes.length) {
+          if (Number(prev.totalAmount) !== Number(step.totalAmount)) {
+            changes.push(`Điều chỉnh tổng tiền: ${Number(prev.totalAmount).toLocaleString('vi-VN')}₫ → ${Number(step.totalAmount).toLocaleString('vi-VN')}₫`);
+          } else if (prev.paymentMethod !== step.paymentMethod) {
+            changes.push(`Đổi PTTT: ${step.paymentMethod || 'Chưa chọn'}`);
+          } else {
+            changes.push(`Cập nhật đơn hàng (bản #${step.version})`);
+          }
+        }
+      }
+      return {
+        version: step.version,
+        orderId: step.orderId,
+        orderCode: step.orderCode,
+        createdAt: step.createdAt,
+        totalAmount: step.totalAmount,
+        changes,
+      };
+    });
+
+    for (const b of orderBills) {
+      b.history = history;
+    }
+  }
+
   return bills;
 }
 
-
-// So hai bản đơn, trả về vài câu ngắn nói ĐÃ ĐỔI GÌ.
-// Nói "Thêm Bánh flan x1" thì Sale hiểu ngay; đưa hai tờ hoá đơn bắt họ tự dò
-// từng dòng thì không ai dò.
+// So hai bản đơn, trả về danh sách chi tiết: món nào thêm, bớt, sửa SL, giá hay VAT.
 function diffBillItems(before, after) {
-  const key = (item) => String(item?.menuItemId ?? item?.name ?? '');
+  const cleanName = (item) => String(item?.name || 'Món').trim();
+  const key = (item) => item?.menuItemId != null && String(item.menuItemId).trim() !== ''
+    ? `id_${String(item.menuItemId).trim()}`
+    : `name_${cleanName(item).toLowerCase()}`;
+
   const map = (list) => {
     const out = new Map();
     for (const item of Array.isArray(list) ? list : []) {
       const k = key(item);
       if (!k) continue;
-      out.set(k, { name: item.name || '', quantity: Number(item.quantity || 0), note: item.note || '' });
+      out.set(k, {
+        name: cleanName(item),
+        quantity: Number(item.quantity || 1),
+        unitPrice: Math.round(Number(item.unitPrice ?? item.price ?? 0)),
+        vatRate: item.vatRate != null ? Number(item.vatRate) : 10,
+        note: item.note ? String(item.note).trim().replace(/^\(|\)$/g, '') : ''
+      });
     }
     return out;
   };
+
   const a = map(before);
   const b = map(after);
   const changes = [];
+
+  // 1. Món mới hoặc được sửa ở bản sau
   for (const [k, item] of b) {
     const old = a.get(k);
-    if (!old) changes.push(`Thêm ${item.name} x${item.quantity}`);
-    else if (old.quantity !== item.quantity) changes.push(`${item.name}: ${old.quantity} → ${item.quantity}`);
-    else if (old.note !== item.note) changes.push(`${item.name}: đổi ghi chú`);
+    if (!old) {
+      const priceStr = item.unitPrice ? `${item.unitPrice.toLocaleString('vi-VN')}₫` : '';
+      changes.push(`+ Thêm "${item.name}" (x${item.quantity}${priceStr ? `, ${priceStr}` : ''}, VAT ${item.vatRate}%)`);
+    } else {
+      const diffs = [];
+      if (old.quantity !== item.quantity) diffs.push(`SL: ${old.quantity} → ${item.quantity}`);
+      if (old.unitPrice !== item.unitPrice) diffs.push(`Giá: ${old.unitPrice.toLocaleString('vi-VN')}₫ → ${item.unitPrice.toLocaleString('vi-VN')}₫`);
+      if (old.vatRate !== item.vatRate) diffs.push(`VAT: ${old.vatRate}% → ${item.vatRate}%`);
+      if (old.note !== item.note) {
+        if (!item.note) diffs.push(`Bỏ ghi chú`);
+        else diffs.push(`Ghi chú: "${item.note}"`);
+      }
+      if (diffs.length) {
+        changes.push(`Sửa "${item.name}": ${diffs.join(', ')}`);
+      }
+    }
   }
+
+  // 2. Món bị xóa ở bản sau
   for (const [k, item] of a) {
-    if (!b.has(k)) changes.push(`Bỏ ${item.name} x${item.quantity}`);
+    if (!b.has(k)) {
+      changes.push(`- Xóa "${item.name}" (x${item.quantity})`);
+    }
   }
+
   return changes;
 }
 

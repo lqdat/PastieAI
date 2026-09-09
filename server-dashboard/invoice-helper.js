@@ -187,7 +187,9 @@ function normalizeInvoiceItems(items) {
     const discount = toNumber(item.discount ?? item.discountAmount ?? item.discount_amount ?? 0);
     const lineTotal = item.lineTotal ?? item.line_total ?? item.total ?? (unitPrice * quantity - discount);
     const note = String(item.note ?? item.notes ?? '').trim();
-    return { name, note, quantity, unitPrice, discount, lineTotal: toNumber(lineTotal) };
+    const vatRate = item.vatRate != null ? toNumber(item.vatRate) : (item.vat_rate != null ? toNumber(item.vat_rate) : null);
+    const vatAmount = item.vatAmount != null ? toNumber(item.vatAmount) : (vatRate != null ? Math.round(toNumber(lineTotal) * vatRate / 100) : 0);
+    return { name, note, quantity, unitPrice, discount, lineTotal: toNumber(lineTotal), vatRate, vatAmount };
   });
 }
 
@@ -208,7 +210,9 @@ function buildInvoiceData(invoice, language) {
     ? toNumber(invoice.totalAmount)
     : subtotal - totalDiscount;
   const vatRate = toNumber(invoice?.vatRate ?? invoice?.vat_rate ?? 0);
-  const vatAmount = toNumber(invoice?.vatAmount ?? invoice?.vat_amount ?? 0);
+  const vatAmount = invoice?.vatAmount !== undefined
+    ? toNumber(invoice.vatAmount)
+    : items.reduce((sum, item) => sum + (item.vatAmount || 0), 0);
 
   return {
     invoiceNo: invoice?.invoiceNo || invoice?.invoice_no || '',
@@ -362,12 +366,13 @@ function createInvoicePdfDataUrl(invoice, language) {
       // thứ bếp và khách cần đối chiếu, mà hoá đơn lại là bản duy nhất khách
       // giữ lại được. Chữ nhỏ và nhạt hơn để không tranh chỗ với tên món.
       let noteHeight = 0;
-      if (item.note) {
-        const noteText = formatBillNote(item.note);
+      const vatSuffix = item.vatRate != null ? `VAT: ${item.vatRate}%` : '';
+      const displayNote = [item.note ? formatBillNote(item.note) : '', vatSuffix].filter(Boolean).join(' | ');
+      if (displayNote) {
         const noteY = y + nameHeight + 2;
-        doc.fontSize(8.5).fillColor('#6f6070');
-        noteHeight = doc.heightOfString(noteText, { width: colNameW }) + 2;
-        doc.text(noteText, xName, noteY, { width: colNameW });
+        doc.fontSize(8.2).fillColor('#6f6070');
+        noteHeight = doc.heightOfString(displayNote, { width: colNameW }) + 2;
+        doc.text(displayNote, xName, noteY, { width: colNameW });
         doc.fontSize(8.7).fillColor('#222');
       }
       doc.y = y + Math.max(nameHeight, 12) + noteHeight + 7;
@@ -388,7 +393,7 @@ function createInvoicePdfDataUrl(invoice, language) {
     };
     summaryRow(copy.subtotal, money(data.subtotal));
     if (data.totalDiscount > 0) summaryRow(copy.totalDiscount, `- ${money(data.totalDiscount)}`);
-    if (data.vatAmount > 0) summaryRow(`${copy.vat} (${data.vatRate}%)`, money(data.vatAmount));
+    if (data.vatAmount > 0) summaryRow(copy.vat, money(data.vatAmount));
     summaryRow(copy.grandTotal, money(data.totalAmount), { bold: true });
     if (data.paymentMethod) {
       summaryRow(copy.paymentMethod, paymentMethodLabel(data.paymentMethod, fonts.language));
@@ -633,11 +638,12 @@ function createInvoiceSvg(invoice, language) {
     y += 22 + Math.max(0, nameLines.length - 1) * 14;
     // Ảnh xem trước phải khớp với PDF tải về, nếu không khách sẽ tưởng hai bản
     // là hai hoá đơn khác nhau.
-    if (item.note) {
-      const noteText = formatBillNote(item.note);
-      const noteLines = wrapToWidth(noteText, 10, colNameW - 8, 2);
+    const vatSuffix = item.vatRate != null ? `VAT: ${item.vatRate}%` : '';
+    const displayNote = [item.note ? formatBillNote(item.note) : '', vatSuffix].filter(Boolean).join(' | ');
+    if (displayNote) {
+      const noteLines = wrapToWidth(displayNote, 9.5, colNameW - 8, 2);
       noteLines.forEach((lineText, index) => {
-        text(lineText, xName, y - 6 + index * 12, { size: 10, fill: '#6f6070', style: 'italic' });
+        text(lineText, xName, y - 6 + index * 12, { size: 9.5, fill: '#6f6070', style: 'italic' });
       });
       y += 13 + Math.max(0, noteLines.length - 1) * 12;
     }
@@ -665,7 +671,7 @@ function createInvoiceSvg(invoice, language) {
   };
   summary(copy.subtotal, money(data.subtotal));
   if (data.totalDiscount > 0) summary(copy.totalDiscount, `- ${money(data.totalDiscount)}`);
-  if (data.vatAmount > 0) summary(`${copy.vat} (${data.vatRate}%)`, money(data.vatAmount));
+  if (data.vatAmount > 0) summary(copy.vat, money(data.vatAmount));
   summary(copy.grandTotal, money(data.totalAmount), { bold: true });
   // Payment method moved to info section above; no longer repeated in summary.
 
