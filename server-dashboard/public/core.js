@@ -1183,6 +1183,7 @@ async function reloadApp() {
     try {
         localStorage.setItem('dismissed_update_r119', '1');
         localStorage.setItem('dismissed_update_r120', '1');
+        localStorage.setItem('dismissed_update_r121', '1');
     } catch (_) {}
 
     document.getElementById('app-update-bar')?.classList.add('hide');
@@ -1194,18 +1195,11 @@ async function reloadApp() {
         } catch (_) {}
     }
 
-    const targetUrl = window.location.pathname + '?_r=' + Date.now();
     try {
-        await fetch(targetUrl, {
-            cache: 'reload',
-            headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
-        });
-    } catch (_) {}
-
-    window.location.href = targetUrl;
-    setTimeout(() => {
         window.location.reload();
-    }, 150);
+    } catch (_) {
+        window.location.href = window.location.pathname;
+    }
 }
 window.reloadApp = reloadApp;
 
