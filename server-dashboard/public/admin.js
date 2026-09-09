@@ -1760,25 +1760,52 @@ document.getElementById('org-sale-form')?.addEventListener('submit', async (even
 });
 
 
+function resetOrgGroupForm() {
+    const form = document.getElementById('org-group-form');
+    if (!form) return;
+    form.reset();
+    const idEl = document.getElementById('org-group-id');
+    if (idEl) idEl.value = '';
+    const submitBtn = document.getElementById('org-group-submit-btn');
+    if (submitBtn) submitBtn.innerHTML = '<i class="ri-add-circle-line"></i> Thêm nhóm';
+    document.getElementById('org-group-cancel-btn')?.classList.add('hide');
+    document.getElementById('org-group-sales-row')?.classList.remove('hide');
+    clearSalePicker();
+}
+
 document.getElementById('org-group-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const saleIds = salePickerValue();
+    const idEl = document.getElementById('org-group-id');
+    const groupId = idEl && idEl.value ? Number(idEl.value) : null;
+    const name = document.getElementById('org-group-name').value.trim();
+    const description = document.getElementById('org-group-desc').value.trim();
     try {
-        await orgFetch('/api/agent/groups', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: document.getElementById('org-group-name').value.trim(),
-                description: document.getElementById('org-group-desc').value.trim(),
-                saleIds,
-            }),
-        });
-        event.target.reset();
-        clearSalePicker(); // form.reset() không đụng tới ô chọn Sale vì nó không phải input
-        setOrgStatus('Đã tạo nhóm tiếp nhận thành công.');
+        if (groupId) {
+            await orgFetch(`/api/agent/groups/${groupId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, description }),
+            });
+            setOrgStatus('Đã cập nhật tên nhóm thành công.');
+        } else {
+            const saleIds = salePickerValue();
+            await orgFetch('/api/agent/groups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, description, saleIds }),
+            });
+            setOrgStatus('Đã tạo nhóm tiếp nhận thành công.');
+        }
+        resetOrgGroupForm();
+        closeAddBoxModal();
         await loadOrgGroups();
         await loadOrgSales();
     } catch (error) { setOrgStatus(error.message, 'error'); }
+});
+
+document.getElementById('org-group-cancel-btn')?.addEventListener('click', () => {
+    resetOrgGroupForm();
+    closeAddBoxModal();
 });
 
 
@@ -2017,6 +2044,29 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
             await loadOrgGroups();
             await loadOrgSales();
         } catch (error) { setOrgStatus(error.message, 'error'); }
+        return;
+    }
+
+    const groupEdit = event.target.closest('[data-group-edit]');
+    if (groupEdit) {
+        const id = Number(groupEdit.dataset.groupEdit);
+        const group = (ORG_GROUPS || []).find((g) => g.id === id);
+        if (!group) return;
+        toggleAddBox('groups', true);
+        const title = document.getElementById('addbox-title');
+        if (title) title.textContent = 'Sửa nhóm';
+        const idEl = document.getElementById('org-group-id');
+        const nameEl = document.getElementById('org-group-name');
+        const descEl = document.getElementById('org-group-desc');
+        const submitBtn = document.getElementById('org-group-submit-btn');
+        if (idEl) idEl.value = group.id;
+        if (nameEl) nameEl.value = group.name || '';
+        if (descEl) descEl.value = group.description || '';
+        if (submitBtn) submitBtn.innerHTML = '<i class="ri-save-line"></i> Lưu thay đổi';
+        document.getElementById('org-group-cancel-btn')?.classList.remove('hide');
+        document.getElementById('org-group-sales-row')?.classList.add('hide');
+        switchOrgTab('groups');
+        document.getElementById('org-group-form')?.scrollIntoView({ behavior: 'smooth' });
         return;
     }
 

@@ -4197,13 +4197,19 @@ button:focus-visible {
      2. Thu nhỏ khoảng đệm để phần thân còn chỗ.
      3. Cho form cuộn riêng bên trong, danh sách luôn nhìn thấy được. */
 @media (max-width: 620px) {
+    #org-modal.modal-overlay {
+        align-items: center;
+        justify-content: center;
+        padding: 14px;
+    }
     .org-card {
-        width: 100%;
-        max-height: 92dvh;
+        width: min(100%, 560px);
+        max-height: 88dvh;
         height: auto;
-        padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
-        border-radius: 22px 22px 0 0;
+        padding: 16px;
+        border-radius: 20px;
         gap: 10px;
+        margin: auto;
     }
     .org-head h2 { font-size: 16px; font-weight: 800; }
     .org-kicker { font-size: 10px; }
@@ -6780,7 +6786,6 @@ button:focus-visible {
 
     /* Modal Bottom Sheet Containers */
     #admin-management-modal .admin-management-box,
-    #org-modal .org-card,
     #report-modal .report-card,
     #monitor-modal .admin-management-box,
     #agent-devices-modal .agent-devices-card,
@@ -6796,6 +6801,27 @@ button:focus-visible {
         padding: 14px 16px calc(16px + env(safe-area-inset-bottom)) !important;
         box-shadow: 0 -12px 40px rgba(45, 20, 38, 0.25) !important;
         overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+
+    /* Popup Quản lý Sale, Nhóm, QR và Thực đơn hiển thị ở GIỮA màn hình */
+    #org-modal.modal-overlay {
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 14px !important;
+    }
+    #org-modal .org-card {
+        width: min(100%, 560px) !important;
+        max-width: calc(100vw - 28px) !important;
+        max-height: min(88dvh, 760px) !important;
+        height: auto !important;
+        border-radius: 20px !important;
+        border: 1.5px solid rgba(239, 43, 157, 0.22) !important;
+        padding: 16px !important;
+        box-shadow: 0 16px 50px rgba(45, 20, 38, 0.28) !important;
+        overflow: hidden !important;
+        margin: auto !important;
         display: flex !important;
         flex-direction: column !important;
     }
@@ -6827,15 +6853,15 @@ button:focus-visible {
         color: var(--text-primary) !important;
     }
 
-    /* Sub-modal "Thêm mới" (Addbox Modal) dạng Bottom Sheet chuẩn */
+    /* Sub-modal "Thêm mới" (Addbox Modal) hiển thị cao lên ở giữa màn hình, không bị che ở dưới */
     .addbox-modal {
         position: fixed !important;
         inset: 0 !important;
-        z-index: 2200 !important;
+        z-index: 2300 !important;
         display: flex !important;
-        align-items: flex-end !important;
+        align-items: center !important;
         justify-content: center !important;
-        padding: 0 !important;
+        padding: 14px !important;
         background: rgba(18, 8, 20, 0.55) !important;
         backdrop-filter: blur(8px) !important;
         -webkit-backdrop-filter: blur(8px) !important;
@@ -6845,17 +6871,18 @@ button:focus-visible {
         display: none !important;
     }
     .addbox-card {
-        width: 100% !important;
-        max-height: 90dvh !important;
+        width: min(100%, 500px) !important;
+        max-width: calc(100vw - 28px) !important;
+        max-height: min(84dvh, 660px) !important;
         height: auto !important;
-        border-radius: 22px 22px 0 0 !important;
-        border: 1px solid rgba(239, 43, 157, 0.2) !important;
-        border-bottom: 0 !important;
+        border-radius: 20px !important;
+        border: 1px solid rgba(239, 43, 157, 0.22) !important;
         background: #ffffff !important;
-        box-shadow: 0 -12px 40px rgba(26, 10, 28, 0.35) !important;
+        box-shadow: 0 16px 50px rgba(26, 10, 28, 0.35) !important;
         display: flex !important;
         flex-direction: column !important;
         overflow: hidden !important;
+        margin: auto !important;
     }
     .addbox-head {
         display: flex !important;
@@ -6872,10 +6899,10 @@ button:focus-visible {
         color: var(--text-primary) !important;
     }
     .addbox-slot {
-        padding: 16px !important;
+        padding: 16px 16px 28px !important;
         overflow-y: auto !important;
         -webkit-overflow-scrolling: touch !important;
-        max-height: calc(90dvh - 65px) !important;
+        max-height: calc(84dvh - 65px) !important;
     }
 
     /* Tab Navigation Bars: Segmented pill bar cuộn ngang mượt mà */
@@ -7132,6 +7159,63 @@ button:focus-visible {
         border-top: 1px dashed rgba(73, 51, 70, 0.1) !important;
         margin-top: 2px !important;
         width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Khắc phục phần mã QR và các pane bị dài lăn ngang */
+    .org-pane {
+        overflow-x: hidden !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    [data-org-pane="qr"] {
+        overflow-x: hidden !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    [data-org-pane="qr"] .org-list-header {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    [data-org-pane="qr"] .org-list-header > div {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 6px !important;
+        width: 100% !important;
+    }
+    [data-org-pane="qr"] #org-qr-group-filter {
+        flex: 1 1 auto !important;
+        max-width: calc(100% - 130px) !important;
+        height: 34px !important;
+    }
+    [data-org-pane="qr"] .pane-add {
+        flex-shrink: 0 !important;
+    }
+    .qr-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+    }
+    .qr-card-main {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+    }
+    .qr-card-title {
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+        max-width: 100% !important;
     }
 
     /* Agent card actions: dùng grid 2 cột thay flex ngang để không tràn */

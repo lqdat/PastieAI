@@ -400,6 +400,7 @@
                     </div>
                     <div class="addbox hide" data-addbox="groups">
                     <form class="org-form" id="org-group-form">
+                        <input type="hidden" id="org-group-id" value="">
                         <div class="org-form-row">
                             <label>Tên nhóm *<input type="text" id="org-group-name" required placeholder="Lễ tân, Nhà hàng, VIP..."></label>
                             <label>Ghi chú<input type="text" id="org-group-desc" placeholder="Mô tả nhóm (tùy chọn)"></label>
@@ -410,7 +411,10 @@
                                 <small class="org-field-hint">Bấm để chọn, bấm lại để bỏ. Có thể chọn nhiều Sale.</small>
                             </label>
                         </div>
-                        <button type="submit" class="org-submit"><i class="ri-add-circle-line"></i> Thêm nhóm</button>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <button type="submit" class="org-submit" id="org-group-submit-btn"><i class="ri-add-circle-line"></i> Thêm nhóm</button>
+                            <button type="button" class="secondary-btn hide" id="org-group-cancel-btn" style="width:auto;padding:8px 14px;font-size:12px;"><i class="ri-close-line"></i> Hủy</button>
+                        </div>
                     </form>
                     </div>
 

@@ -633,7 +633,10 @@ async function loadOrgGroups(quiet) {
                             <small style="margin-left:8px;color:var(--text-secondary);">${group.waiting_count} chờ / ${group.active_count} đang chat</small>
                             ${group.description ? `<p style="margin:2px 0 0 0;font-size:11.5px;color:var(--text-secondary);">${escapeHtml(group.description)}</p>` : ''}
                         </div>
-                        <button type="button" class="org-remove" data-group-delete="${group.id}" title="Xóa nhóm"><i class="ri-delete-bin-line"></i></button>
+                        <div style="display:flex;gap:6px;align-items:center;">
+                            <button type="button" class="org-btn-edit" data-group-edit="${group.id}" title="Sửa tên nhóm" style="background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:4px 8px;font-size:11.5px;cursor:pointer;font-weight:600;"><i class="ri-edit-line"></i> Sửa</button>
+                            <button type="button" class="org-remove" data-group-delete="${group.id}" title="Xóa nhóm"><i class="ri-delete-bin-line"></i></button>
+                        </div>
                     </div>
 
                     <!-- Quản lý thành viên Sale trong nhóm -->
