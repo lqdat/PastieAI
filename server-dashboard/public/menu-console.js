@@ -211,7 +211,10 @@
             <div class="menu-item-body">
                 <div class="menu-item-head">
                     <strong>${escapeHtml(item.name)}</strong>
-                    <span class="menu-price">${money(item.price)}</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span class="menu-vat-pill" style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;background:rgba(239,43,157,0.08);color:var(--accent-color);">VAT ${Number(item.vat_rate != null ? item.vat_rate : 10)}%</span>
+                        <span class="menu-price">${money(item.price)}</span>
+                    </div>
                 </div>
                 ${stockBadge(item)}
                 ${item.description ? `<p class="menu-desc">${escapeHtml(item.description)}</p>` : ''}
@@ -291,11 +294,8 @@
     async function deleteCategory(id) {
         const category = CATEGORIES.find((c) => c.id === Number(id));
         if (!category) return;
-        if (category.is_promo) {
-            return showToast('Không xoá được nhóm Ưu đãi. Bạn có thể ẩn nhóm này nếu chưa dùng tới.', 'error');
-        }
-        // Nói rõ món KHÔNG mất theo — backend để ON DELETE SET NULL.
         const ok = await pastieConfirm(
+            'Xoá danh mục',
             category.item_count > 0
                 ? `Xoá danh mục "${category.name}"? ${category.item_count} món trong đó vẫn còn, chỉ chuyển sang "Chưa phân loại".`
                 : `Xoá danh mục "${category.name}"?`,
@@ -341,6 +341,10 @@
         editingItemId = item ? item.id : null;
         $('menu-item-name').value = item ? item.name : '';
         $('menu-item-price').value = item ? Number(item.price) : '';
+        if ($('menu-item-vat')) {
+            const vatVal = item && item.vat_rate != null ? Number(item.vat_rate) : (item && item.vatRate != null ? Number(item.vatRate) : 10);
+            $('menu-item-vat').value = String(vatVal);
+        }
         $('menu-item-desc').value = item ? (item.description || '') : '';
         $('menu-item-category').value = item && item.category_id ? String(item.category_id) : '';
         // null -> ô trống, đúng nghĩa "không giới hạn". Dùng == null để bắt cả
@@ -365,6 +369,8 @@
         const price = Number($('menu-item-price').value);
         const description = $('menu-item-desc').value.trim();
         const categoryId = $('menu-item-category').value;
+        const rawVat = $('menu-item-vat') ? $('menu-item-vat').value.trim() : '';
+        const vatRate = rawVat !== '' && !isNaN(Number(rawVat)) ? Math.max(0, Math.min(100, Math.round(Number(rawVat)))) : 10;
 
         if (!name) return showToast('Cần tên món.', 'error');
         if (!Number.isFinite(price) || price < 0) return showToast('Giá không hợp lệ.', 'error');
@@ -380,6 +386,7 @@
             // không giới hạn, khác hẳn với việc không gửi trường này.
             stockQuantity: rawStock === '' ? '' : Number(rawStock),
             hideWhenOut: $('menu-item-hide').value !== 'false',
+            vatRate,
         };
         const editing = editingItemId;
         try {

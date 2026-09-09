@@ -7300,3 +7300,105 @@ button:focus-visible {
     }
 }
 
+/* Media Preview Modal & Document Fit */
+#media-preview-modal .media-preview-modal-box {
+    max-width: 560px !important;
+    width: 95vw !important;
+    max-height: 90vh !important;
+    height: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    margin: auto !important;
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    background: var(--bg-surface, #ffffff) !important;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28) !important;
+}
+
+#media-preview-modal .media-preview-body {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    max-height: calc(90vh - 60px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    background: #f6f3f8 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    padding: 12px !important;
+    box-sizing: border-box !important;
+}
+
+#media-preview-modal #media-preview-image {
+    max-width: 100% !important;
+    width: 100% !important;
+    height: auto !important;
+    display: block !important;
+    object-fit: contain !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 18px rgba(92, 45, 78, 0.12) !important;
+    margin: 0 auto !important;
+}
+
+#media-preview-modal #media-preview-frame {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    height: 75vh !important;
+    min-height: 400px !important;
+    border: none !important;
+    background: #ffffff !important;
+    border-radius: 10px !important;
+    overflow-x: hidden !important;
+}
+
+#media-preview-modal #media-preview-video {
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: 75vh !important;
+    object-fit: contain !important;
+}
+
+/* Lịch sử chỉnh sửa popup */
+.order-history-modal-card {
+    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.24) !important;
+    animation: confirmPop 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+.order-history-modal-card .bill-history-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+}
+.order-history-modal-card .bill-hist-item {
+    border: 1px solid rgba(84, 62, 100, 0.12) !important;
+    border-radius: 12px !important;
+    padding: 11px 13px !important;
+    background: var(--bg-card, #ffffff) !important;
+}
+.order-history-modal-card .bill-change-tag {
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 3px 8px !important;
+    border-radius: 6px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+}
+.order-history-modal-card .bill-change-tag.is-initial {
+    background: rgba(14, 165, 233, 0.12) !important;
+    color: #0369a1 !important;
+}
+.order-history-modal-card .bill-change-tag.is-added {
+    background: rgba(16, 185, 129, 0.12) !important;
+    color: #047857 !important;
+}
+.order-history-modal-card .bill-change-tag.is-removed {
+    background: rgba(239, 68, 68, 0.12) !important;
+    color: #b91c1c !important;
+}
+.order-history-modal-card .bill-change-tag.is-changed {
+    background: rgba(245, 158, 11, 0.12) !important;
+    color: #b45309 !important;
+}
+

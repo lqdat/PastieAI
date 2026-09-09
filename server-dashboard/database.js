@@ -989,6 +989,7 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // hiện hay không.
     await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS stock_quantity INT;`);
     await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS hide_when_out BOOLEAN NOT NULL DEFAULT TRUE;`);
+    await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS vat_rate INT DEFAULT 10;`);
     // Ràng buộc idempotent bằng DO block thay vì bọc catch: catch sẽ nuốt luôn
     // cả lỗi thật, còn đây thì chỉ bỏ qua đúng trường hợp ràng buộc đã tồn tại.
     await query(`

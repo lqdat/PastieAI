@@ -3427,15 +3427,32 @@ function closeMediaPreview() {
 }
 
 
-function openMediaPreview(url, type = 'document', title = 'Tệp đính kèm') {
+function openMediaPreview(url, type = 'document', title = 'Tệp đính kèm', downloadUrl = null) {
     if (!url || !mediaPreviewModal) return;
     if (mediaPreviewTitle) mediaPreviewTitle.textContent = title;
-    mediaPreviewImage?.classList.toggle('hide', type !== 'image');
-    mediaPreviewVideo?.classList.toggle('hide', type !== 'video');
-    mediaPreviewFrame?.classList.toggle('hide', type === 'image' || type === 'video');
-    if (type === 'image' && mediaPreviewImage) mediaPreviewImage.src = url;
-    else if (type === 'video' && mediaPreviewVideo) mediaPreviewVideo.src = url;
+    const isImg = type === 'image' || url.startsWith('data:image/') || !!url.match(/\.(png|jpe?g|webp|gif|svg)($|\?)/i);
+    const isVid = type === 'video' || url.startsWith('data:video/') || !!url.match(/\.(mp4|webm|mov)($|\?)/i);
+    const resolvedType = isImg ? 'image' : (isVid ? 'video' : 'document');
+
+    mediaPreviewImage?.classList.toggle('hide', resolvedType !== 'image');
+    mediaPreviewVideo?.classList.toggle('hide', resolvedType !== 'video');
+    mediaPreviewFrame?.classList.toggle('hide', resolvedType !== 'document');
+
+    if (resolvedType === 'image' && mediaPreviewImage) mediaPreviewImage.src = url;
+    else if (resolvedType === 'video' && mediaPreviewVideo) mediaPreviewVideo.src = url;
     else if (mediaPreviewFrame) mediaPreviewFrame.src = url;
+
+    const downloadBtn = document.getElementById('media-preview-download-btn');
+    if (downloadBtn) {
+        const dl = downloadUrl || url;
+        if (dl) {
+            downloadBtn.href = dl;
+            downloadBtn.classList.remove('hide');
+        } else {
+            downloadBtn.classList.add('hide');
+        }
+    }
+
     mediaPreviewModal.classList.remove('hide');
 }
 

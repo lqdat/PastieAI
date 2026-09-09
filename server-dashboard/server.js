@@ -4939,7 +4939,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   // moi don dang cho.
   if (order.status === 'pending_confirm') {
     invoice = null;
-  } else if (cached && (Number(cached.orderStamp) === orderStamp || Math.abs(Number(cached.orderStamp) - orderStamp) < 5000) && Number(cached.translationVersion) === 4) {
+  } else if (cached && (Number(cached.orderStamp) === orderStamp || Math.abs(Number(cached.orderStamp) - orderStamp) < 5000) && Number(cached.translationVersion) === 5) {
     invoice = cached.invoice;
   } else {
     // TÊN CƠ SỞ VÀ TÊN BÀN CŨNG PHẢI DỊCH.
@@ -4966,7 +4966,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
     // Chỉ lưu khi thật sự vừa render (generated: true). Trường hợp hoá đơn đã có
     // sẵn pdfUrl thì không có gì để cache.
     if (invoice?.generated) {
-      const store = { ...(order.invoice_render || {}), [language]: { orderStamp, translationVersion: 4, invoice } };
+      const store = { ...(order.invoice_render || {}), [language]: { orderStamp, translationVersion: 5, invoice } };
       db.query('UPDATE chat_orders SET invoice_render = $1 WHERE id = $2', [JSON.stringify(store), order.id])
         .catch((error) => console.error('[Invoice] Không lưu được cache PDF:', error.message));
     }
@@ -5207,6 +5207,7 @@ app.get('/api/admin/menu/view', checkAdminAuth, async (req, res) => {
 
     const items = await db.query(
       `SELECT i.id, i.category_id, i.name, i.description, i.price, i.currency,
+              COALESCE(i.vat_rate, 10) AS vat_rate,
               i.image_url, i.image_key, i.image_url_expires_at,
               i.is_available,
               (i.stock_quantity IS NOT NULL AND i.stock_quantity <= 0) AS sold_out
@@ -5274,7 +5275,14 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
               o.payment_selected_at, o.paid_at, o.created_at, o.updated_at, o.version,
               s.visitor_name, s.visitor_email, s.status AS session_status,
               q.label AS qr_label, g.name AS group_name,
-              sale.full_name AS sale_name,
+              COALESCE(
+                confirmer.full_name,
+                sale.full_name,
+                creator.full_name,
+                NULLIF(o.invoice->>'saleName', ''),
+                assigned_sale.full_name,
+                (SELECT a.full_name FROM agent_group_sales gs JOIN admins a ON a.id = gs.sale_id WHERE gs.group_id = s.group_id AND gs.is_active = TRUE AND a.role = 'sale' ORDER BY a.id ASC LIMIT 1)
+              ) AS sale_name,
               -- Superadmin nhìn đơn của NHIỀU cơ sở cùng lúc, nên phải biết
               -- đơn nào của cơ sở nào mới gom nhóm được.
               COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id) AS agent_id,
@@ -5283,7 +5291,10 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
          JOIN sessions s ON s.id = o.session_id
          LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
          LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN admins confirmer ON confirmer.id = o.confirmed_by_admin_id
          LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
+         LEFT JOIN admins creator ON creator.id = o.created_by_admin_id
+         LEFT JOIN admins assigned_sale ON assigned_sale.id = s.assigned_admin_id AND assigned_sale.role = 'sale'
          LEFT JOIN admins owner ON owner.id = COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id)
         WHERE ${where.join(' AND ')}
         ORDER BY o.updated_at DESC
@@ -5310,14 +5321,24 @@ app.get('/api/admin/orders/:orderId/details', checkAdminAuth, async (req, res) =
     const found = await db.query(
       `SELECT o.*, s.visitor_name, s.visitor_email, s.status AS session_status,
               q.label AS qr_label, g.name AS group_name,
-              sale.full_name AS sale_name,
+              COALESCE(
+                confirmer.full_name,
+                sale.full_name,
+                creator.full_name,
+                NULLIF(o.invoice->>'saleName', ''),
+                assigned_sale.full_name,
+                (SELECT a.full_name FROM agent_group_sales gs JOIN admins a ON a.id = gs.sale_id WHERE gs.group_id = s.group_id AND gs.is_active = TRUE AND a.role = 'sale' ORDER BY a.id ASC LIMIT 1)
+              ) AS sale_name,
               COALESCE(g.agent_id, q.owner_admin_id, sale.managed_by_admin_id, s.assigned_admin_id) AS agent_id,
               COALESCE(agent.full_name, manager.full_name) AS agent_name
          FROM chat_orders o
          JOIN sessions s ON s.id = o.session_id
          LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
          LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN admins confirmer ON confirmer.id = o.confirmed_by_admin_id
          LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
+         LEFT JOIN admins creator ON creator.id = o.created_by_admin_id
+         LEFT JOIN admins assigned_sale ON assigned_sale.id = s.assigned_admin_id AND assigned_sale.role = 'sale'
          LEFT JOIN admins manager ON manager.id = sale.managed_by_admin_id
          LEFT JOIN admins agent ON agent.id = COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id)
         WHERE o.id = $1`,
@@ -5325,6 +5346,7 @@ app.get('/api/admin/orders/:orderId/details', checkAdminAuth, async (req, res) =
     );
     const order = found.rows[0];
     if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+    order.sale_name = order.sale_name || order.invoice?.saleName || '';
 
     const allowed = isSuperAdmin(req.admin)
       || (isSale(req.admin) && Number(order.claimed_by_admin_id || 0) === Number(req.admin.id))
@@ -5369,6 +5391,7 @@ app.get('/api/admin/orders/:orderId/details', checkAdminAuth, async (req, res) =
         sellerName,
         saleName: order.sale_name || order.invoice?.saleName || '',
         paymentMethod: order.payment_method || order.invoice?.paymentMethod || '',
+        isPaid: order.status === 'paid',
       }, language);
     }
     res.json({ order: { ...order, invoice } });
@@ -10962,13 +10985,16 @@ app.get('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 
 app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
-  const { categoryId, name, description, price, hideWhenOut } = req.body || {};
+  const { categoryId, name, description, price, hideWhenOut, vatRate } = req.body || {};
   const cleanName = String(name || '').trim().slice(0, 255);
   const cleanPrice = Math.max(0, Math.round(Number(price)));
   if (!cleanName) return res.status(400).json({ error: 'Cần tên món.' });
   if (!Number.isFinite(cleanPrice)) return res.status(400).json({ error: 'Giá không hợp lệ.' });
   const stock = parseStockInput(req.body?.stockQuantity);
   if (stock.invalid) return res.status(400).json({ error: 'Số lượng tồn phải là số không âm, hoặc để trống nếu không giới hạn.' });
+  const cleanVat = vatRate !== undefined && vatRate !== null && !isNaN(Number(vatRate))
+    ? Math.max(0, Math.min(100, Math.round(Number(vatRate))))
+    : 10;
 
   try {
     // Danh mục phải thuộc chính Agent này, nếu không thì món của hộ A rơi vào
@@ -10983,13 +11009,13 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 
     const created = await db.query(
       `INSERT INTO qr_menu_items (category_id, agent_id, project_id, name, description, price,
-                                 stock_quantity, hide_when_out, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+                                 stock_quantity, hide_when_out, vat_rate, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
                COALESCE((SELECT MAX(sort_order) + 1 FROM qr_menu_items WHERE agent_id = $2), 0))
        RETURNING *`,
       [categoryId ? Number(categoryId) : null, req.admin.id, req.admin.project_id,
        cleanName, String(description || '').trim() || null, cleanPrice,
-       stock.value, hideWhenOut === false ? false : true]
+       stock.value, hideWhenOut === false ? false : true, cleanVat]
     );
     const item = created.rows[0];
 
@@ -11006,9 +11032,11 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 
 app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
-  const { categoryId, name, description, price, isAvailable, sortOrder, hideWhenOut } = req.body || {};
+  const { categoryId, name, description, price, isAvailable, sortOrder, hideWhenOut, vatRate } = req.body || {};
   const stock = parseStockInput(req.body?.stockQuantity);
   if (stock.invalid) return res.status(400).json({ error: 'Số lượng tồn phải là số không âm, hoặc để trống nếu không giới hạn.' });
+  const hasVat = vatRate !== undefined && vatRate !== null && !isNaN(Number(vatRate));
+  const cleanVat = hasVat ? Math.max(0, Math.min(100, Math.round(Number(vatRate)))) : 10;
   try {
     const current = await db.query(
       'SELECT * FROM qr_menu_items WHERE id = $1 AND agent_id = $2',
@@ -11037,6 +11065,7 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
               -- tới nó". Không có cờ này thì mỗi lần sửa giá sẽ xoá luôn số tồn.
               stock_quantity = CASE WHEN $10::boolean THEN $11 ELSE stock_quantity END,
               hide_when_out = COALESCE($12, hide_when_out),
+              vat_rate = CASE WHEN $13::boolean THEN $14 ELSE vat_rate END,
               updated_at = NOW()
         WHERE id = $1 AND agent_id = $2 RETURNING *`,
       [current.rows[0].id, req.admin.id,
@@ -11047,7 +11076,8 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
        typeof isAvailable === 'boolean' ? isAvailable : null,
        Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : null,
        stock.provided, stock.value,
-       typeof hideWhenOut === 'boolean' ? hideWhenOut : null]
+       typeof hideWhenOut === 'boolean' ? hideWhenOut : null,
+       hasVat, cleanVat]
     );
     const item = updated.rows[0];
 
@@ -11572,7 +11602,7 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
     //   stock = 0 và hide_when_out = FALSE  -> hết hàng, vẫn hiện, gắn nhãn hết
     //   stock IS NULL                       -> không giới hạn, luôn hiện
     const items = await db.query(
-      `SELECT i.id, i.category_id, i.price, i.currency, i.image_url, i.image_key,
+      `SELECT i.id, i.category_id, i.price, i.currency, COALESCE(i.vat_rate, 10) AS vat_rate, i.image_url, i.image_key,
               i.image_url_expires_at, i.sort_order,
               (i.stock_quantity IS NOT NULL AND i.stock_quantity <= 0) AS sold_out,
               COALESCE(c.is_promo, FALSE) AS is_promo,
@@ -11704,7 +11734,7 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
     // GIÁ LẤY TỪ DATABASE, không lấy từ body. Đây là ranh giới tin cậy của toàn
     // bộ tính năng: client chỉ được nói "món nào, mấy phần".
     const priced = await db.query(
-      `SELECT id, name, price, stock_quantity FROM qr_menu_items
+      `SELECT id, name, price, stock_quantity, COALESCE(vat_rate, 10) AS vat_rate FROM qr_menu_items
         WHERE id = ANY($1::int[]) AND agent_id = $2 AND is_available = TRUE`,
       [[...wanted.keys()], owner.agent_id]
     );
@@ -11853,7 +11883,7 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
       return res.status(400).json({ error: 'Danh sách món không hợp lệ.' });
     }
     const priced = await client.query(
-      `SELECT id, name, price, stock_quantity FROM qr_menu_items
+      `SELECT id, name, price, stock_quantity, COALESCE(vat_rate, 10) AS vat_rate FROM qr_menu_items
         WHERE id = ANY($1::int[]) AND agent_id = $2 AND is_available = TRUE`,
       [[...wanted.keys()], session.agent_id]
     );

@@ -322,6 +322,28 @@ function createInvoicePdfDataUrl(invoice, language) {
     infoLine(copy.phone, data.buyerPhone);
     infoLine(copy.address, data.buyerAddress);
     infoLine(copy.sale, data.saleName);
+    if (data.paymentMethod) {
+      infoLine(copy.paymentMethod, paymentMethodLabel(data.paymentMethod, fonts.language));
+    }
+
+    // Đóng dấu ĐÃ THANH TOÁN lên PDF bên phải cạnh thông tin
+    if (data.isPaid) {
+      const stampText = copy.paidStamp || 'ĐÃ THANH TOÁN';
+      const stampW = 126;
+      const stampH = 34;
+      const stampX = right - stampW - 6;
+      const stampY = 118;
+      doc.save();
+      doc.rotate(-15, { origin: [stampX + stampW / 2, stampY + stampH / 2] });
+      doc.roundedRect(stampX, stampY, stampW, stampH, 4).lineWidth(2.2).strokeColor('#d32f2f').opacity(0.85).stroke();
+      doc.roundedRect(stampX + 2.5, stampY + 2.5, stampW - 5, stampH - 5, 2.5).lineWidth(1).strokeColor('#d32f2f').opacity(0.7).stroke();
+      (fonts.bold ? doc.font(BOLD) : doc.font('Helvetica-Bold'))
+        .fontSize(10.5)
+        .fillColor('#d32f2f')
+        .opacity(0.88)
+        .text(stampText, stampX, stampY + 11, { width: stampW, align: 'center' });
+      doc.restore();
+    }
 
     doc.moveDown(0.7);
     doc.moveTo(left, doc.y).lineTo(right, doc.y).strokeColor('#e6cede').lineWidth(1).stroke();
@@ -395,9 +417,6 @@ function createInvoicePdfDataUrl(invoice, language) {
     if (data.totalDiscount > 0) summaryRow(copy.totalDiscount, `- ${money(data.totalDiscount)}`);
     if (data.vatAmount > 0) summaryRow(copy.vat, money(data.vatAmount));
     summaryRow(copy.grandTotal, money(data.totalAmount), { bold: true });
-    if (data.paymentMethod) {
-      summaryRow(copy.paymentMethod, paymentMethodLabel(data.paymentMethod, fonts.language));
-    }
 
     doc.moveDown(1.1);
     useBold().fontSize(10.5).fillColor('#b20c69').text(copy.thanks, left, doc.y, { width, align: 'center' });
@@ -595,7 +614,6 @@ function createInvoiceSvg(invoice, language) {
   // Ảnh xem trước phải khớp với PDF tải về, nếu không khách tưởng hai bản là
   // hai hoá đơn khác nhau.
   infoLine(copy.table, data.tableLabel);
-  if (data.paymentMethod) infoLine(copy.paymentMethod, paymentMethodLabel(data.paymentMethod, code));
   infoLine(copy.openedAt, data.openedAt ? formatIssuedAt(data.openedAt, code) : '');
   infoLine(copy.printedAt, formatIssuedAt(data.issuedAt, code));
   infoLine(copy.customer, data.buyerName);
@@ -603,6 +621,7 @@ function createInvoiceSvg(invoice, language) {
   infoLine(copy.phone, data.buyerPhone);
   infoLine(copy.address, data.buyerAddress);
   infoLine(copy.sale, data.saleName);
+  if (data.paymentMethod) infoLine(copy.paymentMethod, paymentMethodLabel(data.paymentMethod, code));
 
   // Đóng dấu ĐÃ THANH TOÁN bên phải cạnh info khi đơn đã thanh toán
   if (data.isPaid) {

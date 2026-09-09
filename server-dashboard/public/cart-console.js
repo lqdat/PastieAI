@@ -39,12 +39,14 @@
         try {
             const order = await fetchOrderDetails(orderId);
             const invoice = order.invoice || {};
-            const url = invoice.pdfUrl || invoice.pdfDataUrl || invoice.svgDataUrl || '';
-            if (!url) throw new Error('Đơn đang chờ xác nhận nên chưa có bill.');
+            const previewUrl = invoice.svgDataUrl || invoice.imageUrl || invoice.imageDataUrl || invoice.pdfUrl || invoice.pdfDataUrl || '';
+            const downloadUrl = invoice.pdfUrl || invoice.pdfDataUrl || previewUrl;
+            if (!previewUrl) throw new Error('Đơn đang chờ xác nhận nên chưa có hóa đơn.');
+            const type = (previewUrl.startsWith('data:image/') || previewUrl.match(/\.(png|jpe?g|webp|svg)($|\?)/i)) ? 'image' : 'document';
             if (typeof openMediaPreview === 'function') {
-                openMediaPreview(url, 'document', `Bill ${order.order_code || ''}`.trim());
+                openMediaPreview(previewUrl, type, `Hóa đơn ${order.order_code || ''}`.trim(), downloadUrl);
             } else {
-                window.open(url, '_blank', 'noopener,noreferrer');
+                window.open(previewUrl, '_blank', 'noopener,noreferrer');
             }
         } catch (error) {
             showToast(error.message, 'error');
@@ -70,38 +72,58 @@
         } catch { return []; }
     }
 
-    function orderHistoryHtml(history) {
-        if (!Array.isArray(history) || history.length < 2) return '';
+    function showOrderHistoryPopup(history, orderCode) {
+        if (!Array.isArray(history) || history.length < 2) return;
         const editCount = Math.max(0, history.length - 1);
-        return `
-            <details class="bill-history" open>
-                <summary><i class="ri-history-line"></i> Lịch sử chỉnh sửa (${editCount} lần thay đổi)</summary>
-                <ol class="bill-history-list">
-                    ${history.slice().reverse().map((step) => {
-                        const dateObj = new Date(step.createdAt);
-                        const timeStr = !isNaN(dateObj.getTime())
-                            ? dateObj.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })
-                            : '';
-                        const hasChanges = Array.isArray(step.changes) && step.changes.length > 0;
-                        return `
-                        <li>
-                            <div class="bill-hist-head">
-                                <span class="bill-hist-ver">#v${step.version || 1}</span>
-                                <span class="bill-hist-when">${escapeHtml(timeStr)}</span>
-                            </div>
-                            <div class="bill-hist-what">
-                                ${hasChanges ? step.changes.map((line) => {
-                                    let cls = 'is-mod';
-                                    if (line.startsWith('+')) cls = 'is-add';
-                                    else if (line.startsWith('-')) cls = 'is-del';
-                                    return `<span class="bill-change-tag ${cls}">${escapeHtml(line)}</span>`;
-                                }).join('') : '<span class="bill-change-tag is-initial">Bản ban đầu (Khách đặt)</span>'}
-                            </div>
-                            <div class="bill-hist-total">${money(step.totalAmount)}</div>
-                        </li>`;
-                    }).join('')}
-                </ol>
-            </details>`;
+        const modal = document.createElement('div');
+        modal.className = 'confirm-overlay';
+        modal.innerHTML = `
+            <div class="confirm-card order-history-modal-card" role="dialog" aria-modal="true" style="max-width:440px;width:92%;max-height:85vh;display:flex;flex-direction:column;border-radius:20px;padding:20px;text-align:left;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(84,62,100,0.12);">
+                    <div>
+                        <h3 style="font-size:16px;font-weight:800;color:var(--text-primary);margin:0;display:flex;align-items:center;gap:6px;">
+                            <i class="ri-history-line" style="color:var(--accent-color);"></i> Lịch sử chỉnh sửa
+                        </h3>
+                        <small style="color:var(--text-secondary);font-size:12px;">Mã đơn: <strong>${escapeHtml(orderCode || '')}</strong> • ${editCount} lần thay đổi</small>
+                    </div>
+                    <button type="button" class="icon-btn order-history-close" style="width:32px;height:32px;border-radius:8px;border:none;background:rgba(84,62,100,0.06);cursor:pointer;" title="Đóng"><i class="ri-close-line" style="font-size:18px;"></i></button>
+                </div>
+                <div style="flex:1;overflow-y:auto;padding-right:4px;">
+                    <ol class="bill-history-list" style="margin:0;padding:0;list-style:none;">
+                        ${history.slice().reverse().map((step) => {
+                            const dateObj = new Date(step.createdAt);
+                            const timeStr = !isNaN(dateObj.getTime())
+                                ? dateObj.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })
+                                : '';
+                            const hasChanges = Array.isArray(step.changes) && step.changes.length > 0;
+                            return `
+                            <li style="padding:10px 12px;margin-bottom:8px;background:rgba(84,62,100,0.03);border:1px solid rgba(84,62,100,0.08);border-radius:12px;">
+                                <div class="bill-hist-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                                    <span class="bill-hist-ver" style="font-weight:700;color:var(--accent-color);font-size:12.5px;">#v${step.version || 1}</span>
+                                    <span class="bill-hist-when" style="font-size:11.5px;color:var(--text-secondary);">${escapeHtml(timeStr)}</span>
+                                </div>
+                                <div class="bill-hist-what" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;">
+                                    ${hasChanges ? step.changes.map((line) => {
+                                        let cls = 'is-mod';
+                                        if (line.startsWith('+')) cls = 'is-add';
+                                        else if (line.startsWith('-')) cls = 'is-del';
+                                        return `<span class="bill-change-tag ${cls}">${escapeHtml(line)}</span>`;
+                                    }).join('') : '<span class="bill-change-tag is-initial">Bản ban đầu (Khách đặt)</span>'}
+                                </div>
+                                <div class="bill-hist-total" style="font-weight:800;color:var(--text-primary);font-size:13.5px;text-align:right;">${money(step.totalAmount)}</div>
+                            </li>`;
+                        }).join('')}
+                    </ol>
+                </div>
+                <div style="margin-top:14px;text-align:right;">
+                    <button type="button" class="order-history-close-btn primary-btn" style="width:100%;height:40px;border-radius:10px;font-weight:600;font-size:13.5px;">Đóng</button>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+        const close = () => modal.remove();
+        modal.querySelector('.order-history-close').onclick = close;
+        modal.querySelector('.order-history-close-btn').onclick = close;
+        modal.onclick = (e) => { if (e.target === modal) close(); };
     }
 
     function editItemDialog(item) {
@@ -169,7 +191,7 @@
             overlay.className = 'confirm-overlay';
             overlay.innerHTML = `
                 <div class="confirm-card" role="dialog" aria-modal="true" style="max-width:390px;width:92%;border-radius:20px;padding:20px 20px 18px;">
-                    <h3 class="confirm-title" style="font-size:17px;font-weight:800;color:var(--text-primary);margin-bottom:14px;">Thêm món vào bill</h3>
+                    <h3 class="confirm-title" style="font-size:17px;font-weight:800;color:var(--text-primary);margin-bottom:14px;">Thêm món vào hóa đơn</h3>
                     <div style="display:grid;gap:12px;margin-bottom:18px;text-align:left;">
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Tên món <b style="color:#ef4444;">*</b>:</span>
@@ -227,43 +249,6 @@
         });
     }
 
-    function choosePaymentMethodDialog(currentMethod) {
-        return new Promise((resolve) => {
-            const overlay = document.createElement('div');
-            overlay.className = 'confirm-overlay';
-            overlay.innerHTML = `
-                <div class="confirm-card" role="dialog" aria-modal="true" style="max-width:360px;">
-                    <h3 class="confirm-title">Xác nhận thu tiền</h3>
-                    <p style="margin:6px 0 12px;font-size:13px;color:var(--text-secondary);">Vui lòng chọn hình thức thanh toán:</p>
-                    <div style="display:grid;gap:8px;margin-bottom:16px;">
-                        <label style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid rgba(84,62,100,.15);border-radius:10px;cursor:pointer;">
-                            <input type="radio" name="pay-method" value="cash" ${!currentMethod || currentMethod === 'cash' ? 'checked' : ''}>
-                            <span>💵 Tiền mặt</span>
-                        </label>
-                        <label style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid rgba(84,62,100,.15);border-radius:10px;cursor:pointer;">
-                            <input type="radio" name="pay-method" value="bank_transfer" ${currentMethod === 'bank_transfer' ? 'checked' : ''}>
-                            <span>🏦 Chuyển khoản</span>
-                        </label>
-                        <label style="display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid rgba(84,62,100,.15);border-radius:10px;cursor:pointer;">
-                            <input type="radio" name="pay-method" value="credit_card" ${currentMethod === 'credit_card' ? 'checked' : ''}>
-                            <span>💳 Quẹt thẻ</span>
-                        </label>
-                    </div>
-                    <div class="confirm-actions">
-                        <button type="button" class="confirm-cancel">Huỷ</button>
-                        <button type="button" class="confirm-ok" style="background:#059669;color:#fff;border:none;">Xác nhận đã thu</button>
-                    </div>
-                </div>`;
-            document.body.appendChild(overlay);
-            const close = (val) => { overlay.remove(); resolve(val); };
-            overlay.querySelector('.confirm-cancel').onclick = () => close(null);
-            overlay.querySelector('.confirm-ok').onclick = () => {
-                const selected = overlay.querySelector('input[name="pay-method"]:checked')?.value || 'cash';
-                close(selected);
-            };
-        });
-    }
-
     async function showOrderDetails(orderId, trigger) {
         if (trigger) trigger.disabled = true;
         try {
@@ -302,7 +287,7 @@
                         <div class="order-items-empty">
                             <i class="ri-shopping-basket-2-line"></i>
                             <p>Đơn chưa có món nào.</p>
-                            <small>Bấm "Thêm món vào bill" bên dưới để bổ sung món</small>
+                            <small>Bấm "Thêm món vào hóa đơn" bên dưới để bổ sung món</small>
                         </div>`;
                 }
                 return draftItems.map((item, index) => `
@@ -408,7 +393,7 @@
                         <div class="order-add-toolbar">
                             <button type="button" class="order-add-btn" id="order-add-item-btn">
                                 <i class="ri-add-line"></i>
-                                <span>Thêm món vào bill</span>
+                                <span>Thêm món vào hóa đơn</span>
                             </button>
                             <div id="order-save-status-wrap">
                                 <span class="order-save-status is-saved"><i class="ri-checkbox-circle-line"></i> Đã lưu</span>
@@ -428,15 +413,19 @@
                                 <b class="summary-line-val">${money(order.total_amount)}</b>
                             </div>
                         </div>
-                        <div class="order-detail-history"></div>
+                        <div class="order-detail-history-wrap" id="order-history-wrap" style="display:none;margin:10px 0;">
+                            <button type="button" class="order-history-btn secondary-btn" id="order-open-history-btn" style="width:100%;height:38px;border-radius:10px;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:7px;">
+                                <i class="ri-history-line"></i> Lịch sử chỉnh sửa (<span id="order-history-count">0</span> lần thay đổi)
+                            </button>
+                        </div>
                         <div class="order-detail-actions">
                             <div class="order-action-nav-row">
                                 <button type="button" class="secondary-btn order-nav-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
-                                <button type="button" class="secondary-btn order-nav-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem bill</button>
+                                <button type="button" class="secondary-btn order-nav-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem hóa đơn</button>
                             </div>
                             ${canEdit ? `
                                 <button type="button" class="primary-btn is-full-width order-save-btn" id="order-save-bill-btn" style="display:none;"><i class="ri-save-line"></i> Lưu thay đổi</button>
-                                <button type="button" class="primary-btn is-full-width is-resend-bill" id="order-send-bill-btn" data-order-id="${escapeHtml(order.id)}"><i class="ri-send-plane-fill"></i> Gửi lại bill cho khách</button>
+                                <button type="button" class="primary-btn is-full-width is-resend-bill" id="order-send-bill-btn" data-order-id="${escapeHtml(order.id)}"><i class="ri-send-plane-fill"></i> Gửi lại hóa đơn cho khách</button>
                             ` : ''}
                             ${canMarkPaid && order.status === 'awaiting_payment' ? `<button type="button" class="cart-paid-btn is-full-width" data-paid="${escapeHtml(order.id)}" data-method="${escapeHtml(order.payment_method || '')}"><i class="ri-check-double-line"></i> Xác nhận đã thu tiền</button>` : ''}
                         </div>
@@ -445,13 +434,21 @@
             document.body.appendChild(detailOverlay);
             // Tải lịch sử đơn hàng
             void loadOrderHistory(order).then((history) => {
-                const host = detailOverlay?.querySelector('.order-detail-history');
-                if (host) host.innerHTML = orderHistoryHtml(history);
+                if (Array.isArray(history) && history.length >= 2) {
+                    const wrap = detailOverlay?.querySelector('#order-history-wrap');
+                    const countEl = detailOverlay?.querySelector('#order-history-count');
+                    const btn = detailOverlay?.querySelector('#order-open-history-btn');
+                    if (wrap && countEl && btn) {
+                        countEl.textContent = String(history.length - 1);
+                        wrap.style.display = 'block';
+                        btn.onclick = () => showOrderHistoryPopup(history, order.order_code || order.id);
+                    }
+                }
             });
             detailOverlay.addEventListener('click', async (event) => {
                 if (event.target === detailOverlay || event.target.closest('.detail-close')) {
                     if (isDirty) {
-                        const leave = await pastieConfirm('Bạn có thay đổi chưa lưu trên bill. Bạn có chắc muốn đóng mà không lưu?', { title: 'Thay đổi chưa lưu', confirmText: 'Đóng không lưu', danger: true });
+                        const leave = await pastieConfirm('Bạn có thay đổi chưa lưu trên hóa đơn. Bạn có chắc muốn đóng mà không lưu?', { title: 'Thay đổi chưa lưu', confirmText: 'Đóng không lưu', danger: true });
                         if (!leave) return;
                     }
                     detailOverlay.remove(); detailOverlay = null; return;
@@ -473,12 +470,12 @@
                 if (delBtn) {
                     const idx = Number(delBtn.dataset.delItem);
                     const it = draftItems[idx];
-                    const ok = await pastieConfirm(`Xóa món "${it?.name || 'này'}" khỏi bill?`, { title: 'Xóa món khỏi bill', confirmText: 'Xóa', danger: true });
+                    const ok = await pastieConfirm(`Xóa món "${it?.name || 'này'}" khỏi hóa đơn?`, { title: 'Xóa món khỏi hóa đơn', confirmText: 'Xóa', danger: true });
                     if (!ok) return;
                     draftItems = draftItems.filter((_, i) => i !== idx);
                     isDirty = true;
                     refreshDraftView();
-                    showToast('Đã xóa món. Vui lòng bấm "Lưu thay đổi" để lưu vào bill.');
+                    showToast('Đã xóa món. Vui lòng bấm "Lưu thay đổi" để lưu vào hóa đơn.');
                     return;
                 }
 
@@ -504,7 +501,7 @@
                     });
                     isDirty = true;
                     refreshDraftView();
-                    showToast('Đã sửa món. Vui lòng bấm "Lưu thay đổi" để lưu vào bill.');
+                    showToast('Đã sửa món. Vui lòng bấm "Lưu thay đổi" để lưu vào hóa đơn.');
                     return;
                 }
 
@@ -540,11 +537,17 @@
                         const data = await res.json();
                         if (!res.ok) throw new Error(data.error || 'Không thể lưu thay đổi.');
                         isDirty = false;
-                        showToast('Đã lưu thay đổi vào bill!', 'success');
+                        showToast('Đã lưu thay đổi vào hóa đơn!', 'success');
                         // Cập nhật lại lịch sử
                         void loadOrderHistory(order).then((history) => {
-                            const host = detailOverlay?.querySelector('.order-detail-history');
-                            if (host) host.innerHTML = orderHistoryHtml(history);
+                            const wrap = detailOverlay?.querySelector('#order-history-wrap');
+                            const countEl = detailOverlay?.querySelector('#order-history-count');
+                            const btn = detailOverlay?.querySelector('#order-open-history-btn');
+                            if (wrap && countEl && btn && Array.isArray(history) && history.length >= 2) {
+                                countEl.textContent = String(history.length - 1);
+                                wrap.style.display = 'block';
+                                btn.onclick = () => showOrderHistoryPopup(history, order.order_code || order.id);
+                            }
                         });
                     } catch (e) {
                         showToast(e.message, 'error');
@@ -559,15 +562,15 @@
                 if (sendBillBtn) {
                     if (isDirty) {
                         const wantSaveAndSend = await pastieConfirm(
-                            'Bạn có thay đổi chưa lưu trên bill. Bạn cần lưu thay đổi trước khi gửi lại cho khách.\n\nLưu thay đổi và gửi lại bill ngay?',
-                            { title: 'Lưu và gửi lại bill', confirmText: 'Lưu & Gửi ngay', cancelText: 'Xem lại' }
+                            'Bạn có thay đổi chưa lưu trên hóa đơn. Bạn cần lưu thay đổi trước khi gửi lại cho khách.\n\nLưu thay đổi và gửi lại hóa đơn ngay?',
+                            { title: 'Lưu và gửi lại hóa đơn', confirmText: 'Lưu & Gửi ngay', cancelText: 'Xem lại' }
                         );
                         if (!wantSaveAndSend) return;
                     }
                     if (isSending) return;
                     isSending = true;
                     sendBillBtn.disabled = true;
-                    sendBillBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang gửi lại bill…`;
+                    sendBillBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang gửi lại hóa đơn…`;
                     try {
                         const res = await authFetch(`${API_BASE}/api/admin/orders/${order.id}/agent-items`, {
                             method: 'PUT',
@@ -575,16 +578,48 @@
                             body: JSON.stringify({ items: draftItems, sendBill: true })
                         });
                         const data = await res.json();
-                        if (!res.ok) throw new Error(data.error || 'Không thể gửi lại bill.');
+                        if (!res.ok) throw new Error(data.error || 'Không thể gửi lại hóa đơn.');
                         isDirty = false;
-                        showToast('Đã lưu và gửi lại bill mới nhất cho khách thành công!', 'success');
+                        showToast('Đã lưu và gửi lại hóa đơn mới nhất cho khách thành công!', 'success');
                         await showOrderDetails(order.id);
                     } catch (e) {
                         showToast(e.message, 'error');
                         sendBillBtn.disabled = false;
-                        sendBillBtn.innerHTML = `<i class="ri-send-plane-fill"></i> Gửi lại bill cho khách`;
+                        sendBillBtn.innerHTML = `<i class="ri-send-plane-fill"></i> Gửi lại hóa đơn cho khách`;
                     } finally {
                         isSending = false;
+                    }
+                    return;
+                }
+
+                const paidBtn = event.target.closest('[data-paid]');
+                if (paidBtn) {
+                    const currentMethod = paidBtn.dataset.method || order.payment_method || 'cash';
+                    const codeLabel = order.order_code || order.id;
+                    const ok = await pastieConfirm(`Xác nhận đã thu tiền cho hóa đơn #${escapeHtml(codeLabel)}?`, {
+                        title: 'Xác nhận thu tiền',
+                        confirmText: 'Đã thu tiền',
+                        cancelText: 'Hủy'
+                    });
+                    if (!ok) return;
+                    paidBtn.disabled = true;
+                    try {
+                        const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(paidBtn.dataset.paid)}/received-payment`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ paymentMethod: currentMethod })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data?.error || 'Không xác nhận được.');
+                        showToast('Đã ghi nhận thanh toán.', 'success');
+                        await showOrderDetails(order.id);
+                        if (overlay) {
+                            const listBody = overlay.querySelector('.cart-body');
+                            if (listBody) await load(listBody);
+                        }
+                    } catch (error) {
+                        showToast(error.message, 'error');
+                        paidBtn.disabled = false;
                     }
                     return;
                 }
@@ -601,7 +636,7 @@
         try {
             const res = await authFetch(`${API_BASE}/api/admin/orders/cart`);
             const data = await res.json();
-            if (!res.ok) throw new Error(data?.error || 'Không tải được danh sách bill.');
+            if (!res.ok) throw new Error(data?.error || 'Không tải được danh sách hóa đơn.');
             canMarkPaid = !!data.canMarkPaid;
             const orders = Array.isArray(data.orders) ? data.orders : [];
             if (orders.length === 0) {
@@ -665,8 +700,8 @@
                     </div>
                     <div class="cart-row-time">Cập nhật: ${when(order.updated_at)}</div>
                     <div class="cart-row-actions">
-                        <button type="button" class="cart-action-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem bill</button>
-                        <button type="button" class="cart-action-btn" data-details="${escapeHtml(order.id)}"><i class="${canEdit ? 'ri-edit-line' : 'ri-eye-line'}"></i> ${canEdit ? 'Sửa bill' : 'Chi tiết'}</button>
+                        <button type="button" class="cart-action-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem hóa đơn</button>
+                        <button type="button" class="cart-action-btn" data-details="${escapeHtml(order.id)}"><i class="${canEdit ? 'ri-edit-line' : 'ri-eye-line'}"></i> ${canEdit ? 'Sửa hóa đơn' : 'Chi tiết'}</button>
                         <button type="button" class="cart-action-btn is-primary" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Hội thoại</button>
                     </div>
                     ${order.status === 'paid'
@@ -699,7 +734,7 @@
         overlay.innerHTML = `
             <div class="admin-management-box cart-box">
                 <div class="admin-list-head">
-                    <h3><i class="ri-bill-line"></i> Quản lý bill</h3>
+                    <h3><i class="ri-bill-line"></i> Quản lý hóa đơn</h3>
                     <button type="button" class="icon-btn cart-close" title="Đóng"><i class="ri-close-line"></i></button>
                 </div>
                 <div class="cart-body"></div>
@@ -732,15 +767,19 @@
             if (paid) {
                 const row = paid.closest('.cart-row');
                 const visibleCode = row?.querySelector('.cart-code')?.textContent?.trim() || paid.dataset.paid;
-                const currentMethod = paid.dataset.method || '';
-                const selectedMethod = await choosePaymentMethodDialog(currentMethod);
-                if (!selectedMethod) return;
+                const currentMethod = paid.dataset.method || 'cash';
+                const ok = await pastieConfirm(`Xác nhận đã thu tiền cho hóa đơn #${visibleCode}?`, {
+                    title: 'Xác nhận thu tiền',
+                    confirmText: 'Đã thu tiền',
+                    cancelText: 'Hủy'
+                });
+                if (!ok) return;
                 paid.disabled = true;
                 try {
                     const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(paid.dataset.paid)}/received-payment`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ paymentMethod: selectedMethod })
+                        body: JSON.stringify({ paymentMethod: currentMethod })
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data?.error || 'Không xác nhận được.');
