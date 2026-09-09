@@ -5372,8 +5372,9 @@ app.get('/api/admin/orders/:orderId/details', checkAdminAuth, async (req, res) =
     }
 
     const language = invoiceHelper.normalizeLanguage(req.query.lang || 'vi');
-    let invoice = null;
-    if (order.status !== 'pending_confirm') {
+    let invoice = order.invoice || null;
+    const needInvoice = req.query.invoice === '1' || req.query.invoice === 'true';
+    if (needInvoice && order.status !== 'pending_confirm') {
       // Nhân viên cũng có thể đang xem bảng bằng tiếng Anh: tên cơ sở trên tờ
       // bill phải theo ngôn ngữ đang xem, giống hệt phía khách.
       const sellerName = await localizeVenueName(

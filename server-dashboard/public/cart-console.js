@@ -21,14 +21,25 @@
     const when = (value) => (value ? new Date(value).toLocaleString('vi-VN') : '—');
 
     function close() {
-        detailOverlay?.remove();
-        detailOverlay = null;
-        overlay?.remove();
-        overlay = null;
+        if (detailOverlay) {
+            detailOverlay.classList.add('is-closing');
+            const target = detailOverlay;
+            detailOverlay = null;
+            setTimeout(() => target.remove(), 180);
+            return;
+        }
+        if (overlay) {
+            overlay.classList.add('is-closing');
+            const target = overlay;
+            overlay = null;
+            setTimeout(() => target.remove(), 180);
+        }
     }
 
-    async function fetchOrderDetails(orderId) {
-        const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/details?lang=vi`);
+    async function fetchOrderDetails(orderId, { invoice = false } = {}) {
+        const query = new URLSearchParams({ lang: 'vi' });
+        if (invoice) query.set('invoice', '1');
+        const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/details?${query.toString()}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Không tải được chi tiết đơn hàng.');
         return data.order;
@@ -37,7 +48,7 @@
     async function openBill(orderId, trigger) {
         if (trigger) trigger.disabled = true;
         try {
-            const order = await fetchOrderDetails(orderId);
+            const order = await fetchOrderDetails(orderId, { invoice: true });
             const invoice = order.invoice || {};
             const previewUrl = invoice.svgDataUrl || invoice.imageUrl || invoice.imageDataUrl || invoice.pdfUrl || invoice.pdfDataUrl || '';
             const downloadUrl = invoice.pdfUrl || invoice.pdfDataUrl || previewUrl;
@@ -133,6 +144,7 @@
             overlay.className = 'confirm-overlay';
             overlay.innerHTML = `
                 <div class="confirm-card" role="dialog" aria-modal="true" style="max-width:390px;width:92%;border-radius:20px;padding:20px 20px 18px;">
+                    <div class="sheet-drag-handle"></div>
                     <h3 class="confirm-title" style="font-size:17px;font-weight:800;color:var(--text-primary);margin-bottom:2px;">Sửa giá &amp; số lượng</h3>
                     <p style="margin:2px 0 14px;font-size:13px;font-weight:700;color:var(--accent-color);">${escapeHtml(item.name || '')}</p>
                     <div style="display:grid;gap:12px;margin-bottom:18px;text-align:left;">
@@ -174,12 +186,21 @@
                 };
             });
             const close = (res) => { overlay.remove(); resolve(res); };
+            overlay.onclick = (e) => { if (e.target === overlay) close(null); };
             overlay.querySelector('.confirm-cancel').onclick = () => close(null);
             overlay.querySelector('.confirm-ok').onclick = () => {
                 const price = Number(overlay.querySelector('#edit-item-price').value);
                 const qty = Number(overlay.querySelector('#edit-item-qty').value);
                 const vat = Number(overlay.querySelector('#edit-item-vat').value);
                 const note = overlay.querySelector('#edit-item-note').value.trim();
+                if (isNaN(price) || price < 0) {
+                    showToast('Vui lòng nhập đơn giá hợp lệ.', 'error');
+                    return;
+                }
+                if (isNaN(qty) || qty <= 0) {
+                    showToast('Số lượng phải từ 1 trở lên.', 'error');
+                    return;
+                }
                 close({ price, quantity: qty, vatRate: isNaN(vat) ? 10 : Math.max(0, Math.min(100, vat)), note });
             };
         });
@@ -191,6 +212,7 @@
             overlay.className = 'confirm-overlay';
             overlay.innerHTML = `
                 <div class="confirm-card" role="dialog" aria-modal="true" style="max-width:390px;width:92%;border-radius:20px;padding:20px 20px 18px;">
+                    <div class="sheet-drag-handle"></div>
                     <h3 class="confirm-title" style="font-size:17px;font-weight:800;color:var(--text-primary);margin-bottom:14px;">Thêm món vào hóa đơn</h3>
                     <div style="display:grid;gap:12px;margin-bottom:18px;text-align:left;">
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
@@ -235,6 +257,7 @@
                 };
             });
             const close = (res) => { overlay.remove(); resolve(res); };
+            overlay.onclick = (e) => { if (e.target === overlay) close(null); };
             overlay.querySelector('.confirm-cancel').onclick = () => close(null);
             overlay.querySelector('.confirm-ok').onclick = () => {
                 const name = overlay.querySelector('#add-item-name').value.trim();
@@ -242,17 +265,68 @@
                 const qty = Number(overlay.querySelector('#add-item-qty').value);
                 const vat = Number(overlay.querySelector('#add-item-vat').value);
                 const note = overlay.querySelector('#add-item-note').value.trim();
-                if (!name) { alert('Vui lòng nhập tên món.'); return; }
-                if (isNaN(price) || price < 0) { alert('Vui lòng nhập đơn giá hợp lệ.'); return; }
+                if (!name) {
+                    showToast('Vui lòng nhập tên món.', 'error');
+                    return;
+                }
+                if (isNaN(price) || price < 0) {
+                    showToast('Vui lòng nhập đơn giá hợp lệ.', 'error');
+                    return;
+                }
+                if (isNaN(qty) || qty <= 0) {
+                    showToast('Số lượng phải từ 1 trở lên.', 'error');
+                    return;
+                }
                 close({ name, unitPrice: price, quantity: qty || 1, vatRate: isNaN(vat) ? 10 : Math.max(0, Math.min(100, vat)), note });
             };
         });
     }
 
-    async function showOrderDetails(orderId, trigger) {
+    async function showOrderDetails(orderId, trigger, prefilled = null) {
         if (trigger) trigger.disabled = true;
+
+        // Mở ngay Bottom Sheet với hiệu ứng mượt mà và Skeleton loading (không chờ network)
+        detailOverlay?.remove();
+        detailOverlay = document.createElement('div');
+        detailOverlay.className = 'cart-overlay order-detail-overlay';
+        const initialCode = prefilled?.orderCode || orderId;
+        detailOverlay.innerHTML = `
+            <section class="cart-box order-detail-box" role="dialog" aria-modal="true" aria-label="Chi tiết đơn hàng">
+                <div class="sheet-drag-handle"></div>
+                <div class="admin-list-head">
+                    <div class="order-detail-heading">
+                        <small>CHI TIẾT ĐƠN HÀNG</small>
+                        <h3 id="order-detail-title">${escapeHtml(initialCode)}</h3>
+                    </div>
+                    <button type="button" class="icon-btn cart-close detail-close" title="Đóng"><i class="ri-close-line"></i></button>
+                </div>
+                <div class="cart-body order-detail-body">
+                    <div class="order-detail-skeleton">
+                        <div class="skeleton-shimmer skeleton-meta"></div>
+                        <div class="skeleton-shimmer skeleton-item"></div>
+                        <div class="skeleton-shimmer skeleton-item"></div>
+                        <div class="skeleton-shimmer skeleton-total"></div>
+                    </div>
+                </div>
+            </section>`;
+        document.body.appendChild(detailOverlay);
+
+        const closeDetail = () => {
+            detailOverlay?.classList.add('is-closing');
+            const target = detailOverlay;
+            detailOverlay = null;
+            setTimeout(() => target?.remove(), 180);
+        };
+        detailOverlay.querySelector('.detail-close').onclick = closeDetail;
+        detailOverlay.onclick = (e) => {
+            if (e.target === detailOverlay) closeDetail();
+        };
+
         try {
-            const order = await fetchOrderDetails(orderId);
+            const order = await fetchOrderDetails(orderId, { invoice: false });
+            const titleEl = detailOverlay.querySelector('#order-detail-title');
+            if (titleEl) titleEl.textContent = order.order_code || order.id;
+
             let draftItems = (Array.isArray(order.items) ? JSON.parse(JSON.stringify(order.items)) : []).map((it) => {
                 const vatRate = it.vatRate != null ? Number(it.vatRate) : 10;
                 const unitPrice = Number(it.unitPrice ?? it.price ?? 0);
@@ -367,72 +441,62 @@
                 updateSummaryHtml();
             }
 
-            detailOverlay?.remove();
-            detailOverlay = document.createElement('div');
-            detailOverlay.className = 'cart-overlay order-detail-overlay';
-            detailOverlay.innerHTML = `
-                <section class="cart-box order-detail-box" role="dialog" aria-modal="true" aria-label="Chi tiết đơn hàng">
-                    <div class="admin-list-head">
-                        <div class="order-detail-heading">
-                            <small>CHI TIẾT ĐƠN HÀNG</small>
-                            <h3>${escapeHtml(order.order_code || order.id)}</h3>
-                        </div>
-                        <button type="button" class="icon-btn cart-close detail-close" title="Đóng"><i class="ri-close-line"></i></button>
+            const bodyContainer = detailOverlay.querySelector('.order-detail-body');
+            if (bodyContainer) {
+                bodyContainer.innerHTML = `
+                    <div class="order-detail-meta">
+                        <span><i class="ri-map-pin-2-line"></i>${escapeHtml(order.qr_label || order.group_name || '—')}</span>
+                        <span><i class="ri-bank-card-line"></i>${escapeHtml(payment)}</span>
+                        <span><i class="ri-user-line"></i>${escapeHtml(order.visitor_name || order.visitor_email || 'Khách')}</span>
+                        <span><i class="ri-user-star-line"></i>Sale: <strong>${escapeHtml(order.sale_name || 'Chưa tiếp nhận')}</strong></span>
                     </div>
-                    <div class="cart-body order-detail-body">
-                        <div class="order-detail-meta">
-                            <span><i class="ri-map-pin-2-line"></i>${escapeHtml(order.qr_label || order.group_name || '—')}</span>
-                            <span><i class="ri-bank-card-line"></i>${escapeHtml(payment)}</span>
-                            <span><i class="ri-user-line"></i>${escapeHtml(order.visitor_name || order.visitor_email || 'Khách')}</span>
-                            <span><i class="ri-user-star-line"></i>Sale tiếp nhận: <strong>${escapeHtml(order.sale_name || 'Chưa tiếp nhận')}</strong></span>
+                    <div class="order-detail-items">
+                        ${renderDraftItemsHtml()}
+                    </div>
+                    ${canEdit ? `
+                    <div class="order-add-toolbar">
+                        <button type="button" class="order-add-btn" id="order-add-item-btn">
+                            <i class="ri-add-line"></i>
+                            <span>Thêm món vào hóa đơn</span>
+                        </button>
+                        <div id="order-save-status-wrap">
+                            <span class="order-save-status is-saved"><i class="ri-checkbox-circle-line"></i> Đã lưu</span>
                         </div>
-                        <div class="order-detail-items">
-                            ${renderDraftItemsHtml()}
+                    </div>` : ''}
+                    <div class="order-detail-summary">
+                        <div class="summary-line">
+                            <span class="summary-line-label">Tạm tính</span>
+                            <b class="summary-line-val">${money(charges.subtotal ?? order.total_amount)}</b>
+                        </div>
+                        <div class="summary-line">
+                            <span class="summary-line-label">VAT</span>
+                            <b class="summary-line-val">${money(charges.vatAmount || 0)}</b>
+                        </div>
+                        <div class="summary-line is-total">
+                            <span class="summary-line-label">Tổng cộng</span>
+                            <b class="summary-line-val">${money(order.total_amount)}</b>
+                        </div>
+                    </div>
+                    <div class="order-detail-history-wrap" id="order-history-wrap" style="display:none;margin:10px 0;">
+                        <button type="button" class="order-history-btn secondary-btn" id="order-open-history-btn" style="width:100%;height:38px;border-radius:10px;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:7px;">
+                            <i class="ri-history-line"></i> Lịch sử chỉnh sửa (<span id="order-history-count">0</span> lần thay đổi)
+                        </button>
+                    </div>
+                    <div class="order-detail-actions">
+                        <div class="order-action-nav-row">
+                            <button type="button" class="secondary-btn order-nav-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
+                            <button type="button" class="secondary-btn order-nav-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem hóa đơn</button>
                         </div>
                         ${canEdit ? `
-                        <div class="order-add-toolbar">
-                            <button type="button" class="order-add-btn" id="order-add-item-btn">
-                                <i class="ri-add-line"></i>
-                                <span>Thêm món vào hóa đơn</span>
-                            </button>
-                            <div id="order-save-status-wrap">
-                                <span class="order-save-status is-saved"><i class="ri-checkbox-circle-line"></i> Đã lưu</span>
-                            </div>
-                        </div>` : ''}
-                        <div class="order-detail-summary">
-                            <div class="summary-line">
-                                <span class="summary-line-label">Tạm tính</span>
-                                <b class="summary-line-val">${money(charges.subtotal ?? order.total_amount)}</b>
-                            </div>
-                            <div class="summary-line">
-                                <span class="summary-line-label">VAT</span>
-                                <b class="summary-line-val">${money(charges.vatAmount || 0)}</b>
-                            </div>
-                            <div class="summary-line is-total">
-                                <span class="summary-line-label">Tổng cộng</span>
-                                <b class="summary-line-val">${money(order.total_amount)}</b>
-                            </div>
-                        </div>
-                        <div class="order-detail-history-wrap" id="order-history-wrap" style="display:none;margin:10px 0;">
-                            <button type="button" class="order-history-btn secondary-btn" id="order-open-history-btn" style="width:100%;height:38px;border-radius:10px;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:7px;">
-                                <i class="ri-history-line"></i> Lịch sử chỉnh sửa (<span id="order-history-count">0</span> lần thay đổi)
-                            </button>
-                        </div>
-                        <div class="order-detail-actions">
-                            <div class="order-action-nav-row">
-                                <button type="button" class="secondary-btn order-nav-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
-                                <button type="button" class="secondary-btn order-nav-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem hóa đơn</button>
-                            </div>
-                            ${canEdit ? `
-                                <button type="button" class="primary-btn is-full-width order-save-btn" id="order-save-bill-btn" style="display:none;"><i class="ri-save-line"></i> Lưu thay đổi</button>
-                                <button type="button" class="primary-btn is-full-width is-resend-bill" id="order-send-bill-btn" data-order-id="${escapeHtml(order.id)}"><i class="ri-send-plane-fill"></i> Gửi lại hóa đơn cho khách</button>
-                            ` : ''}
-                            ${canMarkPaid && order.status === 'awaiting_payment' ? `<button type="button" class="cart-paid-btn is-full-width" data-paid="${escapeHtml(order.id)}" data-method="${escapeHtml(order.payment_method || '')}"><i class="ri-check-double-line"></i> Xác nhận đã thu tiền</button>` : ''}
-                        </div>
+                            <button type="button" class="primary-btn is-full-width order-save-btn" id="order-save-bill-btn" style="display:none;"><i class="ri-save-line"></i> Lưu thay đổi</button>
+                            <button type="button" class="primary-btn is-full-width is-resend-bill" id="order-send-bill-btn" data-order-id="${escapeHtml(order.id)}"><i class="ri-send-plane-fill"></i> Gửi lại hóa đơn cho khách</button>
+                        ` : ''}
+                        ${canMarkPaid && order.status === 'awaiting_payment' ? `<button type="button" class="cart-paid-btn is-full-width" data-paid="${escapeHtml(order.id)}" data-method="${escapeHtml(order.payment_method || '')}"><i class="ri-check-double-line"></i> Xác nhận đã thu tiền</button>` : ''}
                     </div>
-                </section>`;
-            document.body.appendChild(detailOverlay);
-            // Tải lịch sử đơn hàng
+                `;
+            }
+
+            // Tải lịch sử đơn hàng nền (không cản trở giao diện chính)
             void loadOrderHistory(order).then((history) => {
                 if (Array.isArray(history) && history.length >= 2) {
                     const wrap = detailOverlay?.querySelector('#order-history-wrap');
@@ -445,13 +509,15 @@
                     }
                 }
             });
-            detailOverlay.addEventListener('click', async (event) => {
+
+            detailOverlay.onclick = async (event) => {
                 if (event.target === detailOverlay || event.target.closest('.detail-close')) {
                     if (isDirty) {
                         const leave = await pastieConfirm('Bạn có thay đổi chưa lưu trên hóa đơn. Bạn có chắc muốn đóng mà không lưu?', { title: 'Thay đổi chưa lưu', confirmText: 'Đóng không lưu', danger: true });
                         if (!leave) return;
                     }
-                    detailOverlay.remove(); detailOverlay = null; return;
+                    closeDetail();
+                    return;
                 }
                 const direct = event.target.closest('[data-open]');
                 if (direct) {
@@ -462,7 +528,15 @@
                 }
                 const bill = event.target.closest('[data-bill]');
                 if (bill) {
-                    await openBill(bill.dataset.bill, bill);
+                    const origHtml = bill.innerHTML;
+                    bill.disabled = true;
+                    bill.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang tải…`;
+                    try {
+                        await openBill(bill.dataset.bill, bill);
+                    } finally {
+                        bill.disabled = false;
+                        bill.innerHTML = origHtml;
+                    }
                     return;
                 }
 
@@ -623,7 +697,7 @@
                     }
                     return;
                 }
-            });
+            };
         } catch (error) {
             showToast(error.message, 'error');
         } finally {
@@ -733,6 +807,7 @@
         overlay.className = 'cart-overlay';
         overlay.innerHTML = `
             <div class="admin-management-box cart-box">
+                <div class="sheet-drag-handle"></div>
                 <div class="admin-list-head">
                     <h3><i class="ri-bill-line"></i> Quản lý hóa đơn</h3>
                     <button type="button" class="icon-btn cart-close" title="Đóng"><i class="ri-close-line"></i></button>
@@ -753,13 +828,23 @@
 
             const bill = event.target.closest('[data-bill]');
             if (bill) {
-                await openBill(bill.dataset.bill, bill);
+                const origHtml = bill.innerHTML;
+                bill.disabled = true;
+                bill.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Hóa đơn…`;
+                try {
+                    await openBill(bill.dataset.bill, bill);
+                } finally {
+                    bill.disabled = false;
+                    bill.innerHTML = origHtml;
+                }
                 return;
             }
 
             const details = event.target.closest('[data-details]');
             if (details) {
-                await showOrderDetails(details.dataset.details, details);
+                const row = details.closest('.cart-row');
+                const orderCode = row?.querySelector('.cart-code')?.textContent?.trim() || details.dataset.details;
+                await showOrderDetails(details.dataset.details, details, { orderCode });
                 return;
             }
 
