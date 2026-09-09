@@ -107,10 +107,24 @@
                                 ? dateObj.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })
                                 : '';
                             const hasChanges = Array.isArray(step.changes) && step.changes.length > 0;
+                            const role = step.editorRole || (step.version === 1 ? 'customer' : 'admin');
+                            let badgeHtml = '';
+                            if (role === 'customer') {
+                                badgeHtml = `<span class="bill-hist-actor is-customer" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(100,116,139,0.12);color:#475569;"><i class="ri-user-line"></i> Khách hàng</span>`;
+                            } else if (role === 'sale') {
+                                badgeHtml = `<span class="bill-hist-actor is-sale" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(147,51,234,0.12);color:#7e22ce;"><i class="ri-briefcase-line"></i> ${escapeHtml(step.editorName || 'Sale')}</span>`;
+                            } else if (role === 'agent') {
+                                badgeHtml = `<span class="bill-hist-actor is-agent" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(217,119,6,0.12);color:#b45309;"><i class="ri-store-2-line"></i> ${escapeHtml(step.editorName || 'Agent')}</span>`;
+                            } else {
+                                badgeHtml = `<span class="bill-hist-actor is-superadmin" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(225,29,72,0.12);color:#be123c;"><i class="ri-shield-user-line"></i> ${escapeHtml(step.editorName || 'Quản trị viên')}</span>`;
+                            }
                             return `
                             <li style="padding:10px 12px;margin-bottom:8px;background:rgba(84,62,100,0.03);border:1px solid rgba(84,62,100,0.08);border-radius:12px;">
                                 <div class="bill-hist-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                                    <span class="bill-hist-ver" style="font-weight:700;color:var(--accent-color);font-size:12.5px;">#v${step.version || 1}</span>
+                                    <div style="display:flex;align-items:center;gap:6px;">
+                                        <span class="bill-hist-ver" style="font-weight:700;color:var(--accent-color);font-size:12.5px;">#v${step.version || 1}</span>
+                                        ${badgeHtml}
+                                    </div>
                                     <span class="bill-hist-when" style="font-size:11.5px;color:var(--text-secondary);">${escapeHtml(timeStr)}</span>
                                 </div>
                                 <div class="bill-hist-what" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;">
@@ -342,7 +356,7 @@
             let isSending = false;
 
             const payment = order.payment_method ? PAYMENT[order.payment_method] || order.payment_method : 'Khách chưa chọn';
-            const canEdit = (CURRENT_ADMIN?.role === 'agent' || CURRENT_ADMIN?.role === 'superadmin' || CURRENT_ADMIN?.role === 'admin') && order.status !== 'paid';
+            const canEdit = (CURRENT_ADMIN?.role === 'agent' || CURRENT_ADMIN?.role === 'superadmin' || CURRENT_ADMIN?.role === 'admin' || CURRENT_ADMIN?.role === 'sale') && order.status !== 'paid';
 
             function recalculateCharges() {
                 const subtotal = draftItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
@@ -749,7 +763,7 @@
                             ? { label: 'Chưa thu tiền', cls: 'is-awaiting' }
                             : { label: 'Khách chưa chọn cách trả', cls: 'is-awaiting' })
                         : (STATUS[order.status] || { label: order.status, cls: '' });
-                const canEdit = (CURRENT_ADMIN?.role === 'agent' || CURRENT_ADMIN?.role === 'superadmin' || CURRENT_ADMIN?.role === 'admin') && order.status !== 'paid';
+                const canEdit = (CURRENT_ADMIN?.role === 'agent' || CURRENT_ADMIN?.role === 'superadmin' || CURRENT_ADMIN?.role === 'admin' || CURRENT_ADMIN?.role === 'sale') && order.status !== 'paid';
                 // Đơn của phiên chat ĐÃ ĐÓNG vẫn hiện: đó thường là đơn cần đối
                 // chiếu nhất, và ẩn đi thì Agent tưởng nó biến mất.
                 const closed = order.session_status !== 'active' ? '<span class="cart-closed">Chat đã đóng</span>' : '';

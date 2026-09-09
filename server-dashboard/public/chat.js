@@ -2721,6 +2721,7 @@ window.insertIntoChatFlow = insertIntoChatFlow;
 // Hiển thị hóa đơn trong luồng chat của Agent: xem trước co theo bề ngang,
 // bấm vào mở PDF ở tab mới. Agent cần thấy đúng thứ khách đang nhìn.
 function renderAdminInvoice() {
+    chatMessagesContainer?.querySelectorAll('.admin-invoice-block:not(.is-archived):not(.admin-order-revision)').forEach((node) => node.remove());
     if (!adminOrder) return;
     // Đơn CHƯA XÁC NHẬN thì chưa có hoá đơn nào cả. Trước đây khối này vẫn hiện
     // với dòng chữ "HÓA ĐƠN ĐÃ GỬI KHÁCH" kèm nhãn trạng thái thô

@@ -1172,6 +1172,10 @@ window.refreshAgentSaleCount = refreshAgentSaleCount;
 // Tải lại bằng cách gắn thêm một tham số vào URL: location.reload() ở
 // standalone vẫn có thể lấy lại đúng bản HTML đang nằm trong cache.
 async function reloadApp() {
+    const badge = document.getElementById('app-update-badge')?.textContent?.trim();
+    if (badge) {
+        sessionStorage.setItem(`dismissed_update_${badge}`, '1');
+    }
     if ('caches' in window) {
         try {
             const keys = await caches.keys();
@@ -1189,8 +1193,19 @@ function parseVersionNum(v) {
     return m ? parseInt(m[1], 10) : 0;
 }
 
-// Phiên bản trang HIỆN ĐANG chạy, lấy từ chính đường dẫn script hoặc style đã tải.
+// Phiên bản trang HIỆN ĐANG chạy, lấy từ phiên bản lớn nhất của script/style đã nạp.
 function currentAppVersion() {
+    let maxRev = 0;
+    const elements = document.querySelectorAll('script[src], link[href]');
+    for (const el of elements) {
+        const url = el.getAttribute('src') || el.getAttribute('href') || '';
+        const m = url.match(/[?&]v=r(\d+)/i);
+        if (m) {
+            const n = parseInt(m[1], 10);
+            if (n > maxRev) maxRev = n;
+        }
+    }
+    if (maxRev > 0) return `r${maxRev}`;
     const src = document.querySelector('script[src*="admin.js?v="]')?.getAttribute('src') || '';
     const sMatch = (src.match(/[?&]v=(r\d+)/) || [])[1];
     if (sMatch) return sMatch;

@@ -5303,9 +5303,8 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
     );
     res.json({
       orders: rows.rows,
-      // Chỉ Agent và Superadmin mới được bấm "Đã thanh toán": đó là xác nhận
-      // ĐÃ CÓ TIỀN, không phải một bước thao tác của người phục vụ bàn.
-      canMarkPaid: isSuperAdmin(req.admin) || isAgentManager(req.admin),
+      // Cho phép Agent, Superadmin và Sale phụ trách bấm "Đã thanh toán"
+      canMarkPaid: isSuperAdmin(req.admin) || isAgentManager(req.admin) || isSale(req.admin),
     });
   } catch (error) {
     console.error('Order cart error:', error);
@@ -5409,20 +5408,62 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
   if (!canAccessProject(req.admin, order.project_id)) return res.status(403).json({ error: 'Bạn không có quyền xác nhận đơn này.' });
   if (order.status !== 'awaiting_payment') return res.status(409).json({ error: 'Đơn không ở trạng thái chờ thanh toán.' });
   const assignedMethod = req.body?.paymentMethod || order.payment_method || 'cash';
+
+  // Dựng lại hoá đơn có cờ isPaid = true để đóng con dấu màu xanh lá
+  const targetLang = invoiceLanguageFor(order, 'vi');
+  const sessionRes = await db.query(
+    `SELECT s.*, q.label AS qr_label, g.name AS group_name,
+            COALESCE(agent.full_name, manager.full_name) AS seller_name
+       FROM sessions s
+       LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+       LEFT JOIN agent_groups g ON g.id = s.group_id
+       LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
+       LEFT JOIN admins manager ON manager.id = sale.managed_by_admin_id
+       LEFT JOIN admins agent ON agent.id = COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id)
+      WHERE s.id = $1`,
+    [order.session_id]
+  ).catch(() => ({ rows: [] }));
+  const sessionData = sessionRes.rows[0] || {};
+  const sellerName = await localizeVenueName(sessionData.seller_name || order.agent_name || order.invoice?.sellerName || '', targetLang, order.agent_id || null);
+  const tableLabel = await localizeQrText(sessionData.qr_label || sessionData.group_name || order.invoice?.tableLabel || '', targetLang, order.agent_id || null);
+
+  const stampedInvoice = {
+    ...(order.invoice || {}),
+    sellerName: sellerName || order.invoice?.sellerName || '',
+    tableLabel: tableLabel || order.invoice?.tableLabel || '',
+    saleName: req.admin.full_name || order.sale_name || order.invoice?.saleName || '',
+    paymentMethod: assignedMethod,
+    isPaid: true,
+  };
+
+  try {
+    const stampedSvg = invoiceHelper.createInvoiceSvgDataUrl(stampedInvoice, targetLang);
+    if (stampedSvg) stampedInvoice.svgDataUrl = stampedSvg;
+  } catch (renderErr) {
+    console.error('[Invoice] Lỗi tạo SVG đóng dấu đã thanh toán:', renderErr.message);
+  }
+
   const updated = await db.query(
     `UPDATE chat_orders
         SET status = 'paid',
             payment_method = COALESCE(payment_method, $3),
             payment_reference = $1,
+            invoice = $4,
             invoice_render = '{}'::jsonb,
             paid_at = NOW(),
             updated_at = NOW()
       WHERE id = $2 RETURNING *`,
-    [String(req.body?.reference || '').trim().slice(0, 255) || null, order.id, assignedMethod]
+    [String(req.body?.reference || '').trim().slice(0, 255) || null, order.id, assignedMethod, JSON.stringify(stampedInvoice)]
   );
+
+  // Cập nhật tờ hoá đơn mới nhất trong chat_order_bills với con dấu xanh lá
   await db.query(
-    `UPDATE chat_order_bills SET payment_method = COALESCE(payment_method, $2) WHERE order_id = $1`,
-    [order.id, assignedMethod]
+    `UPDATE chat_order_bills
+        SET payment_method = COALESCE(payment_method, $2),
+            invoice = $3
+      WHERE order_id = $1
+        AND version = (SELECT MAX(version) FROM chat_order_bills WHERE order_id = $1)`,
+    [order.id, assignedMethod, JSON.stringify(stampedInvoice)]
   ).catch(() => {});
   // Báo vào ĐÚNG cuộc trò chuyện đó, kèm MÃ ĐƠN.
   //
@@ -12891,9 +12932,11 @@ async function loadSessionBills(sessionId, language) {
               b.payment_method, b.created_at, o.status AS order_status, o.order_code,
               sale.full_name AS sale_name,
               COALESCE(agent.full_name, manager.full_name) AS seller_name,
-              -- Cần để dịch tên cơ sở và nhãn QR in trên hoá đơn.
               COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id) AS agent_id,
-              q.label AS qr_label, g.name AS group_name
+              q.label AS qr_label, g.name AS group_name,
+              b.confirmed_by_admin_id,
+              editor.full_name AS editor_name,
+              editor.role AS editor_role
          FROM chat_order_bills b
          LEFT JOIN chat_orders o ON o.id = b.order_id
          LEFT JOIN sessions s ON s.id = b.session_id
@@ -12902,20 +12945,17 @@ async function loadSessionBills(sessionId, language) {
          LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
          LEFT JOIN admins manager ON manager.id = sale.managed_by_admin_id
          LEFT JOIN admins agent ON agent.id = COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id)
+         LEFT JOIN admins editor ON editor.id = b.confirmed_by_admin_id
         WHERE b.session_id = $1
         ORDER BY b.created_at ASC, b.version ASC
         LIMIT 50`,
       [sessionId]
     );
-    // Dựng hoá đơn theo ngôn ngữ khách đang chọn, giống route /order. Làm song
-    // song vì một bữa có thể có vài bill và khách không nên chờ tuần tự.
+
     const bills = await Promise.all(rows.rows.map(async (row) => {
       const localized = await localizeOrderForVisitor(
         { session_id: sessionId, items: row.items }, language
       );
-      // Tên cơ sở và tên bàn in trên hoá đơn phải theo ngôn ngữ khách đang
-      // xem, giống hệt tên món — khách nước ngoài cầm tờ bill mà thấy "Bàn 10"
-      // thì không đối chiếu được với chỗ mình vừa ngồi.
       const [sellerName, tableLabel] = await Promise.all([
         localizeVenueName(row.seller_name || row.invoice?.sellerName || '', language, row.agent_id),
         localizeQrText(row.qr_label || row.group_name || row.invoice?.tableLabel || '', language, row.agent_id),
@@ -12931,32 +12971,34 @@ async function loadSessionBills(sessionId, language) {
           isPaid: row.order_status === 'paid',
         }, language
       ).catch(() => row.invoice);
+
+      let editorRole = 'customer';
+      let editorName = 'Khách hàng';
+      if (row.confirmed_by_admin_id) {
+        if (row.editor_role === 'sale') {
+          editorRole = 'sale';
+          editorName = `Sale: ${row.editor_name || 'Nhân viên'}`;
+        } else if (row.editor_role === 'agent') {
+          editorRole = 'agent';
+          editorName = `Agent: ${row.editor_name || 'Quản lý'}`;
+        } else if (row.editor_role === 'superadmin') {
+          editorRole = 'superadmin';
+          editorName = `SuperAdmin: ${row.editor_name || 'Hệ thống'}`;
+        } else {
+          editorRole = 'staff';
+          editorName = row.editor_name || 'Nhân sự';
+        }
+      }
+
       return {
         id: row.id, orderId: row.order_id, orderCode: row.order_code, version: row.version,
         totalAmount: row.total_amount, paymentMethod: row.payment_method,
         orderStatus: row.order_status, createdAt: row.created_at, invoice,
         items: localized?.items || row.items || [],
+        editorRole, editorName,
       };
     }));
 
-  // MỘT đơn chỉ hiện MỘT tờ hoá đơn — bản mới nhất. Các bản trước không biến
-  // mất, chúng thành LỊCH SỬ CHỈNH SỬA gắn vào chính tờ đó.
-  //
-  // Xếp mấy tờ bill của cùng một đơn cạnh nhau trông như khách đặt mấy lần,
-  // trong khi thật ra chỉ có một đơn được sửa đi sửa lại. Nhưng cũng không được
-  // xoá bản cũ: khi có tranh cãi "món này thêm vào lúc nào", dấu vết ấy là thứ
-  // duy nhất trả lời được.
-  // Khung chat hiện ĐỦ các bản bill theo đúng thứ tự khách nhận được: cùng một
-  // mã bill, chỉ khác món và số tiền. Khách nhìn vào là thấy ngay mình đã sửa
-  // gì — không phải mở thêm cái gì cả.
-  //
-  // Nhưng mỗi bản vẫn mang theo history của CẢ chuỗi, để giỏ hàng dựng được
-  // bảng "đã chỉnh sửa mấy lần" mà không phải gọi thêm lượt nào.
-  //
-  // Sửa đơn có thể còn mở một ĐƠN MỚI và đánh dấu đơn cũ 'superseded'. Về mặt
-  // nghiệp vụ đó vẫn là một chuỗi, nên chuỗi được cắt ở tờ còn sống.
-  const DEAD = new Set(['superseded', 'rejected', 'cancelled']);
-  // Nhóm các bản bill theo order_id để xây dựng lịch sử chính xác cho từng đơn
   const billsByOrder = new Map();
   for (const bill of bills) {
     const k = String(bill.orderId || bill.id);
@@ -12968,32 +13010,83 @@ async function loadSessionBills(sessionId, language) {
     orderBills.sort((a, b) => Number(a.version || 0) - Number(b.version || 0)
       || new Date(a.createdAt) - new Date(b.createdAt));
 
-    const history = orderBills.map((step, index) => {
+    // Nạp thêm các lần khách tự sửa đơn trước khi bill được duyệt (từ chat_order_revisions)
+    const revRows = await db.query(
+      `SELECT version, items, total_amount, created_at FROM chat_order_revisions
+        WHERE order_id = $1 ORDER BY version ASC`,
+      [orderId]
+    ).then((r) => r.rows).catch(() => []);
+
+    const minBillVersion = Number(orderBills[0]?.version || 1);
+    const priorCustomerRevs = revRows.filter((r) => Number(r.version) < minBillVersion);
+
+    const history = [];
+    let prevItems = [];
+    let prevTotal = 0;
+
+    // 1. Các bản khách gửi trước khi có bill
+    for (let i = 0; i < priorCustomerRevs.length; i++) {
+      const rev = priorCustomerRevs[i];
+      const revItems = Array.isArray(rev.items) ? rev.items : [];
       let changes = [];
-      if (index === 0) {
-        changes = ['Bản ban đầu (Tạo bill)'];
+      if (i === 0) {
+        changes = ['Bản ban đầu (Khách gửi đơn)'];
       } else {
-        const prev = orderBills[index - 1];
+        changes = diffBillItems(prevItems, revItems);
+        if (!changes.length && Number(prevTotal) !== Number(rev.total_amount)) {
+          changes.push(`Khách đổi tổng tiền: ${Number(prevTotal).toLocaleString('vi-VN')}₫ → ${Number(rev.total_amount).toLocaleString('vi-VN')}₫`);
+        }
+      }
+      prevItems = revItems;
+      prevTotal = Number(rev.total_amount || 0);
+      history.push({
+        version: rev.version,
+        orderId,
+        orderCode: orderBills[0]?.orderCode || '',
+        createdAt: rev.created_at,
+        totalAmount: rev.total_amount,
+        changes: changes.length ? changes : [`Khách cập nhật đơn (#v${rev.version})`],
+        editorRole: 'customer',
+        editorName: 'Khách hàng',
+      });
+    }
+
+    // 2. Các bản bill chính thức (được chốt hoặc sửa bởi Sale, Agent, hoặc khách thanh toán)
+    for (let i = 0; i < orderBills.length; i++) {
+      const step = orderBills[i];
+      let changes = [];
+      if (history.length === 0 && i === 0) {
+        changes = [step.editorRole === 'customer' ? 'Bản ban đầu (Khách đặt)' : 'Bản ban đầu (Tạo bill)'];
+      } else {
+        const prev = i === 0 ? { items: prevItems, totalAmount: prevTotal, paymentMethod: '' } : orderBills[i - 1];
         changes = diffBillItems(prev.items, step.items);
         if (!changes.length) {
           if (Number(prev.totalAmount) !== Number(step.totalAmount)) {
             changes.push(`Điều chỉnh tổng tiền: ${Number(prev.totalAmount).toLocaleString('vi-VN')}₫ → ${Number(step.totalAmount).toLocaleString('vi-VN')}₫`);
           } else if (prev.paymentMethod !== step.paymentMethod) {
-            changes.push(`Đổi PTTT: ${step.paymentMethod || 'Chưa chọn'}`);
+            const methodStr = step.paymentMethod ? invoiceHelper.paymentMethodLabel(step.paymentMethod, 'vi') : 'Chưa chọn';
+            changes.push(`Đổi PTTT: ${methodStr}`);
+          } else if (step.orderStatus === 'paid') {
+            const methodStr = step.paymentMethod ? invoiceHelper.paymentMethodLabel(step.paymentMethod, 'vi') : 'Tiền mặt';
+            changes.push(`Đã thanh toán (${methodStr}) · Đóng dấu xanh`);
           } else {
-            changes.push(`Cập nhật đơn hàng (bản #${step.version})`);
+            changes.push(`Cập nhật hóa đơn (#v${step.version})`);
           }
         }
       }
-      return {
+      prevItems = step.items;
+      prevTotal = Number(step.totalAmount || 0);
+      history.push({
         version: step.version,
         orderId: step.orderId,
         orderCode: step.orderCode,
         createdAt: step.createdAt,
         totalAmount: step.totalAmount,
         changes,
-      };
-    });
+        editorRole: step.editorRole,
+        editorName: step.editorName,
+      });
+    }
 
     for (const b of orderBills) {
       b.history = history;

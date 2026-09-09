@@ -336,12 +336,12 @@ function createInvoicePdfDataUrl(invoice, language) {
       const savedY = doc.y;
       doc.save();
       doc.rotate(-15, { origin: [stampX + stampW / 2, stampY + stampH / 2] });
-      doc.roundedRect(stampX, stampY, stampW, stampH, 4).lineWidth(2.2).strokeColor('#d32f2f').opacity(0.85).stroke();
-      doc.roundedRect(stampX + 2.5, stampY + 2.5, stampW - 5, stampH - 5, 2.5).lineWidth(1).strokeColor('#d32f2f').opacity(0.7).stroke();
+      doc.roundedRect(stampX, stampY, stampW, stampH, 4).lineWidth(2.2).strokeColor('#059669').opacity(0.9).stroke();
+      doc.roundedRect(stampX + 2.5, stampY + 2.5, stampW - 5, stampH - 5, 2.5).lineWidth(1).strokeColor('#10b981').opacity(0.75).stroke();
       (fonts.bold ? doc.font(BOLD) : doc.font('Helvetica-Bold'))
         .fontSize(10.5)
-        .fillColor('#d32f2f')
-        .opacity(0.88)
+        .fillColor('#059669')
+        .opacity(0.92)
         .text(stampText, stampX, stampY + 11, { width: stampW, align: 'center' });
       doc.restore();
       doc.y = savedY;
@@ -631,9 +631,9 @@ function createInvoiceSvg(invoice, language) {
     const stampX = W - PAD - 10;
     const stampY = headerBottom + 40;
     parts.push(`<g transform="rotate(-18, ${stampX - 50}, ${stampY - 6})">`
-      + `<rect x="${stampX - 108}" y="${stampY - 18}" width="116" height="28" rx="4" fill="none" stroke="#d32f2f" stroke-width="2.5" opacity="0.85"/>`
-      + `<rect x="${stampX - 105}" y="${stampY - 15}" width="110" height="22" rx="3" fill="none" stroke="#d32f2f" stroke-width="1" opacity="0.7"/>`
-      + `<text x="${stampX - 50}" y="${stampY + 3}" font-size="13" font-weight="800" fill="#d32f2f" text-anchor="middle" opacity="0.85">${escapeXml(stampText)}</text>`
+      + `<rect x="${stampX - 108}" y="${stampY - 18}" width="116" height="28" rx="4" fill="none" stroke="#059669" stroke-width="2.5" opacity="0.9"/>`
+      + `<rect x="${stampX - 105}" y="${stampY - 15}" width="110" height="22" rx="3" fill="none" stroke="#10b981" stroke-width="1" opacity="0.75"/>`
+      + `<text x="${stampX - 50}" y="${stampY + 3}" font-size="13" font-weight="800" fill="#059669" text-anchor="middle" opacity="0.92">${escapeXml(stampText)}</text>`
       + `</g>`);
   }
 
