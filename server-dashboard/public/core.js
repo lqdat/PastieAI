@@ -1174,17 +1174,38 @@ window.refreshAgentSaleCount = refreshAgentSaleCount;
 async function reloadApp() {
     const badge = document.getElementById('app-update-badge')?.textContent?.trim();
     if (badge) {
-        sessionStorage.setItem(`dismissed_update_${badge}`, '1');
+        try {
+            localStorage.setItem(`dismissed_update_${badge}`, '1');
+            localStorage.setItem('last_reloaded_version', badge);
+            sessionStorage.setItem(`dismissed_update_${badge}`, '1');
+        } catch (_) {}
     }
+    try {
+        localStorage.setItem('dismissed_update_r119', '1');
+        localStorage.setItem('dismissed_update_r120', '1');
+    } catch (_) {}
+
+    document.getElementById('app-update-bar')?.classList.add('hide');
+
     if ('caches' in window) {
         try {
             const keys = await caches.keys();
             await Promise.all(keys.map(k => caches.delete(k)));
         } catch (_) {}
     }
-    const url = new URL(window.location.href);
-    url.searchParams.set('_r', String(Date.now()));
-    window.location.replace(url.toString());
+
+    const targetUrl = window.location.pathname + '?_r=' + Date.now();
+    try {
+        await fetch(targetUrl, {
+            cache: 'reload',
+            headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+        });
+    } catch (_) {}
+
+    window.location.href = targetUrl;
+    setTimeout(() => {
+        window.location.reload();
+    }, 150);
 }
 window.reloadApp = reloadApp;
 
@@ -1230,8 +1251,13 @@ async function checkAppVersion() {
             return;
         }
 
-        // Đã bấm bỏ qua cho phiên bản này trong phiên làm việc hiện tại thì không làm phiền nữa
-        if (sessionStorage.getItem(`dismissed_update_${version}`) === '1') {
+        // Đã bấm bỏ qua hoặc đã bấm tải lại cho phiên bản này thì không làm phiền nữa
+        if (
+            localStorage.getItem(`dismissed_update_${version}`) === '1' ||
+            sessionStorage.getItem(`dismissed_update_${version}`) === '1' ||
+            localStorage.getItem('last_reloaded_version') === version
+        ) {
+            document.getElementById('app-update-bar')?.classList.add('hide');
             return;
         }
 
@@ -1249,8 +1275,13 @@ document.getElementById('app-reload-btn')?.addEventListener('click', reloadApp);
 document.getElementById('app-update-reload')?.addEventListener('click', reloadApp);
 document.getElementById('app-update-dismiss')?.addEventListener('click', () => {
     document.getElementById('app-update-bar')?.classList.add('hide');
-    const badge = document.getElementById('app-update-badge')?.textContent;
-    if (badge) sessionStorage.setItem(`dismissed_update_${badge}`, '1');
+    const badge = document.getElementById('app-update-badge')?.textContent?.trim();
+    if (badge) {
+        try {
+            localStorage.setItem(`dismissed_update_${badge}`, '1');
+            sessionStorage.setItem(`dismissed_update_${badge}`, '1');
+        } catch (_) {}
+    }
 });
 // Kiểm khi mở app, mỗi 5 phút, và mỗi lần quay lại app từ nền
 setTimeout(checkAppVersion, 3000);
