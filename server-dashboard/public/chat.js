@@ -70,7 +70,7 @@ function createInternalSessionCard(chat, isPinned = false) {
     let roleBadgeText = chat.badgeLabel || 'Nội bộ';
     if (chat.peerRole === 'superadmin') {
         roleBadgeClass = 'internal-badge-superadmin';
-        roleBadgeText = 'superadmin';
+        roleBadgeText = 'Hỗ trợ kỹ thuật';
     } else if (chat.peerRole === 'agent') {
         roleBadgeClass = 'internal-badge-agent';
         roleBadgeText = isPinned ? '📌 Agent Quản Lý' : 'Agent';
@@ -192,9 +192,9 @@ async function selectInternalSession(chat) {
     adminOrderRevisions = [];
 
     // Header updates
-    const peerDisplay = chat.peerName || (chat.peerRole === 'superadmin' ? 'superadmin' : 'Nội bộ');
+    const peerDisplay = chat.peerName || (chat.peerRole === 'superadmin' ? 'Hỗ trợ kỹ thuật' : 'Nội bộ');
     if (chatTitleName) chatTitleName.textContent = peerDisplay;
-    if (chatTitleEmail) chatTitleEmail.textContent = chat.peerRole === 'superadmin' ? 'superadmin' : (chat.peerRole === 'agent' ? 'Agent quản lý' : 'Nhân viên Sale');
+    if (chatTitleEmail) chatTitleEmail.textContent = chat.peerRole === 'superadmin' ? 'Hỗ trợ kỹ thuật' : (chat.peerRole === 'agent' ? 'Agent quản lý' : 'Nhân viên Sale');
     document.getElementById('chat-header-group-badge')?.classList.add('hide');
     document.getElementById('chat-header-project-badge')?.classList.add('hide');
     document.getElementById('chat-header-qr-info')?.classList.add('hide');
@@ -2590,7 +2590,10 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
                 `;
             } else {
                 wrapper.className = 'message-wrapper visitor internal-peer';
-                const peerName = msg.sender_admin_name || currentInternalChat?.peerName || 'Nội bộ';
+                let peerName = msg.sender_admin_name || currentInternalChat?.peerName || 'Nội bộ';
+                if (peerName === 'superadmin' || msg.sender_admin_role === 'superadmin' || currentInternalChat?.peerRole === 'superadmin') {
+                    peerName = 'Hỗ trợ kỹ thuật';
+                }
                 const peerInitial = (peerName ? peerName.trim().charAt(0) : 'N').toUpperCase();
                 const peerAvatar = msg.sender_admin_avatar || currentInternalChat?.peerAvatar;
                 const peerAvatarHtml = peerAvatar

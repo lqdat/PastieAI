@@ -1857,7 +1857,7 @@ document.addEventListener('keydown', (event) => {
 });
 window.toggleAddBox = toggleAddBox;
 
-document.getElementById('org-modal')?.addEventListener('click', (event) => {
+document.addEventListener('click', (event) => {
     const toggle = event.target.closest('[data-addbox-toggle]');
     if (toggle) toggleAddBox(toggle.dataset.addboxToggle);
 });

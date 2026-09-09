@@ -386,7 +386,7 @@ function updateAdminFormRoleVisibility() {
             adminFormRole.innerHTML = `
                 <option value="agent">Agent (Tư vấn viên trực chat / Quản lý Sale)</option>
                 <option value="project_admin">Project Admin (Quản trị dự án)</option>
-                <option value="superadmin">Quản trị viên tối cao (Super-Admin)</option>
+                <option value="superadmin">Hỗ trợ kỹ thuật</option>
             `;
             if (['agent', 'project_admin', 'superadmin'].includes(prevRole)) {
                 adminFormRole.value = prevRole;
@@ -563,7 +563,7 @@ function applyAdminMgmtFocus() {
                 agent: isQr ? 'Admin Agent' : 'Agent tư vấn',
                 sale: 'Nhân viên Sale',
                 project_admin: 'Quản trị dự án',
-                superadmin: 'Superadmin',
+                superadmin: 'Hỗ trợ kỹ thuật',
             };
             const email = CURRENT_ADMIN?.username || '—';
             const role = roleNames[CURRENT_ADMIN?.role] || 'Tài khoản';
@@ -590,7 +590,7 @@ function applyAdminMgmtFocus() {
         selfPanel?.classList.toggle('is-readonly', !canEditName);
         if (hintEl) {
             hintEl.textContent = isAgent
-                ? 'Tên Agent do Quản trị viên Superadmin quản lý.'
+                ? 'Tên Agent do Hỗ trợ kỹ thuật quản lý.'
                 : isSale
                 ? 'Tên hiển thị của Sale do Quản lý (Agent) thiết lập.'
                 : '';
@@ -682,6 +682,7 @@ function openAdminMgmt() {
                 opt.textContent = `${p.name || p.id} (${p.id})`;
                 adminFormProject.appendChild(opt);
             });
+            adminFormProject.disabled = true;
         }
     }
 
@@ -708,6 +709,11 @@ function openAdminMgmt() {
 function closeAdminMgmt() {
     if (adminMgmtModal) adminMgmtModal.classList.add('hide');
 }
+
+adminMgmtProjectSelect?.addEventListener('change', () => {
+    resetAdminForm();
+    void loadAdminUsers();
+});
 
 
 async function loadAdminUsers() {
@@ -795,7 +801,7 @@ async function loadAdminUsers() {
                 const managerText = u.manager_name || u.manager_username || 'Chưa gán';
                 extraBadges = `<span class="admin-user-meta-badge is-manager"><i class="ri-user-star-line"></i> Thuộc Agent: <strong>${escapeHtml(managerText)}</strong></span>`;
             } else if (u.role === 'superadmin') {
-                roleLabel = 'Superadmin';
+                roleLabel = 'Hỗ trợ kỹ thuật';
                 roleClass = 'superadmin';
             } else if (u.role === 'project_admin') {
                 roleLabel = 'Project Admin';
@@ -891,6 +897,9 @@ function resetAdminForm() {
         if (adminFormProject) { adminFormProject.value = CURRENT_ADMIN.project_id || ''; }
     } else {
         if (adminFormRole) { adminFormRole.value = 'agent'; adminFormRole.disabled = false; }
+        if (CURRENT_ADMIN?.role === 'superadmin' && adminFormProject) {
+            adminFormProject.value = getAdminMgmtProjectId();
+        }
     }
 
     setDeferredMode('none');
@@ -1012,7 +1021,11 @@ async function handleAdminUserSubmit(e) {
     
     const isProjectAdmin = CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin';
     const effectiveRole = isProjectAdmin ? 'agent' : (adminFormRole?.value || 'agent');
-    const effectiveProject = isProjectAdmin ? CURRENT_ADMIN.project_id : (adminFormProject?.value.trim() || null);
+    const effectiveProject = isProjectAdmin
+        ? CURRENT_ADMIN.project_id
+        : CURRENT_ADMIN?.role === 'superadmin'
+        ? (getAdminMgmtProjectId() || null)
+        : (adminFormProject?.value.trim() || null);
 
     const payload = {
         email: adminFormEmail?.value.trim(),

@@ -669,35 +669,129 @@
     //
     // Khác duy nhất: không có nút "+" và không có thanh giỏ hàng — Sale tra
     // thông tin, không đặt hộ khách.
-    let menuState = { items: [], categories: new Map(), active: 'all', search: '' };
+    let menuState = { items: [], promoItems: [], categories: new Map(), active: 'all', search: '' };
 
-    function menuViewCards() {
-        const term = menuState.search.trim().toLowerCase();
-        const list = menuState.items.filter((item) => {
-            if (menuState.active !== 'all' && String(item.category_id) !== menuState.active) return false;
-            if (!term) return true;
-            return `${item.name} ${item.description || ''}`.toLowerCase().includes(term);
-        });
-        if (list.length === 0) return '<p class="cart-empty">Không có món nào khớp.</p>';
-        return `<div class="staff-menu-grid">${list.map((item) => `
-            <article class="staff-menu-card${item.sold_out || !item.is_available ? ' is-out' : ''}">
-                <div class="staff-menu-thumb">
+    function renderStaffCard(item, isPromoRail = false) {
+        const out = item.sold_out || !item.is_available;
+        return `
+            <article class="${isPromoRail ? 'staff-promo-card' : 'staff-menu-card'}${out ? ' is-out' : ''}">
+                <div class="${isPromoRail ? 'staff-promo-thumb' : 'staff-menu-thumb'}">
                     ${item.image_url
                         ? `<img src="${escapeHtml(item.image_url)}" alt="" loading="lazy">`
                         : '<span aria-hidden="true">🍜</span>'}
+                    ${item.is_promo ? '<em class="staff-promo-pill">✦ Ưu đãi</em>' : ''}
                 </div>
-                <div class="staff-menu-copy">
+                <div class="${isPromoRail ? 'staff-promo-copy' : 'staff-menu-copy'}">
                     <strong>${escapeHtml(item.name)}</strong>
                     ${item.description ? `<small>${escapeHtml(item.description)}</small>` : ''}
                     <b>${money(item.price)}</b>
                 </div>
                 ${!item.is_available ? '<span class="staff-menu-tag">Đang tắt</span>'
                   : item.sold_out ? '<span class="staff-menu-tag">Tạm hết</span>' : ''}
-            </article>`).join('')}</div>`;
+            </article>`;
+    }
+
+    function menuViewCards() {
+        const term = menuState.search.trim().toLowerCase();
+        const matchesTerm = (item) => {
+            if (!term) return true;
+            return `${item.name} ${item.description || ''}`.toLowerCase().includes(term);
+        };
+
+        let html = '';
+
+        // 1. Dải ưu đãi nổi bật ở trên cùng (khi ở tab "Tất cả" hoặc tab "Ưu đãi")
+        const filteredPromos = menuState.promoItems.filter(matchesTerm);
+        if (filteredPromos.length > 0 && (menuState.active === 'all' || menuState.active === 'promo')) {
+            html += `
+                <section class="staff-promo-strip">
+                    <div class="staff-menu-group-header promo-heading">
+                        <h4><i class="ri-fire-fill" style="color:#ef2b9d;"></i> Ưu đãi nổi bật</h4>
+                        <span>${filteredPromos.length} món</span>
+                    </div>
+                    <div class="staff-promo-rail">
+                        ${filteredPromos.map((item) => renderStaffCard(item, true)).join('')}
+                    </div>
+                </section>`;
+        }
+
+        // 2. Nếu đang chọn tab "Ưu đãi"
+        if (menuState.active === 'promo') {
+            if (filteredPromos.length === 0) {
+                return '<p class="cart-empty">Không có món ưu đãi nào khớp.</p>';
+            }
+            return html;
+        }
+
+        // 3. Nếu đang chọn tab cụ thể một Category
+        if (menuState.active !== 'all') {
+            const catName = menuState.categories.get(menuState.active) || 'Nhóm món';
+            const list = menuState.items.filter((item) => String(item.category_id) === menuState.active && matchesTerm(item));
+            if (list.length === 0) {
+                return '<p class="cart-empty">Không có món nào trong nhóm này.</p>';
+            }
+            return `
+                <section class="staff-menu-group">
+                    <div class="staff-menu-group-header">
+                        <h4>${escapeHtml(catName)}</h4>
+                        <span>${list.length} món</span>
+                    </div>
+                    <div class="staff-menu-grid">
+                        ${list.map((item) => renderStaffCard(item)).join('')}
+                    </div>
+                </section>`;
+        }
+
+        // 4. Tab "Tất cả": Gom theo từng Category (group nhóm giống như menu khách)
+        let totalRendered = 0;
+        for (const [catId, catName] of menuState.categories) {
+            const catItems = menuState.items.filter((item) => String(item.category_id) === String(catId) && matchesTerm(item));
+            if (catItems.length > 0) {
+                totalRendered += catItems.length;
+                html += `
+                    <section class="staff-menu-group">
+                        <div class="staff-menu-group-header">
+                            <h4>${escapeHtml(catName)}</h4>
+                            <span>${catItems.length} món</span>
+                        </div>
+                        <div class="staff-menu-grid">
+                            ${catItems.map((item) => renderStaffCard(item)).join('')}
+                        </div>
+                    </section>`;
+            }
+        }
+
+        // Món không thuộc nhóm nào
+        const uncategorized = menuState.items.filter((item) => !item.category_id && matchesTerm(item));
+        if (uncategorized.length > 0) {
+            totalRendered += uncategorized.length;
+            html += `
+                <section class="staff-menu-group">
+                    <div class="staff-menu-group-header">
+                        <h4>Món khác</h4>
+                        <span>${uncategorized.length} món</span>
+                    </div>
+                    <div class="staff-menu-grid">
+                        ${uncategorized.map((item) => renderStaffCard(item)).join('')}
+                    </div>
+                </section>`;
+        }
+
+        if (totalRendered === 0 && filteredPromos.length === 0) {
+            return '<p class="cart-empty">Không có món nào khớp.</p>';
+        }
+
+        return html;
     }
 
     function menuViewTabs() {
-        const tabs = [['all', 'Tất cả'], ...[...menuState.categories].map(([id, name]) => [String(id), name])];
+        const tabs = [['all', 'Tất cả']];
+        if (menuState.promoItems.length > 0) {
+            tabs.push(['promo', '✦ Ưu đãi']);
+        }
+        for (const [id, name] of menuState.categories) {
+            tabs.push([String(id), name]);
+        }
         return tabs.map(([key, label]) => `
             <button type="button" class="staff-menu-tab${menuState.active === key ? ' is-active' : ''}"
                     data-menu-cat="${escapeHtml(key)}">${escapeHtml(label)}</button>`).join('');
@@ -712,7 +806,7 @@
 
     async function openMenuViewer() {
         closeMenu();
-        menuState = { items: [], categories: new Map(), active: 'all', search: '' };
+        menuState = { items: [], promoItems: [], categories: new Map(), active: 'all', search: '' };
         menuOverlay = document.createElement('div');
         menuOverlay.className = 'cart-overlay staff-menu-overlay';
         menuOverlay.innerHTML = `
@@ -757,6 +851,9 @@
                 if (saleBtn) saleBtn.textContent = customName;
             }
             menuState.items = Array.isArray(data.items) ? data.items : [];
+            menuState.promoItems = Array.isArray(data.promoItems)
+                ? data.promoItems
+                : menuState.items.filter((item) => item.is_promo);
             // Chỉ liệt kê nhóm CÓ MÓN: một hàng thẻ lọc bấm vào ra danh sách
             // rỗng thì thà đừng có thẻ đó.
             const used = new Set(menuState.items.map((item) => String(item.category_id)));

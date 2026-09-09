@@ -12193,29 +12193,29 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
     const current = req.admin;
     const chats = [];
 
-    if (current.role === 'agent') {
-      // 1. Hội thoại với SuperAdmin
+    if (current.role === 'agent' || ['agent', 'project_admin'].includes(current.role)) {
+      // 1. Hội thoại với SuperAdmin (Hỗ trợ kỹ thuật)
       const superAdmin = (await db.query(
         "SELECT id, full_name, avatar_url, role FROM admins WHERE role = 'superadmin' AND is_active = TRUE ORDER BY id ASC LIMIT 1"
       )).rows[0];
 
       if (superAdmin) {
         const sId = `internal_agent_${current.id}_superadmin`;
-        await ensureInternalSession(sId, `superadmin`, current.project_id);
+        await ensureInternalSession(sId, `Hỗ trợ kỹ thuật`, current.project_id);
         chats.push({
           sessionId: sId,
           peerId: superAdmin.id,
-          peerName: 'superadmin',
+          peerName: 'Hỗ trợ kỹ thuật',
           peerRole: 'superadmin',
           peerAvatar: superAdmin.avatar_url || null,
-          badgeLabel: 'superadmin'
+          badgeLabel: 'Hỗ trợ kỹ thuật'
         });
       }
 
-      // 2. Hội thoại với mỗi Sale do Agent quản lý
+      // 2. Hội thoại với mỗi Sale do Agent quản lý (hoặc cùng project)
       const sales = (await db.query(
-        "SELECT id, full_name, avatar_url, role, username FROM admins WHERE role = 'sale' AND managed_by_admin_id = $1 AND is_active = TRUE ORDER BY full_name ASC",
-        [current.id]
+        "SELECT id, full_name, avatar_url, role, username FROM admins WHERE role = 'sale' AND (managed_by_admin_id = $1 OR created_by_admin_id = $1 OR (project_id = $2 AND project_id IS NOT NULL)) AND is_active = TRUE ORDER BY full_name ASC",
+        [current.id, current.project_id || null]
       )).rows;
 
       for (const sale of sales) {
@@ -12233,7 +12233,7 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
     } else if (current.role === 'sale') {
       // Hội thoại với Agent quản lý
       const manager = (await db.query(
-        "SELECT a.id, a.full_name, a.avatar_url, a.role FROM admins s JOIN admins a ON a.id = s.managed_by_admin_id WHERE s.id = $1 AND a.is_active = TRUE",
+        "SELECT a.id, a.full_name, a.avatar_url, a.role FROM admins s JOIN admins a ON (a.id = s.managed_by_admin_id OR a.id = s.created_by_admin_id) WHERE s.id = $1 AND a.is_active = TRUE",
         [current.id]
       )).rows[0];
 
@@ -12249,10 +12249,10 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
           badgeLabel: 'Agent Quản Lý'
         });
       }
-    } else if (current.role === 'superadmin') {
-      // SuperAdmin thấy danh sách tất cả Agent
+    } else if (current.role === 'superadmin' || isSuperAdmin(current)) {
+      // SuperAdmin (Hỗ trợ kỹ thuật) thấy danh sách tất cả Agent
       const agents = (await db.query(
-        "SELECT id, full_name, avatar_url, role, project_id FROM admins WHERE role = 'agent' AND is_active = TRUE ORDER BY full_name ASC"
+        "SELECT id, full_name, avatar_url, role, project_id FROM admins WHERE (role = 'agent' OR role = 'project_admin') AND is_active = TRUE ORDER BY full_name ASC"
       )).rows;
 
       for (const agent of agents) {
@@ -12317,10 +12317,10 @@ app.post('/api/admin/internal-chats/message', checkAdminAuth, async (req, res) =
       if (!agentIdMatch) return res.status(400).json({ error: 'Session ID không hợp lệ.' });
       const agentId = Number(agentIdMatch[1]);
 
-      if (current.role === 'superadmin') {
+      if (current.role === 'superadmin' || isSuperAdmin(current)) {
         targetAdminId = agentId;
-      } else if (current.role === 'agent' && Number(current.id) === agentId) {
-        const sa = (await db.query("SELECT id FROM admins WHERE role = 'superadmin' LIMIT 1")).rows[0];
+      } else if (Number(current.id) === agentId || (['agent', 'project_admin'].includes(current.role) && Number(current.id) === agentId)) {
+        const sa = (await db.query("SELECT id FROM admins WHERE role = 'superadmin' AND is_active = TRUE ORDER BY id ASC LIMIT 1")).rows[0];
         targetAdminId = sa ? sa.id : null;
       } else {
         return res.status(403).json({ error: 'Bạn không có quyền tham gia hội thoại này.' });
@@ -12335,7 +12335,7 @@ app.post('/api/admin/internal-chats/message', checkAdminAuth, async (req, res) =
         targetAdminId = saleId;
       } else if (Number(current.id) === saleId) {
         targetAdminId = agentId;
-      } else if (current.role === 'superadmin') {
+      } else if (current.role === 'superadmin' || isSuperAdmin(current)) {
         targetAdminId = agentId;
       } else {
         return res.status(403).json({ error: 'Bạn không có quyền tham gia hội thoại này.' });
