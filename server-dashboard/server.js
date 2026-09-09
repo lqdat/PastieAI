@@ -782,23 +782,24 @@ app.get('/api/app-version', (_req, res) => {
   }
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
-app.get('/privacy-policy', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
-app.get('/terms', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
-// Serve widget files statically (as a fallback)
-app.use(express.static(path.join(__dirname, '../widget')));
-
 // Redirect root path to admin dashboard
 app.get('/', (req, res) => {
   res.redirect('/admin');
 });
 
-app.get('/admin', (_req, res) => {
+// Admin dashboard HTML: luôn yêu cầu trình duyệt kiểm tra lại bản mới (no-cache)
+app.get(['/admin', '/admin.html'], (_req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
+
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('/privacy-policy', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
+app.get('/terms', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
+// Serve widget files statically (as a fallback)
+app.use(express.static(path.join(__dirname, '../widget')));
 
 // Staff-only helper page for testing the sample order flow. Authentication is
 // checked by the POST /samplebill API when the page submits.
