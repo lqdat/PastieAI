@@ -186,7 +186,6 @@
 
     function editItemDialog(item) {
         return new Promise((resolve) => {
-            const currentVat = item.vatRate != null ? Number(item.vatRate) : 10;
             const overlay = document.createElement('div');
             overlay.className = 'confirm-overlay';
             overlay.innerHTML = `
@@ -204,18 +203,6 @@
                             <input type="number" id="edit-item-qty" min="1" max="99" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;" value="${Number(item.quantity || 1)}">
                         </label>
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <span>Thuế VAT (%):</span>
-                                <div style="display:flex;gap:4px;">
-                                    <button type="button" class="vat-quick-btn" data-v="0">0%</button>
-                                    <button type="button" class="vat-quick-btn" data-v="5">5%</button>
-                                    <button type="button" class="vat-quick-btn" data-v="8">8%</button>
-                                    <button type="button" class="vat-quick-btn" data-v="10">10%</button>
-                                </div>
-                            </div>
-                            <input type="number" id="edit-item-vat" min="0" max="100" step="1" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;" value="${currentVat}">
-                        </label>
-                        <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Ghi chú thêm:</span>
                             <input type="text" id="edit-item-note" placeholder="Ví dụ: Ít cay, không hành" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;" value="${escapeHtml(String(item.note || '').replace(/^\(|\)$/g, ''))}">
                         </label>
@@ -226,19 +213,12 @@
                     </div>
                 </div>`;
             document.body.appendChild(overlay);
-            overlay.querySelectorAll('.vat-quick-btn').forEach((btn) => {
-                btn.onclick = (e) => {
-                    e.preventDefault();
-                    overlay.querySelector('#edit-item-vat').value = btn.dataset.v;
-                };
-            });
             const close = (res) => { overlay.remove(); resolve(res); };
             overlay.onclick = (e) => { if (e.target === overlay) close(null); };
             overlay.querySelector('.confirm-cancel').onclick = () => close(null);
             overlay.querySelector('.confirm-ok').onclick = () => {
                 const price = Number(overlay.querySelector('#edit-item-price').value);
                 const qty = Number(overlay.querySelector('#edit-item-qty').value);
-                const vat = Number(overlay.querySelector('#edit-item-vat').value);
                 const note = overlay.querySelector('#edit-item-note').value.trim();
                 if (isNaN(price) || price < 0) {
                     showToast('Vui lòng nhập đơn giá hợp lệ.', 'error');
@@ -248,7 +228,7 @@
                     showToast('Số lượng phải từ 1 trở lên.', 'error');
                     return;
                 }
-                close({ price, quantity: qty, vatRate: isNaN(vat) ? 10 : Math.max(0, Math.min(100, vat)), note });
+                close({ price, quantity: qty, note });
             };
         });
     }
@@ -275,18 +255,6 @@
                             <input type="number" id="add-item-qty" min="1" max="99" value="1" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
                         </label>
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <span>Thuế VAT (%):</span>
-                                <div style="display:flex;gap:4px;">
-                                    <button type="button" class="vat-quick-btn" data-v="0">0%</button>
-                                    <button type="button" class="vat-quick-btn" data-v="5">5%</button>
-                                    <button type="button" class="vat-quick-btn" data-v="8">8%</button>
-                                    <button type="button" class="vat-quick-btn" data-v="10">10%</button>
-                                </div>
-                            </div>
-                            <input type="number" id="add-item-vat" min="0" max="100" step="1" value="10" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
-                        </label>
-                        <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Ghi chú:</span>
                             <input type="text" id="add-item-note" placeholder="Ví dụ: Ít cay, không tiêu" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
                         </label>
@@ -297,12 +265,6 @@
                     </div>
                 </div>`;
             document.body.appendChild(overlay);
-            overlay.querySelectorAll('.vat-quick-btn').forEach((btn) => {
-                btn.onclick = (e) => {
-                    e.preventDefault();
-                    overlay.querySelector('#add-item-vat').value = btn.dataset.v;
-                };
-            });
             const close = (res) => { overlay.remove(); resolve(res); };
             overlay.onclick = (e) => { if (e.target === overlay) close(null); };
             overlay.querySelector('.confirm-cancel').onclick = () => close(null);
@@ -310,7 +272,6 @@
                 const name = overlay.querySelector('#add-item-name').value.trim();
                 const price = Number(overlay.querySelector('#add-item-price').value);
                 const qty = Number(overlay.querySelector('#add-item-qty').value);
-                const vat = Number(overlay.querySelector('#add-item-vat').value);
                 const note = overlay.querySelector('#add-item-note').value.trim();
                 if (!name) {
                     showToast('Vui lòng nhập tên món.', 'error');
@@ -324,7 +285,7 @@
                     showToast('Số lượng phải từ 1 trở lên.', 'error');
                     return;
                 }
-                close({ name, unitPrice: price, quantity: qty || 1, vatRate: isNaN(vat) ? 10 : Math.max(0, Math.min(100, vat)), note });
+                close({ name, unitPrice: price, quantity: qty || 1, note });
             };
         });
     }
@@ -375,14 +336,12 @@
             if (titleEl) titleEl.textContent = order.order_code || order.id;
 
             let draftItems = (Array.isArray(order.items) ? JSON.parse(JSON.stringify(order.items)) : []).map((it) => {
-                const vatRate = it.vatRate != null ? Number(it.vatRate) : 10;
+                // Giá nhân viên gõ vào là giá khách trả — không bóc, không cộng VAT.
                 const unitPrice = Number(it.unitPrice ?? it.price ?? 0);
                 const quantity = Number(it.quantity || 1);
                 const discount = Number(it.discount || 0);
                 const lineTotal = Number(it.lineTotal != null ? it.lineTotal : (unitPrice * quantity - discount));
-                // Giá đã gồm VAT: bóc tách số tiền VAT trong thành tiền phục vụ kế toán
-                const vatAmount = vatRate > 0 ? Math.round(lineTotal - lineTotal / (1 + vatRate / 100)) : 0;
-                return { ...it, unitPrice, quantity, discount, lineTotal, vatRate, vatAmount };
+                return { ...it, unitPrice, quantity, discount, lineTotal };
             });
             const charges = order.charges || {};
             let isDirty = false;
@@ -394,14 +353,11 @@
 
             function recalculateCharges() {
                 const subtotal = draftItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
-                const vatAmount = draftItems.reduce((acc, it) => {
-                    const line = it.lineTotal || 0;
-                    const rate = it.vatRate != null ? Number(it.vatRate) : 0;
-                    return acc + (rate > 0 ? Math.round(line - line / (1 + rate / 100)) : 0);
-                }, 0);
-                // Giá món đã bao gồm VAT nên tổng thanh toán bằng tổng tiền món
-                const totalAmount = subtotal;
-                return { subtotal, vatAmount, totalAmount };
+                // Khoản cộng thêm duy nhất: phí dịch vụ % của quán, lấy từ chính
+                // đơn hàng để màn hình nhân viên khớp từng đồng với tờ bill khách nhận.
+                const serviceFeeRate = Number(charges.serviceFeeRate || 0);
+                const serviceFeeAmount = serviceFeeRate > 0 ? Math.round(subtotal * serviceFeeRate / 100) : 0;
+                return { subtotal, serviceFeeRate, serviceFeeAmount, totalAmount: subtotal + serviceFeeAmount };
             }
 
             function renderDraftItemsHtml() {
@@ -424,16 +380,13 @@
                                 <span class="order-item-unit-price">${money(item.unitPrice || 0)}</span>
                                 <span class="order-item-cross">×</span>
                                 <span class="order-item-qty-tag">${Number(item.quantity || 0)}</span>
-                                <span class="order-item-vat-tag" data-edit-item="${index}" title="Thuế VAT: ${Number(item.vatRate != null ? item.vatRate : 10)}% (Giá đã gồm VAT)">
-                                    VAT ${Number(item.vatRate != null ? item.vatRate : 10)}%
-                                </span>
                             </div>
                         </div>
                         <div class="order-item-right">
                             <b class="order-item-total">${money(item.lineTotal ?? Number(item.unitPrice || 0) * Number(item.quantity || 0))}</b>
                             ${canEdit ? `
                             <div class="order-item-actions">
-                                <button type="button" class="order-action-btn edit-item-btn" data-edit-item="${index}" title="Sửa giá / SL / VAT">
+                                <button type="button" class="order-action-btn edit-item-btn" data-edit-item="${index}" title="Sửa giá / số lượng">
                                     <i class="ri-pencil-line"></i>
                                 </button>
                                 <button type="button" class="order-action-btn del-item-btn is-danger" data-del-item="${index}" title="Xóa món">
@@ -453,10 +406,11 @@
                             <span class="summary-line-label">Tổng tiền món</span>
                             <b class="summary-line-val">${money(calc.subtotal)}</b>
                         </div>
+                        ${calc.serviceFeeAmount > 0 ? `
                         <div class="summary-line">
-                            <span class="summary-line-label">Đã bao gồm VAT</span>
-                            <b class="summary-line-val">${money(calc.vatAmount)}</b>
-                        </div>
+                            <span class="summary-line-label">Phí dịch vụ (${calc.serviceFeeRate}%)</span>
+                            <b class="summary-line-val">${money(calc.serviceFeeAmount)}</b>
+                        </div>` : ''}
                         <div class="summary-line is-total">
                             <span class="summary-line-label">Tổng thanh toán</span>
                             <b class="summary-line-val">${money(calc.totalAmount)}</b>
@@ -527,10 +481,11 @@
                             <span class="summary-line-label">Tổng tiền món</span>
                             <b class="summary-line-val">${money(charges.subtotal ?? order.total_amount)}</b>
                         </div>
+                        ${Number(charges.serviceFeeAmount || 0) > 0 ? `
                         <div class="summary-line">
-                            <span class="summary-line-label">Đã bao gồm VAT</span>
-                            <b class="summary-line-val">${money(charges.vatAmount || 0)}</b>
-                        </div>
+                            <span class="summary-line-label">Phí dịch vụ (${Number(charges.serviceFeeRate || 0)}%)</span>
+                            <b class="summary-line-val">${money(charges.serviceFeeAmount)}</b>
+                        </div>` : ''}
                         <div class="summary-line is-total">
                             <span class="summary-line-label">Tổng thanh toán</span>
                             <b class="summary-line-val">${money(order.total_amount)}</b>
@@ -618,17 +573,17 @@
                     const it = draftItems[idx];
                     const result = await editItemDialog(it);
                     if (!result) return;
-                    const rate = result.vatRate != null ? Number(result.vatRate) : (it.vatRate != null ? Number(it.vatRate) : 10);
                     const lineTotal = result.price * result.quantity;
                     draftItems = draftItems.map((oldIt, i) => {
                         if (i !== idx) return oldIt;
+                        // Bỏ luôn hai trường VAT cũ nếu món này còn mang theo từ
+                        // dữ liệu cũ — để chúng lại là máy chủ và màn hình lệch nhau.
+                        const { vatRate: _bo1, vatAmount: _bo2, ...conLai } = oldIt;
                         return {
-                            ...oldIt,
+                            ...conLai,
                             unitPrice: result.price,
                             quantity: result.quantity,
                             lineTotal,
-                            vatRate: rate,
-                            vatAmount: Math.round(lineTotal * rate / 100),
                             note: result.note || oldIt.note
                         };
                     });
@@ -642,14 +597,8 @@
                 if (addBtn) {
                     const result = await addItemDialog();
                     if (!result) return;
-                    const rate = result.vatRate != null ? Number(result.vatRate) : 10;
                     const lineTotal = Number(result.unitPrice || 0) * Number(result.quantity || 1);
-                    draftItems.push({
-                        ...result,
-                        vatRate: rate,
-                        vatAmount: Math.round(lineTotal * rate / 100),
-                        lineTotal
-                    });
+                    draftItems.push({ ...result, lineTotal });
                     isDirty = true;
                     refreshDraftView();
                     showToast('Đã thêm món vào danh sách. Vui lòng bấm "Lưu thay đổi" để hoàn tất.');

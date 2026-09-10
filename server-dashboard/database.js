@@ -728,6 +728,32 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_ticket_events_ticket ON support_ticket_events(ticket_id, created_at);`);
 
+    // ── GIÁ ĐÃ BAO GỒM VAT + PHÍ DỊCH VỤ ────────────────────────────────────
+    //
+    // Luật cũ: giá món lưu là giá CHƯA thuế, mọi chỗ hiển thị tự nhân thêm VAT.
+    // Hai đường tính (đặt đơn và sửa đơn) lại nhân khác nhau nên tiền lệch khi
+    // khách sửa đơn. Luật mới, đơn giản và chỉ có một cách hiểu: **giá nhập vào
+    // là giá cuối cùng khách trả, đã gồm VAT**. Khoản duy nhất cộng thêm trên
+    // hóa đơn là phí dịch vụ theo % do Agent tự đặt.
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS service_fee_rate NUMERIC(5,2) NOT NULL DEFAULT 0;`);
+
+    // Cột đánh dấu để việc quy đổi giá cũ chỉ chạy MỘT LẦN cho mỗi món.
+    // Không có nó thì mỗi lần deploy giá lại bị nhân thêm 10% nữa.
+    await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS price_includes_vat BOOLEAN NOT NULL DEFAULT FALSE;`);
+    const quyDoi = await query(
+      `UPDATE qr_menu_items
+          SET price = ROUND(price * (1 + COALESCE(vat_rate, 10)::numeric / 100)),
+              price_includes_vat = TRUE
+        WHERE price_includes_vat = FALSE`
+    ).catch((error) => { console.error('[Giá] Không quy đổi được giá đã gồm VAT:', error.message); return null; });
+    if (quyDoi?.rowCount) {
+      // Quy đổi để SỐ TIỀN KHÁCH NHÌN THẤY KHÔNG ĐỔI: trước đây thực đơn hiện
+      // price × 1.1, giờ hiện thẳng price, nên phải nhân sẵn vào cột.
+      console.log(`[Giá] Đã quy đổi ${quyDoi.rowCount} món sang giá đã gồm VAT (số tiền khách thấy giữ nguyên).`);
+    }
+    // Món mới tạo từ nay đã là giá gồm VAT.
+    await query(`ALTER TABLE qr_menu_items ALTER COLUMN price_includes_vat SET DEFAULT TRUE;`);
+
     await query(`
       CREATE TABLE IF NOT EXISTS agent_groups (
         id SERIAL PRIMARY KEY,

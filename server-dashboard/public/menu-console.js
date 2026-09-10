@@ -66,6 +66,7 @@
             render();
             scheduleTranslationPoll();
             void loadPos();
+            void loadMenuSettings();
 
             // Báo lỗi cho ĐÚNG phần hỏng, phần còn lại vẫn dùng được bình thường.
             if (catResult.status === 'rejected') {
@@ -211,10 +212,7 @@
             <div class="menu-item-body">
                 <div class="menu-item-head">
                     <strong>${escapeHtml(item.name)}</strong>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <span class="menu-vat-pill" style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;background:rgba(239,43,157,0.08);color:var(--accent-color);" title="Giá gốc: ${money(item.price)} (Thuế VAT ${Number(item.vat_rate != null ? item.vat_rate : 10)}%)">VAT ${Number(item.vat_rate != null ? item.vat_rate : 10)}%</span>
-                        <span class="menu-price" title="Giá niêm yết đã bao gồm VAT">${money(Math.round(Number(item.price || 0) * (1 + (Number(item.vat_rate != null ? item.vat_rate : 10) / 100))))}</span>
-                    </div>
+                    <span class="menu-price">${money(item.price)}</span>
                 </div>
                 ${stockBadge(item)}
                 ${item.description ? `<p class="menu-desc">${escapeHtml(item.description)}</p>` : ''}
@@ -294,11 +292,15 @@
     async function deleteCategory(id) {
         const category = CATEGORIES.find((c) => c.id === Number(id));
         if (!category) return;
+        if (category.is_promo) {
+            return showToast('Không xoá được nhóm Ưu đãi. Bạn có thể ẩn nhóm này nếu chưa dùng tới.', 'error');
+        }
+        // Nói rõ món KHÔNG mất theo — backend để ON DELETE SET NULL.
         const ok = await pastieConfirm(
             category.item_count > 0
                 ? `Xoá danh mục "${category.name}"? ${category.item_count} món trong đó vẫn còn, chỉ chuyển sang "Chưa phân loại".`
                 : `Xoá danh mục "${category.name}"?`,
-            { title: 'Xoá danh mục', confirmText: 'Xoá danh mục', danger: true }
+            { confirmText: 'Xoá danh mục', danger: true }
         );
         if (!ok) return;
         try {
@@ -333,27 +335,13 @@
         else showPhotoPreview('', 'Chọn ảnh món — bấm để tải lên');
     }
 
-    function updateFinalPricePreview() {
-        const p = Number($('menu-item-price')?.value || 0);
-        const v = Number($('menu-item-vat')?.value || 0);
-        const finalP = Math.round(p * (1 + (v > 0 ? v / 100 : 0)));
-        const el = $('menu-item-final-price-preview');
-        if (el) el.textContent = `${finalP.toLocaleString('vi-VN')} ₫`;
-    }
-
     function fillItemForm(item) {
         // Form mặc định gập lại. Bấm "Sửa" mà form vẫn đóng thì người dùng không
         // thấy gì xảy ra; bấm "Huỷ sửa" thì thu lại cho gọn.
         window.toggleAddBox?.('menu-item', Boolean(item));
-        const addboxTitle = document.getElementById('addbox-title');
-        if (addboxTitle) addboxTitle.textContent = item ? 'Sửa món' : 'Thêm món';
         editingItemId = item ? item.id : null;
         $('menu-item-name').value = item ? item.name : '';
         $('menu-item-price').value = item ? Number(item.price) : '';
-        if ($('menu-item-vat')) {
-            const vatVal = item && item.vat_rate != null ? Number(item.vat_rate) : (item && item.vatRate != null ? Number(item.vatRate) : 10);
-            $('menu-item-vat').value = String(vatVal);
-        }
         $('menu-item-desc').value = item ? (item.description || '') : '';
         $('menu-item-category').value = item && item.category_id ? String(item.category_id) : '';
         // null -> ô trống, đúng nghĩa "không giới hạn". Dùng == null để bắt cả
@@ -369,7 +357,6 @@
         }
         $('menu-item-cancel')?.classList.toggle('hide', !item);
         resetPhotoField(item);
-        updateFinalPricePreview();
         if (item) $('menu-item-name').focus();
     }
 
@@ -379,8 +366,6 @@
         const price = Number($('menu-item-price').value);
         const description = $('menu-item-desc').value.trim();
         const categoryId = $('menu-item-category').value;
-        const rawVat = $('menu-item-vat') ? $('menu-item-vat').value.trim() : '';
-        const vatRate = rawVat !== '' && !isNaN(Number(rawVat)) ? Math.max(0, Math.min(100, Math.round(Number(rawVat)))) : 10;
 
         if (!name) return showToast('Cần tên món.', 'error');
         if (!Number.isFinite(price) || price < 0) return showToast('Giá không hợp lệ.', 'error');
@@ -396,7 +381,6 @@
             // không giới hạn, khác hẳn với việc không gửi trường này.
             stockQuantity: rawStock === '' ? '' : Number(rawStock),
             hideWhenOut: $('menu-item-hide').value !== 'false',
-            vatRate,
         };
         const editing = editingItemId;
         try {
@@ -651,6 +635,66 @@
         $('menu-pos-form')?.addEventListener('submit', savePos);
     }
 
+    // --- Cấu hình thực đơn của quán: nhãn nút, bật/tắt, và PHÍ DỊCH VỤ --------
+    //
+    // Thẻ cấu hình này vốn nằm sẵn trong admin.html nhưng KHÔNG có mã nào nối
+    // vào: bấm Lưu không xảy ra chuyện gì. Nay nối lại, đồng thời thêm ô phí
+    // dịch vụ — khoản duy nhất còn được cộng thêm trên hóa đơn sau khi bỏ VAT
+    // theo món (giá nhập vào đã là giá khách trả).
+    async function loadMenuSettings() {
+        const nutLuu = $('agent-menu-save-btn');
+        if (!nutLuu) return;
+        try {
+            const data = await orgFetch('/api/agent/menu-settings');
+            const bat = $('agent-menu-toggle-checkbox');
+            if (bat) bat.checked = data.agent_menu_enabled !== false;
+            const nhan = $('agent-menu-label-input');
+            if (nhan) nhan.value = data.menu_custom_label || '';
+            const phi = $('agent-service-fee-input');
+            if (phi) phi.value = Number(data.service_fee_rate || 0) || '';
+            // Superadmin tắt tính năng thì nói rõ lý do, đừng để người dùng bấm
+            // Lưu rồi nhận lỗi mà không hiểu vì sao.
+            $('agent-menu-superadmin-warning')?.classList.toggle('hide', data.superadmin_menu_disabled !== true);
+        } catch (error) {
+            console.error('[Thực đơn] Không tải được cấu hình:', error.message);
+        }
+
+        if (nutLuu.dataset.wired === '1') return;
+        nutLuu.dataset.wired = '1';
+        nutLuu.addEventListener('click', saveMenuSettings);
+    }
+
+    async function saveMenuSettings() {
+        const nutLuu = $('agent-menu-save-btn');
+        const rawPhi = ($('agent-service-fee-input')?.value || '').trim();
+        const phi = rawPhi === '' ? 0 : Number(rawPhi);
+        // Chặn ngay tại chỗ: một cú gõ nhầm "50" thay vì "5" là hóa đơn của cả
+        // quán đội lên 50% cho tới khi có người phát hiện.
+        if (!Number.isFinite(phi) || phi < 0 || phi > 100) {
+            return showToast('Phí dịch vụ phải là số từ 0 đến 100.', 'error');
+        }
+        nutLuu.disabled = true;
+        try {
+            const data = await orgFetch('/api/agent/menu-settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    agentMenuEnabled: $('agent-menu-toggle-checkbox')?.checked !== false,
+                    menuCustomLabel: $('agent-menu-label-input')?.value.trim() || '',
+                    serviceFeeRate: phi,
+                }),
+            });
+            const luu = Number(data?.settings?.service_fee_rate || 0);
+            showToast(luu > 0
+                ? `Đã lưu. Hóa đơn sẽ cộng phí dịch vụ ${luu}%.`
+                : 'Đã lưu. Hóa đơn không cộng phí dịch vụ.', 'success');
+        } catch (error) {
+            showToast(error.message || 'Không lưu được cấu hình thực đơn.', 'error');
+        } finally {
+            nutLuu.disabled = false;
+        }
+    }
+
     async function savePos(event) {
         event.preventDefault();
         const url = $('menu-pos-url').value.trim();
@@ -706,10 +750,6 @@
             event.stopPropagation();
             resetPhotoField(ITEMS.find((i) => i.id === editingItemId));
         });
-
-        $('menu-item-price')?.addEventListener('input', updateFinalPricePreview);
-        $('menu-item-vat')?.addEventListener('input', updateFinalPricePreview);
-        updateFinalPricePreview();
 
         $('menu-item-stock')?.addEventListener('input', syncHideField);
         syncHideField();

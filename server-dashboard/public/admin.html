@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r122">
-    <link rel="stylesheet" href="menu-console.css?v=r122">
+    <link rel="stylesheet" href="admin.css?v=r123">
+    <link rel="stylesheet" href="menu-console.css?v=r123">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -532,11 +532,23 @@
                                 <input type="checkbox" id="agent-menu-toggle-checkbox" style="width:16px;height:16px;accent-color:var(--accent-color);">
                                 <span>Hiển thị Thực đơn cho khách quét QR</span>
                             </label>
-                            <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:320px;">
+                            <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:520px;">
                                 <input type="text" id="agent-menu-label-input" maxlength="100" placeholder="Chữ hiển thị (VD: Thực đơn, Menu, Gọi món...)" style="font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);flex:1;">
+                                <!-- Phí dịch vụ: % cộng thêm trên hóa đơn, thay cho dòng VAT cũ.
+                                     Giá món đã bao gồm VAT nên đây là khoản duy nhất khách bị cộng thêm. -->
+                                <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;white-space:nowrap;">
+                                    <span>Phí dịch vụ</span>
+                                    <input type="number" id="agent-service-fee-input" min="0" max="100" step="0.5" placeholder="0" inputmode="decimal" style="width:74px;font-size:12px;padding:6px 8px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);">
+                                    <span>%</span>
+                                </label>
                                 <button type="button" id="agent-menu-save-btn" class="primary-btn" style="width:auto;padding:6px 12px;font-size:12px;white-space:nowrap;"><i class="ri-save-line"></i> Lưu</button>
                             </div>
                         </div>
+                        <p style="margin:10px 0 0;font-size:11.5px;color:var(--text-muted,#94a3b8);line-height:1.5;">
+                            <i class="ri-information-line"></i>
+                            Giá món nhập vào là <b>giá khách trả, đã bao gồm VAT</b>. Hóa đơn hiện dòng
+                            <b>Phí dịch vụ</b> theo % ở trên (để 0 nếu không thu) và ghi rõ dưới bill rằng giá đã gồm VAT.
+                        </p>
                     </div>
 
                     <div class="org-list-header">
@@ -574,25 +586,13 @@
                             </label>
 
                             <label class="menu-field menu-field-price">
-                                <span>Giá gốc (chưa VAT) <b>*</b></span>
+                                <span>Giá bán (đã gồm VAT) <b>*</b></span>
                                 <div class="menu-input-suffix">
                                     <input type="number" id="menu-item-price" required min="0" step="1000" placeholder="120000" inputmode="numeric">
                                     <em>₫</em>
                                 </div>
                             </label>
 
-                            <label class="menu-field menu-field-vat">
-                                <span>Thuế VAT (%)</span>
-                                <div class="menu-input-suffix">
-                                    <input type="number" id="menu-item-vat" min="0" max="100" step="1" placeholder="10" value="10" inputmode="numeric">
-                                    <em>%</em>
-                                </div>
-                            </label>
-
-                            <div class="menu-field menu-field-final-preview" style="grid-column: 1 / -1; background: rgba(239, 43, 157, 0.05); border: 1px dashed rgba(239, 43, 157, 0.22); border-radius: 10px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
-                                <span style="font-size: 12.5px; color: var(--text-secondary); font-weight: 500;"><i class="ri-price-tag-3-line" style="color: var(--accent-color);"></i> Giá bán niêm yết (đã gồm VAT):</span>
-                                <strong id="menu-item-final-price-preview" style="font-size: 14.5px; font-weight: 800; color: var(--accent-color);">0 ₫</strong>
-                            </div>
 
                             <label class="menu-field menu-field-cat">
                                 <span>Danh mục</span>
@@ -1916,16 +1916,16 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r122"></script>
-    <script src="core.js?v=r122"></script>
-    <script src="chat.js?v=r122"></script>
-    <script src="org-console.js?v=r122"></script>
-    <script src="project-admin.js?v=r122"></script>
-    <script src="menu-console.js?v=r122"></script>
-    <script src="order-console.js?v=r122"></script>
-    <script src="monitor-console.js?v=r122"></script>
-    <script src="cart-console.js?v=r122"></script>
-    <script src="ticket-console.js?v=r122"></script>
-    <script src="admin.js?v=r122"></script>
+    <script src="config.js?v=r123"></script>
+    <script src="core.js?v=r123"></script>
+    <script src="chat.js?v=r123"></script>
+    <script src="org-console.js?v=r123"></script>
+    <script src="project-admin.js?v=r123"></script>
+    <script src="menu-console.js?v=r123"></script>
+    <script src="order-console.js?v=r123"></script>
+    <script src="monitor-console.js?v=r123"></script>
+    <script src="cart-console.js?v=r123"></script>
+    <script src="ticket-console.js?v=r123"></script>
+    <script src="admin.js?v=r123"></script>
 </body>
 </html>

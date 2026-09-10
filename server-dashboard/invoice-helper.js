@@ -67,6 +67,7 @@ const INVOICE_I18N = {
     discount: 'Chiết khấu', lineTotal: 'Thành tiền', subtotal: 'Tổng tiền hàng',
     totalDiscount: 'Chiết khấu', vat: 'VAT', grandTotal: 'TỔNG CỘNG', paymentMethod: 'Thanh toán',
     thanks: 'Cảm ơn quý khách!', note: 'Hóa đơn được tạo tự động từ hệ thống Pastie Chat.', paidStamp: 'ĐÃ THANH TOÁN',
+    serviceFee: 'Phí dịch vụ', vatIncluded: 'Giá sản phẩm đã bao gồm VAT.'
   },
   en: {
     title: 'SALES INVOICE', invoiceNo: 'Invoice No.', date: 'Date', customer: 'Customer', email: 'Email', table: 'Table', openedAt: 'Time in', printedAt: 'Printed', sale: 'Served by',
@@ -74,6 +75,7 @@ const INVOICE_I18N = {
     discount: 'Discount', lineTotal: 'Amount', subtotal: 'Subtotal',
     totalDiscount: 'Discount', vat: 'VAT', grandTotal: 'TOTAL', paymentMethod: 'Payment',
     thanks: 'Thank you!', note: 'This invoice was generated automatically by Pastie Chat.', paidStamp: 'PAID',
+    serviceFee: 'Service charge', vatIncluded: 'All prices include VAT.'
   },
   ru: {
     title: 'СЧЁТ НА ОПЛАТУ', invoiceNo: 'Номер счёта', date: 'Дата', customer: 'Клиент', email: 'Email', table: 'Стол', openedAt: 'Время входа', printedAt: 'Напечатано', sale: 'Обслужил',
@@ -81,6 +83,7 @@ const INVOICE_I18N = {
     discount: 'Скидка', lineTotal: 'Сумма', subtotal: 'Итого по товарам',
     totalDiscount: 'Скидка', vat: 'НДС', grandTotal: 'ИТОГО', paymentMethod: 'Оплата',
     thanks: 'Спасибо за покупку!', note: 'Счёт сформирован автоматически системой Pastie Chat.', paidStamp: 'ОПЛАЧЕНО',
+    serviceFee: 'Сервисный сбор', vatIncluded: 'Все цены указаны с НДС.'
   },
   zh: {
     title: '销售发票', invoiceNo: '发票号', date: '日期', customer: '客户', email: '邮箱', table: '桌号', openedAt: '入座时间', printedAt: '打印时间', sale: '服务员',
@@ -88,6 +91,7 @@ const INVOICE_I18N = {
     discount: '折扣', lineTotal: '金额', subtotal: '商品合计',
     totalDiscount: '折扣', vat: '增值税', grandTotal: '总计', paymentMethod: '付款方式',
     thanks: '感谢惠顾！', note: '本发票由 Pastie Chat 系统自动生成。', paidStamp: '已付款',
+    serviceFee: '服务费', vatIncluded: '商品价格均已含增值税。'
   },
   ko: {
     title: '판매 영수증', invoiceNo: '영수증 번호', date: '발행일', customer: '고객', email: '이메일', table: '테이블', openedAt: '입장 시간', printedAt: '출력 시간', sale: '담당 직원',
@@ -95,6 +99,7 @@ const INVOICE_I18N = {
     discount: '할인', lineTotal: '금액', subtotal: '상품 합계',
     totalDiscount: '할인', vat: 'VAT', grandTotal: '총 합계', paymentMethod: '결제 수단',
     thanks: '이용해 주셔서 감사합니다!', note: '본 영수증은 Pastie Chat 시스템에서 자동 발행되었습니다.', paidStamp: '결제 완료',
+    serviceFee: '서비스 요금', vatIncluded: '상품 가격에는 VAT가 포함되어 있습니다.'
   },
 };
 
@@ -209,10 +214,15 @@ function buildInvoiceData(invoice, language) {
   const totalAmount = invoice?.totalAmount !== undefined
     ? toNumber(invoice.totalAmount)
     : subtotal - totalDiscount;
-  const vatRate = toNumber(invoice?.vatRate ?? invoice?.vat_rate ?? 0);
-  const vatAmount = invoice?.vatAmount !== undefined
-    ? toNumber(invoice.vatAmount)
-    : items.reduce((sum, item) => sum + (item.vatAmount || 0), 0);
+  // PHÍ DỊCH VỤ THAY CHO DÒNG VAT.
+  //
+  // Giá món giờ đã bao gồm VAT, nên tách VAT ra thành một dòng riêng chỉ làm
+  // khách tưởng bị thu thêm. Thay vào đó là phí dịch vụ — khoản quán thật sự
+  // cộng thêm — và một dòng chữ nhỏ dưới bill nói rõ giá đã gồm VAT.
+  const serviceFeeRate = toNumber(invoice?.serviceFeeRate ?? invoice?.service_fee_rate ?? 0);
+  const serviceFeeAmount = invoice?.serviceFeeAmount !== undefined
+    ? toNumber(invoice.serviceFeeAmount)
+    : (serviceFeeRate > 0 ? Math.round(subtotal * serviceFeeRate / 100) : 0);
 
   return {
     invoiceNo: invoice?.invoiceNo || invoice?.invoice_no || '',
@@ -230,7 +240,7 @@ function buildInvoiceData(invoice, language) {
     currency: invoice?.currency || 'VND',
     paymentMethod: invoice?.paymentMethod || invoice?.payment_method || '',
     isPaid: !!(invoice?.isPaid || invoice?.is_paid || invoice?.status === 'paid'),
-    items, subtotal, totalDiscount, vatRate, vatAmount, totalAmount,
+    items, subtotal, totalDiscount, serviceFeeRate, serviceFeeAmount, totalAmount,
     language: normalizeLanguage(language),
   };
 }
@@ -390,8 +400,9 @@ function createInvoicePdfDataUrl(invoice, language) {
       // thứ bếp và khách cần đối chiếu, mà hoá đơn lại là bản duy nhất khách
       // giữ lại được. Chữ nhỏ và nhạt hơn để không tranh chỗ với tên món.
       let noteHeight = 0;
-      const vatSuffix = item.vatRate != null ? `VAT: ${item.vatRate}%` : '';
-      const displayNote = [item.note ? formatBillNote(item.note) : '', vatSuffix].filter(Boolean).join(' | ');
+      // Không in "VAT: 10%" dưới từng món nữa: giá đã gồm VAT, ghi thêm chỉ
+      // khiến khách tưởng có khoản thu riêng cho từng món.
+      const displayNote = item.note ? formatBillNote(item.note) : '';
       if (displayNote) {
         const noteY = y + nameHeight + 2;
         doc.fontSize(8.2).fillColor('#6f6070');
@@ -417,8 +428,14 @@ function createInvoicePdfDataUrl(invoice, language) {
     };
     summaryRow(copy.subtotal, money(data.subtotal));
     if (data.totalDiscount > 0) summaryRow(copy.totalDiscount, `- ${money(data.totalDiscount)}`);
-    if (data.vatAmount > 0) summaryRow(copy.vat, money(data.vatAmount));
+    if (data.serviceFeeAmount > 0) {
+      summaryRow(`${copy.serviceFee} (${data.serviceFeeRate}%)`, money(data.serviceFeeAmount));
+    }
     summaryRow(copy.grandTotal, money(data.totalAmount), { bold: true });
+
+    useRegular().fontSize(8).fillColor('#7b6c7a');
+    doc.text(copy.vatIncluded, left, doc.y, { width, align: 'right' });
+    doc.y += 4;
 
     doc.moveDown(1.1);
     useBold().fontSize(10.5).fillColor('#b20c69').text(copy.thanks, left, doc.y, { width, align: 'center' });
@@ -659,8 +676,8 @@ function createInvoiceSvg(invoice, language) {
     y += 22 + Math.max(0, nameLines.length - 1) * 14;
     // Ảnh xem trước phải khớp với PDF tải về, nếu không khách sẽ tưởng hai bản
     // là hai hoá đơn khác nhau.
-    const vatSuffix = item.vatRate != null ? `VAT: ${item.vatRate}%` : '';
-    const displayNote = [item.note ? formatBillNote(item.note) : '', vatSuffix].filter(Boolean).join(' | ');
+  
+    const displayNote = item.note ? formatBillNote(item.note) : '';
     if (displayNote) {
       const noteLines = wrapToWidth(displayNote, 9.5, colNameW - 8, 2);
       noteLines.forEach((lineText, index) => {
@@ -692,11 +709,15 @@ function createInvoiceSvg(invoice, language) {
   };
   summary(copy.subtotal, money(data.subtotal));
   if (data.totalDiscount > 0) summary(copy.totalDiscount, `- ${money(data.totalDiscount)}`);
-  if (data.vatAmount > 0) summary(copy.vat, money(data.vatAmount));
+  if (data.serviceFeeAmount > 0) {
+    summary(`${copy.serviceFee} (${data.serviceFeeRate}%)`, money(data.serviceFeeAmount));
+  }
   summary(copy.grandTotal, money(data.totalAmount), { bold: true });
   // Payment method moved to info section above; no longer repeated in summary.
 
-  y += 8;
+  y += 4;
+  text(copy.vatIncluded, W - 40, y, { size: 10, fill: '#7b6c7a', anchor: 'end' });
+  y += 12;
   text(copy.thanks, W / 2, y, { size: 13, weight: 700, fill: '#b20c69', anchor: 'middle' });
   y += 18;
   text(copy.note, W / 2, y, { size: 10, fill: '#9b8d9c', anchor: 'middle' });

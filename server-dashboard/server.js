@@ -795,27 +795,6 @@ app.get(['/admin', '/admin.html'], (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
-// Phục vụ tệp hình ảnh & video của Sổ tay Hướng dẫn Agent:
-// Ưu tiên tệp local nếu có; nếu đã được upload lên S3 và tự động xóa khỏi src, chuyển hướng về S3.
-app.get('/agent_guide/:filename', async (req, res, next) => {
-  const { filename } = req.params;
-  const localPath = path.join(__dirname, 'public', 'agent_guide', filename);
-  if (require('fs').existsSync(localPath)) {
-    return res.sendFile(localPath);
-  }
-  // Nếu đã xóa trong src sau khi đẩy lên S3:
-  if (s3 && s3.isConfigured) {
-    try {
-      const s3Key = `guide/agent/${filename}`;
-      const presignedUrl = await s3.getPresignedUrl(s3Key, 7 * 24 * 3600);
-      if (presignedUrl) return res.redirect(presignedUrl);
-    } catch (err) {
-      console.warn('[AgentGuide] Không tạo được link S3:', err.message);
-    }
-  }
-  next();
-});
-
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/privacy-policy', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
 app.get('/terms', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
@@ -4638,23 +4617,36 @@ app.get('/api/chats/:sessionId/events', async (req, res) => {
 const PAYMENT_METHODS = new Set(['cash', 'bank_qr', 'card', 'room_charge', 'pay_later']);
 const escapeInvoiceHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const formatVnd = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))} ₫`;
-const QR_MENU_VAT_RATE = Math.max(0, Math.min(100, Number(process.env.QR_MENU_VAT_RATE || 10)));
-const calculateQrMenuCharges = (subtotal, items = []) => {
+// GIÁ ĐÃ BAO GỒM VAT — KHÔNG CÒN TÍNH VAT Ở BẤT CỨ ĐÂU.
+//
+// Luật cũ tách VAT ra khỏi giá, và hai đường tính khác nhau: lúc khách đặt đơn
+// thì bóc VAT trong giá, lúc khách SỬA đơn thì cộng VAT lên trên giá. Cùng một
+// món, cùng một số lượng, mà sửa xong tiền lại khác — đó chính là "bill tính
+// sai". Nay chỉ còn một cách hiểu duy nhất: giá nhập vào là giá khách trả.
+//
+// Khoản duy nhất cộng thêm là PHÍ DỊCH VỤ theo % của từng Agent.
+const calculateQrMenuCharges = (subtotal, serviceFeeRate = 0) => {
   const cleanSubtotal = Math.max(0, Math.round(Number(subtotal) || 0));
-  let vatAmount = 0;
-  if (Array.isArray(items) && items.length > 0) {
-    vatAmount = items.reduce((sum, it) => {
-      const rate = it.vatRate != null ? Number(it.vatRate) : QR_MENU_VAT_RATE;
-      const line = Number(it.lineTotal != null ? it.lineTotal : (Number(it.unitPrice || it.price || 0) * Number(it.quantity || 1)));
-      const base = rate > 0 ? (line / (1 + rate / 100)) : line;
-      return sum + Math.round(line - base);
-    }, 0);
-  } else {
-    const base = QR_MENU_VAT_RATE > 0 ? (cleanSubtotal / (1 + QR_MENU_VAT_RATE / 100)) : cleanSubtotal;
-    vatAmount = Math.round(cleanSubtotal - base);
-  }
-  return { subtotal: cleanSubtotal, vatAmount, grandTotal: cleanSubtotal, totalAmount: cleanSubtotal };
+  const rate = Math.max(0, Math.min(100, Number(serviceFeeRate) || 0));
+  const serviceFeeAmount = rate > 0 ? Math.round(cleanSubtotal * rate / 100) : 0;
+  const grandTotal = cleanSubtotal + serviceFeeAmount;
+  return {
+    subtotal: cleanSubtotal,
+    serviceFeeRate: rate,
+    serviceFeeAmount,
+    grandTotal,
+    totalAmount: grandTotal,
+  };
 };
+
+// Phí dịch vụ là cấu hình của Agent (chủ quán), không phải của từng món.
+async function serviceFeeRateOfAgent(agentId, runner = db) {
+  if (!agentId) return 0;
+  const row = (await runner.query(
+    'SELECT COALESCE(service_fee_rate, 0) AS rate FROM admins WHERE id = $1', [agentId]
+  ).catch(() => ({ rows: [] }))).rows[0];
+  return Math.max(0, Math.min(100, Number(row?.rate || 0)));
+}
 
 // htmlToPlainText / prepareInvoiceDelivery / sinh PDF đã chuyển sang
 // ./invoice-helper.js để hóa đơn được vẽ lại theo đúng ngôn ngữ khách chọn.
@@ -4679,8 +4671,8 @@ function buildSampleInvoice(orderId, session, items, totalAmount, charges = null
   const invoiceNo = orderCode || `BILL-${orderId.slice(0, 8).toUpperCase()}`;
   const rows = items.map((item) => `<tr><td>${escapeInvoiceHtml(item.name)}</td><td>${item.quantity}</td><td>${formatVnd(item.unitPrice)}</td><td>${formatVnd(item.lineTotal)}</td></tr>`).join('');
   const subtotal = Number(charges?.subtotal ?? items.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0));
-  const vatRate = Number(charges?.vatRate || 0);
-  const vatAmount = Number(charges?.vatAmount || 0);
+  const serviceFeeRate = Number(charges?.serviceFeeRate || 0);
+  const serviceFeeAmount = Number(charges?.serviceFeeAmount || 0);
   // Dữ liệu lưu vào DB là JSON có cấu trúc (items/tổng tiền) — PDF chỉ được vẽ
   // lúc khách mở hóa đơn, theo ngôn ngữ khách, nên KHÔNG lưu PDF ở đây.
   return {
@@ -4698,7 +4690,7 @@ function buildSampleInvoice(orderId, session, items, totalAmount, charges = null
     // loại chứng từ, không được đứng thay tên đơn vị bán hàng.
     sellerName: session.seller_name || session.agent_name || '',
     paymentMethod: session.payment_method || '',
-    items, subtotal, vatRate, vatAmount, totalAmount, currency: 'VND',
+    items, subtotal, serviceFeeRate, serviceFeeAmount, totalAmount, currency: 'VND',
     html: `<article class="pastie-bill"><h2>Hóa đơn ${invoiceNo}</h2><p>Khách hàng: ${escapeInvoiceHtml(session.visitor_name || 'Khách hàng')}</p><table><thead><tr><th>Sản phẩm</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody></table><h3>Tổng cộng: ${formatVnd(totalAmount)}</h3></article>`,
     pngUrl: null, pdfUrl: null,
   };
@@ -5323,7 +5315,6 @@ app.get('/api/admin/menu/view', checkAdminAuth, async (req, res) => {
 
     const items = await db.query(
       `SELECT i.id, i.category_id, i.name, i.description, i.price, i.currency,
-              COALESCE(i.vat_rate, 10) AS vat_rate,
               i.image_url, i.image_key, i.image_url_expires_at,
               i.is_available,
               (i.stock_quantity IS NOT NULL AND i.stock_quantity <= 0) AS sold_out
@@ -5559,10 +5550,16 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
     console.error('[Invoice] Lỗi tạo SVG đóng dấu đã thanh toán:', renderErr.message);
   }
 
+  // ĐÓNG DẤU LÊN CHÍNH TỜ ĐANG CÓ, KHÔNG PHÁT THÊM TỜ MỚI.
+  //
+  // Trước đây bước thu tiền phát hành thêm một tờ nữa chỉ để có con dấu "đã
+  // thanh toán". Kết quả là khách nhận hai tờ giống hệt nhau, một tờ không dấu
+  // và một tờ có dấu, ngay cạnh nhau — nhìn như quán tính tiền hai lần.
+  // Giữ nguyên số bản: đóng dấu đè lên tờ mới nhất.
   const billVersion = Number((await db.query(
-    'SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM chat_order_bills WHERE order_id = $1',
-    [order.id]
-  )).rows[0]?.next_version || Number(order.version || 1) + 1);
+    'SELECT COALESCE(MAX(version), $2::int) AS cur_version FROM chat_order_bills WHERE order_id = $1',
+    [order.id, Number(order.version || 1)]
+  )).rows[0]?.cur_version || Number(order.version || 1));
 
   const updated = await db.query(
     `UPDATE chat_orders
@@ -5579,8 +5576,9 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
   );
   if (!updated.rows[0]) return res.status(409).json({ error: 'Đơn này vừa được người khác xử lý.' });
 
-  // Xác nhận thu tiền phát hành một tờ mới có dấu thanh toán. Không cập nhật
-  // đè tờ cũ: khách vẫn cần xem được bill đã nhận trước đó.
+  // saveOrderBill dùng ON CONFLICT (order_id, version) DO UPDATE, nên gọi với
+  // ĐÚNG version đang có sẽ đóng dấu đè lên tờ đó thay vì thêm tờ mới. Các tờ
+  // của những lần chỉnh sửa trước vẫn nằm nguyên trong đoạn chat.
   await saveOrderBill(updated.rows[0], stampedInvoice, req.admin.id);
   await logOrderEvent(updated.rows[0], 'payment_received', {
     admin: req.admin,
@@ -9971,7 +9969,7 @@ app.get('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
     if (!agentId) return res.status(400).json({ error: 'Không xác định được cơ sở quản lý.' });
 
     const row = (await db.query(
-      'SELECT agent_menu_enabled, superadmin_menu_disabled, menu_custom_label FROM admins WHERE id = $1',
+      'SELECT agent_menu_enabled, superadmin_menu_disabled, menu_custom_label, COALESCE(service_fee_rate, 0) AS service_fee_rate FROM admins WHERE id = $1',
       [agentId]
     )).rows[0];
     if (!row) return res.status(404).json({ error: 'Không tìm thấy thông tin cơ sở.' });
@@ -9980,6 +9978,8 @@ app.get('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
       agent_menu_enabled: row.agent_menu_enabled !== false,
       superadmin_menu_disabled: row.superadmin_menu_disabled === true,
       menu_custom_label: row.menu_custom_label || '',
+      // % phí dịch vụ cộng trên hóa đơn. 0 = không thu.
+      service_fee_rate: Number(row.service_fee_rate || 0),
       is_active: (row.superadmin_menu_disabled !== true) && (row.agent_menu_enabled !== false)
     });
   } catch (error) {
@@ -9997,7 +9997,12 @@ app.put('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
     const agent = (await db.query('SELECT superadmin_menu_disabled FROM admins WHERE id = $1', [agentId])).rows[0];
     if (!agent) return res.status(404).json({ error: 'Không tìm thấy Agent.' });
 
-    const { agentMenuEnabled, menuCustomLabel } = req.body || {};
+    const { agentMenuEnabled, menuCustomLabel, serviceFeeRate } = req.body || {};
+    // Phí dịch vụ: % trên tổng tiền hàng, chấp nhận số lẻ (5.5%), chặn trong
+    // khoảng 0–100 để một cú gõ nhầm không thành hóa đơn gấp mấy lần.
+    const feeRate = serviceFeeRate !== undefined && serviceFeeRate !== null && !isNaN(Number(serviceFeeRate))
+      ? Math.max(0, Math.min(100, Math.round(Number(serviceFeeRate) * 100) / 100))
+      : undefined;
     const label = menuCustomLabel !== undefined ? String(menuCustomLabel || '').trim().slice(0, 100) : undefined;
     const enabled = typeof agentMenuEnabled === 'boolean' ? agentMenuEnabled : undefined;
 
@@ -10008,10 +10013,12 @@ app.put('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
     const updated = await db.query(
       `UPDATE admins 
           SET agent_menu_enabled = COALESCE($2, agent_menu_enabled),
-              menu_custom_label = CASE WHEN $4::boolean THEN $3::varchar ELSE menu_custom_label END
+              menu_custom_label = CASE WHEN $4::boolean THEN $3::varchar ELSE menu_custom_label END,
+              service_fee_rate = COALESCE($5::numeric, service_fee_rate)
         WHERE id = $1
-        RETURNING agent_menu_enabled, superadmin_menu_disabled, menu_custom_label`,
-      [agentId, enabled !== undefined ? enabled : null, label !== undefined ? label : null, label !== undefined]
+        RETURNING agent_menu_enabled, superadmin_menu_disabled, menu_custom_label, COALESCE(service_fee_rate, 0) AS service_fee_rate`,
+      [agentId, enabled !== undefined ? enabled : null, label !== undefined ? label : null, label !== undefined,
+       feeRate !== undefined ? feeRate : null]
     );
     res.json({
       success: true,
@@ -10019,6 +10026,7 @@ app.put('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
         agent_menu_enabled: updated.rows[0].agent_menu_enabled !== false,
         superadmin_menu_disabled: updated.rows[0].superadmin_menu_disabled === true,
         menu_custom_label: updated.rows[0].menu_custom_label || '',
+        service_fee_rate: Number(updated.rows[0].service_fee_rate || 0),
         is_active: (updated.rows[0].superadmin_menu_disabled !== true) && (updated.rows[0].agent_menu_enabled !== false)
       }
     });
@@ -11154,7 +11162,9 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
   if (!Number.isFinite(cleanPrice)) return res.status(400).json({ error: 'Giá không hợp lệ.' });
   const stock = parseStockInput(req.body?.stockQuantity);
   if (stock.invalid) return res.status(400).json({ error: 'Số lượng tồn phải là số không âm, hoặc để trống nếu không giới hạn.' });
-  const cleanVat = vatRate !== undefined && vatRate !== null && !isNaN(Number(vatRate))
+  // VAT theo món đã bỏ: giá nhập vào là giá khách trả (đã gồm VAT). Cột vat_rate
+  // còn trong bảng cho dữ liệu cũ nhưng luôn ghi 0 và không chỗ nào đọc để tính.
+  const cleanVat = false
     ? Math.max(0, Math.min(100, Math.round(Number(vatRate))))
     : 10;
 
@@ -11197,8 +11207,9 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
   const { categoryId, name, description, price, isAvailable, sortOrder, hideWhenOut, vatRate } = req.body || {};
   const stock = parseStockInput(req.body?.stockQuantity);
   if (stock.invalid) return res.status(400).json({ error: 'Số lượng tồn phải là số không âm, hoặc để trống nếu không giới hạn.' });
-  const hasVat = vatRate !== undefined && vatRate !== null && !isNaN(Number(vatRate));
-  const cleanVat = hasVat ? Math.max(0, Math.min(100, Math.round(Number(vatRate)))) : 10;
+  // Như trên: không nhận VAT theo món nữa.
+  const hasVat = false;
+  const cleanVat = 0;
   try {
     const current = await db.query(
       'SELECT * FROM qr_menu_items WHERE id = $1 AND agent_id = $2',
@@ -11529,8 +11540,10 @@ function buildPosOrderPayload(order, event) {
       total_amount: Number(order.total_amount || 0),
       pricing: {
         subtotal: Number(order.charges?.subtotal ?? order.total_amount ?? 0),
-        vat_rate: Number(order.charges?.vatRate || 0),
-        vat_amount: Number(order.charges?.vatAmount || 0),
+        // Giá đã gồm VAT nên không còn trường vat_*; khoản cộng thêm duy nhất
+        // là phí dịch vụ của quán.
+        service_fee_rate: Number(order.charges?.serviceFeeRate || 0),
+        service_fee_amount: Number(order.charges?.serviceFeeAmount || 0),
         grand_total: Number(order.charges?.grandTotal ?? order.total_amount ?? 0),
       },
       items: (Array.isArray(order.items) ? order.items : []).map((item) => ({
@@ -11765,9 +11778,9 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
     //   stock IS NULL                       -> không giới hạn, luôn hiện
     const items = await db.query(
       `SELECT i.id, i.category_id,
-              ROUND(i.price * (1 + COALESCE(i.vat_rate, 10)::numeric / 100)) AS price,
+              i.price,
               i.price AS base_price,
-              i.currency, COALESCE(i.vat_rate, 10) AS vat_rate, i.image_url, i.image_key,
+              i.currency, i.image_url, i.image_key,
               i.image_url_expires_at, i.sort_order,
               (i.stock_quantity IS NOT NULL AND i.stock_quantity <= 0) AS sold_out,
               COALESCE(c.is_promo, FALSE) AS is_promo,
@@ -11843,7 +11856,9 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
     }
     res.json({
       language: useLang,
-      vatRate: QR_MENU_VAT_RATE,
+      // Không còn vatRate: giá đã gồm VAT. Cổng khách dùng con số này để hiện
+      // dòng phí dịch vụ trong giỏ hàng đúng như trên hóa đơn.
+      serviceFeeRate: await serviceFeeRateOfAgent(owner.agent_id),
       menuLabel: customMenuLabel || owner.menu_custom_label || null,
       categories: categories.rows.map(({ source_name, translated, ...category }) => category),
       // Món ưu đãi tách riêng để cổng khách dựng slider đầu trang mà không phải
@@ -11899,7 +11914,7 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
     // GIÁ LẤY TỪ DATABASE, không lấy từ body. Đây là ranh giới tin cậy của toàn
     // bộ tính năng: client chỉ được nói "món nào, mấy phần".
     const priced = await db.query(
-      `SELECT id, name, price, stock_quantity, COALESCE(vat_rate, 10) AS vat_rate FROM qr_menu_items
+      `SELECT id, name, price, stock_quantity FROM qr_menu_items
         WHERE id = ANY($1::int[]) AND agent_id = $2 AND is_available = TRUE`,
       [[...wanted.keys()], owner.agent_id]
     );
@@ -11921,15 +11936,13 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
 
     const items = priced.rows.map((row) => {
       const quantity = wanted.get(row.id);
-      const vatRate = row.vat_rate != null ? Number(row.vat_rate) : QR_MENU_VAT_RATE;
-      const unitPrice = Math.round(Number(row.price) * (1 + vatRate / 100));
+      // Giá trong database ĐÃ gồm VAT, lấy thẳng — không nhân, không bóc.
+      const unitPrice = Math.round(Number(row.price));
       const lineTotal = Math.round(unitPrice * quantity);
-      const base = vatRate > 0 ? (lineTotal / (1 + vatRate / 100)) : lineTotal;
-      const vatAmount = Math.round(lineTotal - base);
-      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal, vatRate, vatAmount, note: wantedNotes.get(row.id) || null };
+      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal, note: wantedNotes.get(row.id) || null };
     });
     const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
-    const charges = calculateQrMenuCharges(subtotal, items);
+    const charges = calculateQrMenuCharges(subtotal, await serviceFeeRateOfAgent(owner.agent_id));
     const totalAmount = charges.grandTotal;
 
     const orderId = randomUUID();
@@ -12059,7 +12072,7 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
       return res.status(400).json({ error: 'Danh sách món không hợp lệ.' });
     }
     const priced = await client.query(
-      `SELECT id, name, price, stock_quantity, COALESCE(vat_rate, 10) AS vat_rate FROM qr_menu_items
+      `SELECT id, name, price, stock_quantity FROM qr_menu_items
         WHERE id = ANY($1::int[]) AND agent_id = $2 AND is_available = TRUE`,
       [[...wanted.keys()], session.agent_id]
     );
@@ -12084,16 +12097,16 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
       await client.query('ROLLBACK');
       return res.status(409).json({ error: `Không đủ số lượng cho: ${short.map((row) => row.name).join(', ')}.` });
     }
+    // ĐÚNG MỘT công thức với lúc đặt đơn. Trước đây chỗ này cộng VAT lên trên
+    // giá trong khi lúc đặt lại bóc VAT trong giá, nên sửa đơn là tiền nhảy.
     const items = priced.rows.map((row) => {
       const quantity = wanted.get(row.id);
-      const unitPrice = Number(row.price);
-      const vatRate = row.vat_rate != null ? Number(row.vat_rate) : QR_MENU_VAT_RATE;
+      const unitPrice = Math.round(Number(row.price));
       const lineTotal = Math.round(unitPrice * quantity);
-      const vatAmount = Math.round(lineTotal * vatRate / 100);
-      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal, vatRate, vatAmount, note: wantedNotes.get(row.id) || null };
+      return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal, note: wantedNotes.get(row.id) || null };
     });
     const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
-    const charges = calculateQrMenuCharges(subtotal, items);
+    const charges = calculateQrMenuCharges(subtotal, await serviceFeeRateOfAgent(session.agent_id, client));
     const total = charges.grandTotal;
     // CHỐT LẠI BẢN KHÁCH ĐÃ GỬI TRƯỚC ĐÓ, TRƯỚC KHI GHI ĐÈ.
     //
@@ -12207,24 +12220,22 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
       order.order_code
     );
 
-    const targetLang = invoiceLanguageFor(session, session?.detected_language || 'vi');
-    let initialRender = {};
-    try {
-      const initialSvg = invoiceHelper.createInvoiceSvgDataUrl(invoice, targetLang);
-      if (initialSvg) {
-        initialRender[targetLang] = {
-          orderStamp: Date.now(),
-          // PHẢI KHỚP với số mà chỗ đọc cache yêu cầu (hiện là 5).
-          // Ghi 4 là bản dựng sẵn này luôn bị vứt: mỗi lần khách mở bill lại
-          // dựng SVG/PDF và gọi dịch lại từ đầu — đúng cảnh "đang dịch thuật"
-          // chạy lâu. Đổi số đọc ở trên thì phải đổi cả ba chỗ ghi.
-          translationVersion: 5,
-          invoice: { ...invoice, svgDataUrl: initialSvg, renderType: 'pdf', generated: true, renderedLanguage: targetLang }
-        };
-      }
-    } catch (renderErr) {
-      console.error('[Invoice] Không thể pre-cache SVG:', renderErr.message);
-    }
+    // KHÔNG DỰNG SẴN BẢN RENDER Ở ĐÂY NỮA.
+    //
+    // Khối cũ vẽ tờ bill từ dữ liệu THÔ (tên món, tên quán, tên bàn nguyên văn
+    // tiếng Việt) rồi cất vào cache dưới đúng khóa ngôn ngữ khách đang xem. Lần
+    // sau khách mở bill, chỗ đọc thấy cache còn hạn nên dùng luôn — và khách Anh,
+    // Hàn nhận một tờ hóa đơn tiếng Việt. Đây chính là "bill không dịch khi đổi
+    // ngôn ngữ / khi agent gửi lại bill".
+    //
+    // (Trước đây nó vô tình không lộ ra vì bản dựng sẵn đóng dấu phiên bản cũ
+    // nên luôn bị vứt. Sáng nay tôi sửa cho hai số khớp nhau, và đúng lúc đó lỗi
+    // này mới hiện nguyên hình.)
+    //
+    // Để trống: lần đầu khách mở bill, đường /api/chats/:id/order sẽ dựng theo
+    // ĐÚNG ngôn ngữ khách đang chọn — có dịch tên món, tên quán, tên bàn — rồi
+    // tự cất vào cache theo từng ngôn ngữ.
+    const initialRender = {};
 
     const client = await db.pool.connect();
     let updated;
@@ -12470,38 +12481,42 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
         }
       }
 
-      const vatRate = Math.max(0, Math.min(100, Number(item.vatRate != null ? item.vatRate : (prev?.vatRate != null ? prev.vatRate : 10))));
-      const base = vatRate > 0 ? (lineTotal / (1 + vatRate / 100)) : lineTotal;
-      const vatAmount = Math.round(lineTotal - base);
-
+      // Không còn VAT theo món: giá nhân viên gõ vào là giá khách trả.
+      const { vatRate: _boVat, vatAmount: _boVatAmount, ...conLai } = item;
       return {
-        ...item,
+        ...conLai,
         name: String(item.name || 'Món').trim(),
         unitPrice,
         quantity,
         discount,
         lineTotal,
-        vatRate,
-        vatAmount,
         note: formatNote(note)
       };
     });
 
     const subtotal = nextItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
-    const totalVatAmount = nextItems.reduce((acc, it) => acc + (it.vatAmount || 0), 0);
-    const totalAmount = subtotal;
+    const phi = calculateQrMenuCharges(subtotal, await serviceFeeRateOfAgent(
+      (await db.query('SELECT COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id) AS agent_id FROM sessions s LEFT JOIN agent_groups g ON g.id = s.group_id LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id WHERE s.id = $1', [order.session_id]).catch(() => ({ rows: [] }))).rows[0]?.agent_id
+    ));
+    const totalAmount = phi.grandTotal;
 
     const invoiceObj = typeof order.invoice === 'object' && order.invoice !== null ? order.invoice : {};
     const chargesObj = typeof order.charges === 'object' && order.charges !== null ? order.charges : {};
 
     chargesObj.subtotal = subtotal;
-    chargesObj.vatAmount = totalVatAmount;
+    chargesObj.serviceFeeRate = phi.serviceFeeRate;
+    chargesObj.serviceFeeAmount = phi.serviceFeeAmount;
+    delete chargesObj.vatAmount;
+    delete chargesObj.vatRate;
     chargesObj.totalAmount = totalAmount;
     chargesObj.grandTotal = totalAmount;
 
     invoiceObj.items = nextItems;
     invoiceObj.subtotal = subtotal;
-    invoiceObj.vatAmount = totalVatAmount;
+    invoiceObj.serviceFeeRate = phi.serviceFeeRate;
+    invoiceObj.serviceFeeAmount = phi.serviceFeeAmount;
+    delete invoiceObj.vatAmount;
+    delete invoiceObj.vatRate;
     invoiceObj.totalAmount = totalAmount;
 
     // Tính version tiếp theo để ghi lại lịch sử chỉnh sửa rõ ràng
@@ -12547,21 +12562,10 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
       delete invoice.paymentMethod;
     }
 
-    const targetLang = invoiceLanguageFor(session, session?.detected_language || 'vi');
-    let initialRender = {};
-    try {
-      const initialSvg = invoiceHelper.createInvoiceSvgDataUrl(invoice, targetLang);
-      if (initialSvg) {
-        invoice.svgDataUrl = initialSvg;
-        initialRender[targetLang] = {
-          orderStamp: Date.now(),
-          translationVersion: 5,
-          invoice: { ...invoice, svgDataUrl: initialSvg, renderType: 'pdf', generated: true, renderedLanguage: targetLang }
-        };
-      }
-    } catch (renderErr) {
-      console.error('[Invoice] Không thể pre-cache SVG khi sửa bill:', renderErr.message);
-    }
+    // Cùng lý do như bên Sale phát hành: không cất bản vẽ từ dữ liệu thô vào
+    // cache ngôn ngữ, nếu không tờ bill Agent vừa gửi lại sẽ hiện tiếng Việt
+    // cho khách đang xem bằng tiếng Anh/Hàn.
+    const initialRender = {};
 
     const newStatus = shouldSendBill ? 'awaiting_payment' : order.status;
 
