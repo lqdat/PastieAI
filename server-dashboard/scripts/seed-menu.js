@@ -29,6 +29,7 @@
  */
 const path = require('path');
 const db = require(path.join(__dirname, '..', 'database.js'));
+const { CATEGORY_TRANSLATIONS, ITEM_TRANSLATIONS } = require('./seed-translations-data');
 
 const SEED_TAG = '[seed-menu]';
 
@@ -196,19 +197,56 @@ async function main() {
       categoryId = created.rows[0].id;
     }
 
+    // Ghi bản dịch danh mục vào qr_menu_category_translations (en, ru, zh, ko)
+    const catTrans = CATEGORY_TRANSLATIONS[group.name];
+    if (catTrans) {
+      for (const lang of ['en', 'ru', 'zh', 'ko']) {
+        if (catTrans[lang]) {
+          await db.query(
+            `INSERT INTO qr_menu_category_translations (category_id, lang, name, is_manual, updated_at)
+             VALUES ($1, $2, $3, FALSE, CURRENT_TIMESTAMP)
+             ON CONFLICT (category_id, lang) DO UPDATE
+             SET name = EXCLUDED.name, updated_at = CURRENT_TIMESTAMP
+             WHERE qr_menu_category_translations.is_manual = FALSE`,
+            [categoryId, lang, catTrans[lang]]
+          );
+        }
+      }
+    }
+
     for (const [name, price, stock, hideWhenOut, available, description] of group.items) {
       // Dấu nằm CUỐI mô tả: đọc trên giao diện vẫn thấy câu mô tả thật trước,
       // mà lúc dọn vẫn tìm ra bằng LIKE.
       const desc = `${description ? description + ' ' : ''}${SEED_TAG}`;
-      await db.query(
+      const itemRes = await db.query(
         `INSERT INTO qr_menu_items
            (category_id, agent_id, project_id, name, description, price, stock_quantity, hide_when_out, is_available, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id`,
         [categoryId, agent.id, agent.project_id, name, desc, price, stock, hideWhenOut, available, sortOrder++]
       );
+      const itemId = itemRes.rows[0].id;
       itemCount++;
+
+      // Ghi bản dịch món vào qr_menu_item_translations (en, ru, zh, ko)
+      const itemTrans = ITEM_TRANSLATIONS[name];
+      if (itemTrans) {
+        for (const lang of ['en', 'ru', 'zh', 'ko']) {
+          const t = itemTrans[lang];
+          if (t) {
+            await db.query(
+              `INSERT INTO qr_menu_item_translations (item_id, lang, name, description, is_manual, updated_at)
+               VALUES ($1, $2, $3, $4, FALSE, CURRENT_TIMESTAMP)
+               ON CONFLICT (item_id, lang) DO UPDATE
+               SET name = EXCLUDED.name, description = EXCLUDED.description, updated_at = CURRENT_TIMESTAMP
+               WHERE qr_menu_item_translations.is_manual = FALSE`,
+              [itemId, lang, t.name, t.desc || null]
+            );
+          }
+        }
+      }
     }
-    console.log(`  ${group.name.padEnd(22)} ${String(group.items.length).padStart(2)} món`);
+    console.log(`  ${group.name.padEnd(22)} ${String(group.items.length).padStart(2)} món (kèm 4 thứ tiếng)`);
   }
 
   // --- Đối chiếu: khách nhìn thấy bao nhiêu món? ------------------------------

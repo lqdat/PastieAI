@@ -18,20 +18,23 @@ const PDFDocument = require('pdfkit');
 const FONT_DIR = path.join(__dirname, 'assets', 'fonts');
 const FONT_REGULAR = path.join(FONT_DIR, 'DejaVuSans.ttf');
 const FONT_BOLD = path.join(FONT_DIR, 'DejaVuSans-Bold.ttf');
+const FONT_CJK = path.join(FONT_DIR, 'NotoSansCJK-Regular.otf');
 
 // Tiếng Trung và tiếng Hàn đều cần font CJK — DejaVuSans không có chữ Hán lẫn
-// Hangul. Font CJK chỉ dùng nếu máy chủ có sẵn (không đóng gói vì quá nặng).
+// Hangul. Ưu tiên font CJK đóng gói sẵn trong assets/fonts/NotoSansCJK-Regular.otf.
 // Lưu ý: pdfkit KHÔNG nhúng được file .ttc (TrueType Collection) — nó không
 // subset được collection — nên chỉ liệt kê .ttf/.otf đơn lẻ ở đây.
 const CJK_LANGUAGES = new Set(['zh', 'ko']);
 const CJK_FONT_CANDIDATES = {
   zh: [
+    FONT_CJK,
     '/usr/share/fonts/opentype/noto/NotoSansSC-Regular.otf',
     '/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf',
     '/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf',
     '/usr/share/fonts/truetype/arphic/uming.ttf',
   ],
   ko: [
+    FONT_CJK,
     '/usr/share/fonts/opentype/noto/NotoSansKR-Regular.otf',
     '/usr/share/fonts/truetype/noto/NotoSansKR-Regular.otf',
     '/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf',
@@ -78,7 +81,7 @@ const INVOICE_I18N = {
     serviceFee: 'Service charge', vatIncluded: 'All prices include VAT.'
   },
   ru: {
-    title: 'СЧЁТ НА ОПЛАТУ', invoiceNo: 'Номер счёта', date: 'Дата', customer: 'Клиент', email: 'Email', table: 'Стол', openedAt: 'Время входа', printedAt: 'Напечатано', sale: 'Обслужил',
+    title: 'СЧЁТ НА ОПЛАТУ', invoiceNo: 'Номер счёта', date: 'Дата', customer: 'Клиент', email: 'Электронная почта', table: 'Стол', openedAt: 'Время входа', printedAt: 'Напечатано', sale: 'Обслужил',
     phone: 'Телефон', address: 'Адрес', item: 'Наименование', unitPrice: 'Цена', quantity: 'Кол-во',
     discount: 'Скидка', lineTotal: 'Сумма', subtotal: 'Итого по товарам',
     totalDiscount: 'Скидка', vat: 'НДС', grandTotal: 'ИТОГО', paymentMethod: 'Оплата',

@@ -187,7 +187,7 @@ const TRANSLATIONS = {
         // Dynamic labels & alerts
         statusActive: "активен",
         statusClosed: "закрыт",
-        noEmail: "Нет email",
+        noEmail: "Нет эл. почты",
         emptyConversations: "Диалоги не найдены.",
         emptyChatHistory: "Диалог начат. Сообщений пока нет.",
         chatLoadFailed: "Не удалось загрузить сообщения. Проверьте соединение и повторите.",

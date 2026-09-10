@@ -4814,38 +4814,126 @@ async function localizeOrderForVisitor(order, language) {
 
   // TÊN MÓN chỉ cần dịch khi ngôn ngữ đích khác bản gốc của thực đơn; GHI CHÚ
   // thì luôn phải dịch, kể cả sang tiếng Việt — xem lý do ở translateNoteText.
-  // Trước đây cả hàm thoát sớm khi đích là tiếng Việt, nên ghi chú của khách
-  // nằm nguyên tiếng Anh trên tờ bill của cả khách lẫn Sale lẫn Agent.
-  const ids = target === MENU_SOURCE_LANG
-    ? []
-    : [...new Set(items.map((item) => Number(item?.menuItemId)).filter(Number.isInteger))];
-  const translated = ids.length
-    ? await db.query(
-        `SELECT item_id, name FROM qr_menu_item_translations
-          WHERE item_id = ANY($1::int[]) AND lang = $2 AND NULLIF(name, '') IS NOT NULL`,
-        [ids, target]
-      )
-    : { rows: [] };
-  const names = new Map(translated.rows.map((row) => [Number(row.item_id), row.name]));
+  const protect = await protectedNamesForSession(order.session_id);
+  const names = new Map();
+  const namesBySourceName = new Map();
+  const directTranslations = new Map();
 
-  // Ghi chú của Sale cũng phải dịch. Trước đây chỉ TÊN MÓN được dịch, nên khách
-  // Hàn thấy tên món tiếng Hàn kèm một dòng ghi chú tiếng Việt ngay dưới.
-  // Dịch song song và gom theo nội dung: hai món cùng ghi "ít cay" chỉ tốn một
-  // lượt tra cache.
+  if (target !== MENU_SOURCE_LANG) {
+    // 1. Món có menuItemId: tra cứu ID và dịch bù nếu thiếu
+    const ids = [...new Set(items.map((item) => Number(item?.menuItemId)).filter(Number.isInteger))];
+    const translated = ids.length
+      ? await db.query(
+          `SELECT i.id AS item_id, i.name AS source_name, i.description AS source_description,
+                  NULLIF(t.name, '') AS translated_name
+             FROM qr_menu_items i
+             LEFT JOIN qr_menu_item_translations t ON t.item_id = i.id AND t.lang = $2
+            WHERE i.id = ANY($1::int[])`,
+          [ids, target]
+        )
+      : { rows: [] };
+
+    for (const row of translated.rows) {
+      if (row.translated_name) {
+        names.set(Number(row.item_id), row.translated_name);
+        namesBySourceName.set(row.source_name.trim().toLowerCase(), row.translated_name);
+      }
+    }
+
+    // Dịch bù cho các món có ID nhưng chưa có bản dịch
+    await Promise.all(translated.rows.filter((row) => !row.translated_name).map(async (row) => {
+      try {
+        const localized = await translateMenuItemToLanguage(
+          row.item_id, row.source_name, row.source_description, target, protect
+        );
+        if (localized?.name) {
+          names.set(Number(row.item_id), localized.name);
+          namesBySourceName.set(row.source_name.trim().toLowerCase(), localized.name);
+        }
+      } catch (error) {
+        console.error(`[Invoice] Không dịch bù được tên món ${row.item_id} sang ${target}:`, error.message);
+      }
+    }));
+
+    // 2. Món chưa có bản dịch (không có menuItemId hoặc menuItemId không khớp DB):
+    // Đối chiếu theo tên món tiếng Việt trong bảng qr_menu_items
+    const remainingNames = [...new Set(
+      items
+        .filter((item) => !names.has(Number(item?.menuItemId)))
+        .map((item) => String(item?.name || '').trim())
+        .filter(Boolean)
+    )];
+
+    if (remainingNames.length > 0) {
+      try {
+        const byNameRes = await db.query(
+          `SELECT i.id AS item_id, i.name AS source_name, i.description AS source_description,
+                  NULLIF(t.name, '') AS translated_name
+             FROM qr_menu_items i
+             LEFT JOIN qr_menu_item_translations t ON t.item_id = i.id AND t.lang = $2
+            WHERE LOWER(TRIM(i.name)) = ANY($1::text[])`,
+          [remainingNames.map((n) => n.toLowerCase()), target]
+        );
+
+        await Promise.all(byNameRes.rows.map(async (row) => {
+          let transName = row.translated_name;
+          if (!transName) {
+            try {
+              const loc = await translateMenuItemToLanguage(
+                row.item_id, row.source_name, row.source_description, target, protect
+              );
+              if (loc?.name) transName = loc.name;
+            } catch (e) {
+              console.error(`[Invoice] Lỗi dịch theo tên món ${row.source_name}:`, e.message);
+            }
+          }
+          if (transName) {
+            namesBySourceName.set(row.source_name.trim().toLowerCase(), transName);
+            names.set(Number(row.item_id), transName);
+          }
+        }));
+      } catch (err) {
+        console.warn('[Invoice] Tra cứu món theo tên thất bại:', err.message);
+      }
+
+      // 3. Món tự gõ tay không có trong thực đơn: dịch trực tiếp để bill không bị sót tiếng Việt
+      const stillMissing = remainingNames.filter((n) => !namesBySourceName.has(n.toLowerCase()));
+      await Promise.all(stillMissing.map(async (customName) => {
+        try {
+          const translatedName = await translateNoteText(customName, target, protect);
+          if (translatedName && translatedName.trim()) {
+            directTranslations.set(customName.toLowerCase(), translatedName);
+          }
+        } catch (e) {
+          console.error(`[Invoice] Lỗi dịch tên món gõ tay "${customName}":`, e.message);
+        }
+      }));
+    }
+  }
+
+  // Ghi chú của Sale cũng phải dịch song song
   const notes = [...new Set(items.map((item) => String(item?.note || '').trim()).filter(Boolean))];
   const noteMap = new Map();
-  const protect = await protectedNamesForSession(order.session_id);
   await Promise.all(notes.map(async (note) => {
     noteMap.set(note, await translateNoteText(note, target, protect));
   }));
 
   return {
     ...order,
-    items: items.map((item) => ({
-      ...item,
-      name: names.get(Number(item.menuItemId)) || item.name,
-      note: noteMap.get(String(item.note || '').trim()) || item.note,
-    })),
+    items: items.map((item) => {
+      const cleanName = String(item?.name || '').trim();
+      const translatedDishName = (target !== MENU_SOURCE_LANG
+        ? (names.get(Number(item?.menuItemId))
+           || namesBySourceName.get(cleanName.toLowerCase())
+           || directTranslations.get(cleanName.toLowerCase())
+           || item.name)
+        : item.name);
+      return {
+        ...item,
+        name: translatedDishName,
+        note: noteMap.get(String(item.note || '').trim()) || item.note,
+      };
+    }),
   };
 }
 
@@ -4868,7 +4956,10 @@ app.post('/api/admin/orders', checkAdminAuth, requireWorkingHours, async (req, r
     const quantity = Number(item?.quantity);
     const unitPrice = Number(item?.unitPrice);
     if (!name || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) return null;
-    return { name, quantity, unitPrice, lineTotal: Math.round(quantity * unitPrice) };
+    const rawId = item?.menuItemId ?? item?.itemId ?? item?.id;
+    const menuItemId = Number.isInteger(Number(rawId)) && Number(rawId) > 0 ? Number(rawId) : undefined;
+    const note = String(item?.note || '').trim() || undefined;
+    return { name, quantity, unitPrice, lineTotal: Math.round(quantity * unitPrice), menuItemId, note };
   });
   if (normalizedItems.some((item) => !item)) return res.status(400).json({ error: 'Sản phẩm cần có tên, số lượng và đơn giá hợp lệ.' });
   const totalAmount = normalizedItems.reduce((sum, item) => sum + item.lineTotal, 0);
@@ -5058,7 +5149,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   // và cache cũ phải hết hiệu lực — nếu không khách vẫn nhận lại đúng tờ bill
   // đã render trước đó với ghi chú nguyên văn.
   const latestBillId = bills[0]?.id || '';
-  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${order.status || ''}.${bills.length}.${latestBillId}.${language}.i18n4`;
+  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${order.status || ''}.${bills.length}.${latestBillId}.${language}.i18n6`;
   if (String(req.query.known || '').trim() === orderPrint) {
     res.setHeader('X-Order-Print', orderPrint);
     return res.status(200).json({ unchanged: true, fingerprint: orderPrint });
@@ -5087,7 +5178,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   // moi don dang cho.
   if (order.status === 'pending_confirm') {
     invoice = null;
-  } else if (cached && (Number(cached.orderStamp) === orderStamp || Math.abs(Number(cached.orderStamp) - orderStamp) < 5000) && Number(cached.translationVersion) === 5) {
+  } else if (cached && (Number(cached.orderStamp) === orderStamp || Math.abs(Number(cached.orderStamp) - orderStamp) < 5000) && Number(cached.translationVersion) === 7) {
     invoice = cached.invoice;
   } else {
     // TÊN CƠ SỞ VÀ TÊN BÀN CŨNG PHẢI DỊCH.
@@ -5114,7 +5205,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
     // Chỉ lưu khi thật sự vừa render (generated: true). Trường hợp hoá đơn đã có
     // sẵn pdfUrl thì không có gì để cache.
     if (invoice?.generated) {
-      const store = { ...(order.invoice_render || {}), [language]: { orderStamp, translationVersion: 5, invoice } };
+      const store = { ...(order.invoice_render || {}), [language]: { orderStamp, translationVersion: 7, invoice } };
       db.query('UPDATE chat_orders SET invoice_render = $1 WHERE id = $2', [JSON.stringify(store), order.id])
         .catch((error) => console.error('[Invoice] Không lưu được cache PDF:', error.message));
     }
@@ -11003,6 +11094,31 @@ async function translateMenuItem(itemId, name, description, agentId) {
   }));
 }
 
+// Kiểm tra xem món đã có đủ 4 ngôn ngữ (en, ru, zh, ko) chưa. Nếu thiếu ngôn ngữ
+// nào thì tự động dịch bù ngôn ngữ đó, bảo đảm mọi thứ tiếng đều có bản dịch.
+async function ensureMenuItemTranslations(itemId, name, description, agentId) {
+  const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
+  try {
+    const existing = await db.query(
+      "SELECT lang FROM qr_menu_item_translations WHERE item_id = $1 AND NULLIF(name, '') IS NOT NULL",
+      [itemId]
+    );
+    const existingLangs = new Set(existing.rows.map((r) => r.lang));
+    const missing = targets.filter((lang) => !existingLangs.has(lang));
+    if (missing.length === 0) return;
+    const protect = await venueNamesForAgent(agentId);
+    await Promise.all(missing.map(async (lang) => {
+      try {
+        await translateMenuItemToLanguage(itemId, name, description, lang, protect);
+      } catch (error) {
+        console.error(`[Menu] Không dịch bù được món ${itemId} sang ${lang}:`, error.message);
+      }
+    }));
+  } catch (err) {
+    console.warn(`[Menu] ensureMenuItemTranslations lỗi item ${itemId}:`, err.message);
+  }
+}
+
 // Dịch TÊN NHÓM món, cùng nguyên tắc với translateMenuItem.
 //
 // Thiếu hàm này thì khách chọn tiếng Hàn sẽ thấy tên món đã dịch nằm dưới một
@@ -11233,9 +11349,8 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
     );
     const item = created.rows[0];
 
-    // Dịch ngay lúc lưu, nhưng KHÔNG bắt Agent chờ: trả về món trước, dịch chạy
-    // nền. Agent bấm "Lưu" xong thấy món hiện ra ngay, bản dịch đến sau vài giây.
-    void translateMenuItem(item.id, cleanName, description, req.admin.id);
+    const cleanDesc = String(description || '').trim() || null;
+    void translateMenuItem(item.id, cleanName, cleanDesc, req.admin.id);
 
     res.status(201).json({ success: true, item });
   } catch (error) {
@@ -11296,11 +11411,15 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
     );
     const item = updated.rows[0];
 
-    // Chỉ dịch lại khi TÊN hoặc MÔ TẢ đổi. Sửa giá hay bật/tắt còn món thì không
-    // cần gọi AI — đây là thao tác hằng ngày, dịch lại mỗi lần là đốt tiền vô ích.
+    // Chỉ dịch lại khi TÊN hoặc MÔ TẢ đổi. Nếu không đổi, vẫn kiểm tra và bù
+    // bất kỳ ngôn ngữ nào trong 4 thứ tiếng còn thiếu để menu luôn đầy đủ.
     const textChanged = (cleanName && cleanName !== current.rows[0].name)
       || (description !== undefined && String(description || '') !== String(current.rows[0].description || ''));
-    if (textChanged) void translateMenuItem(item.id, item.name, item.description, req.admin.id);
+    if (textChanged) {
+      void translateMenuItem(item.id, item.name, item.description, req.admin.id);
+    } else {
+      void ensureMenuItemTranslations(item.id, item.name, item.description, req.admin.id);
+    }
 
     res.json({ success: true, item, retranslated: textChanged });
   } catch (error) {

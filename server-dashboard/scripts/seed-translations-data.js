@@ -1,0 +1,301 @@
+// Bộ từ điển chuẩn ẩm thực cho 6 danh mục và 43 món trong thực đơn seed của Pastie.
+// Hỗ trợ đầy đủ 4 ngôn ngữ quốc tế: en (Anh), ru (Nga), zh (Trung), ko (Hàn).
+
+const CATEGORY_TRANSLATIONS = {
+  'Ưu đãi': {
+    en: 'Special Offers',
+    ru: 'Спецпредложения',
+    zh: '特惠',
+    ko: '특별 할인',
+  },
+  'Hải sản tươi sống': {
+    en: 'Fresh Seafood',
+    ru: 'Свежие морепродукты',
+    zh: '生猛海鲜',
+    ko: '신선한 해산물',
+  },
+  'Gỏi & khai vị': {
+    en: 'Salads & Appetizers',
+    ru: 'Салаты и закуски',
+    zh: '沙拉与开胃菜',
+    ko: '샐러드 & 에피타이저',
+  },
+  'Món chính': {
+    en: 'Main Courses',
+    ru: 'Основные блюда',
+    zh: '主菜',
+    ko: '메인 요리',
+  },
+  'Đồ uống': {
+    en: 'Beverages',
+    ru: 'Напитки',
+    zh: '饮品',
+    ko: '음료',
+  },
+  'Tráng miệng': {
+    en: 'Desserts',
+    ru: 'Десерты',
+    zh: '甜点',
+    ko: '디저트',
+  },
+};
+
+const ITEM_TRANSLATIONS = {
+  'Combo hải sản nướng cho hai người ăn thả ga': {
+    en: { name: 'Grilled seafood combo for two', desc: 'Blue crab, black tiger prawns, semi-dried squid grilled over charcoal, served with forest herbs and rice paper.' },
+    ru: { name: 'Комбо из морепродуктов на гриле на двоих', desc: 'Краб, тигровые креветки, кальмар на углях, подается с лесными травами и рисовой бумагой.' },
+    zh: { name: '双人海鲜烧烤畅享套餐', desc: '花蟹、黑虎虾、炭烤一晒鱿鱼，配森林野菜和米纸。' },
+    ko: { name: '2인 모둠 해산물 구이 콤보', desc: '꽃게, 블랙타이거 새우, 숯불에 구운 한치, 야생 채소와 라이스페이퍼 포함.' },
+  },
+  'Combo gia đình 4 người — cơm, canh, ba món mặn': {
+    en: { name: 'Family combo for 4 — rice, soup, three savory dishes', desc: 'Includes steamed rice, sour fish soup, braised shrimp, caramelized pork, and boiled vegetables.' },
+    ru: { name: 'Семейное комбо на 4 персоны — рис, суп, три горячих блюда', desc: 'Белый рис, кислый рыбный суп, тушеные креветки, свинина и вареные овощи.' },
+    zh: { name: '四人家庭套餐 —— 米饭、热汤、三道荤菜', desc: '白米饭、酸鱼汤、炒虾、卤肉及水煮时蔬。' },
+    ko: { name: '4인 가족 콤보 — 밥, 국, 세 가지 반찬', desc: '흰쌀밥, 생선 신맛 탕, 새우 볶음, 돼지고기 조림, 데친 채소 완비.' },
+  },
+  'Set ăn sáng Phú Quốc': {
+    en: { name: 'Phu Quoc breakfast set', desc: 'Fish cake noodle soup or Bun Quay, served with coffee or tea.' },
+    ru: { name: 'Завтрак по-фукуокски', desc: 'Суп с рыбными котлетами или лапша Бун Куай, с кофе или чаем.' },
+    zh: { name: '富国岛早餐套餐', desc: '鱼饼汤粉或搅拌米粉，配咖啡或茶。' },
+    ko: { name: '푸꾸옥 조식 세트', desc: '어묵 쌀국수 또는 분꿔이, 커피 또는 차 포함.' },
+  },
+  'Ưu đãi giờ vàng 14h–17h: giảm 30% đồ uống': {
+    en: { name: 'Happy Hour 14:00–17:00: 30% off drinks', desc: 'Applies to all drinks except wine.' },
+    ru: { name: 'Счастливые часы 14:00–17:00: скидка 30% на напитки', desc: 'Действует на все напитки, кроме вина.' },
+    zh: { name: '黄金时段特惠 14:00–17:00：饮品享7折', desc: '适用于所有饮品，葡萄酒除外。' },
+    ko: { name: '해피아워 14:00–17:00: 음료 30% 할인', desc: '와인을 제외한 모든 음료에 적용됩니다.' },
+  },
+  'Ghẹ hấp bia': {
+    en: { name: 'Steamed blue crab with beer', desc: 'Fresh blue crab (3 pcs/kg), steamed with beer and lemongrass.' },
+    ru: { name: 'Голубой краб на пару с пивом', desc: 'Голубой краб 3 шт/кг, на пару с пивом и лемонграссом.' },
+    zh: { name: '啤酒蒸花蟹', desc: '青花蟹 3只/公斤，啤酒柠檬草清蒸。' },
+    ko: { name: '맥주 찜 꽃게', desc: '청게 3마리/kg, 맥주와 레몬그라스로 찐 요리.' },
+  },
+  'Tôm sú nướng muối ớt': {
+    en: { name: 'Grilled black tiger prawns with chili salt', desc: null },
+    ru: { name: 'Тигровые креветки на гриле с солью и чили', desc: null },
+    zh: { name: '盐辣椒烤黑虎虾', desc: null },
+    ko: { name: '칠리 솔트 블랙타이거 새우 구이', desc: null },
+  },
+  'Mực một nắng nướng': {
+    en: { name: 'Grilled sun-dried squid', desc: 'Night-caught squid, traditionally sun-dried Phu Quoc style.' },
+    ru: { name: 'Кальмар на гриле по-фукуокски', desc: 'Ночной улов, вяленый на солнце по традиционному рецепту.' },
+    zh: { name: '炭烤一晒鱿鱼', desc: '夜钓鱿鱼，富国岛传统一晒阳光风味。' },
+    ko: { name: '반건조 오징어 구이', desc: '밤에 잡은 오징어를 푸꾸옥 방식으로 반건조해 구운 요리.' },
+  },
+  'Sò huyết rang me': {
+    en: { name: 'Blood cockles stir-fried with tamarind', desc: 'Sold out today, available tomorrow.' },
+    ru: { name: 'Кровавые моллюски в тамариндовом соусе', desc: 'Закончились на сегодня, будут завтра.' },
+    zh: { name: '酸豆炒血蛤', desc: '今日已售罄，明日恢复供应。' },
+    ko: { name: '타마린드 소스 피조개 볶음', desc: '오늘 품절되었습니다. 내일 재개됩니다.' },
+  },
+  'Cá bớp nướng nguyên con (từ 1,5kg)': {
+    en: { name: 'Whole grilled cobia (from 1.5kg)', desc: 'Please pre-order 45 minutes in advance.' },
+    ru: { name: 'Запеченная рыба кобия целиком (от 1.5 кг)', desc: 'Предзаказ за 45 минут.' },
+    zh: { name: '原条碳烤军曹鱼（1.5公斤起）', desc: '请提前45分钟预订。' },
+    ko: { name: '통 코비아 구이 (1.5kg 이상)', desc: '45분 전 예약 필수.' },
+  },
+  'Nhum biển nướng mỡ hành': {
+    en: { name: 'Grilled sea urchin with scallion oil', desc: 'Seasonal.' },
+    ru: { name: 'Морской еж на гриле с зеленым луком', desc: 'Сезонное блюдо.' },
+    zh: { name: '葱油烤海胆', desc: '季节限定。' },
+    ko: { name: '파기름 성게 구이', desc: '계절 한정.' },
+  },
+  'Ốc hương rang muối': {
+    en: { name: 'Sweet snails roasted with sea salt', desc: null },
+    ru: { name: 'Улитки Бабилония с солью на гриле', desc: null },
+    zh: { name: '椒盐炒花螺', desc: null },
+    ko: { name: '소금구이 바빌로니아 소라', desc: null },
+  },
+  'Hàu Thái Bình Dương nướng phô mai (6 con)': {
+    en: { name: 'Grilled Pacific oysters with cheese (6 pcs)', desc: null },
+    ru: { name: 'Запеченные тихоокеанские устрицы с сыром (6 шт)', desc: null },
+    zh: { name: '芝士焗太平洋生蚝（6只）', desc: null },
+    ko: { name: '치즈 구이 태평양 굴 (6개)', desc: null },
+  },
+  'Cua huỳnh đế hấp — theo giá thị trường trong ngày': {
+    en: { name: 'Steamed King crab (market price)', desc: 'Weighed at table before preparation.' },
+    ru: { name: 'Королевский краб на пару (рыночная цена)', desc: 'Взвешивание у стола перед приготовлением.' },
+    zh: { name: '清蒸旭蟹（按当日市价）', desc: '烹饪前在桌旁现场称重。' },
+    ko: { name: '찐 닭게 (당일 시가)', desc: '조리 전 테이블에서 직접 무게를 측정합니다.' },
+  },
+  'Tôm tít hấp': {
+    en: { name: 'Steamed mantis shrimp', desc: 'Temporarily unavailable.' },
+    ru: { name: 'Раки-богомолы на пару', desc: 'Временно недоступно.' },
+    zh: { name: '清蒸皮皮虾', desc: '暂停供应。' },
+    ko: { name: '찐 갯가재', desc: '일시 품절.' },
+  },
+  'Gỏi cá trích': {
+    en: { name: 'Phu Quoc herring salad', desc: 'Phu Quoc specialty, rolled in rice paper with shredded coconut and forest herbs.' },
+    ru: { name: 'Салат из сельди по-фукуокски', desc: 'Фирменное блюдо Фукуока, роллы в рисовой бумаге с кокосом и травами.' },
+    zh: { name: '富国岛生鲱鱼沙拉', desc: '富国岛特色名菜，米纸包椰丝和森林野菜。' },
+    ko: { name: '푸꾸옥 청어 샐러드', desc: '푸꾸옥 특산품, 코코넛 가루와 야생 채소를 라이스페이퍼에 싸먹는 요리.' },
+  },
+  'Gỏi xoài khô cá đuối': {
+    en: { name: 'Green mango salad with dried stingray', desc: null },
+    ru: { name: 'Салат из зеленого манго с сушеным скатом', desc: null },
+    zh: { name: '青芒凉拌魔鬼鱼干', desc: null },
+    ko: { name: '말린 가오리 그린망고 샐러드', desc: null },
+  },
+  'Nộm sứa hoa chuối': {
+    en: { name: 'Jellyfish salad with banana blossom', desc: null },
+    ru: { name: 'Салат из медузы с цветками банана', desc: null },
+    zh: { name: '香蕉花凉拌海蜇', desc: null },
+    ko: { name: '바나나꽃 해파리 무침', desc: null },
+  },
+  'Chả giò hải sản (6 cuốn)': {
+    en: { name: 'Seafood spring rolls (6 pcs)', desc: null },
+    ru: { name: 'Хрустящие спринг-роллы с морепродуктами (6 шт)', desc: null },
+    zh: { name: '海鲜炸春卷（6条）', desc: null },
+    ko: { name: '해산물 스프링롤 (6개)', desc: null },
+  },
+  'Đậu bắp nướng mỡ hành': {
+    en: { name: 'Grilled okra with scallion oil', desc: null },
+    ru: { name: 'Бамия на гриле с зеленым луком', desc: null },
+    zh: { name: '葱油烤秋葵', desc: null },
+    ko: { name: '파기름 오크라 구이', desc: null },
+  },
+  'Salad rau rừng trộn dầu giấm': {
+    en: { name: 'Wild herb salad with vinaigrette', desc: null },
+    ru: { name: 'Салат из дикорастущих трав с винегретной заправкой', desc: null },
+    zh: { name: '油醋汁森林野菜沙拉', desc: null },
+    ko: { name: '비네그레트 드레싱 야생 채소 샐러드', desc: null },
+  },
+  'Cơm chiên hải sản': {
+    en: { name: 'Seafood fried rice', desc: null },
+    ru: { name: 'Жареный рис с морепродуктами', desc: null },
+    zh: { name: '海鲜炒饭', desc: null },
+    ko: { name: '해산물 볶음밥', desc: null },
+  },
+  'Bún quậy Kiên Giang': {
+    en: { name: 'Kien Giang stirred noodle soup (Bun Quay)', desc: 'Mix your own dipping sauce at the table like a local.' },
+    ru: { name: 'Суп с рисовой лапшой Бун Куай', desc: 'Смешайте фирменный соус за столом по местному обычаю.' },
+    zh: { name: '坚江现做搅拌米粉（Bun Quay）', desc: '像当地人一样在餐桌上自调蘸酱。' },
+    ko: { name: '끼엔장 분꿔이', desc: '현지인처럼 테이블에서 직접 소스를 만들어 드세요.' },
+  },
+  'Bánh canh chả cá': {
+    en: { name: 'Thick noodle soup with fish cake', desc: null },
+    ru: { name: 'Суп с толстой лапшой и рыбными котлетами', desc: null },
+    zh: { name: '鱼饼粗米粉汤', desc: null },
+    ko: { name: '어묵 반깐 (굵은 쌀국수)', desc: null },
+  },
+  'Lẩu cá bớp măng chua (nồi cho 3–4 người)': {
+    en: { name: 'Sour bamboo shoot cobia hotpot (for 3–4 persons)', desc: null },
+    ru: { name: 'Горячий кисло-сладкий суп с кобией и бамбуком (на 3–4 чел)', desc: null },
+    zh: { name: '酸笋军曹鱼火锅（3-4人份）', desc: null },
+    ko: { name: '죽순 코비아 생선 전골 (3–4인용)', desc: null },
+  },
+  'Canh chua cá lóc': {
+    en: { name: 'Sweet and sour snakehead fish soup', desc: null },
+    ru: { name: 'Кисло-сладкий суп со змееголовом', desc: null },
+    zh: { name: '酸汤黑鱼', desc: null },
+    ko: { name: '가물치 신맛 탕', desc: null },
+  },
+  'Thịt kho hột vịt': {
+    en: { name: 'Caramelized pork belly with duck eggs', desc: null },
+    ru: { name: 'Тушеная свинина с утиными яйцами в карамели', desc: null },
+    zh: { name: '卤肉炖鸭蛋', desc: null },
+    ko: { name: '오리알 돼지고기 조림', desc: null },
+  },
+  'Rau muống xào tỏi': {
+    en: { name: 'Stir-fried water spinach with garlic', desc: null },
+    ru: { name: 'Водяной шпинат, обжаренный с чесноком', desc: null },
+    zh: { name: '蒜炒空心菜', desc: null },
+    ko: { name: '모닝글로리 마늘 볶음', desc: null },
+  },
+  'Cơm trắng': {
+    en: { name: 'Steamed white rice', desc: null },
+    ru: { name: 'Белый рис', desc: null },
+    zh: { name: '白米饭', desc: null },
+    ko: { name: '공깃밥', desc: null },
+  },
+  'Mì xào giòn hải sản': {
+    en: { name: 'Crispy noodles with stir-fried seafood', desc: null },
+    ru: { name: 'Хрустящая лапша с морепродуктами', desc: null },
+    zh: { name: '海鲜脆皮炒面', desc: null },
+    ko: { name: '해산물 바삭한 볶음면', desc: null },
+  },
+  'Trà đá': {
+    en: { name: 'Iced tea', desc: null },
+    ru: { name: 'Холодный чай', desc: null },
+    zh: { name: '冰茶', desc: null },
+    ko: { name: '아이스 티', desc: null },
+  },
+  'Nước suối Lavie 500ml': {
+    en: { name: 'Lavie mineral water 500ml', desc: null },
+    ru: { name: 'Минеральная вода Lavie 500мл', desc: null },
+    zh: { name: 'Lavie 矿泉水 500ml', desc: null },
+    ko: { name: '라비에 생수 500ml', desc: null },
+  },
+  'Cà phê sữa đá': {
+    en: { name: 'Vietnamese iced coffee with condensed milk', desc: null },
+    ru: { name: 'Вьетнамский ледяной кофе со сгущенкой', desc: null },
+    zh: { name: '越南冰奶咖啡', desc: null },
+    ko: { name: '베트남 연유 아이스 커피', desc: null },
+  },
+  'Nước dừa tươi': {
+    en: { name: 'Fresh young coconut', desc: null },
+    ru: { name: 'Свежий молодой кокос', desc: null },
+    zh: { name: '新鲜椰青', desc: null },
+    ko: { name: '신선한 코코넛 워터', desc: null },
+  },
+  'Sinh tố bơ': {
+    en: { name: 'Avocado smoothie', desc: null },
+    ru: { name: 'Смузи из авокадо', desc: null },
+    zh: { name: '牛油果奶昔', desc: null },
+    ko: { name: '아보카도 스무디', desc: null },
+  },
+  'Bia Sài Gòn lon': {
+    en: { name: 'Saigon Beer (can)', desc: null },
+    ru: { name: 'Пиво Saigon (банка)', desc: null },
+    zh: { name: '西贡啤酒（易拉罐）', desc: null },
+    ko: { name: '사이공 맥주 (캔)', desc: null },
+  },
+  'Bia Tiger lon': {
+    en: { name: 'Tiger Beer (can)', desc: null },
+    ru: { name: 'Пиво Tiger (банка)', desc: null },
+    zh: { name: '虎牌啤酒（易拉罐）', desc: null },
+    ko: { name: '타이거 맥주 (캔)', desc: null },
+  },
+  'Rượu sim Phú Quốc (ly)': {
+    en: { name: 'Phu Quoc Sim wine (glass)', desc: 'Local specialty, light alcohol.' },
+    ru: { name: 'Вино из мирта Фукуок (бокал)', desc: 'Местный деликатес, легкая крепость.' },
+    zh: { name: '富国岛稔子甜酒（杯）', desc: '当地特产，微度果酒。' },
+    ko: { name: '푸꾸옥 심 와인 (잔)', desc: '푸꾸옥 전통 과실주, 낮은 도수.' },
+  },
+  'Vang đỏ Đà Lạt (chai)': {
+    en: { name: 'Da Lat Red Wine (bottle)', desc: null },
+    ru: { name: 'Красное вино Далат (бутылка)', desc: null },
+    zh: { name: '大叻红葡萄酒（瓶）', desc: null },
+    ko: { name: '달랏 레드 와인 (병)', desc: null },
+  },
+  'Chè hạt sen long nhãn': {
+    en: { name: 'Lotus seed and longan sweet soup', desc: null },
+    ru: { name: 'Сладкий суп из семян лотоса и лонгана', desc: null },
+    zh: { name: '莲子龙眼清甜糖水', desc: null },
+    ko: { name: '연꽃씨 롱안 달콤한 수프', desc: null },
+  },
+  'Kem dừa': {
+    en: { name: 'Coconut ice cream', desc: null },
+    ru: { name: 'Кокосовое мороженое', desc: null },
+    zh: { name: '椰子冰淇淋', desc: null },
+    ko: { name: '코코넛 아이스크림', desc: null },
+  },
+  'Trái cây theo mùa': {
+    en: { name: 'Seasonal fresh fruit platter', desc: null },
+    ru: { name: 'Сезонные свежие фрукты', desc: null },
+    zh: { name: '时令水果拼盘', desc: null },
+    ko: { name: '계절 과일 모둠', desc: null },
+  },
+  'Bánh flan': {
+    en: { name: 'Caramel flan', desc: null },
+    ru: { name: 'Карамельный флан', desc: null },
+    zh: { name: '焦糖布丁', desc: null },
+    ko: { name: '카라멜 플랑', desc: null },
+  },
+};
+
+module.exports = {
+  CATEGORY_TRANSLATIONS,
+  ITEM_TRANSLATIONS,
+};

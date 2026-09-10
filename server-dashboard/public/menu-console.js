@@ -57,9 +57,9 @@
             CATEGORIES = catResult.status === 'fulfilled' && Array.isArray(catResult.value) ? catResult.value : [];
             ITEMS = itemResult.status === 'fulfilled' && Array.isArray(itemResult.value) ? itemResult.value : [];
 
-            // Món nào đã có đủ bản dịch thì thôi chờ.
+            // Món nào đã có đủ bản dịch cả 4 ngôn ngữ (en, ru, zh, ko) thì thôi chờ.
             for (const item of ITEMS) {
-                if (pendingTranslation.has(item.id) && translatedCount(item) > 0) {
+                if (pendingTranslation.has(item.id) && translatedCount(item) >= 4) {
                     pendingTranslation.delete(item.id);
                 }
             }
