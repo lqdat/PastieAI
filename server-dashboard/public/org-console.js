@@ -745,7 +745,7 @@ function renderOrgQrList() {
                 <button type="button" class="qr-btn-edit" data-qr-edit="${account.id}" title="Sửa thông tin mã QR">
                     <i class="ri-edit-line"></i> <span>Sửa</span>
                 </button>
-                <button type="button" class="qr-btn-delete org-remove" data-qr-revoke="${account.id}" title="Xóa mã QR này">
+                <button type="button" class="qr-btn-delete" data-qr-revoke="${account.id}" title="Xóa mã QR này">
                     <i class="ri-delete-bin-line"></i> <span>Xóa</span>
                 </button>
             </div>

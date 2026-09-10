@@ -333,6 +333,14 @@
         else showPhotoPreview('', 'Chọn ảnh món — bấm để tải lên');
     }
 
+    function updateFinalPricePreview() {
+        const p = Number($('menu-item-price')?.value || 0);
+        const v = Number($('menu-item-vat')?.value || 0);
+        const finalP = Math.round(p * (1 + (v > 0 ? v / 100 : 0)));
+        const el = $('menu-item-final-price-preview');
+        if (el) el.textContent = `${finalP.toLocaleString('vi-VN')} ₫`;
+    }
+
     function fillItemForm(item) {
         // Form mặc định gập lại. Bấm "Sửa" mà form vẫn đóng thì người dùng không
         // thấy gì xảy ra; bấm "Huỷ sửa" thì thu lại cho gọn.
@@ -699,13 +707,6 @@
             resetPhotoField(ITEMS.find((i) => i.id === editingItemId));
         });
 
-        function updateFinalPricePreview() {
-            const p = Number($('menu-item-price')?.value || 0);
-            const v = Number($('menu-item-vat')?.value || 0);
-            const finalP = Math.round(p * (1 + (v > 0 ? v / 100 : 0)));
-            const el = $('menu-item-final-price-preview');
-            if (el) el.textContent = `${finalP.toLocaleString('vi-VN')} ₫`;
-        }
         $('menu-item-price')?.addEventListener('input', updateFinalPricePreview);
         $('menu-item-vat')?.addEventListener('input', updateFinalPricePreview);
         updateFinalPricePreview();

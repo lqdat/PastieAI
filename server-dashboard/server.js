@@ -4774,6 +4774,7 @@ app.post('/api/admin/orders', checkAdminAuth, requireWorkingHours, async (req, r
     }
     throw error;
   }
+  await saveOrderBill({ ...created.rows[0], session_id: sessionId }, invoice, req.admin.id);
   res.status(201).json({ success: true, order: created.rows[0] });
 });
 
@@ -4811,6 +4812,7 @@ app.post('/samplebill', checkAdminAuth, async (req, res) => {
     // ngữ khách như phần còn lại của hóa đơn.
     const expiresAt = await extendQrSessionOnActivity(session, client);
     await client.query('COMMIT');
+    await saveOrderBill({ ...orderRes.rows[0], session_id: sessionId }, invoice, req.admin.id);
     res.status(201).json({ success: true, order: orderRes.rows[0], chatMessage: null, expiresAt });
   } catch (error) {
     await client.query('ROLLBACK');
@@ -4906,6 +4908,11 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   const language = invoiceLanguageFor(sessionRes.rows[0], req.query.lang);
   const localizedOrder = await localizeOrderForVisitor(order, language);
 
+  const bills = await loadSessionBills(req.params.sessionId, language).catch((error) => {
+    console.error('[Bills] Không tải được bills:', error.message);
+    return [];
+  });
+
   // Đường tắt như bên tin nhắn. Quan trọng: chỗ này nằm SAU
   // maybeAutoSelectDeferredPayment ở trên — đồng hồ 2 phút vẫn phải chạy mỗi
   // lượt hỏi, chỉ phần đóng gói hoá đơn mới được bỏ qua. Đặt trước là đơn quá
@@ -4913,7 +4920,8 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   // i18n4: ghi chú món giờ cũng được dịch (kể cả sang tiếng Việt), nên vân tay
   // và cache cũ phải hết hiệu lực — nếu không khách vẫn nhận lại đúng tờ bill
   // đã render trước đó với ghi chú nguyên văn.
-  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${order.status || ''}.${language}.i18n4`;
+  const latestBillId = bills[0]?.id || '';
+  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${order.status || ''}.${bills.length}.${latestBillId}.${language}.i18n4`;
   if (String(req.query.known || '').trim() === orderPrint) {
     res.setHeader('X-Order-Print', orderPrint);
     return res.status(200).json({ unchanged: true, fingerprint: orderPrint });
@@ -4983,11 +4991,6 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   const revisions = await loadOrderRevisions(order.id, language).catch((error) => {
     console.error('[Đơn] Không tải được lịch sử đơn:', error.message);
     return [];   // lịch sử hỏng không được làm chết cả tấm hoá đơn
-  });
-
-  const bills = await loadSessionBills(req.params.sessionId, language).catch((error) => {
-    console.error('[Bills] Không tải được bills:', error.message);
-    return [];
   });
 
   res.setHeader('X-Order-Print', orderPrint);
@@ -12937,6 +12940,21 @@ async function loadOrderRevisions(orderId, language) {
 }
 
 async function loadSessionBills(sessionId, language) {
+    // Đảm bảo không sót bất kỳ đơn nào đã có hóa đơn trong chat_orders của phiên này
+    await db.query(
+      `INSERT INTO chat_order_bills (order_id, session_id, version, invoice, items, total_amount, payment_method, confirmed_by_admin_id)
+       SELECT o.id, o.session_id, COALESCE(o.version, 1), COALESCE(o.invoice, '{}'::jsonb), COALESCE(o.items, '[]'::jsonb),
+              o.total_amount, o.payment_method, o.confirmed_by_admin_id
+         FROM chat_orders o
+        WHERE o.session_id = $1
+          AND (o.status IN ('awaiting_payment', 'paid') OR (o.invoice IS NOT NULL AND jsonb_typeof(o.invoice) = 'object' AND o.invoice != '{}'::jsonb))
+          AND NOT EXISTS (
+            SELECT 1 FROM chat_order_bills b WHERE b.order_id = o.id
+          )
+       ON CONFLICT (order_id, version) DO NOTHING`,
+      [sessionId]
+    ).catch((err) => console.error('[Bills] Sync missing bills error:', err.message));
+
     const rows = await db.query(
       `SELECT b.id, b.order_id, b.version, b.invoice, b.items, b.total_amount,
               b.payment_method, b.created_at, o.status AS order_status, o.order_code,

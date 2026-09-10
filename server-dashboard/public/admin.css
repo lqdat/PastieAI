@@ -7117,16 +7117,29 @@ button:focus-visible {
 
 /* ── 2. UI/UX Pro Max Mobile Redesign: Superadmin Modals, Forms & Actions ── */
 @media (max-width: 768px) {
-    .modal-overlay:not(#login-modal):not(#qr-preview-modal):not(#org-modal) {
+    .modal-overlay:not(#login-modal):not(#session-revoked-modal):not(#qr-preview-modal):not(#org-modal) {
         align-items: flex-end !important;
         padding: 0 !important;
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
     }
-    #login-modal.modal-overlay {
+    #login-modal.modal-overlay,
+    #session-revoked-modal.modal-overlay {
         align-items: center !important;
         justify-content: center !important;
         padding: 16px !important;
+    }
+    #session-revoked-modal .login-box {
+        width: min(100%, 420px) !important;
+        max-width: calc(100vw - 32px) !important;
+        border-radius: 24px !important;
+        border: 1px solid rgba(239, 68, 68, 0.22) !important;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35) !important;
+        margin: auto !important;
+        padding: 24px 20px !important;
+        display: block !important;
+        max-height: 90dvh !important;
+        height: auto !important;
     }
 
     /* Modal Bottom Sheet Containers */
@@ -7529,6 +7542,31 @@ button:focus-visible {
         max-width: 100% !important;
         box-sizing: border-box !important;
     }
+    .qr-card-actions .qr-btn-view,
+    .qr-card-actions .qr-btn-edit,
+    .qr-card-actions .qr-btn-delete {
+        flex: 1 !important;
+        height: 38px !important;
+        min-height: 38px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 5px !important;
+        font-size: 12.5px !important;
+        font-weight: 700 !important;
+        border-radius: 10px !important;
+        padding: 0 8px !important;
+        white-space: nowrap !important;
+        box-sizing: border-box !important;
+    }
+    .qr-card-actions .qr-btn-view {
+        flex: 1.25 !important;
+    }
+    .qr-card-actions .qr-btn-delete {
+        color: #ef4444 !important;
+        border: 1px solid rgba(239, 68, 68, 0.25) !important;
+        background: rgba(239, 68, 68, 0.08) !important;
+    }
 
     /* Khắc phục phần mã QR và các pane bị dài lăn ngang */
     .org-pane {
@@ -7653,7 +7691,7 @@ button:focus-visible {
         background: rgba(239, 68, 68, 0.06) !important;
     }
 
-    .org-remove,
+    .org-remove:not(.qr-btn-delete),
     .admin-user-action.is-delete,
     .project-delete-btn {
         width: 34px !important;
