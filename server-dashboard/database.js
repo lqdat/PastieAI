@@ -1032,9 +1032,18 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // Chi muc mot phan duoi day moi la hang rao that: database tu choi ban ghi
     // thu hai, bat ke co bao nhieu tien trinh cung ghi mot luc.
     //
+    // Khôi phục các đơn từng bị migration cũ đánh dấu nhầm. Một đơn đã chọn
+    // phương thức thanh toán là một hóa đơn độc lập, không phải bản trùng.
+    await query(`
+      UPDATE chat_orders SET status = 'awaiting_payment', updated_at = NOW()
+       WHERE status = 'superseded' AND payment_method IS NOT NULL;
+    `);
+
     // Du lieu cu co the da co san don trung - don truoc, giu lai don MOI NHAT
     // (do la cai khach dang nhin va Sale dang xu ly), cac ban truoc danh dau
     // 'superseded' de khong hien ra nua ma van con dau vet de doi chieu.
+    // Chỉ đơn CHƯA chọn cách trả mới còn đang mở; đơn đã chọn cách trả phải
+    // được giữ riêng để khách có thể đặt lượt tiếp theo trong cùng hội thoại.
     await query(`
       WITH duplicates AS (
         SELECT id, ROW_NUMBER() OVER (
@@ -1042,6 +1051,7 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
                ) AS rn
           FROM chat_orders
          WHERE status IN ('pending_confirm', 'awaiting_payment')
+           AND payment_method IS NULL
       )
       UPDATE chat_orders SET status = 'superseded', updated_at = NOW()
        WHERE id IN (SELECT id FROM duplicates WHERE rn > 1);
