@@ -742,9 +742,6 @@ function renderOrgQrList() {
                 <button type="button" class="qr-btn-view" data-qr-poster="${account.id}" title="Xem và tải ảnh mã QR">
                     <i class="ri-qr-code-line"></i> <span>Xem mã</span>
                 </button>
-                <button type="button" class="qr-btn-copy" onclick="window.copyQrChatLink('${eventValue(account.chat_url)}', true)" title="Sao chép link chat của mã QR">
-                    <i class="ri-file-copy-line"></i> <span>Sao chép</span>
-                </button>
                 <button type="button" class="qr-btn-edit" data-qr-edit="${account.id}" title="Sửa thông tin mã QR">
                     <i class="ri-edit-line"></i> <span>Sửa</span>
                 </button>

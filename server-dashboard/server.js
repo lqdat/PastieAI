@@ -4563,12 +4563,14 @@ const calculateQrMenuCharges = (subtotal, items = []) => {
     vatAmount = items.reduce((sum, it) => {
       const rate = it.vatRate != null ? Number(it.vatRate) : QR_MENU_VAT_RATE;
       const line = Number(it.lineTotal != null ? it.lineTotal : (Number(it.unitPrice || it.price || 0) * Number(it.quantity || 1)));
-      return sum + Math.round(line * rate / 100);
+      const base = rate > 0 ? (line / (1 + rate / 100)) : line;
+      return sum + Math.round(line - base);
     }, 0);
   } else {
-    vatAmount = Math.round(cleanSubtotal * QR_MENU_VAT_RATE / 100);
+    const base = QR_MENU_VAT_RATE > 0 ? (cleanSubtotal / (1 + QR_MENU_VAT_RATE / 100)) : cleanSubtotal;
+    vatAmount = Math.round(cleanSubtotal - base);
   }
-  return { subtotal: cleanSubtotal, vatAmount, grandTotal: cleanSubtotal + vatAmount, totalAmount: cleanSubtotal + vatAmount };
+  return { subtotal: cleanSubtotal, vatAmount, grandTotal: cleanSubtotal, totalAmount: cleanSubtotal };
 };
 
 // htmlToPlainText / prepareInvoiceDelivery / sinh PDF đã chuyển sang
@@ -5243,8 +5245,8 @@ app.get('/api/admin/menu/view', checkAdminAuth, async (req, res) => {
 
 app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
   try {
-    const where = ['o.status <> $1'];
-    const params = ['rejected'];
+    const where = ['o.status NOT IN ($1, $2)'];
+    const params = ['rejected', 'superseded'];
     if (isSuperAdmin(req.admin)) {
       // không thêm điều kiện
     } else if (req.admin.role === 'sale') {
@@ -5461,10 +5463,11 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
   await db.query(
     `UPDATE chat_order_bills
         SET payment_method = COALESCE(payment_method, $2),
-            invoice = $3
+            invoice = $3,
+            confirmed_by_admin_id = COALESCE(confirmed_by_admin_id, $4)
       WHERE order_id = $1
         AND version = (SELECT MAX(version) FROM chat_order_bills WHERE order_id = $1)`,
-    [order.id, assignedMethod, JSON.stringify(stampedInvoice)]
+    [order.id, assignedMethod, JSON.stringify(stampedInvoice), req.admin.id]
   ).catch(() => {});
   // Báo vào ĐÚNG cuộc trò chuyện đó, kèm MÃ ĐƠN.
   //
@@ -11645,7 +11648,10 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
     //   stock = 0 và hide_when_out = FALSE  -> hết hàng, vẫn hiện, gắn nhãn hết
     //   stock IS NULL                       -> không giới hạn, luôn hiện
     const items = await db.query(
-      `SELECT i.id, i.category_id, i.price, i.currency, COALESCE(i.vat_rate, 10) AS vat_rate, i.image_url, i.image_key,
+      `SELECT i.id, i.category_id,
+              ROUND(i.price * (1 + COALESCE(i.vat_rate, 10)::numeric / 100)) AS price,
+              i.price AS base_price,
+              i.currency, COALESCE(i.vat_rate, 10) AS vat_rate, i.image_url, i.image_key,
               i.image_url_expires_at, i.sort_order,
               (i.stock_quantity IS NOT NULL AND i.stock_quantity <= 0) AS sold_out,
               COALESCE(c.is_promo, FALSE) AS is_promo,
@@ -11799,10 +11805,11 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
 
     const items = priced.rows.map((row) => {
       const quantity = wanted.get(row.id);
-      const unitPrice = Number(row.price);
       const vatRate = row.vat_rate != null ? Number(row.vat_rate) : QR_MENU_VAT_RATE;
+      const unitPrice = Math.round(Number(row.price) * (1 + vatRate / 100));
       const lineTotal = Math.round(unitPrice * quantity);
-      const vatAmount = Math.round(lineTotal * vatRate / 100);
+      const base = vatRate > 0 ? (lineTotal / (1 + vatRate / 100)) : lineTotal;
+      const vatAmount = Math.round(lineTotal - base);
       return { menuItemId: row.id, name: row.name, quantity, unitPrice, lineTotal, vatRate, vatAmount, note: wantedNotes.get(row.id) || null };
     });
     const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
@@ -12250,9 +12257,6 @@ app.put('/api/admin/orders/:orderId/notes', checkAdminAuth, requireWorkingHours,
 
 // --- Agent toàn quyền quản lý bill: thêm, xóa, sửa giá món ---
 app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, res) => {
-  if (isSale(req.admin)) {
-    return res.status(403).json({ error: 'Chỉ Agent quản lý hoặc SuperAdmin mới có quyền chỉnh sửa món và giá trong bill.' });
-  }
   const { items } = req.body || {};
   if (!Array.isArray(items)) {
     return res.status(400).json({ error: 'items phải là một mảng danh sách món.' });
@@ -12265,9 +12269,13 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
     if (order.status === 'paid') {
       return res.status(400).json({ error: 'Không thể chỉnh sửa đơn hàng đã hoàn tất thanh toán.' });
     }
-    if (!canAccessProject(req.admin, order.project_id)) {
+    if (!isSuperAdmin(req.admin) && !canAccessProject(req.admin, order.project_id)) {
       return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa đơn hàng của dự án này.' });
     }
+
+    const roleLabel = req.admin.role === 'sale' ? 'Sale' : (req.admin.role === 'superadmin' ? 'SuperAdmin' : 'Agent');
+    const actorName = req.admin.full_name || req.admin.username || roleLabel;
+    const actorTitle = `${roleLabel} ${actorName}`;
 
     const prevItems = Array.isArray(order.items) ? order.items : [];
     const prevMap = new Map();
@@ -12295,21 +12303,22 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
       const lineTotal = Math.max(0, unitPrice * quantity - discount);
 
       if (!prev) {
-        // Món mới do Agent thêm
-        if (!note.toLowerCase().includes('agent thêm')) {
-          note = note ? `Agent thêm: ${note}` : 'Agent thêm món';
+        // Món mới
+        if (!note.toLowerCase().includes('thêm')) {
+          note = note ? `${actorTitle} thêm: ${note}` : `${actorTitle} thêm món`;
         }
       } else {
         // Món cũ được sửa giá
         const prevPrice = Math.max(0, Number(prev.unitPrice ?? prev.price ?? 0));
-        if (prevPrice !== unitPrice && !note.toLowerCase().includes('agent sửa giá')) {
-          const priceChange = `Agent sửa giá: ${prevPrice.toLocaleString('vi-VN')}₫ -> ${unitPrice.toLocaleString('vi-VN')}₫`;
+        if (prevPrice !== unitPrice && !note.toLowerCase().includes('sửa giá')) {
+          const priceChange = `${actorTitle} sửa giá: ${prevPrice.toLocaleString('vi-VN')}₫ -> ${unitPrice.toLocaleString('vi-VN')}₫`;
           note = note ? `${note} | ${priceChange}` : priceChange;
         }
       }
 
       const vatRate = Math.max(0, Math.min(100, Number(item.vatRate != null ? item.vatRate : (prev?.vatRate != null ? prev.vatRate : 10))));
-      const vatAmount = Math.round(lineTotal * vatRate / 100);
+      const base = vatRate > 0 ? (lineTotal / (1 + vatRate / 100)) : lineTotal;
+      const vatAmount = Math.round(lineTotal - base);
 
       return {
         ...item,
@@ -12326,7 +12335,7 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
 
     const subtotal = nextItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
     const totalVatAmount = nextItems.reduce((acc, it) => acc + (it.vatAmount || 0), 0);
-    const totalAmount = subtotal + totalVatAmount;
+    const totalAmount = subtotal;
 
     const invoiceObj = typeof order.invoice === 'object' && order.invoice !== null ? order.invoice : {};
     const chargesObj = typeof order.charges === 'object' && order.charges !== null ? order.charges : {};
@@ -13031,11 +13040,13 @@ async function loadSessionBills(sessionId, language) {
       const revItems = Array.isArray(rev.items) ? rev.items : [];
       let changes = [];
       if (i === 0) {
-        changes = ['Bản ban đầu (Khách gửi đơn)'];
+        changes = ['Khách hàng: Bản ban đầu (Gửi đơn)'];
       } else {
-        changes = diffBillItems(prevItems, revItems);
-        if (!changes.length && Number(prevTotal) !== Number(rev.total_amount)) {
-          changes.push(`Khách đổi tổng tiền: ${Number(prevTotal).toLocaleString('vi-VN')}₫ → ${Number(rev.total_amount).toLocaleString('vi-VN')}₫`);
+        const rawDiff = diffBillItems(prevItems, revItems);
+        if (rawDiff.length) {
+          changes = rawDiff.map((d) => `Khách hàng: ${d}`);
+        } else if (Number(prevTotal) !== Number(rev.total_amount)) {
+          changes.push(`Khách hàng đổi tổng tiền: ${Number(prevTotal).toLocaleString('vi-VN')}₫ → ${Number(rev.total_amount).toLocaleString('vi-VN')}₫`);
         }
       }
       prevItems = revItems;
@@ -13046,7 +13057,7 @@ async function loadSessionBills(sessionId, language) {
         orderCode: orderBills[0]?.orderCode || '',
         createdAt: rev.created_at,
         totalAmount: rev.total_amount,
-        changes: changes.length ? changes : [`Khách cập nhật đơn (#v${rev.version})`],
+        changes: changes.length ? changes : [`Khách hàng cập nhật đơn (#v${rev.version})`],
         editorRole: 'customer',
         editorName: 'Khách hàng',
       });
@@ -13056,22 +13067,25 @@ async function loadSessionBills(sessionId, language) {
     for (let i = 0; i < orderBills.length; i++) {
       const step = orderBills[i];
       let changes = [];
+      const actorTag = step.editorName || (step.editorRole === 'customer' ? 'Khách hàng' : 'Nhân sự');
       if (history.length === 0 && i === 0) {
-        changes = [step.editorRole === 'customer' ? 'Bản ban đầu (Khách đặt)' : 'Bản ban đầu (Tạo bill)'];
+        changes = [step.editorRole === 'customer' ? 'Khách hàng: Bản ban đầu (Đặt món)' : `${actorTag} tạo bill`];
       } else {
         const prev = i === 0 ? { items: prevItems, totalAmount: prevTotal, paymentMethod: '' } : orderBills[i - 1];
-        changes = diffBillItems(prev.items, step.items);
-        if (!changes.length) {
+        const rawDiff = diffBillItems(prev.items, step.items);
+        if (rawDiff.length) {
+          changes = rawDiff.map((d) => `${actorTag}: ${d}`);
+        } else {
           if (Number(prev.totalAmount) !== Number(step.totalAmount)) {
-            changes.push(`Điều chỉnh tổng tiền: ${Number(prev.totalAmount).toLocaleString('vi-VN')}₫ → ${Number(step.totalAmount).toLocaleString('vi-VN')}₫`);
+            changes.push(`${actorTag} điều chỉnh tổng tiền: ${Number(prev.totalAmount).toLocaleString('vi-VN')}₫ → ${Number(step.totalAmount).toLocaleString('vi-VN')}₫`);
           } else if (prev.paymentMethod !== step.paymentMethod) {
             const methodStr = step.paymentMethod ? invoiceHelper.paymentMethodLabel(step.paymentMethod, 'vi') : 'Chưa chọn';
-            changes.push(`Đổi PTTT: ${methodStr}`);
+            changes.push(`${actorTag} đổi PTTT: ${methodStr}`);
           } else if (step.orderStatus === 'paid') {
             const methodStr = step.paymentMethod ? invoiceHelper.paymentMethodLabel(step.paymentMethod, 'vi') : 'Tiền mặt';
-            changes.push(`Đã thanh toán (${methodStr}) · Đóng dấu xanh`);
+            changes.push(`${actorTag} xác nhận thu tiền (${methodStr}) · Đóng dấu xanh`);
           } else {
-            changes.push(`Cập nhật hóa đơn (#v${step.version})`);
+            changes.push(`${actorTag} cập nhật hóa đơn (#v${step.version})`);
           }
         }
       }

@@ -4187,7 +4187,7 @@ button:focus-visible {
 .qr-card-actions {
     display: flex !important;
     align-items: center !important;
-    gap: 6px !important;
+    gap: 8px !important;
     padding-top: 10px !important;
     border-top: 1px dashed rgba(73, 51, 70, 0.1) !important;
     margin-top: 2px !important;
@@ -4195,18 +4195,18 @@ button:focus-visible {
     box-sizing: border-box !important;
 }
 .qr-btn-view {
-    flex: 1.2 !important;
-    height: 36px !important;
-    min-height: 36px !important;
+    flex: 1.3 !important;
+    height: 38px !important;
+    min-height: 38px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 5px !important;
+    gap: 6px !important;
     border: 1px solid rgba(239, 43, 157, 0.3) !important;
     background: rgba(239, 43, 157, 0.08) !important;
     color: var(--accent-color, #ef2b9d) !important;
-    border-radius: 9px !important;
-    font-size: 12px !important;
+    border-radius: 10px !important;
+    font-size: 13px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
     white-space: nowrap !important;
@@ -4215,40 +4215,19 @@ button:focus-visible {
 .qr-btn-view:active {
     transform: scale(0.97) !important;
 }
-.qr-btn-copy {
-    flex: 1 !important;
-    height: 36px !important;
-    min-height: 36px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 5px !important;
-    border: 1px solid rgba(73, 51, 70, 0.15) !important;
-    background: #f8f6f9 !important;
-    color: var(--text-primary) !important;
-    border-radius: 9px !important;
-    font-size: 12px !important;
-    font-weight: 650 !important;
-    cursor: pointer !important;
-    white-space: nowrap !important;
-    transition: all 0.15s ease !important;
-}
-.qr-btn-copy:active {
-    transform: scale(0.97) !important;
-}
 .qr-btn-edit {
-    flex: 0.8 !important;
-    height: 36px !important;
-    min-height: 36px !important;
+    flex: 1 !important;
+    height: 38px !important;
+    min-height: 38px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 5px !important;
+    gap: 6px !important;
     border: 1px solid rgba(99, 102, 241, 0.25) !important;
     background: rgba(99, 102, 241, 0.08) !important;
     color: #6366f1 !important;
-    border-radius: 9px !important;
-    font-size: 12px !important;
+    border-radius: 10px !important;
+    font-size: 13px !important;
     font-weight: 650 !important;
     cursor: pointer !important;
     white-space: nowrap !important;
@@ -4258,20 +4237,20 @@ button:focus-visible {
     transform: scale(0.97) !important;
 }
 .qr-btn-delete {
-    height: 36px !important;
-    min-height: 36px !important;
-    padding: 0 10px !important;
-    flex-shrink: 0 !important;
+    flex: 1 !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    padding: 0 12px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 4px !important;
+    gap: 6px !important;
     border: 1px solid rgba(239, 68, 68, 0.25) !important;
-    background: rgba(239, 68, 68, 0.06) !important;
+    background: rgba(239, 68, 68, 0.08) !important;
     color: #ef4444 !important;
-    border-radius: 9px !important;
+    border-radius: 10px !important;
     cursor: pointer !important;
-    font-size: 12px !important;
+    font-size: 13px !important;
     font-weight: 700 !important;
     white-space: nowrap !important;
     transition: all 0.15s ease !important;
@@ -4440,18 +4419,104 @@ button:focus-visible {
     transform: scale(0.95) !important;
 }
 
+/* Upload avatar Sale chuẩn chỉnh, không bị co kéo hay tràn viền */
+.avatar-upload-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 14px !important;
+    padding: 10px 14px !important;
+    border-radius: 12px !important;
+    background: rgba(239, 43, 157, 0.04) !important;
+    border: 1px solid rgba(239, 43, 157, 0.12) !important;
+    margin: 4px 0 12px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+.sale-avatar-circle,
+#org-sale-avatar-preview {
+    width: 48px !important;
+    height: 48px !important;
+    min-width: 48px !important;
+    min-height: 48px !important;
+    max-width: 48px !important;
+    max-height: 48px !important;
+    flex: 0 0 48px !important;
+    border-radius: 50% !important;
+    overflow: hidden !important;
+    border: 2px solid var(--accent-color, #ef2b9d) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: #fff !important;
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    color: var(--accent-color, #ef2b9d) !important;
+    box-shadow: 0 2px 8px rgba(239, 43, 157, 0.18) !important;
+}
+.sale-avatar-circle img,
+#org-sale-avatar-preview img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    display: block !important;
+}
+.avatar-upload-controls {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+    align-items: flex-start !important;
+    min-width: 0 !important;
+    flex: 1 !important;
+}
+.avatar-btn-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-wrap: nowrap !important;
+}
+#org-sale-avatar-pick-btn {
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 13px !important;
+    font-size: 12px !important;
+    font-weight: 650 !important;
+    border-radius: 9px !important;
+    white-space: nowrap !important;
+    width: auto !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+}
+#org-sale-avatar-clear-btn {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 8px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+}
+#org-sale-avatar-filename {
+    font-size: 11px !important;
+    color: var(--text-muted) !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    max-width: 220px !important;
+}
+
 /* Form Action Buttons (Thêm & Hủy) */
-.org-form div[style*="display:flex"] {
+.org-form > div:last-child {
     display: flex !important;
     gap: 8px !important;
     align-items: center !important;
     width: 100% !important;
 }
-.org-form div[style*="display:flex"] .org-submit {
+.org-form > div:last-child .org-submit {
     flex: 1 !important;
     width: auto !important;
 }
-.org-form div[style*="display:flex"] .secondary-btn {
+.org-form > div:last-child .secondary-btn {
     height: 42px !important;
     min-height: 42px !important;
     padding: 0 16px !important;
@@ -7052,7 +7117,7 @@ button:focus-visible {
 
 /* ── 2. UI/UX Pro Max Mobile Redesign: Superadmin Modals, Forms & Actions ── */
 @media (max-width: 768px) {
-    .modal-overlay:not(#login-modal) {
+    .modal-overlay:not(#login-modal):not(#qr-preview-modal):not(#org-modal) {
         align-items: flex-end !important;
         padding: 0 !important;
         backdrop-filter: blur(8px);
@@ -7069,7 +7134,7 @@ button:focus-visible {
     #report-modal .report-card,
     #monitor-modal .admin-management-box,
     #agent-devices-modal .agent-devices-card,
-    .modal-box,
+    .modal-box:not(.qr-preview-box),
     .login-box.admin-management-box {
         width: 100% !important;
         max-width: 100% !important;
@@ -7085,8 +7150,9 @@ button:focus-visible {
         flex-direction: column !important;
     }
 
-    /* Popup Quản lý Sale, Nhóm, QR và Thực đơn hiển thị ở GIỮA màn hình */
-    #org-modal.modal-overlay {
+    /* Popup Quản lý Sale, Nhóm, QR, Thực đơn và Poster QR hiển thị ở GIỮA màn hình */
+    #org-modal.modal-overlay,
+    #qr-preview-modal.modal-overlay {
         align-items: center !important;
         justify-content: center !important;
         padding: 14px !important;
@@ -7104,6 +7170,14 @@ button:focus-visible {
         margin: auto !important;
         display: flex !important;
         flex-direction: column !important;
+    }
+    #qr-preview-modal .qr-preview-box {
+        width: min(100%, 460px) !important;
+        max-width: calc(100vw - 32px) !important;
+        max-height: 90dvh !important;
+        border-radius: 20px !important;
+        margin: auto !important;
+        box-shadow: 0 16px 50px rgba(45, 20, 38, 0.28) !important;
     }
 
     /* Modal Drag Indicator / Visual cue */
@@ -7426,7 +7500,6 @@ button:focus-visible {
 
     /* Cụm Nút Thao Tác (Action Bar) trên Mobile */
     .org-item-actions,
-    .qr-card-actions,
     .admin-user-actions,
     .project-settings-card-foot {
         display: flex !important;
@@ -7434,6 +7507,20 @@ button:focus-visible {
         align-items: center !important;
         justify-content: flex-end !important;
         flex-wrap: wrap !important;
+        gap: 8px !important;
+        padding-top: 9px !important;
+        border-top: 1px dashed rgba(73, 51, 70, 0.1) !important;
+        margin-top: 2px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    .qr-card-actions {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: stretch !important;
+        flex-wrap: nowrap !important;
         gap: 8px !important;
         padding-top: 9px !important;
         border-top: 1px dashed rgba(73, 51, 70, 0.1) !important;

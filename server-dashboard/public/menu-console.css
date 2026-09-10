@@ -1525,6 +1525,39 @@
     letter-spacing: .08em;
 }
 .order-detail-heading h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.order-detail-status-banner {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    line-height: 1.4;
+    transition: all 0.2s ease;
+}
+.order-detail-status-banner.is-paid {
+    background: rgba(16, 185, 129, 0.1);
+    color: #059669;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+}
+.order-detail-status-banner.is-paid i {
+    font-size: 18px;
+    color: #10b981;
+}
+.order-detail-status-banner.is-unpaid {
+    background: rgba(245, 158, 11, 0.1);
+    color: #d97706;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+}
+.order-detail-status-banner.is-unpaid i {
+    font-size: 18px;
+    color: #f59e0b;
+}
+.order-detail-status-banner strong {
+    font-weight: 800;
+}
 .order-detail-meta {
     display: grid;
     grid-template-columns: repeat(2, minmax(0,1fr));

@@ -212,8 +212,8 @@
                 <div class="menu-item-head">
                     <strong>${escapeHtml(item.name)}</strong>
                     <div style="display:flex;align-items:center;gap:6px;">
-                        <span class="menu-vat-pill" style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;background:rgba(239,43,157,0.08);color:var(--accent-color);">VAT ${Number(item.vat_rate != null ? item.vat_rate : 10)}%</span>
-                        <span class="menu-price">${money(item.price)}</span>
+                        <span class="menu-vat-pill" style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;background:rgba(239,43,157,0.08);color:var(--accent-color);" title="Giá gốc: ${money(item.price)} (Thuế VAT ${Number(item.vat_rate != null ? item.vat_rate : 10)}%)">VAT ${Number(item.vat_rate != null ? item.vat_rate : 10)}%</span>
+                        <span class="menu-price" title="Giá niêm yết đã bao gồm VAT">${money(Math.round(Number(item.price || 0) * (1 + (Number(item.vat_rate != null ? item.vat_rate : 10) / 100))))}</span>
                     </div>
                 </div>
                 ${stockBadge(item)}
@@ -361,6 +361,7 @@
         }
         $('menu-item-cancel')?.classList.toggle('hide', !item);
         resetPhotoField(item);
+        updateFinalPricePreview();
         if (item) $('menu-item-name').focus();
     }
 
@@ -697,6 +698,17 @@
             event.stopPropagation();
             resetPhotoField(ITEMS.find((i) => i.id === editingItemId));
         });
+
+        function updateFinalPricePreview() {
+            const p = Number($('menu-item-price')?.value || 0);
+            const v = Number($('menu-item-vat')?.value || 0);
+            const finalP = Math.round(p * (1 + (v > 0 ? v / 100 : 0)));
+            const el = $('menu-item-final-price-preview');
+            if (el) el.textContent = `${finalP.toLocaleString('vi-VN')} ₫`;
+        }
+        $('menu-item-price')?.addEventListener('input', updateFinalPricePreview);
+        $('menu-item-vat')?.addEventListener('input', updateFinalPricePreview);
+        updateFinalPricePreview();
 
         $('menu-item-stock')?.addEventListener('input', syncHideField);
         syncHideField();

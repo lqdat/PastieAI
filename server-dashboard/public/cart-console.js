@@ -380,7 +380,8 @@
                 const quantity = Number(it.quantity || 1);
                 const discount = Number(it.discount || 0);
                 const lineTotal = Number(it.lineTotal != null ? it.lineTotal : (unitPrice * quantity - discount));
-                const vatAmount = Math.round(lineTotal * vatRate / 100);
+                // Giá đã gồm VAT: bóc tách số tiền VAT trong thành tiền phục vụ kế toán
+                const vatAmount = vatRate > 0 ? Math.round(lineTotal - lineTotal / (1 + vatRate / 100)) : 0;
                 return { ...it, unitPrice, quantity, discount, lineTotal, vatRate, vatAmount };
             });
             const charges = order.charges || {};
@@ -395,10 +396,11 @@
                 const subtotal = draftItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
                 const vatAmount = draftItems.reduce((acc, it) => {
                     const line = it.lineTotal || 0;
-                    const rate = it.vatRate != null ? Number(it.vatRate) : 10;
-                    return acc + Math.round(line * rate / 100);
+                    const rate = it.vatRate != null ? Number(it.vatRate) : 0;
+                    return acc + (rate > 0 ? Math.round(line - line / (1 + rate / 100)) : 0);
                 }, 0);
-                const totalAmount = subtotal + vatAmount;
+                // Giá món đã bao gồm VAT nên tổng thanh toán bằng tổng tiền món
+                const totalAmount = subtotal;
                 return { subtotal, vatAmount, totalAmount };
             }
 
@@ -422,7 +424,7 @@
                                 <span class="order-item-unit-price">${money(item.unitPrice || 0)}</span>
                                 <span class="order-item-cross">×</span>
                                 <span class="order-item-qty-tag">${Number(item.quantity || 0)}</span>
-                                <span class="order-item-vat-tag" data-edit-item="${index}" title="Thuế VAT: ${Number(item.vatRate != null ? item.vatRate : 10)}% (Bấm để sửa)">
+                                <span class="order-item-vat-tag" data-edit-item="${index}" title="Thuế VAT: ${Number(item.vatRate != null ? item.vatRate : 10)}% (Giá đã gồm VAT)">
                                     VAT ${Number(item.vatRate != null ? item.vatRate : 10)}%
                                 </span>
                             </div>
@@ -448,15 +450,15 @@
                 if (summaryEl) {
                     summaryEl.innerHTML = `
                         <div class="summary-line">
-                            <span class="summary-line-label">Tạm tính</span>
+                            <span class="summary-line-label">Tổng tiền món</span>
                             <b class="summary-line-val">${money(calc.subtotal)}</b>
                         </div>
                         <div class="summary-line">
-                            <span class="summary-line-label">VAT</span>
+                            <span class="summary-line-label">Đã bao gồm VAT</span>
                             <b class="summary-line-val">${money(calc.vatAmount)}</b>
                         </div>
                         <div class="summary-line is-total">
-                            <span class="summary-line-label">Tổng cộng</span>
+                            <span class="summary-line-label">Tổng thanh toán</span>
                             <b class="summary-line-val">${money(calc.totalAmount)}</b>
                         </div>
                     `;
@@ -490,7 +492,17 @@
 
             const bodyContainer = detailOverlay.querySelector('.order-detail-body');
             if (bodyContainer) {
+                const isPaid = order.status === 'paid';
+                const statusLabel = isPaid ? 'Đã thu tiền' : 'Chưa thu tiền';
+                const statusSub = isPaid
+                    ? (payment !== 'Khách chưa chọn' ? `(${payment})` : '(Đã thanh toán)')
+                    : (order.payment_method ? `(Chờ thanh toán qua ${payment})` : '(Khách chưa chọn cách trả)');
+
                 bodyContainer.innerHTML = `
+                    <div class="order-detail-status-banner ${isPaid ? 'is-paid' : 'is-unpaid'}">
+                        <i class="${isPaid ? 'ri-checkbox-circle-fill' : 'ri-time-line'}"></i>
+                        <span>Trạng thái: <strong>${statusLabel}</strong> ${escapeHtml(statusSub)}</span>
+                    </div>
                     <div class="order-detail-meta">
                         <span><i class="ri-map-pin-2-line"></i>${escapeHtml(order.qr_label || order.group_name || '—')}</span>
                         <span><i class="ri-bank-card-line"></i>${escapeHtml(payment)}</span>
@@ -512,15 +524,15 @@
                     </div>` : ''}
                     <div class="order-detail-summary">
                         <div class="summary-line">
-                            <span class="summary-line-label">Tạm tính</span>
+                            <span class="summary-line-label">Tổng tiền món</span>
                             <b class="summary-line-val">${money(charges.subtotal ?? order.total_amount)}</b>
                         </div>
                         <div class="summary-line">
-                            <span class="summary-line-label">VAT</span>
+                            <span class="summary-line-label">Đã bao gồm VAT</span>
                             <b class="summary-line-val">${money(charges.vatAmount || 0)}</b>
                         </div>
                         <div class="summary-line is-total">
-                            <span class="summary-line-label">Tổng cộng</span>
+                            <span class="summary-line-label">Tổng thanh toán</span>
                             <b class="summary-line-val">${money(order.total_amount)}</b>
                         </div>
                     </div>
