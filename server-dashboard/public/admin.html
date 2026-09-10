@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r124">
-    <link rel="stylesheet" href="menu-console.css?v=r124">
+    <link rel="stylesheet" href="admin.css?v=r125">
+    <link rel="stylesheet" href="menu-console.css?v=r125">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -660,8 +660,11 @@
                     
                     <div class="org-list" id="menu-item-list"></div>
 
-                    <!-- Kết nối phần mềm tính tiền. Đặt cuối thẻ Thực đơn vì đây là
-                         việc thiết lập một lần rồi thôi, không phải việc hằng ngày. -->
+                    <!-- TẠM TẮT: Kết nối phần mềm tính tiền.
+                         Chưa mở cho người dùng nên ẩn hẳn khỏi màn hình, không để
+                         ô cấu hình trống gây hiểu nhầm là đã chạy được. Giữ nguyên
+                         khối bên dưới để bật lại chỉ bằng cách bỏ dấu chú thích;
+                         API và tài liệu phía máy chủ vẫn còn nguyên.
                     <div class="org-list-header" style="margin-top:26px;">
                         <h4>Kết nối phần mềm tính tiền</h4>
                         <a class="menu-docs-link" id="menu-docs-link" href="#" target="_blank" rel="noopener">
@@ -669,6 +672,7 @@
                         </a>
                     </div>
                     <div id="menu-pos-box"></div>
+                    -->
                 </section>
 
             </div>
@@ -1927,16 +1931,16 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r124"></script>
-    <script src="core.js?v=r124"></script>
-    <script src="chat.js?v=r124"></script>
-    <script src="org-console.js?v=r124"></script>
-    <script src="project-admin.js?v=r124"></script>
-    <script src="menu-console.js?v=r124"></script>
-    <script src="order-console.js?v=r124"></script>
-    <script src="monitor-console.js?v=r124"></script>
-    <script src="cart-console.js?v=r124"></script>
-    <script src="ticket-console.js?v=r124"></script>
-    <script src="admin.js?v=r124"></script>
+    <script src="config.js?v=r125"></script>
+    <script src="core.js?v=r125"></script>
+    <script src="chat.js?v=r125"></script>
+    <script src="org-console.js?v=r125"></script>
+    <script src="project-admin.js?v=r125"></script>
+    <script src="menu-console.js?v=r125"></script>
+    <script src="order-console.js?v=r125"></script>
+    <script src="monitor-console.js?v=r125"></script>
+    <script src="cart-console.js?v=r125"></script>
+    <script src="ticket-console.js?v=r125"></script>
+    <script src="admin.js?v=r125"></script>
 </body>
 </html>

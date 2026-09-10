@@ -65,7 +65,11 @@
             }
             render();
             scheduleTranslationPoll();
-            void loadPos();
+            // TẠM TẮT phần kết nối phần mềm tính tiền (khối HTML cũng đã chú
+            // thích lại trong admin.html). Không gọi nữa để khỏi mất một lượt
+            // gọi mạng cho thứ đang không hiển thị. Bật lại: bỏ dấu chú thích ở
+            // cả hai chỗ.
+            // void loadPos();
             void loadMenuSettings();
 
             // Báo lỗi cho ĐÚNG phần hỏng, phần còn lại vẫn dùng được bình thường.
