@@ -8278,9 +8278,6 @@ button:focus-visible {
     .agent-guide-head h2 {
         font-size: 14.5px;
     }
-    #agent-preview-customer-btn span {
-        display: none;
-    }
 }
 
 

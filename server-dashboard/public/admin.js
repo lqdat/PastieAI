@@ -1556,11 +1556,6 @@ document.querySelectorAll('#agent-guide-modal .guide-tab-btn').forEach(btn => {
     });
 });
 
-document.getElementById('agent-preview-customer-btn')?.addEventListener('click', () => {
-    window.open('/customer-chat/BAN-01', '_blank');
-});
-
-
 if (adminMgmtCloseTopBtn) adminMgmtCloseTopBtn.addEventListener('click', closeAdminMgmt);
 
 if (adminMgmtCloseBtn) adminMgmtCloseBtn.addEventListener('click', closeAdminMgmt);
