@@ -9,8 +9,8 @@
 // --- Translation Dictionary ---
 const TRANSLATIONS = {
     vi: {
-        loginTitle: "Pastie Chat Console",
-        loginSubtitle: "Nhập email để kết nối console",
+        loginTitle: "Không rào cản ngôn ngữ, thấu hiểu mọi khách hàng",
+        loginSubtitle: "Nhập email để kết nối Pastie Chat",
         passwordPlaceholder: "Mật khẩu bảo mật...",
         loginError: "Mật khẩu không hợp lệ, vui lòng thử lại.",
         loginBtn: "Kết Nối Console",
