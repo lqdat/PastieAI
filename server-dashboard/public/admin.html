@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r123">
-    <link rel="stylesheet" href="menu-console.css?v=r123">
+    <link rel="stylesheet" href="admin.css?v=r124">
+    <link rel="stylesheet" href="menu-console.css?v=r124">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -146,12 +146,10 @@
                     <!-- Ô avatar giống hệt header của khách: cùng một khối nhận
                          diện ở cả ba giao diện thì người dùng không phải học lại
                          chỗ nhìn khi chuyển giữa Agent, Sale và cổng khách. -->
-                    <span class="agent-avatar-badge" id="agent-avatar-badge" aria-label="Đổi ảnh đại diện" title="Bấm để đổi ảnh đại diện">
+                    <span class="agent-avatar-badge" id="agent-avatar-badge">
                         <img src="/pastie-mark.png?v=2" alt="">
                         <span id="agent-avatar-char" class="hide">P</span>
-                        <span class="agent-avatar-edit-icon" aria-hidden="true"><i class="ri-camera-fill"></i></span>
                     </span>
-                    <input type="file" id="sale-avatar-upload-input" accept="image/*" style="display:none;" aria-hidden="true">
                     <span class="agent-identity-text">
                         <span class="agent-identity-label hide" id="agent-identity-label"></span>
                         <!-- Hai hàng: trên là tên Agent quản lý, dưới là tên Sale.
@@ -188,8 +186,8 @@
                 <button id="agent-account-btn" class="header-quick-btn hide" type="button" title="Quản lý tài khoản của bạn">
                     <i class="ri-user-settings-line"></i><span>Tài khoản</span>
                 </button>
-                <button id="agent-guide-btn" class="header-quick-btn hide" type="button" title="Sổ tay hướng dẫn sử dụng Agent">
-                    <i class="ri-book-open-line"></i><span>Hướng dẫn</span>
+                <button id="agent-guide-btn" class="header-quick-btn hide" type="button" title="Sổ tay hướng dẫn sử dụng" aria-label="Hướng dẫn sử dụng">
+                    <i class="ri-question-line"></i>
                 </button>
                 <button id="agent-push-btn" class="header-quick-btn header-quick-btn-push hide" type="button" title="Thông báo đẩy">
                     <i class="ri-notification-3-line" id="agent-push-icon"></i><span id="agent-push-label">Thông báo</span>
@@ -347,8 +345,8 @@
                 <header class="org-head">
                     <h2 id="org-title"><i class="ri-team-line" style="color:var(--accent-color);margin-right:6px;"></i>Quản lý Sale, nhóm, QR và thực đơn</h2>
                     <div style="display:flex;align-items:center;gap:8px;">
-                        <button type="button" class="secondary-btn" id="org-guide-btn" style="width:auto;padding:5px 10px;font-size:12px;border-radius:8px;font-weight:600;display:inline-flex;align-items:center;gap:5px;" title="Xem sổ tay hướng dẫn sử dụng cho Agent">
-                            <i class="ri-book-open-line"></i> <span>Hướng dẫn</span>
+                        <button type="button" class="icon-btn" id="org-guide-btn" title="Xem sổ tay hướng dẫn sử dụng" aria-label="Hướng dẫn sử dụng">
+                            <i class="ri-question-line"></i>
                         </button>
                         <button type="button" class="icon-btn" id="org-close-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
                     </div>
@@ -532,23 +530,36 @@
                                 <input type="checkbox" id="agent-menu-toggle-checkbox" style="width:16px;height:16px;accent-color:var(--accent-color);">
                                 <span>Hiển thị Thực đơn cho khách quét QR</span>
                             </label>
-                            <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:520px;">
+                            <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:360px;">
                                 <input type="text" id="agent-menu-label-input" maxlength="100" placeholder="Chữ hiển thị (VD: Thực đơn, Menu, Gọi món...)" style="font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);flex:1;">
-                                <!-- Phí dịch vụ: % cộng thêm trên hóa đơn, thay cho dòng VAT cũ.
-                                     Giá món đã bao gồm VAT nên đây là khoản duy nhất khách bị cộng thêm. -->
-                                <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;white-space:nowrap;">
-                                    <span>Phí dịch vụ</span>
-                                    <input type="number" id="agent-service-fee-input" min="0" max="100" step="0.5" placeholder="0" inputmode="decimal" style="width:74px;font-size:12px;padding:6px 8px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);">
-                                    <span>%</span>
-                                </label>
-                                <button type="button" id="agent-menu-save-btn" class="primary-btn" style="width:auto;padding:6px 12px;font-size:12px;white-space:nowrap;"><i class="ri-save-line"></i> Lưu</button>
                             </div>
                         </div>
-                        <p style="margin:10px 0 0;font-size:11.5px;color:var(--text-muted,#94a3b8);line-height:1.5;">
-                            <i class="ri-information-line"></i>
-                            Giá món nhập vào là <b>giá khách trả, đã bao gồm VAT</b>. Hóa đơn hiện dòng
-                            <b>Phí dịch vụ</b> theo % ở trên (để 0 nếu không thu) và ghi rõ dưới bill rằng giá đã gồm VAT.
-                        </p>
+
+                        <!-- PHÍ DỊCH VỤ: KHỐI RIÊNG, KHÔNG ĐỨNG CHUNG HÀNG VỚI TÊN NÚT.
+                             Hai thứ này khác hẳn nhau về hậu quả: đổi tên nút chỉ là chữ
+                             hiển thị, còn đổi % phí dịch vụ là đổi số tiền trên mọi hóa
+                             đơn từ lúc đó trở đi. Đứng chung một hàng thì rất dễ gõ nhầm
+                             ô này tưởng ô kia. -->
+                        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--panel-border);">
+                            <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;">
+                                <div>
+                                    <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;">
+                                        <i class="ri-service-line" style="color:var(--accent-color);"></i> Phí dịch vụ trên hóa đơn
+                                    </div>
+                                    <p style="margin:4px 0 0;font-size:11.5px;color:var(--text-muted,#94a3b8);line-height:1.5;max-width:560px;">
+                                        Giá món nhập vào là <b>giá khách trả, đã bao gồm VAT</b>. Hóa đơn sẽ cộng thêm
+                                        đúng % này và ghi rõ dưới bill rằng giá đã gồm VAT. Để <b>0</b> nếu quán không thu phí dịch vụ.
+                                    </p>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <div class="menu-input-suffix" style="display:flex;align-items:center;gap:4px;">
+                                        <input type="number" id="agent-service-fee-input" min="0" max="100" step="0.5" placeholder="0" inputmode="decimal" style="width:86px;font-size:13px;font-weight:700;text-align:right;padding:7px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);">
+                                        <span style="font-size:13px;font-weight:700;color:var(--text-secondary);">%</span>
+                                    </div>
+                                    <button type="button" id="agent-menu-save-btn" class="primary-btn" style="width:auto;padding:7px 14px;font-size:12px;white-space:nowrap;"><i class="ri-save-line"></i> Lưu cấu hình</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="org-list-header">
@@ -1305,7 +1316,6 @@
                             <span class="self-devices-count" id="self-devices-count">—</span>
                         </div>
                         <div class="self-devices-list" id="self-devices-list"></div>
-                        <p class="self-devices-note" id="self-devices-note"></p>
                     </section>
                     <!-- Tải ảnh đại diện cá nhân -->
                     <div class="self-avatar-section" style="display:flex;align-items:center;gap:14px;margin:14px 0;padding:12px 14px;border:1px solid var(--panel-border);border-radius:12px;background:rgba(255,255,255,0.03);">
@@ -1916,16 +1926,16 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r123"></script>
-    <script src="core.js?v=r123"></script>
-    <script src="chat.js?v=r123"></script>
-    <script src="org-console.js?v=r123"></script>
-    <script src="project-admin.js?v=r123"></script>
-    <script src="menu-console.js?v=r123"></script>
-    <script src="order-console.js?v=r123"></script>
-    <script src="monitor-console.js?v=r123"></script>
-    <script src="cart-console.js?v=r123"></script>
-    <script src="ticket-console.js?v=r123"></script>
-    <script src="admin.js?v=r123"></script>
+    <script src="config.js?v=r124"></script>
+    <script src="core.js?v=r124"></script>
+    <script src="chat.js?v=r124"></script>
+    <script src="org-console.js?v=r124"></script>
+    <script src="project-admin.js?v=r124"></script>
+    <script src="menu-console.js?v=r124"></script>
+    <script src="order-console.js?v=r124"></script>
+    <script src="monitor-console.js?v=r124"></script>
+    <script src="cart-console.js?v=r124"></script>
+    <script src="ticket-console.js?v=r124"></script>
+    <script src="admin.js?v=r124"></script>
 </body>
 </html>

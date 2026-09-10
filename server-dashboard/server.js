@@ -241,6 +241,48 @@ async function notifyChatRecipients(session, { title, preview = '', tag }) {
   } catch (error) { console.error('[Push] Không thể thông báo Agent:', error.message); }
 }
 
+// TIN NHẮN NỘI BỘ CŨNG PHẢI KÊU.
+//
+// Trước đây tin nội bộ chỉ bắn qua kênh realtime: ai đang mở dashboard thì thấy,
+// còn Agent đã đóng máy thì Sale nhắn cả buổi cũng không ai biết. Chat khách có
+// thông báo đẩy từ lâu, chat nội bộ thì không — nên "nhắn nội bộ không thấy báo"
+// là đúng, không phải cảm giác.
+//
+// Chỉ đẩy cho ĐÚNG MỘT người: người còn lại trong cuộc trò chuyện đó.
+async function notifyInternalMessage(toAdminId, { fromName, text, sessionId }) {
+  if (!vapidConfigured || !toAdminId) return;
+  try {
+    const subscriptions = await db.query(
+      `SELECT ps.id, ps.endpoint, ps.p256dh, ps.auth
+         FROM push_subscriptions ps JOIN admins a ON a.id = ps.admin_id
+        WHERE ps.admin_id = $1 AND a.is_active = TRUE`,
+      [toAdminId]
+    );
+    if (!subscriptions.rows.length) return;
+    const payload = JSON.stringify({
+      title: `Tin nhắn nội bộ từ ${fromName || 'đồng nghiệp'}`,
+      body: String(text || '').slice(0, 120),
+      sessionId,
+      // Gộp theo cuộc trò chuyện: nhắn liên tiếp mười câu thì hiện một thông báo
+      // cập nhật dần, không phải mười thông báo chồng lên nhau.
+      tag: `internal-${sessionId}`,
+    });
+    await Promise.all(subscriptions.rows.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload, { TTL: 86400, urgency: 'high' }
+        );
+      } catch (error) {
+        if ([404, 410].includes(error.statusCode)) await db.query('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
+        else console.warn('[Push nội bộ] Gửi thất bại:', error.statusCode || error.message);
+      }
+    }));
+  } catch (error) {
+    console.error('[Push nội bộ] Không thông báo được:', error.message);
+  }
+}
+
 function notifyAgentTransfer(session, preview = '') {
   return notifyChatRecipients(session, {
     title: 'Khách cần nhân viên hỗ trợ',
@@ -12857,6 +12899,13 @@ app.post('/api/admin/internal-chats/message', checkAdminAuth, async (req, res) =
       targetAdminIds: targetIds,
       sessionId,
       message: msgPayload
+    });
+
+    // Không await: người gửi không phải chờ mạng của dịch vụ đẩy thông báo.
+    void notifyInternalMessage(targetAdminId, {
+      fromName: current.full_name || current.username,
+      text: msg.original_text,
+      sessionId,
     });
 
     res.json({ success: true, message: msgPayload });

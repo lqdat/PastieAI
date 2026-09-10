@@ -5383,7 +5383,9 @@ button:focus-visible {
     position: relative;
     flex: 0 0 auto;
     display: grid; place-items: center;
-    width: 44px; height: 44px; border-radius: 14px;
+    /* Tròn hẳn, không phải vuông bo góc: đây là khuôn mặt người, và tròn cũng
+       khớp với ô avatar bên cổng khách. */
+    width: 44px; height: 44px; border-radius: 50%;
     background: linear-gradient(140deg, #f472b6, #c026a4);
     color: #fff; font-size: 19px; font-weight: 800; line-height: 1;
     box-shadow: 0 6px 16px rgba(192, 38, 164, .22);
@@ -5396,13 +5398,22 @@ button:focus-visible {
     z-index: 2;
 }
 .agent-avatar-badge {
-    cursor: pointer;
+    /* Không còn bấm được để đổi ảnh nên cũng không còn con trỏ bàn tay: con trỏ
+       đó là một lời hứa "bấm vào có chuyện xảy ra". */
+    cursor: default;
     overflow: hidden;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
-.agent-avatar-badge:hover {
-    transform: scale(1.04);
-    box-shadow: 0 8px 20px rgba(192, 38, 164, 0.35);
+
+/* ẢNH PHẢI PHỦ KÍN KHUNG TRÒN.
+   Không có object-fit: cover thì ảnh dọc/ngang bị bóp méo hoặc chừa viền trắng
+   hai bên — đúng cảnh "ảnh không vừa ô" khi Sale/Agent tự tải ảnh lên. */
+.agent-avatar-badge img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    border-radius: inherit;
+    display: block;
 }
 .agent-avatar-edit-icon {
     position: absolute;
@@ -5419,16 +5430,15 @@ button:focus-visible {
     pointer-events: none;
     z-index: 1;
 }
-.agent-avatar-badge:hover .agent-avatar-edit-icon {
-    opacity: 1;
-}
+/* Lớp phủ biểu tượng máy ảnh không còn hiện ra: bấm avatar không đổi ảnh nữa. */
+.agent-avatar-edit-icon { display: none; }
 .agent-identity-sub {
     display: inline-flex; align-items: center; gap: 5px;
     color: var(--text-secondary); font-size: 11.5px; font-weight: 600; line-height: 1.2;
 }
 .agent-identity-sub i { font-size: 13px; color: var(--accent-color); }
 @media (max-width: 720px) {
-    .agent-avatar-badge { width: 38px; height: 38px; font-size: 16px; border-radius: 12px; }
+    .agent-avatar-badge { width: 38px; height: 38px; font-size: 16px; border-radius: 50%; }
     .agent-identity-sub { font-size: 10.5px; }
 }
 
@@ -5576,7 +5586,7 @@ button:focus-visible {
     }
     .dashboard-header.sale-header .header-left { padding-right: 8px; }
     .dashboard-header.sale-header .staff-header-wordmark { right: 12px; bottom: 6px; height: 28px; }
-    .dashboard-header.sale-header .agent-avatar-badge { width: 42px; height: 42px; border-radius: 13px; }
+    .dashboard-header.sale-header .agent-avatar-badge { width: 42px; height: 42px; border-radius: 50%; }
     .dashboard-header.sale-header .agent-identity-label,
     .dashboard-header.sale-header .agent-identity.sale-identity .agent-identity-label,
     .dashboard-header.sale-header .agent-identity:not(.sale-identity) .agent-display-name {
@@ -6953,10 +6963,12 @@ button:focus-visible {
 }
 
 .sct-tab.is-active {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(168, 85, 247, 0.22));
-    border-color: rgba(99, 102, 241, 0.45);
+    /* Hồng thương hiệu, không phải tím: mọi thứ "đang được chọn" trong sản phẩm
+       đều hồng, để tím ở đây là một sắc thái lạc lõng. */
+    background: linear-gradient(135deg, #ef2b9d, #c90c6c);
+    border-color: transparent;
     color: #fff;
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
+    box-shadow: 0 2px 10px rgba(239, 43, 157, 0.32);
 }
 
 .sct-badge {

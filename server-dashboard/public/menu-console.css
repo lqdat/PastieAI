@@ -1473,18 +1473,23 @@
     box-shadow: 0 6px 18px rgba(239, 43, 157, .4);
 }
 .cart-action-btn:disabled { opacity: .5; cursor: progress; transform: none; box-shadow: none; }
+/* NÚT "XÁC NHẬN ĐÃ THU TIỀN" MÀU HỒNG, KHÔNG PHẢI XANH LÁ.
+   Xanh lá trong màn hình này đang mang nghĩa TRẠNG THÁI "đã thanh toán". Một
+   nút hành động cũng xanh lá thì nhân viên nhìn lướt tưởng đơn đã thu tiền rồi
+   và bỏ qua — hoặc bấm vào tưởng chỉ là cái nhãn. Hồng là màu của hành động. */
 .cart-paid-btn {
     align-self: flex-start;
     display: inline-flex; align-items: center; gap: 7px;
-    padding: 8px 14px; border-radius: 12px; cursor: pointer;
-    border: 1px solid rgba(16, 185, 129, .45); background: rgba(16, 185, 129, .12);
-    color: #059669; font: inherit; font-size: 12px; font-weight: 750;
+    padding: 9px 16px; border-radius: 12px; cursor: pointer;
+    border: none;
+    background: linear-gradient(135deg, #ef2b9d, #c90c6c);
+    color: #fff; font: inherit; font-size: 12px; font-weight: 750;
+    box-shadow: 0 6px 14px rgba(239, 43, 157, .28);
     transition: all .2s ease;
 }
 .cart-paid-btn:hover {
-    background: rgba(16, 185, 129, .22);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, .2);
+    box-shadow: 0 9px 20px rgba(239, 43, 157, .4);
 }
 .cart-paid-btn:disabled { opacity: .55; cursor: wait; transform: none; box-shadow: none; }
 
