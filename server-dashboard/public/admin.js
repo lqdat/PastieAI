@@ -1513,6 +1513,54 @@ document.getElementById('agent-account-btn')?.addEventListener('click', (event) 
     window.openAdminManagement('account');
 });
 
+// Agent: Nút Sổ tay Hướng dẫn sử dụng
+function openAgentGuideModal(tabKey = 'video') {
+    const modal = document.getElementById('agent-guide-modal');
+    if (!modal) return;
+    modal.classList.remove('hide');
+    switchAgentGuideTab(tabKey);
+}
+
+function closeAgentGuideModal() {
+    document.getElementById('agent-guide-modal')?.classList.add('hide');
+}
+
+function switchAgentGuideTab(tabKey) {
+    document.querySelectorAll('#agent-guide-modal .guide-tab-btn').forEach(btn => {
+        btn.classList.toggle('is-active', btn.dataset.guideTab === tabKey);
+    });
+    document.querySelectorAll('#agent-guide-modal .guide-tab-pane').forEach(pane => {
+        pane.classList.toggle('hide', pane.dataset.guidePane !== tabKey);
+    });
+}
+
+document.getElementById('agent-guide-btn')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openAgentGuideModal();
+});
+
+document.getElementById('org-guide-btn')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openAgentGuideModal('groups');
+});
+
+document.getElementById('agent-guide-close-btn')?.addEventListener('click', closeAgentGuideModal);
+document.getElementById('agent-guide-foot-close-btn')?.addEventListener('click', closeAgentGuideModal);
+document.getElementById('agent-guide-modal')?.addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) closeAgentGuideModal();
+});
+
+document.querySelectorAll('#agent-guide-modal .guide-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        switchAgentGuideTab(btn.dataset.guideTab);
+    });
+});
+
+document.getElementById('agent-preview-customer-btn')?.addEventListener('click', () => {
+    window.open('/customer-chat/BAN-01', '_blank');
+});
+
+
 if (adminMgmtCloseTopBtn) adminMgmtCloseTopBtn.addEventListener('click', closeAdminMgmt);
 
 if (adminMgmtCloseBtn) adminMgmtCloseBtn.addEventListener('click', closeAdminMgmt);

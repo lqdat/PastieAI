@@ -652,6 +652,82 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // tổ chức bên trong của Agent — mọi thứ còn lại Agent tự sắp xếp.
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS sale_limit INT;`);
 
+    // PHIÊN LÀM VIỆC KHÔNG TỰ HẾT HẠN — chỉ bật cho vài tài khoản nội bộ Pastie.
+    //
+    // Đây là ngoại lệ có chủ đích, không phải mặc định: mọi tài khoản khác vẫn
+    // 4 giờ (Agent/Sale) hoặc 8 giờ. Bật cờ này thì admin_sessions.expires_at
+    // được ghi NULL = không có thời điểm hết hạn. Bốn đường thu hồi vẫn nguyên:
+    // đăng xuất, khóa tài khoản, gỡ thiết bị, và đăng nhập ở máy mới (mỗi lần
+    // đăng nhập đều xóa sạch phiên cũ của tài khoản đó).
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS session_never_expires BOOLEAN DEFAULT FALSE;`);
+    // Cột này vốn NOT NULL. Phải nới ra thì mới ghi NULL được; câu lệnh chạy lại
+    // nhiều lần không sao vì DROP NOT NULL là idempotent.
+    await query(`ALTER TABLE admin_sessions ALTER COLUMN expires_at DROP NOT NULL;`);
+
+    // KÊNH HỖ TRỢ CŨ Agent ↔ Superadmin: dọn đi.
+    //
+    // Kênh hỗ trợ nay thuộc vai 'technical' với mã phiên
+    // internal_agent_{agentId}_technical_{techId}. Các phiên `..._superadmin` cũ
+    // không còn ai mở được nên để lại chỉ làm rác và làm người đọc database sau
+    // này tưởng vẫn còn hai luồng song song. Chủ hệ thống đã xác nhận không có
+    // lịch sử cần giữ. Xóa tin nhắn trước vì khóa ngoại trỏ vào sessions.
+    await query(`DELETE FROM messages WHERE session_id LIKE 'internal\\_agent\\_%\\_superadmin'`);
+    await query(`DELETE FROM session_read_receipts WHERE session_id LIKE 'internal\\_agent\\_%\\_superadmin'`)
+      .catch(() => {});
+    await query(`DELETE FROM sessions WHERE id LIKE 'internal\\_agent\\_%\\_superadmin'`);
+
+    // ── TICKET HỖ TRỢ ────────────────────────────────────────────────────────
+    //
+    // Ticket luôn SINH RA TỪ MỘT CUỘC TRÒ CHUYỆN nội bộ giữa Agent và Kỹ thuật:
+    // cột session_id là bắt buộc, và source_message_id trỏ về đúng tin nhắn đã
+    // làm nảy ra ticket. Không có hai cột đó thì vài tuần sau không ai lần lại
+    // được vì sao ticket này tồn tại.
+    //
+    // ticket_code là thứ con người đọc và gọi tên nhau ("PT-260910-000123"), id
+    // là thứ máy dùng. Không bao giờ hiển thị id.
+    await query(`CREATE SEQUENCE IF NOT EXISTS support_ticket_code_seq;`);
+    await query(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id SERIAL PRIMARY KEY,
+        ticket_code VARCHAR(32) UNIQUE NOT NULL,
+        agent_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        technical_id INT REFERENCES admins(id) ON DELETE SET NULL,
+        session_id VARCHAR(255) NOT NULL,
+        source_message_id INT,
+        subject VARCHAR(255) NOT NULL,
+        description TEXT,
+        category VARCHAR(40) NOT NULL DEFAULT 'khac',
+        priority VARCHAR(20) NOT NULL DEFAULT 'thuong',
+        status VARCHAR(20) NOT NULL DEFAULT 'moi',
+        created_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL,
+        assigned_to_admin_id INT REFERENCES admins(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_tickets_agent ON support_tickets(agent_id, status);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_tickets_technical ON support_tickets(technical_id, status);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_tickets_session ON support_tickets(session_id);`);
+
+    // Nhật ký ticket: ghi thêm, không sửa. Ai tạo, ai nhận, ai đổi trạng thái,
+    // ai đóng — mỗi việc một dòng, không bao giờ ghi đè lên dòng cũ.
+    await query(`
+      CREATE TABLE IF NOT EXISTS support_ticket_events (
+        id SERIAL PRIMARY KEY,
+        ticket_id INT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+        event_type VARCHAR(40) NOT NULL,
+        actor_admin_id INT REFERENCES admins(id) ON DELETE SET NULL,
+        actor_role VARCHAR(20),
+        actor_name VARCHAR(255),
+        from_status VARCHAR(20),
+        to_status VARCHAR(20),
+        note TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_ticket_events_ticket ON support_ticket_events(ticket_id, created_at);`);
+
     await query(`
       CREATE TABLE IF NOT EXISTS agent_groups (
         id SERIAL PRIMARY KEY,

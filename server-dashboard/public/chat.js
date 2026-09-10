@@ -170,6 +170,10 @@ async function selectInternalSession(chat) {
     currentSessionId = chat.sessionId;
     currentInternalChat = chat;
 
+    // Thanh ticket chỉ hiện trong đoạn chat Agent ↔ Kỹ thuật; module tự quyết
+    // dựa trên mã phiên, ở đây chỉ báo cho nó biết vừa đổi đoạn chat.
+    window.TicketConsole?.onInternalChat?.(chat);
+
     dashboardBody?.classList.add('chat-open');
     bindAgentChatInputEvents();
 
@@ -1182,6 +1186,10 @@ function connectAdminEvents() {
                 const data = JSON.parse(event.data || '{}');
                 handleAdminRealtimeEvent({ type: 'internal_message', ...data });
             } catch (e) {}
+        });
+
+        adminEventSource.addEventListener('ticket_update', (event) => {
+            try { window.TicketConsole?.onTicketUpdate?.(JSON.parse(event.data || '{}')); } catch (e) {}
         });
 
         adminEventSource.addEventListener('message_status_update', (event) => {
@@ -2501,6 +2509,9 @@ function renderMsgAvatarHtml(msg) {
 }
 
 function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
+    // Vẽ xong mới gắn nút ticket vào từng tin (module ticket-console.js lo phần
+    // còn lại). Đặt trong setTimeout để chạy sau khi DOM đã dựng đủ.
+    setTimeout(() => window.TicketConsole?.onMessagesRendered?.(), 0);
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     const previousScrollHeight = chatMessagesContainer.scrollHeight;
     const previousScrollTop = chatMessagesContainer.scrollTop;
@@ -2568,6 +2579,9 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
         const wrapper = document.createElement('div');
         const staffOnly = msg.visible_to === 'staff';
         wrapper.className = `message-wrapper ${msg.sender}${staffOnly ? ' staff-only-notice' : ''}`;
+        // Ghi id tin nhắn vào DOM: module ticket dựa vào đây để biết tin nào đã
+        // sinh ra ticket nào. Không có nó thì ticket mất đường về tin gốc.
+        if (msg.id) wrapper.dataset.messageId = msg.id;
         // Mốc thời gian đi kèm ngay trong DOM: thẻ đơn và hoá đơn dựa vào đây để
         // chen vào đúng chỗ của mình trong dòng hội thoại.
         stampChatTime(wrapper, msg.created_at);

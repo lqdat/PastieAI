@@ -795,6 +795,27 @@ app.get(['/admin', '/admin.html'], (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+// Phục vụ tệp hình ảnh & video của Sổ tay Hướng dẫn Agent:
+// Ưu tiên tệp local nếu có; nếu đã được upload lên S3 và tự động xóa khỏi src, chuyển hướng về S3.
+app.get('/agent_guide/:filename', async (req, res, next) => {
+  const { filename } = req.params;
+  const localPath = path.join(__dirname, 'public', 'agent_guide', filename);
+  if (require('fs').existsSync(localPath)) {
+    return res.sendFile(localPath);
+  }
+  // Nếu đã xóa trong src sau khi đẩy lên S3:
+  if (s3 && s3.isConfigured) {
+    try {
+      const s3Key = `guide/agent/${filename}`;
+      const presignedUrl = await s3.getPresignedUrl(s3Key, 7 * 24 * 3600);
+      if (presignedUrl) return res.redirect(presignedUrl);
+    } catch (err) {
+      console.warn('[AgentGuide] Không tạo được link S3:', err.message);
+    }
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/privacy-policy', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
 app.get('/terms', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
@@ -1429,7 +1450,11 @@ async function issueSingleActiveAdminSession(admin, req = null) {
 
   // 3. Tạo token phiên mới duy nhất
   const sessionToken = randomUUID();
-  const expiresAt = new Date(Date.now() + adminSessionMs(admin.role));
+  // Tài khoản được bật session_never_expires thì ghi NULL: không có mốc hết hạn
+  // để mà so sánh. Xem chú thích ở database.js — thu hồi vẫn còn đủ bốn đường.
+  const expiresAt = admin.session_never_expires === true
+    ? null
+    : new Date(Date.now() + adminSessionMs(admin.role));
   await db.query(
     `INSERT INTO admin_sessions (token, admin_id, expires_at, device_id, user_agent, client_ip, last_seen_at)
      VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
@@ -1476,8 +1501,15 @@ async function checkAdminAuth(req, res, next) {
 
     const adminSession = sessionRes.rows[0];
 
+    // PHIÊN KHÔNG HẾT HẠN: expires_at = NULL.
+    //
+    // Phải chặn trước phép so sánh bên dưới, vì new Date(null) ra năm 1970 —
+    // để lọt là phiên bị coi là hết hạn ngay lập tức rồi bị xoá, tài khoản
+    // không tài nào đăng nhập nổi.
+    const neverExpires = adminSession.expires_at === null || adminSession.expires_at === undefined;
+
     // Check session token expiration
-    if (new Date() > new Date(adminSession.expires_at)) {
+    if (!neverExpires && new Date() > new Date(adminSession.expires_at)) {
       await db.query('DELETE FROM admin_sessions WHERE token = $1', [token]);
       return res.status(401).json({ error: 'Session expired. Please log in again.', code: 'SESSION_EXPIRED' });
     }
@@ -1486,8 +1518,10 @@ async function checkAdminAuth(req, res, next) {
     // cập nhật tối đa 1 lần/giờ + lưu last_seen_at
     const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
     const userAgent = String(req.headers['user-agent'] || '').slice(0, 1000);
-    const currentExpires = new Date(adminSession.expires_at).getTime();
-    if (currentExpires - Date.now() < adminSessionRenewAt(adminSession.role)) {
+    // Phiên không hết hạn thì KHÔNG gia hạn trượt: không có gì để đẩy tới, và
+    // ghi đè expires_at ở đây là vô tình biến nó thành phiên có hạn.
+    const currentExpires = neverExpires ? Infinity : new Date(adminSession.expires_at).getTime();
+    if (!neverExpires && currentExpires - Date.now() < adminSessionRenewAt(adminSession.role)) {
       const newExpiresAt = new Date(Date.now() + adminSessionMs(adminSession.role));
       db.query(
         `UPDATE admin_sessions 
@@ -1529,6 +1563,20 @@ async function checkAdminAuth(req, res, next) {
       token: token
     };
 
+    // KỸ THUẬT PASTIE: CHẶN TRƯỚC, MỞ TỪNG ĐƯỜNG.
+    //
+    // Vai này chỉ để chat nội bộ với Agent và xử lý ticket. Nếu đi theo lối
+    // thường của mã này — mỗi route tự kiểm vai — thì chỉ cần một route quên
+    // kiểm là Kỹ thuật xem được chat khách, menu, bill của mọi Agent. Chặn ở
+    // một cửa duy nhất: không nằm trong danh sách thì 403, kể cả route viết
+    // sau này. Muốn mở thêm thì thêm vào TECHNICAL_ALLOWED_PATHS, cố ý và thấy rõ.
+    if (req.admin.role === 'technical' && !isPathAllowedForTechnical(req.method, req.path)) {
+      return res.status(403).json({
+        error: 'Tài khoản Kỹ thuật chỉ dùng cho chat nội bộ và ticket hỗ trợ.',
+        code: 'TECHNICAL_SCOPE',
+      });
+    }
+
     // Lớp 3 license: ghi nhật ký khi IP hoặc thiết bị đổi so với lần trước.
     // Không await — nhật ký không được làm chậm request của người dùng.
     void logAdminAccess(req.admin, req);
@@ -1538,6 +1586,31 @@ async function checkAdminAuth(req, res, next) {
     console.error('Auth middleware error:', error);
     return res.status(500).json({ error: 'Internal server error during authentication.' });
   }
+}
+
+// DANH SÁCH TRẮNG CỦA VAI KỸ THUẬT.
+//
+// Mỗi dòng là một đường Kỹ thuật Pastie thật sự cần: hồ sơ của chính mình, chat
+// nội bộ với Agent, kênh realtime, và ticket hỗ trợ. Mọi thứ còn lại — chat
+// khách, thực đơn, hóa đơn, đơn hàng, quản lý nhân viên — không có ở đây nên bị
+// từ chối. Ô `path` là biểu thức neo hai đầu để `/api/admin/chats/x/messages`
+// không lọt qua vì trùng tiền tố với một mục nào đó.
+const TECHNICAL_ALLOWED_PATHS = [
+  { methods: ['GET'], path: /^\/api\/admin\/me$/ },
+  { methods: ['POST'], path: /^\/api\/admin\/logout$/ },
+  { methods: ['GET', 'POST'], path: /^\/api\/admin\/internal-chats(\/message)?$/ },
+  // Đọc tin nhắn của MỘT cuộc nội bộ; route này còn tự kiểm hai người trong mã
+  // phiên nên Kỹ thuật không đọc được cuộc của người khác.
+  { methods: ['GET'], path: /^\/api\/admin\/chats\/internal_[A-Za-z0-9_]+\/messages$/ },
+  { methods: ['POST'], path: /^\/api\/admin\/chats\/internal_[A-Za-z0-9_]+\/read$/ },
+  { methods: ['GET'], path: /^\/api\/admin\/events$/ },
+  { methods: ['GET', 'POST', 'PUT', 'PATCH'], path: /^\/api\/admin\/tickets(\/[^/]+)?(\/[^/]+)?$/ },
+];
+
+function isPathAllowedForTechnical(method, path) {
+  const verb = String(method || '').toUpperCase();
+  const clean = String(path || '').split('?')[0];
+  return TECHNICAL_ALLOWED_PATHS.some((rule) => rule.methods.includes(verb) && rule.path.test(clean));
 }
 
 const ADMIN_ROLES = new Set(['superadmin', 'project_owner', 'project_admin', 'agent', 'sale']);
@@ -2152,13 +2225,15 @@ async function getAdminFromToken(req) {
   const result = await db.query(
     `SELECT a.id, a.username, a.full_name, a.role, a.project_id, a.is_active, a.sale_limit, a.avatar_url, s.expires_at
      FROM admin_sessions s JOIN admins a ON a.id = s.admin_id
-     WHERE s.token = $1 AND s.expires_at > NOW()`,
+     WHERE s.token = $1 AND (s.expires_at IS NULL OR s.expires_at > NOW())`,
     [token]
   );
   if (!result.rows[0]) return null;
   const admin = result.rows[0];
-  const currentExpires = new Date(admin.expires_at).getTime();
-  if (currentExpires - Date.now() < adminSessionRenewAt(admin.role)) {
+  // NULL = phiên không hết hạn: không lọc bỏ ở câu trên, và cũng không gia hạn.
+  const neverExpires = admin.expires_at === null || admin.expires_at === undefined;
+  const currentExpires = neverExpires ? Infinity : new Date(admin.expires_at).getTime();
+  if (!neverExpires && currentExpires - Date.now() < adminSessionRenewAt(admin.role)) {
     const newExpiresAt = new Date(Date.now() + adminSessionMs(admin.role));
     db.query('UPDATE admin_sessions SET expires_at = $1, last_seen_at = NOW() WHERE token = $2', [newExpiresAt, token]).catch(() => {});
   } else {
@@ -7422,12 +7497,12 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
 
   try {
     if (sessionId.startsWith('internal_')) {
-      let allowed = isSuperAdmin(req.admin);
-      if (!allowed) {
-        if (sessionId.includes(`agent_${req.admin.id}`)) allowed = true;
-        if (sessionId.includes(`sale_${req.admin.id}`)) allowed = true;
+      // Cùng một luật với đường gửi tin: chỉ hai người trong mã phiên. Cách cũ
+      // dùng includes() nên admin id 1 đọc được cả `internal_agent_11_sale_3`.
+      const parsedInternal = parseInternalSessionId(sessionId);
+      if (!internalChatPeerFor(req.admin, parsedInternal)) {
+        return res.status(403).json({ error: 'Bạn không có quyền xem hội thoại nội bộ này.' });
       }
-      if (!allowed) return res.status(403).json({ error: 'Bạn không có quyền xem hội thoại nội bộ này.' });
 
       const msgs = await db.query(
         `SELECT m.*, a.full_name AS sender_admin_name, a.avatar_url AS sender_admin_avatar, a.role AS sender_admin_role
@@ -12565,7 +12640,37 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
   }
 });
 
-// --- Kênh chat nội bộ (Agent - SuperAdmin & Agent - Sale) ---
+// --- Kênh chat nội bộ (Agent - Kỹ thuật & Agent - Sale) ---
+//
+// Trước đây kênh hỗ trợ là Agent ↔ Superadmin, mã phiên `..._superadmin`. Nay
+// hỗ trợ là một VAI RIÊNG (`technical`) chứ không phải chủ hệ thống: mã phiên
+// mang luôn id của người kỹ thuật, `internal_agent_{agentId}_technical_{techId}`.
+// Nhờ vậy sau này có nhiều nhân viên kỹ thuật thì mỗi người một cuộc riêng với
+// Agent, không phải một hộp thư dùng chung.
+
+// ĐỌC MÃ PHIÊN NỘI BỘ BẰNG BIỂU THỨC NEO HAI ĐẦU, không dùng includes().
+//
+// Chỗ kiểm quyền cũ viết `sessionId.includes('agent_' + id)`: admin id 1 khớp
+// luôn với `internal_agent_11_sale_3` — tức đọc trộm được hội thoại của người
+// khác. Neo ^...$ và so sánh bằng số thì không còn kẽ đó.
+function parseInternalSessionId(sessionId) {
+  const tech = /^internal_agent_(\d+)_technical_(\d+)$/.exec(String(sessionId || ''));
+  if (tech) return { kind: 'technical', agentId: Number(tech[1]), peerId: Number(tech[2]) };
+  const sale = /^internal_agent_(\d+)_sale_(\d+)$/.exec(String(sessionId || ''));
+  if (sale) return { kind: 'sale', agentId: Number(sale[1]), peerId: Number(sale[2]) };
+  return null;
+}
+
+// Ai được vào một cuộc nội bộ, và khi vào thì đang nói với ai.
+// Trả về null nghĩa là KHÔNG được vào.
+function internalChatPeerFor(admin, parsed) {
+  if (!parsed || !admin) return null;
+  const me = Number(admin.id);
+  if (me === parsed.agentId && ['agent', 'project_admin'].includes(admin.role)) return parsed.peerId;
+  if (me === parsed.peerId && parsed.kind === 'technical' && admin.role === 'technical') return parsed.agentId;
+  if (me === parsed.peerId && parsed.kind === 'sale' && admin.role === 'sale') return parsed.agentId;
+  return null;
+}
 
 async function ensureInternalSession(sessionId, title, projectId = 'qr-concierge') {
   await db.query(
@@ -12582,20 +12687,20 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
     const chats = [];
 
     if (current.role === 'agent' || ['agent', 'project_admin'].includes(current.role)) {
-      // 1. Hội thoại với SuperAdmin (Hỗ trợ kỹ thuật)
-      const superAdmin = (await db.query(
-        "SELECT id, full_name, avatar_url, role FROM admins WHERE role = 'superadmin' AND is_active = TRUE ORDER BY id ASC LIMIT 1"
-      )).rows[0];
+      // 1. Hội thoại với Kỹ thuật Pastie (hỗ trợ)
+      const technicals = (await db.query(
+        "SELECT id, full_name, avatar_url, role FROM admins WHERE role = 'technical' AND is_active = TRUE ORDER BY id ASC"
+      )).rows;
 
-      if (superAdmin) {
-        const sId = `internal_agent_${current.id}_superadmin`;
+      for (const tech of technicals) {
+        const sId = `internal_agent_${current.id}_technical_${tech.id}`;
         await ensureInternalSession(sId, `Hỗ trợ kỹ thuật`, current.project_id);
         chats.push({
           sessionId: sId,
-          peerId: superAdmin.id,
-          peerName: 'Hỗ trợ kỹ thuật',
-          peerRole: 'superadmin',
-          peerAvatar: superAdmin.avatar_url || null,
+          peerId: tech.id,
+          peerName: tech.full_name || 'Kỹ thuật Pastie',
+          peerRole: 'technical',
+          peerAvatar: tech.avatar_url || null,
           badgeLabel: 'Hỗ trợ kỹ thuật'
         });
       }
@@ -12637,14 +12742,15 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
           badgeLabel: 'Agent Quản Lý'
         });
       }
-    } else if (current.role === 'superadmin' || isSuperAdmin(current)) {
-      // SuperAdmin (Hỗ trợ kỹ thuật) thấy danh sách tất cả Agent
+    } else if (current.role === 'technical') {
+      // Kỹ thuật thấy danh sách TẤT CẢ Agent đang hoạt động — không có bảng phân
+      // công, đúng như Superadmin vẫn làm trước đây, chỉ đổi vai.
       const agents = (await db.query(
         "SELECT id, full_name, avatar_url, role, project_id FROM admins WHERE (role = 'agent' OR role = 'project_admin') AND is_active = TRUE ORDER BY full_name ASC"
       )).rows;
 
       for (const agent of agents) {
-        const sId = `internal_agent_${agent.id}_superadmin`;
+        const sId = `internal_agent_${agent.id}_technical_${current.id}`;
         await ensureInternalSession(sId, `Agent (${agent.full_name})`, agent.project_id);
         chats.push({
           sessionId: sId,
@@ -12700,36 +12806,14 @@ app.post('/api/admin/internal-chats/message', checkAdminAuth, async (req, res) =
     const current = req.admin;
     let targetAdminId = null;
 
-    if (sessionId.endsWith('_superadmin')) {
-      const agentIdMatch = sessionId.match(/internal_agent_(\d+)_superadmin/);
-      if (!agentIdMatch) return res.status(400).json({ error: 'Session ID không hợp lệ.' });
-      const agentId = Number(agentIdMatch[1]);
-
-      if (current.role === 'superadmin' || isSuperAdmin(current)) {
-        targetAdminId = agentId;
-      } else if (Number(current.id) === agentId || (['agent', 'project_admin'].includes(current.role) && Number(current.id) === agentId)) {
-        const sa = (await db.query("SELECT id FROM admins WHERE role = 'superadmin' AND is_active = TRUE ORDER BY id ASC LIMIT 1")).rows[0];
-        targetAdminId = sa ? sa.id : null;
-      } else {
-        return res.status(403).json({ error: 'Bạn không có quyền tham gia hội thoại này.' });
-      }
-    } else if (sessionId.includes('_sale_')) {
-      const match = sessionId.match(/internal_agent_(\d+)_sale_(\d+)/);
-      if (!match) return res.status(400).json({ error: 'Session ID không hợp lệ.' });
-      const agentId = Number(match[1]);
-      const saleId = Number(match[2]);
-
-      if (Number(current.id) === agentId) {
-        targetAdminId = saleId;
-      } else if (Number(current.id) === saleId) {
-        targetAdminId = agentId;
-      } else if (current.role === 'superadmin' || isSuperAdmin(current)) {
-        targetAdminId = agentId;
-      } else {
-        return res.status(403).json({ error: 'Bạn không có quyền tham gia hội thoại này.' });
-      }
-    } else {
-      return res.status(400).json({ error: 'Session ID nội bộ không hợp lệ.' });
+    // Một luật cho cả hai loại cuộc nội bộ, đọc mã phiên bằng biểu thức neo hai
+    // đầu. Chỉ ĐÚNG HAI người trong mã phiên mới được gửi — Superadmin cũng
+    // không chen vào giữa được, vì kênh hỗ trợ nay thuộc về vai Kỹ thuật.
+    const parsed = parseInternalSessionId(sessionId);
+    if (!parsed) return res.status(400).json({ error: 'Session ID nội bộ không hợp lệ.' });
+    targetAdminId = internalChatPeerFor(current, parsed);
+    if (!targetAdminId) {
+      return res.status(403).json({ error: 'Bạn không có quyền tham gia hội thoại này.' });
     }
 
     await ensureInternalSession(sessionId, 'Nội bộ', current.project_id);
@@ -12776,6 +12860,307 @@ app.post('/api/admin/internal-chats/message', checkAdminAuth, async (req, res) =
     console.error('Send internal message error:', error);
     res.status(500).json({ error: 'Không thể gửi tin nhắn nội bộ: ' + error.message });
   }
+});
+
+// --- TICKET HỖ TRỢ (Agent ↔ Kỹ thuật) ----------------------------------------
+//
+// LUẬT NỀN: ticket chỉ sinh ra TỪ BÊN TRONG một cuộc trò chuyện Agent ↔ Kỹ thuật.
+// Kỹ thuật tạo ngay trong đoạn chat với Agent; Agent cũng tạo được, nhưng chỉ khi
+// đang ở trong đoạn chat với Kỹ thuật. Không có đường nào tạo ticket "trống" từ
+// ngoài — vì một ticket không gắn với cuộc trò chuyện nào thì vài tuần sau không
+// ai lần lại được vì sao nó tồn tại.
+//
+// Superadmin KHÔNG tạo ticket (không có cuộc chat nào để mà tạo) nhưng nhìn thấy
+// toàn bộ, để nắm tình hình hỗ trợ của cả hệ thống.
+
+const TICKET_TRANG_THAI = ['moi', 'dang_xu_ly', 'cho_agent', 'da_giai_quyet', 'da_dong'];
+const TICKET_NHAN = {
+  moi: 'Mới', dang_xu_ly: 'Đang xử lý', cho_agent: 'Chờ Agent',
+  da_giai_quyet: 'Đã giải quyết', da_dong: 'Đã đóng',
+};
+const TICKET_UU_TIEN = ['thap', 'thuong', 'cao', 'khan'];
+const TICKET_LOAI = ['loi', 'yeu_cau', 'huong_dan', 'thanh_toan', 'khac'];
+
+async function nextTicketCode(executor = db) {
+  // Cùng khuôn với mã hóa đơn: người đọc nhìn là biết ngày, và số chạy không
+  // trùng kể cả khi hai người bấm tạo cùng lúc.
+  const result = await executor.query(
+    `SELECT 'PT-' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || '-'
+      || LPAD(NEXTVAL('support_ticket_code_seq')::text, 6, '0') AS ticket_code`
+  );
+  return result.rows[0].ticket_code;
+}
+
+async function logTicketEvent(ticketId, eventType, admin, { fromStatus = null, toStatus = null, note = '' } = {}, runner = db) {
+  await runner.query(
+    `INSERT INTO support_ticket_events (ticket_id, event_type, actor_admin_id, actor_role, actor_name, from_status, to_status, note)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [ticketId, eventType, admin?.id || null, admin?.role || null,
+     admin?.full_name || admin?.username || null, fromStatus, toStatus, note || null]
+  ).catch((error) => console.error('[Ticket] Không ghi được nhật ký:', error.message));
+}
+
+// Mỗi biến động của ticket đều để lại một dòng TRONG chính đoạn chat sinh ra nó.
+// Người ta sống trong khung chat chứ không ngồi canh danh sách ticket.
+async function postTicketNoticeToChat(ticket, text, admin) {
+  const inserted = await db.query(
+    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id)
+     VALUES ($1, 'system', $2, $2, 'vi', $3) RETURNING id, created_at`,
+    [ticket.session_id, text, admin?.id || null]
+  ).catch((error) => { console.error('[Ticket] Không gửi được thông báo vào chat:', error.message); return null; });
+
+  const nhan = [Number(ticket.agent_id), Number(ticket.technical_id)].filter(Boolean);
+  broadcastAdminEvent('internal_message', {
+    targetAdminIds: nhan,
+    sessionId: ticket.session_id,
+    message: inserted?.rows?.[0] ? {
+      id: inserted.rows[0].id, session_id: ticket.session_id, sender: 'system',
+      original_text: text, translated_text: text,
+      created_at: inserted.rows[0].created_at, is_internal: true,
+    } : null,
+  });
+  broadcastAdminEvent('ticket_update', {
+    targetAdminIds: nhan,
+    ticketCode: ticket.ticket_code,
+    status: ticket.status,
+    sessionId: ticket.session_id,
+  });
+}
+
+// Ai được đụng vào ticket này, và ở mức nào.
+function quyenTrenTicket(admin, ticket) {
+  if (!admin || !ticket) return { xem: false, sua: false, dong: false };
+  if (isSuperAdmin(admin)) return { xem: true, sua: false, dong: false, chiXem: true };
+  if (admin.role === 'technical' && Number(ticket.technical_id) === Number(admin.id)) {
+    return { xem: true, sua: true, dong: true };
+  }
+  if (['agent', 'project_admin'].includes(admin.role) && Number(ticket.agent_id) === Number(admin.id)) {
+    // Agent phản hồi và đổi được vài trạng thái, nhưng KHÔNG tự đóng ticket mà
+    // Kỹ thuật đã tiếp nhận: đóng là lời tuyên bố "việc này xong rồi", và người
+    // đang làm mới nói được câu đó.
+    return { xem: true, sua: true, dong: false };
+  }
+  return { xem: false, sua: false, dong: false };
+}
+
+/**
+ * @swagger
+ * /api/admin/tickets:
+ *   post:
+ *     summary: Tạo ticket hỗ trợ từ trong đoạn chat Agent ↔ Kỹ thuật
+ */
+app.post('/api/admin/tickets', checkAdminAuth, async (req, res) => {
+  const current = req.admin;
+  const sessionId = String(req.body?.sessionId || '');
+  const parsed = parseInternalSessionId(sessionId);
+
+  // Cửa hẹp duy nhất: phải là cuộc Agent ↔ Kỹ thuật, và người tạo phải là một
+  // trong hai người đó. Superadmin không lọt qua đây vì không thuộc cuộc nào.
+  if (!parsed || parsed.kind !== 'technical') {
+    return res.status(400).json({ error: 'Ticket chỉ được tạo từ đoạn chat giữa Agent và Kỹ thuật.' });
+  }
+  if (!internalChatPeerFor(current, parsed)) {
+    return res.status(403).json({ error: 'Bạn không ở trong đoạn chat này nên không tạo được ticket.' });
+  }
+
+  const subject = String(req.body?.subject || '').trim().slice(0, 255);
+  if (!subject) return res.status(400).json({ error: 'Thiếu tiêu đề ticket.' });
+  const description = String(req.body?.description || '').trim().slice(0, 5000);
+  const category = TICKET_LOAI.includes(req.body?.category) ? req.body.category : 'khac';
+  const priority = TICKET_UU_TIEN.includes(req.body?.priority) ? req.body.priority : 'thuong';
+  const sourceMessageId = Number.isInteger(Number(req.body?.sourceMessageId))
+    ? Number(req.body.sourceMessageId) : null;
+
+  // Tin nhắn nguồn phải NẰM TRONG chính cuộc này. Không kiểm thì gửi id bất kỳ
+  // là đính kèm được một tin nhắn của người khác vào ticket của mình.
+  if (sourceMessageId) {
+    const thuoc = await db.query('SELECT 1 FROM messages WHERE id = $1 AND session_id = $2',
+      [sourceMessageId, sessionId]);
+    if (!thuoc.rowCount) {
+      return res.status(400).json({ error: 'Tin nhắn nguồn không thuộc đoạn chat này.' });
+    }
+  }
+
+  const code = await nextTicketCode();
+  const created = (await db.query(
+    `INSERT INTO support_tickets (ticket_code, agent_id, technical_id, session_id, source_message_id,
+                                  subject, description, category, priority, status,
+                                  created_by_admin_id, assigned_to_admin_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'moi', $10, $11) RETURNING *`,
+    [code, parsed.agentId, parsed.peerId, sessionId, sourceMessageId, subject, description,
+     category, priority, current.id,
+     // Kỹ thuật tự tạo thì coi như tự nhận luôn; Agent tạo thì chưa ai nhận.
+     current.role === 'technical' ? current.id : null]
+  )).rows[0];
+
+  await logTicketEvent(created.id, 'tao', current, { toStatus: 'moi', note: subject });
+  const nguoiTao = current.role === 'technical' ? 'Kỹ thuật' : 'Agent';
+  await postTicketNoticeToChat(created, `[Ticket] ${nguoiTao} đã tạo ${code}: ${subject}`, current);
+
+  res.status(201).json({ success: true, ticket: { ...created, statusLabel: TICKET_NHAN[created.status] } });
+});
+
+/**
+ * @swagger
+ * /api/admin/tickets:
+ *   get:
+ *     summary: Danh sách ticket theo vai
+ */
+app.get('/api/admin/tickets', checkAdminAuth, async (req, res) => {
+  const current = req.admin;
+  const dieuKien = [];
+  const thamSo = [];
+
+  // Phạm vi theo vai: Kỹ thuật thấy ticket của mình, Agent thấy ticket của mình,
+  // Superadmin thấy tất cả. Không có nhánh "mặc định thấy hết" — vai lạ thì rỗng.
+  if (isSuperAdmin(current)) {
+    // không thêm điều kiện
+  } else if (current.role === 'technical') {
+    thamSo.push(current.id); dieuKien.push(`t.technical_id = $${thamSo.length}`);
+  } else if (['agent', 'project_admin'].includes(current.role)) {
+    thamSo.push(current.id); dieuKien.push(`t.agent_id = $${thamSo.length}`);
+  } else {
+    return res.json({ success: true, tickets: [] });
+  }
+
+  if (TICKET_TRANG_THAI.includes(req.query.status)) {
+    thamSo.push(req.query.status); dieuKien.push(`t.status = $${thamSo.length}`);
+  }
+  if (req.query.sessionId) {
+    thamSo.push(String(req.query.sessionId)); dieuKien.push(`t.session_id = $${thamSo.length}`);
+  }
+  // Tìm theo mã ticket là cách người ta thật sự tìm: họ đọc mã cho nhau qua điện thoại.
+  const tim = String(req.query.q || '').trim();
+  if (tim) {
+    thamSo.push(`%${tim.toUpperCase()}%`);
+    dieuKien.push(`(UPPER(t.ticket_code) LIKE $${thamSo.length} OR UPPER(t.subject) LIKE $${thamSo.length})`);
+  }
+
+  const rows = await db.query(
+    `SELECT t.*, ag.full_name AS agent_name, tech.full_name AS technical_name,
+            nguoi_tao.full_name AS created_by_name, nguoi_nhan.full_name AS assigned_to_name
+       FROM support_tickets t
+       LEFT JOIN admins ag ON ag.id = t.agent_id
+       LEFT JOIN admins tech ON tech.id = t.technical_id
+       LEFT JOIN admins nguoi_tao ON nguoi_tao.id = t.created_by_admin_id
+       LEFT JOIN admins nguoi_nhan ON nguoi_nhan.id = t.assigned_to_admin_id
+      ${dieuKien.length ? 'WHERE ' + dieuKien.join(' AND ') : ''}
+      ORDER BY CASE t.status WHEN 'moi' THEN 0 WHEN 'dang_xu_ly' THEN 1 WHEN 'cho_agent' THEN 2 ELSE 3 END,
+               t.updated_at DESC
+      LIMIT 200`,
+    thamSo
+  );
+
+  res.json({
+    success: true,
+    chiXem: isSuperAdmin(current),
+    tickets: rows.rows.map((row) => ({ ...row, statusLabel: TICKET_NHAN[row.status] })),
+  });
+});
+
+/**
+ * @swagger
+ * /api/admin/tickets/{code}:
+ *   get:
+ *     summary: Chi tiết một ticket kèm nhật ký
+ */
+app.get('/api/admin/tickets/:code', checkAdminAuth, async (req, res) => {
+  const ticket = (await db.query(
+    `SELECT t.*, ag.full_name AS agent_name, tech.full_name AS technical_name
+       FROM support_tickets t
+       LEFT JOIN admins ag ON ag.id = t.agent_id
+       LEFT JOIN admins tech ON tech.id = t.technical_id
+      WHERE t.ticket_code = $1 OR t.id::text = $1`,
+    [String(req.params.code)]
+  )).rows[0];
+  if (!ticket) return res.status(404).json({ error: 'Không tìm thấy ticket.' });
+
+  const quyen = quyenTrenTicket(req.admin, ticket);
+  if (!quyen.xem) return res.status(403).json({ error: 'Ticket này không thuộc phạm vi của bạn.' });
+
+  const nhatKy = await db.query(
+    `SELECT event_type, actor_role, actor_name, from_status, to_status, note, created_at
+       FROM support_ticket_events WHERE ticket_id = $1 ORDER BY created_at, id`,
+    [ticket.id]
+  );
+
+  res.json({
+    success: true,
+    ticket: { ...ticket, statusLabel: TICKET_NHAN[ticket.status] },
+    quyen,
+    history: nhatKy.rows.map((row) => ({
+      ...row,
+      fromLabel: TICKET_NHAN[row.from_status] || null,
+      toLabel: TICKET_NHAN[row.to_status] || null,
+    })),
+  });
+});
+
+/**
+ * @swagger
+ * /api/admin/tickets/{code}:
+ *   patch:
+ *     summary: Đổi trạng thái, người nhận hoặc mức ưu tiên
+ */
+app.patch('/api/admin/tickets/:code', checkAdminAuth, async (req, res) => {
+  const current = req.admin;
+  const ticket = (await db.query(
+    'SELECT * FROM support_tickets WHERE ticket_code = $1 OR id::text = $1', [String(req.params.code)]
+  )).rows[0];
+  if (!ticket) return res.status(404).json({ error: 'Không tìm thấy ticket.' });
+
+  const quyen = quyenTrenTicket(current, ticket);
+  if (!quyen.sua) {
+    return res.status(403).json({
+      error: quyen.chiXem
+        ? 'Superadmin chỉ theo dõi ticket, việc xử lý thuộc về Kỹ thuật và Agent.'
+        : 'Ticket này không thuộc phạm vi của bạn.',
+    });
+  }
+
+  const trangThaiMoi = req.body?.status;
+  if (trangThaiMoi !== undefined && !TICKET_TRANG_THAI.includes(trangThaiMoi)) {
+    return res.status(400).json({ error: 'Trạng thái không hợp lệ.' });
+  }
+  // Đóng ticket là lời tuyên bố "xong rồi" — chỉ Kỹ thuật nói được câu đó.
+  if (['da_giai_quyet', 'da_dong'].includes(trangThaiMoi) && !quyen.dong) {
+    return res.status(403).json({
+      error: 'Ticket đã được Kỹ thuật tiếp nhận nên chỉ Kỹ thuật mới đóng được. Bạn vẫn phản hồi thêm được trong đoạn chat.',
+    });
+  }
+
+  const uuTienMoi = TICKET_UU_TIEN.includes(req.body?.priority) ? req.body.priority : null;
+  const ghiChu = String(req.body?.note || '').trim().slice(0, 1000);
+  // Kỹ thuật bấm "nhận việc": ghi tên người nhận để Agent biết ai đang lo.
+  const nhanViec = req.body?.claim === true && current.role === 'technical';
+
+  const capNhat = (await db.query(
+    `UPDATE support_tickets
+        SET status = COALESCE($2, status),
+            priority = COALESCE($3, priority),
+            assigned_to_admin_id = CASE WHEN $4 THEN $5 ELSE assigned_to_admin_id END,
+            resolved_at = CASE WHEN $2 IN ('da_giai_quyet', 'da_dong') THEN COALESCE(resolved_at, NOW())
+                               WHEN $2 IS NOT NULL THEN NULL ELSE resolved_at END,
+            updated_at = NOW()
+      WHERE id = $1 RETURNING *`,
+    [ticket.id, trangThaiMoi || null, uuTienMoi, nhanViec, current.id]
+  )).rows[0];
+
+  const doiTrangThai = trangThaiMoi && trangThaiMoi !== ticket.status;
+  await logTicketEvent(ticket.id, nhanViec ? 'nhan_viec' : (doiTrangThai ? 'doi_trang_thai' : 'cap_nhat'),
+    current, { fromStatus: ticket.status, toStatus: capNhat.status, note: ghiChu });
+
+  // Chỉ báo vào chat khi có thứ đáng báo. Đổi mức ưu tiên trong im lặng thì
+  // không ai cần biết ngay, còn đổi trạng thái thì cả hai bên đều cần.
+  if (doiTrangThai || nhanViec) {
+    const ten = current.full_name || current.username || 'Nhân viên';
+    const text = nhanViec && !doiTrangThai
+      ? `[Ticket] ${ten} đã nhận xử lý ${ticket.ticket_code}.`
+      : `[Ticket] ${ticket.ticket_code} chuyển sang "${TICKET_NHAN[capNhat.status]}" (${ten})${ghiChu ? ` — ${ghiChu}` : ''}.`;
+    await postTicketNoticeToChat(capNhat, text, current);
+  }
+
+  res.json({ success: true, ticket: { ...capNhat, statusLabel: TICKET_NHAN[capNhat.status] } });
 });
 
 // --- Phương thức thanh toán khả dụng -----------------------------------------

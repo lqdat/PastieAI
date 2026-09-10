@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r121">
-    <link rel="stylesheet" href="menu-console.css?v=r121">
+    <link rel="stylesheet" href="admin.css?v=r122">
+    <link rel="stylesheet" href="menu-console.css?v=r122">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -188,6 +188,9 @@
                 <button id="agent-account-btn" class="header-quick-btn hide" type="button" title="Quản lý tài khoản của bạn">
                     <i class="ri-user-settings-line"></i><span>Tài khoản</span>
                 </button>
+                <button id="agent-guide-btn" class="header-quick-btn hide" type="button" title="Sổ tay hướng dẫn sử dụng Agent">
+                    <i class="ri-book-open-line"></i><span>Hướng dẫn</span>
+                </button>
                 <button id="agent-push-btn" class="header-quick-btn header-quick-btn-push hide" type="button" title="Thông báo đẩy">
                     <i class="ri-notification-3-line" id="agent-push-icon"></i><span id="agent-push-label">Thông báo</span>
                 </button>
@@ -343,7 +346,12 @@
             <div class="org-card">
                 <header class="org-head">
                     <h2 id="org-title"><i class="ri-team-line" style="color:var(--accent-color);margin-right:6px;"></i>Quản lý Sale, nhóm, QR và thực đơn</h2>
-                    <button type="button" class="icon-btn" id="org-close-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <button type="button" class="secondary-btn" id="org-guide-btn" style="width:auto;padding:5px 10px;font-size:12px;border-radius:8px;font-weight:600;display:inline-flex;align-items:center;gap:5px;" title="Xem sổ tay hướng dẫn sử dụng cho Agent">
+                            <i class="ri-book-open-line"></i> <span>Hướng dẫn</span>
+                        </button>
+                        <button type="button" class="icon-btn" id="org-close-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
+                    </div>
                 </header>
 
                 <nav class="org-tabs" id="org-tabs">
@@ -1658,6 +1666,236 @@
         </div>
     </div>
 
+    <!-- Modal Sổ tay Hướng dẫn Sử dụng dành riêng cho Agent -->
+    <div id="agent-guide-modal" class="modal-overlay hide" style="z-index: 9999;">
+        <div class="agent-guide-card glass-panel">
+            <header class="agent-guide-head">
+                <div class="agent-guide-title-box">
+                    <span class="agent-guide-badge"><i class="ri-book-open-line"></i> Hướng Dẫn Sử Dụng</span>
+                    <h2>Sổ tay Vận hành Role Agent (Chủ cơ sở)</h2>
+                </div>
+                <div class="agent-guide-head-actions">
+                    <button type="button" class="primary-btn" id="agent-preview-customer-btn" title="Mở thử nghiệm giao diện khách quét QR Bàn 01">
+                        <i class="ri-external-link-line"></i> <span>Xem góc nhìn Khách</span>
+                    </button>
+                    <button type="button" class="icon-btn" id="agent-guide-close-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
+                </div>
+            </header>
+
+            <nav class="agent-guide-tabs">
+                <button type="button" class="guide-tab-btn is-active" data-guide-tab="video"><i class="ri-video-line"></i> <span>Video Mobile</span></button>
+                <button type="button" class="guide-tab-btn" data-guide-tab="groups"><i class="ri-team-line"></i> <span>Tạo Nhóm</span></button>
+                <button type="button" class="guide-tab-btn" data-guide-tab="sales"><i class="ri-user-shared-line"></i> <span>Thêm Sale &amp; Gán</span></button>
+                <button type="button" class="guide-tab-btn" data-guide-tab="qr"><i class="ri-qr-code-line"></i> <span>Bàn &amp; Mã QR</span></button>
+                <button type="button" class="guide-tab-btn" data-guide-tab="menu"><i class="ri-restaurant-line"></i> <span>Menu &amp; VAT</span></button>
+                <button type="button" class="guide-tab-btn" data-guide-tab="bills"><i class="ri-bill-line"></i> <span>Đa Hóa Đơn</span></button>
+                <button type="button" class="guide-tab-btn" data-guide-tab="customer"><i class="ri-smartphone-line"></i> <span>Khách Xem Như Thế Nào?</span></button>
+            </nav>
+
+            <div class="agent-guide-body">
+                <!-- Tab 1: Video -->
+                <div class="guide-tab-pane" data-guide-pane="video">
+                    <div class="guide-section-header">
+                        <h3>🎬 Video Hướng Dẫn Thao Tác Toàn Diện Trên Mobile (390x844)</h3>
+                        <p>Video ghi lại toàn bộ quy trình: Đăng nhập OTP 123456, Tạo nhóm sảnh, Thêm Sale ca trực, Gán Sale, Tạo bàn QR, Cài đặt menu VAT và Quản lý bill.</p>
+                    </div>
+                    <div class="guide-media-center">
+                        <img src="/agent_guide/agent_mobile_guide_video.webp" alt="Video Hướng Dẫn Agent Mobile" class="guide-media-preview">
+                    </div>
+                </div>
+
+                <!-- Tab 2: Nhóm tiếp nhận -->
+                <div class="guide-tab-pane hide" data-guide-pane="groups">
+                    <div class="guide-section-header">
+                        <h3>👥 Quản Lý Nhóm Tiếp Nhận (Khu vực / Sảnh / Phòng VIP)</h3>
+                        <p>Nhóm tiếp nhận giúp điều phối đơn gọi món và chat của từng bàn về đúng nhân sự trực ca phụ trách khu vực đó.</p>
+                    </div>
+                    <ol class="guide-steps-list">
+                        <li>Bấm nút <strong>Sale &amp; Nhóm</strong> trên thanh công cụ -> Chọn tab <strong>Nhóm</strong>.</li>
+                        <li>Bấm nút <strong>+ Thêm nhóm</strong> ở góc phải tiêu đề.</li>
+                        <li>Điền <strong>Tên nhóm *</strong> (VD: <em>Sảnh A (VIP)</em>, <em>Khu Sân Vườn</em>) và <strong>Ghi chú</strong> (VD: <em>Bàn 1 đến 10 sảnh chính</em>).</li>
+                        <li>Tại mục <strong>Chọn Sale vào nhóm ngay</strong>, chạm vào từng nhân viên để gán trực tiếp.</li>
+                        <li>Bấm <strong>Thêm nhóm</strong> để lưu.</li>
+                    </ol>
+                    <div class="guide-media-grid">
+                        <figure>
+                            <img src="/agent_guide/step2_tab_groups.png" alt="Danh sách nhóm">
+                            <figcaption>1. Danh sách các nhóm tiếp nhận đang hoạt động</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="/agent_guide/step2_add_group_form.png" alt="Form thêm nhóm">
+                            <figcaption>2. Form tạo nhóm và chọn Sale vào nhóm trên mobile</figcaption>
+                        </figure>
+                    </div>
+                </div>
+
+                <!-- Tab 3: Thêm Sale & Gán nhóm -->
+                <div class="guide-tab-pane hide" data-guide-pane="sales">
+                    <div class="guide-section-header">
+                        <h3>🧑‍💼 Thêm Nhân Viên Sale &amp; 3 Cách Gán Vào Nhóm</h3>
+                        <p>Agent kiểm soát giờ làm việc ca trực 24h và phân công khu vực tiếp khách cho từng Sale.</p>
+                    </div>
+                    <ol class="guide-steps-list">
+                        <li>Chọn tab <strong>Sale</strong> -> Bấm <strong>+ Thêm Sale</strong>.</li>
+                        <li>Nhập <strong>Họ tên *</strong> và <strong>Email đăng nhập *</strong> của nhân viên.</li>
+                        <li>Chọn <strong>Nhóm tiếp nhận</strong> phụ trách (VD: <em>Sảnh A</em>).</li>
+                        <li>Cài đặt <strong>Khung giờ làm việc (Hệ 24h)</strong> (VD: <em>08:00 – 17:00</em>). Sale chỉ có thể nhận chat và duyệt bill trong ca này.</li>
+                        <li>Tải <strong>Ảnh đại diện (Avatar)</strong> chân dung thật của Sale để tăng độ tin cậy khi chat với khách.</li>
+                        <li><strong>3 Cách gán Sale vào nhóm linh hoạt</strong>:
+                            <ul>
+                                <li><em>Cách 1</em>: Gán ngay tại ô "Nhóm tiếp nhận" khi tạo/sửa Sale.</li>
+                                <li><em>Cách 2</em>: Chọn hàng loạt trong bộ chọn Sale Picker khi tạo/sửa Nhóm.</li>
+                                <li><em>Cách 3</em>: Trên thẻ Nhóm, bấm menu <code>+ Thêm Sale vào nhóm...</code> để add nhanh, hoặc bấm dấu <strong>&times;</strong> đỏ cạnh tên Sale để rút khỏi nhóm.</li>
+                            </ul>
+                        </li>
+                    </ol>
+                    <div class="guide-media-grid">
+                        <figure>
+                            <img src="/agent_guide/step3_tab_sales.png" alt="Danh sách Sale">
+                            <figcaption>1. Danh sách Sale, hạn mức quota và trạng thái Trong ca</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="/agent_guide/step3_add_sale_form.png" alt="Form thêm Sale">
+                            <figcaption>2. Form thêm Sale mới, cài đặt ca trực và tải avatar</figcaption>
+                        </figure>
+                    </div>
+                </div>
+
+                <!-- Tab 4: Bàn & QR -->
+                <div class="guide-tab-pane hide" data-guide-pane="qr">
+                    <div class="guide-section-header">
+                        <h3>🪑 Quản Lý Bàn &amp; Tạo Mã QR Standee Để Bàn</h3>
+                        <p>Tạo mã QR cho từng bàn, standee phòng khách sạn. Khách quét sẽ tự động nối đến nhóm phụ trách.</p>
+                    </div>
+                    <ol class="guide-steps-list">
+                        <li>Chọn tab <strong>Mã QR</strong> -> Bấm <strong>+ Tạo mã QR</strong>.</li>
+                        <li>Nhập <strong>Tên vị trí *</strong> (VD: <em>Bàn 01 (Sảnh A)</em>, <em>Phòng VIP 101</em>).</li>
+                        <li>Chọn <strong>Nhóm tiếp nhận *</strong> (VD: <em>Sảnh A</em>) -> Bấm <strong>Tạo mã QR</strong>.</li>
+                        <li><strong>Bộ 3 nút thao tác</strong>:
+                            <ul>
+                                <li>👁️ <strong>Xem mã</strong>: Mở ảnh QR khổ lớn, nhấn giữ hoặc tải về in standee để bàn.</li>
+                                <li>✏️ <strong>Sửa</strong>: Đổi tên bàn hoặc đổi nhóm phục vụ.</li>
+                                <li>🗑️ <strong>Xóa</strong>: Xóa bàn kèm hộp thoại xác nhận an toàn.</li>
+                            </ul>
+                        </li>
+                    </ol>
+                    <div class="guide-media-grid">
+                        <figure>
+                            <img src="/agent_guide/step4_tab_qr.png" alt="Danh sách bàn QR">
+                            <figcaption>1. Danh sách các bàn và bộ lọc nhóm</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="/agent_guide/step4_create_qr_form.png" alt="Form tạo QR bàn">
+                            <figcaption>2. Form tạo bàn và gán nhóm phục vụ</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="/agent_guide/step4_qr_standee_preview.png" alt="Xem QR Standee">
+                            <figcaption>3. Popup xem và tải ảnh QR Standee sắc nét</figcaption>
+                        </figure>
+                    </div>
+                </div>
+
+                <!-- Tab 5: Thực đơn & VAT -->
+                <div class="guide-tab-pane hide" data-guide-pane="menu">
+                    <div class="guide-section-header">
+                        <h3>🍽️ Quản Lý Thực Đơn &amp; Cài Đặt Thuế VAT (0%, 8%, 10%)</h3>
+                        <p>Quản lý danh mục món, giá tiền, tách thuế VAT tự động và số lượng tồn kho tức thời.</p>
+                    </div>
+                    <ol class="guide-steps-list">
+                        <li>Chọn tab <strong>Thực đơn</strong>: Đánh dấu ☑️ <em>Hiển thị Thực đơn cho khách quét QR</em> và đặt chữ hiển thị nút (VD: <em>Thực đơn</em>, <em>Gọi món</em>).</li>
+                        <li>Bấm <strong>+ Danh mục</strong>: Tạo nhóm món (VD: <em>Cà Phê &amp; Trà</em>, <em>Bánh Ngọt</em>, <em>Đặc Sản</em>).</li>
+                        <li>Bấm <strong>+ Thêm món</strong>:
+                            <ul>
+                                <li>Chọn Danh mục, nhập Tên món, Đơn giá.</li>
+                                <li>Cài đặt <strong>Thuế suất VAT</strong>: Chọn <strong>0%</strong>, <strong>8%</strong>, hoặc <strong>10%</strong> (hệ thống tự động tính và tách riêng thuế trên bill).</li>
+                                <li>Nhập số lượng tồn kho (<code>stock_quantity</code>) và chọn tình trạng <em>Còn hàng / Tạm hết hàng</em>.</li>
+                                <li>Tải ảnh món ăn thực tế -> Bấm <strong>Lưu món</strong>.</li>
+                            </ul>
+                        </li>
+                    </ol>
+                    <div class="guide-media-grid">
+                        <figure>
+                            <img src="/agent_guide/step5_tab_menu.png" alt="Quản lý thực đơn">
+                            <figcaption>1. Bảng quản lý thực đơn và cấu hình nút Menu phía khách</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="/agent_guide/step5_add_category_form.png" alt="Thêm danh mục">
+                            <figcaption>2. Form thêm danh mục món</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="/agent_guide/step5_add_item_form.png" alt="Thêm món & VAT">
+                            <figcaption>3. Cài đặt VAT 0%, 8%, 10% và tồn kho cho từng món</figcaption>
+                        </figure>
+                    </div>
+                </div>
+
+                <!-- Tab 6: Đa Hóa Đơn -->
+                <div class="guide-tab-pane hide" data-guide-pane="bills">
+                    <div class="guide-section-header">
+                        <h3>🧾 Quản Lý Đa Hóa Đơn (Multiple Bills - Cart Console)</h3>
+                        <p>Cơ chế bảo toàn đơn khi khách gọi món nhiều đợt độc lập trên cùng một bàn.</p>
+                    </div>
+                    <ol class="guide-steps-list">
+                        <li>Bấm nút <strong>Quản lý hóa đơn</strong> trên Header.</li>
+                        <li>Màn hình hiển thị danh sách đơn theo bàn:
+                            <ul>
+                                <li><strong>Hóa đơn #1</strong>: Các món khách gọi đợt 1.</li>
+                                <li><strong>Hóa đơn #2</strong>: Các món khách gọi thêm đợt 2 độc lập.</li>
+                            </ul>
+                        </li>
+                        <li>Bấm <strong>Xác nhận đơn</strong>: Hệ thống tự động trừ tồn kho các món đã duyệt.</li>
+                        <li>Bấm <strong>Đã thanh toán</strong> khi thu tiền (Tiền mặt, QR, Thẻ, Phòng).</li>
+                        <li>Bấm <strong>In hóa đơn</strong> để xuất phiếu bill chuẩn PDF in ra máy in nhiệt.</li>
+                    </ol>
+                    <div class="guide-media-center">
+                        <img src="/agent_guide/step6_order_cart_modal.png" alt="Màn hình quản lý hóa đơn" class="guide-media-preview">
+                    </div>
+                </div>
+
+                <!-- Tab 7: Khách xem như thế nào -->
+                <div class="guide-tab-pane hide" data-guide-pane="customer">
+                    <div class="guide-section-header">
+                        <h3>📱 Khách Xem Bằng Cách Nào? (Góc Nhìn Khách Quét QR)</h3>
+                        <p>Dưới đây là toàn bộ trải nghiệm thực tế của khách hàng từ khi quét mã standee bàn đến khi nhận bill.</p>
+                    </div>
+                    <div class="guide-steps-list">
+                        <div class="guide-step-card">
+                            <strong>Bước 1: Khách dùng Camera điện thoại quét mã QR tại bàn</strong>
+                            <p>Đường dẫn quét bàn: <code>http://localhost:3000/qr/BAN-01</code> (hoặc <code>/customer-chat/BAN-01</code>). Màn hình chào mừng hiển thị đúng tên cơ sở: <em>Hộ kinh doanh Đan Trinh Pastie</em>, vị trí: <em>Bàn 01 (Sảnh A)</em>.</p>
+                        </div>
+                        <div class="guide-step-card">
+                            <strong>Bước 2: Khách bấm nút "Thực đơn" (hoặc "Gọi món")</strong>
+                            <p>Nút menu nổi bật góc dưới màn hình mở ra thực đơn món ăn do Agent đã cấu hình. Khách xem ảnh món, giá tiền, thông tin thuế VAT và tình trạng còn hàng.</p>
+                        </div>
+                        <div class="guide-step-card">
+                            <strong>Bước 3: Chọn món &amp; Đặt hàng lần 1</strong>
+                            <p>Khách bấm chọn số lượng -> Vào Giỏ hàng -> Bấm "Đặt món" -> Chọn phương thức thanh toán (Tiền mặt, Chuyển khoản, Phòng). Hệ thống tạo <strong>Hóa đơn #1</strong>.</p>
+                        </div>
+                        <div class="guide-step-card">
+                            <strong>Bước 4: Gọi thêm món lần 2 (Cơ chế Multiple Bills)</strong>
+                            <p>Khách muốn uống thêm nước hoặc tráng miệng: Tiếp tục chọn món và bấm Đặt món. Hệ thống sinh thêm <strong>Hóa đơn #2</strong> độc lập, giữ nguyên vẹn 100% Hóa đơn #1.</p>
+                        </div>
+                        <div class="guide-step-card">
+                            <strong>Bước 5: Chat trực tiếp với nhân viên phục vụ</strong>
+                            <p>Ngay trong màn hình, khách có thể nhắn tin yêu cầu: <em>"Cho xin thêm khăn lạnh và đá"</em>. AI tự động dịch ngôn ngữ nếu khách là người nước ngoài.</p>
+                        </div>
+                    </div>
+                    <div class="guide-action-box">
+                        <p>💡 <strong>Mẹo dành riêng cho Agent</strong>: Bạn có thể tự mình trải nghiệm ngay góc nhìn của khách hàng bằng cách bấm nút bên dưới:</p>
+                        <button type="button" class="primary-btn" onclick="window.open('/customer-chat/BAN-01', '_blank')" style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;font-size:13.5px;">
+                            <i class="ri-external-link-line"></i> <span>Mở thử nghiệm giao diện Khách quét QR Bàn 01</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="agent-guide-foot">
+                <span>Hệ thống Pastie AI Concierge · Sổ tay Agent Mobile 2026</span>
+                <button type="button" class="secondary-btn" id="agent-guide-foot-close-btn"><i class="ri-close-line"></i> Đóng</button>
+            </footer>
+        </div>
+    </div>
+
     <!-- Modal Thông báo phiên bị đăng xuất do đăng nhập ở thiết bị khác (Lớp 1 License) -->
     <div id="session-revoked-modal" class="modal-overlay hide" style="z-index: 10000;">
         <div class="login-box glass-panel" style="max-width: 440px; text-align: center; padding: 28px 24px;">
@@ -1678,15 +1916,16 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r121"></script>
-    <script src="core.js?v=r121"></script>
-    <script src="chat.js?v=r121"></script>
-    <script src="org-console.js?v=r121"></script>
-    <script src="project-admin.js?v=r121"></script>
-    <script src="menu-console.js?v=r121"></script>
-    <script src="order-console.js?v=r121"></script>
-    <script src="monitor-console.js?v=r121"></script>
-    <script src="cart-console.js?v=r121"></script>
-    <script src="admin.js?v=r121"></script>
+    <script src="config.js?v=r122"></script>
+    <script src="core.js?v=r122"></script>
+    <script src="chat.js?v=r122"></script>
+    <script src="org-console.js?v=r122"></script>
+    <script src="project-admin.js?v=r122"></script>
+    <script src="menu-console.js?v=r122"></script>
+    <script src="order-console.js?v=r122"></script>
+    <script src="monitor-console.js?v=r122"></script>
+    <script src="cart-console.js?v=r122"></script>
+    <script src="ticket-console.js?v=r122"></script>
+    <script src="admin.js?v=r122"></script>
 </body>
 </html>

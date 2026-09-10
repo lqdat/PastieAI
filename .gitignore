@@ -4,6 +4,7 @@ dist/
 qr-chat-portal/
 pastie-dashboard/
 pastie-chat-widget/
+pastiechat-landing/
 
 # Environment secrets
 .env

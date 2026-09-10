@@ -1044,6 +1044,7 @@ function updateAgentHeaderUI() {
 
     // Nút hồ sơ tài khoản: hiển thị cho Agent / Sale
     document.getElementById('agent-account-btn')?.classList.toggle('hide', !isAgentRole);
+    document.getElementById('agent-guide-btn')?.classList.toggle('hide', !isAgentRole);
 
     // Chỉ Agent quản lý mới tạo và xem QR. Sale không đụng tới QR.
     const hasQr = isAgentManagerRole() && isQrConciergeProject(CURRENT_ADMIN.project_id);
@@ -1290,7 +1291,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) void
 // classList.toggle('hide', ...) để ẩn nút theo vai trò.
 const HEADER_MENU_BTN_IDS = [
     'org-manage-btn', 'order-cart-btn', 'sale-menu-btn', 'agent-qr-btn',
-    'report-modal-btn', 'agent-account-btn', 'agent-push-btn',
+    'report-modal-btn', 'agent-account-btn', 'agent-guide-btn', 'agent-push-btn',
 ];
 const headerBtnHome = new Map();
 function layoutHeaderQuickMenu(grouped) {
