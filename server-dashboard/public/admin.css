@@ -8275,9 +8275,90 @@ button:focus-visible {
         font-size: 11px;
         padding: 5px 9px;
     }
-    .agent-guide-head h2 {
-        font-size: 14.5px;
-    }
 }
+
+/* Admin Chat Invoice Bubble Styles */
+.admin-invoice-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.admin-invoice-kicker {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--accent-color, #ef2b9d);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.admin-invoice-status {
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+.admin-invoice-status.is-paid {
+    background: #ecfdf5;
+    color: #059669;
+}
+.admin-invoice-status.is-waiting {
+    background: #fffbeb;
+    color: #d97706;
+}
+.admin-invoice-preview {
+    display: block;
+    width: 100%;
+    padding: 0;
+    margin: 6px 0 8px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.admin-invoice-preview:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+}
+.admin-invoice-preview img {
+    display: block;
+    width: 100%;
+    max-height: 280px;
+    object-fit: contain;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+}
+.admin-invoice-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary, #6b7280);
+}
+.admin-invoice-open {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(239, 43, 157, 0.28);
+    background: #fff;
+    color: var(--accent-color, #ef2b9d);
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.admin-invoice-open:hover {
+    background: #fff0f7;
+    border-color: var(--accent-color, #ef2b9d);
+    transform: translateY(-1px);
+}
+
 
 

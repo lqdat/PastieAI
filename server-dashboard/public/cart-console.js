@@ -390,7 +390,11 @@
             let isSending = false;
 
             const payment = order.payment_method ? PAYMENT[order.payment_method] || order.payment_method : 'Khách chưa chọn';
-            const canEdit = (CURRENT_ADMIN?.role === 'agent' || CURRENT_ADMIN?.role === 'superadmin' || CURRENT_ADMIN?.role === 'admin' || CURRENT_ADMIN?.role === 'sale') && order.status !== 'paid';
+            const canEditOrder = (CURRENT_ADMIN?.role === 'agent' || CURRENT_ADMIN?.role === 'superadmin' || CURRENT_ADMIN?.role === 'admin') && CURRENT_ADMIN?.role !== 'sale' && order.status !== 'paid';
+            const isEditMode = (prefilled?.mode === 'edit') && canEditOrder;
+
+            const headingSmall = detailOverlay.querySelector('.order-detail-heading small');
+            if (headingSmall) headingSmall.textContent = isEditMode ? 'SỬA HÓA ĐƠN' : 'CHI TIẾT ĐƠN HÀNG';
 
             function recalculateCharges() {
                 const subtotal = draftItems.reduce((acc, it) => acc + (it.lineTotal || 0), 0);
@@ -410,7 +414,7 @@
                         <div class="order-items-empty">
                             <i class="ri-shopping-basket-2-line"></i>
                             <p>Đơn chưa có món nào.</p>
-                            <small>Bấm "Thêm món vào hóa đơn" bên dưới để bổ sung món</small>
+                            ${isEditMode ? '<small>Bấm "Thêm món vào hóa đơn" bên dưới để bổ sung món</small>' : ''}
                         </div>`;
                 }
                 return draftItems.map((item, index) => `
@@ -424,14 +428,14 @@
                                 <span class="order-item-unit-price">${money(item.unitPrice || 0)}</span>
                                 <span class="order-item-cross">×</span>
                                 <span class="order-item-qty-tag">${Number(item.quantity || 0)}</span>
-                                <span class="order-item-vat-tag" data-edit-item="${index}" title="Thuế VAT: ${Number(item.vatRate != null ? item.vatRate : 10)}% (Giá đã gồm VAT)">
+                                <span class="order-item-vat-tag" ${isEditMode ? `data-edit-item="${index}" style="cursor:pointer;"` : ''} title="Thuế VAT: ${Number(item.vatRate != null ? item.vatRate : 10)}% (Giá đã gồm VAT)">
                                     VAT ${Number(item.vatRate != null ? item.vatRate : 10)}%
                                 </span>
                             </div>
                         </div>
                         <div class="order-item-right">
                             <b class="order-item-total">${money(item.lineTotal ?? Number(item.unitPrice || 0) * Number(item.quantity || 0))}</b>
-                            ${canEdit ? `
+                            ${isEditMode ? `
                             <div class="order-item-actions">
                                 <button type="button" class="order-action-btn edit-item-btn" data-edit-item="${index}" title="Sửa giá / SL / VAT">
                                     <i class="ri-pencil-line"></i>
@@ -462,23 +466,6 @@
                             <b class="summary-line-val">${money(calc.totalAmount)}</b>
                         </div>
                     `;
-                }
-                const saveStatusEl = detailOverlay?.querySelector('#order-save-status-wrap');
-                if (saveStatusEl) {
-                    saveStatusEl.innerHTML = isDirty
-                        ? `<span class="order-save-status"><i class="ri-alert-line"></i> Có thay đổi chưa lưu</span>`
-                        : `<span class="order-save-status is-saved"><i class="ri-checkbox-circle-line"></i> Đã lưu</span>`;
-                }
-                const saveBtn = detailOverlay?.querySelector('#order-save-bill-btn');
-                if (saveBtn) {
-                    saveBtn.classList.toggle('primary-btn', isDirty);
-                    saveBtn.classList.toggle('secondary-btn', !isDirty);
-                    saveBtn.style.display = isDirty ? 'inline-flex' : 'none';
-                    saveBtn.style.background = isDirty ? 'var(--accent-color)' : '';
-                    saveBtn.style.color = isDirty ? '#fff' : '';
-                    saveBtn.innerHTML = isSaving
-                        ? `<i class="ri-loader-4-line ri-spin"></i> Đang lưu…`
-                        : `<i class="ri-save-line"></i> <strong>Lưu thay đổi</strong>`;
                 }
             }
 
@@ -512,15 +499,12 @@
                     <div class="order-detail-items">
                         ${renderDraftItemsHtml()}
                     </div>
-                    ${canEdit ? `
+                    ${isEditMode ? `
                     <div class="order-add-toolbar">
                         <button type="button" class="order-add-btn" id="order-add-item-btn">
                             <i class="ri-add-line"></i>
                             <span>Thêm món vào hóa đơn</span>
                         </button>
-                        <div id="order-save-status-wrap">
-                            <span class="order-save-status is-saved"><i class="ri-checkbox-circle-line"></i> Đã lưu</span>
-                        </div>
                     </div>` : ''}
                     <div class="order-detail-summary">
                         <div class="summary-line">
@@ -536,38 +520,42 @@
                             <b class="summary-line-val">${money(order.total_amount)}</b>
                         </div>
                     </div>
+                    ${!isEditMode ? `
                     <div class="order-detail-history-wrap" id="order-history-wrap" style="display:none;margin:10px 0;">
                         <button type="button" class="order-history-btn secondary-btn" id="order-open-history-btn" style="width:100%;height:38px;border-radius:10px;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:7px;">
                             <i class="ri-history-line"></i> Lịch sử chỉnh sửa (<span id="order-history-count">0</span> lần thay đổi)
                         </button>
-                    </div>
+                    </div>` : ''}
                     <div class="order-detail-actions">
-                        <div class="order-action-nav-row">
-                            <button type="button" class="secondary-btn order-nav-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
-                            <button type="button" class="secondary-btn order-nav-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem hóa đơn</button>
-                        </div>
-                        ${canEdit ? `
-                            <button type="button" class="primary-btn is-full-width order-save-btn" id="order-save-bill-btn" style="display:none;"><i class="ri-save-line"></i> Lưu thay đổi</button>
-                            <button type="button" class="primary-btn is-full-width is-resend-bill" id="order-send-bill-btn" data-order-id="${escapeHtml(order.id)}"><i class="ri-send-plane-fill"></i> Gửi lại hóa đơn cho khách</button>
-                        ` : ''}
-                        ${canMarkPaid && order.status === 'awaiting_payment' ? `<button type="button" class="cart-paid-btn is-full-width" data-paid="${escapeHtml(order.id)}" data-method="${escapeHtml(order.payment_method || '')}"><i class="ri-check-double-line"></i> Xác nhận đã thu tiền</button>` : ''}
+                        ${isEditMode ? `
+                            <button type="button" class="primary-btn is-full-width is-resend-bill" id="order-send-bill-btn" data-order-id="${escapeHtml(order.id)}">
+                                <i class="ri-send-plane-fill"></i> Lưu và gửi lại hóa đơn cho khách
+                            </button>
+                        ` : `
+                            <div class="order-action-nav-row">
+                                <button type="button" class="secondary-btn order-nav-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
+                                <button type="button" class="secondary-btn order-nav-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem hóa đơn</button>
+                            </div>
+                        `}
                     </div>
                 `;
             }
 
-            // Tải lịch sử đơn hàng nền (không cản trở giao diện chính)
-            void loadOrderHistory(order).then((history) => {
-                if (Array.isArray(history) && history.length >= 2) {
-                    const wrap = detailOverlay?.querySelector('#order-history-wrap');
-                    const countEl = detailOverlay?.querySelector('#order-history-count');
-                    const btn = detailOverlay?.querySelector('#order-open-history-btn');
-                    if (wrap && countEl && btn) {
-                        countEl.textContent = String(history.length - 1);
-                        wrap.style.display = 'block';
-                        btn.onclick = () => showOrderHistoryPopup(history, order.order_code || order.id);
+            // Tải lịch sử đơn hàng nền (chỉ ở chế độ Xem chi tiết)
+            if (!isEditMode) {
+                void loadOrderHistory(order).then((history) => {
+                    if (Array.isArray(history) && history.length >= 2) {
+                        const wrap = detailOverlay?.querySelector('#order-history-wrap');
+                        const countEl = detailOverlay?.querySelector('#order-history-count');
+                        const btn = detailOverlay?.querySelector('#order-open-history-btn');
+                        if (wrap && countEl && btn) {
+                            countEl.textContent = String(history.length - 1);
+                            wrap.style.display = 'block';
+                            btn.onclick = () => showOrderHistoryPopup(history, order.order_code || order.id);
+                        }
                     }
-                }
-            });
+                });
+            }
 
             detailOverlay.onclick = async (event) => {
                 if (event.target === detailOverlay || event.target.closest('.detail-close')) {
@@ -608,12 +596,13 @@
                     draftItems = draftItems.filter((_, i) => i !== idx);
                     isDirty = true;
                     refreshDraftView();
-                    showToast('Đã xóa món. Vui lòng bấm "Lưu thay đổi" để lưu vào hóa đơn.');
+                    showToast('Đã xóa món. Vui lòng bấm "Lưu và gửi lại hóa đơn cho khách" để hoàn tất.');
                     return;
                 }
 
                 const editBtn = event.target.closest('[data-edit-item]');
                 if (editBtn) {
+                    if (!isEditMode) return;
                     const idx = Number(editBtn.dataset.editItem);
                     const it = draftItems[idx];
                     const result = await editItemDialog(it);
@@ -634,12 +623,13 @@
                     });
                     isDirty = true;
                     refreshDraftView();
-                    showToast('Đã sửa món. Vui lòng bấm "Lưu thay đổi" để lưu vào hóa đơn.');
+                    showToast('Đã sửa món. Vui lòng bấm "Lưu và gửi lại hóa đơn cho khách" để hoàn tất.');
                     return;
                 }
 
                 const addBtn = event.target.closest('#order-add-item-btn');
                 if (addBtn) {
+                    if (!isEditMode) return;
                     const result = await addItemDialog();
                     if (!result) return;
                     const rate = result.vatRate != null ? Number(result.vatRate) : 10;
@@ -652,58 +642,21 @@
                     });
                     isDirty = true;
                     refreshDraftView();
-                    showToast('Đã thêm món vào danh sách. Vui lòng bấm "Lưu thay đổi" để hoàn tất.');
-                    return;
-                }
-
-                const saveBillBtn = event.target.closest('#order-save-bill-btn');
-                if (saveBillBtn) {
-                    if (isSaving) return;
-                    isSaving = true;
-                    updateSummaryHtml();
-                    try {
-                        const res = await authFetch(`${API_BASE}/api/admin/orders/${order.id}/agent-items`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ items: draftItems, sendBill: false })
-                        });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data.error || 'Không thể lưu thay đổi.');
-                        isDirty = false;
-                        showToast('Đã lưu thay đổi vào hóa đơn!', 'success');
-                        // Cập nhật lại lịch sử
-                        void loadOrderHistory(order).then((history) => {
-                            const wrap = detailOverlay?.querySelector('#order-history-wrap');
-                            const countEl = detailOverlay?.querySelector('#order-history-count');
-                            const btn = detailOverlay?.querySelector('#order-open-history-btn');
-                            if (wrap && countEl && btn && Array.isArray(history) && history.length >= 2) {
-                                countEl.textContent = String(history.length - 1);
-                                wrap.style.display = 'block';
-                                btn.onclick = () => showOrderHistoryPopup(history, order.order_code || order.id);
-                            }
-                        });
-                    } catch (e) {
-                        showToast(e.message, 'error');
-                    } finally {
-                        isSaving = false;
-                        updateSummaryHtml();
-                    }
+                    showToast('Đã thêm món vào danh sách. Vui lòng bấm "Lưu và gửi lại hóa đơn cho khách" để hoàn tất.');
                     return;
                 }
 
                 const sendBillBtn = event.target.closest('#order-send-bill-btn');
                 if (sendBillBtn) {
-                    if (isDirty) {
-                        const wantSaveAndSend = await pastieConfirm(
-                            'Bạn có thay đổi chưa lưu trên hóa đơn. Bạn cần lưu thay đổi trước khi gửi lại cho khách.\n\nLưu thay đổi và gửi lại hóa đơn ngay?',
-                            { title: 'Lưu và gửi lại hóa đơn', confirmText: 'Lưu & Gửi ngay', cancelText: 'Xem lại' }
-                        );
-                        if (!wantSaveAndSend) return;
-                    }
                     if (isSending) return;
+                    const wantSaveAndSend = await pastieConfirm(
+                        'Lưu các thay đổi trên hóa đơn và gửi ngay bản cập nhật mới nhất cho khách?',
+                        { title: 'Lưu và gửi lại hóa đơn', confirmText: 'Lưu & Gửi ngay', cancelText: 'Xem lại' }
+                    );
+                    if (!wantSaveAndSend) return;
                     isSending = true;
                     sendBillBtn.disabled = true;
-                    sendBillBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang gửi lại hóa đơn…`;
+                    sendBillBtn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Đang lưu và gửi lại hóa đơn…`;
                     try {
                         const res = await authFetch(`${API_BASE}/api/admin/orders/${order.id}/agent-items`, {
                             method: 'PUT',
@@ -714,11 +667,15 @@
                         if (!res.ok) throw new Error(data.error || 'Không thể gửi lại hóa đơn.');
                         isDirty = false;
                         showToast('Đã lưu và gửi lại hóa đơn mới nhất cho khách thành công!', 'success');
-                        await showOrderDetails(order.id);
+                        closeDetail();
+                        if (overlay) {
+                            const listBody = overlay.querySelector('.cart-body');
+                            if (listBody) await load(listBody);
+                        }
                     } catch (e) {
                         showToast(e.message, 'error');
                         sendBillBtn.disabled = false;
-                        sendBillBtn.innerHTML = `<i class="ri-send-plane-fill"></i> Gửi lại hóa đơn cho khách`;
+                        sendBillBtn.innerHTML = `<i class="ri-send-plane-fill"></i> Lưu và gửi lại hóa đơn cho khách`;
                     } finally {
                         isSending = false;
                     }
@@ -808,7 +765,9 @@
                             ? { label: 'Chưa thu tiền', cls: 'is-awaiting' }
                             : { label: 'Khách chưa chọn cách trả', cls: 'is-awaiting' })
                         : (STATUS[order.status] || { label: order.status, cls: '' });
-                const canEdit = (CURRENT_ADMIN?.role === 'agent' || CURRENT_ADMIN?.role === 'superadmin' || CURRENT_ADMIN?.role === 'admin' || CURRENT_ADMIN?.role === 'sale') && order.status !== 'paid';
+                const isPaid = order.status === 'paid';
+                const canEdit = !isPaid && (CURRENT_ADMIN?.role === 'agent' || CURRENT_ADMIN?.role === 'superadmin' || CURRENT_ADMIN?.role === 'admin') && CURRENT_ADMIN?.role !== 'sale';
+                const canMarkPaid = (CURRENT_ADMIN?.role === 'agent' || CURRENT_ADMIN?.role === 'superadmin' || CURRENT_ADMIN?.role === 'admin') && CURRENT_ADMIN?.role !== 'sale';
                 // Đơn của phiên chat ĐÃ ĐÓNG vẫn hiện: đó thường là đơn cần đối
                 // chiếu nhất, và ẩn đi thì Agent tưởng nó biến mất.
                 const closed = order.session_status !== 'active' ? '<span class="cart-closed">Chat đã đóng</span>' : '';
@@ -833,21 +792,27 @@
                     </div>
                     <div class="cart-row-time">Cập nhật: ${when(order.updated_at)}</div>
                     <div class="cart-row-actions">
-                        <button type="button" class="cart-action-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem hóa đơn</button>
-                        <!-- HAI NÚT RIÊNG, KHÔNG PHẢI MỘT NÚT ĐỔI NHÃN.
-                             Trước đây đơn chưa thu tiền thì nút này biến thành
-                             "Sửa hóa đơn" và nút "Chi tiết" biến mất — người chỉ
-                             muốn XEM lại đơn không còn đường nào, phải bấm vào
-                             nút sửa. Nay xem và sửa là hai việc, hai nút. -->
-                        <button type="button" class="cart-action-btn" data-details="${escapeHtml(order.id)}"><i class="ri-eye-line"></i> Chi tiết</button>
-                        ${canEdit ? `<button type="button" class="cart-action-btn" data-details="${escapeHtml(order.id)}"><i class="ri-edit-line"></i> Sửa hóa đơn</button>` : ''}
-                        <button type="button" class="cart-action-btn is-primary" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Hội thoại</button>
+                        <button type="button" class="cart-action-btn is-primary cart-btn-full" data-open="${escapeHtml(order.session_id)}">
+                            <i class="ri-chat-3-line"></i> Hội thoại
+                        </button>
+                        <div class="cart-actions-grid">
+                            <button type="button" class="cart-action-btn" data-details="${escapeHtml(order.id)}" data-mode="view">
+                                <i class="ri-eye-line"></i> Chi tiết
+                            </button>
+                            <button type="button" class="cart-action-btn" data-bill="${escapeHtml(order.id)}">
+                                <i class="ri-file-list-3-line"></i> Xem hóa đơn
+                            </button>
+                            ${canEdit ? `
+                            <button type="button" class="cart-action-btn is-edit-bill" data-details="${escapeHtml(order.id)}" data-mode="edit">
+                                <i class="ri-edit-line"></i> Sửa hóa đơn
+                            </button>` : ''}
+                            ${canMarkPaid && order.status === 'awaiting_payment' ? `
+                            <button type="button" class="cart-action-btn cart-paid-btn" data-paid="${escapeHtml(order.id)}" data-method="${escapeHtml(order.payment_method || '')}">
+                                <i class="ri-check-double-line"></i> Xác nhận thu tiền
+                            </button>` : (isPaid ? `
+                            <div class="cart-paid-status-tag"><i class="ri-checkbox-circle-fill"></i> Đã thanh toán</div>` : '')}
+                        </div>
                     </div>
-                    ${order.status === 'paid'
-                        ? `<div class="cart-paid-status" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#059669;margin-top:6px;"><i class="ri-checkbox-circle-fill"></i> Đã thanh toán (${escapeHtml(methodLabel || 'Tiền mặt')})</div>`
-                        : (canMarkPaid && order.status === 'awaiting_payment'
-                            ? `<button type="button" class="cart-paid-btn" data-paid="${escapeHtml(order.id)}" data-method="${escapeHtml(order.payment_method || '')}"><i class="ri-check-double-line"></i> Xác nhận đã thu tiền</button>`
-                            : '')}
                 </article>`;
             };
             body.innerHTML = [...groups].map(([venue, list]) => {
@@ -909,12 +874,14 @@
             if (details) {
                 const row = details.closest('.cart-row');
                 const orderCode = row?.querySelector('.cart-code')?.textContent?.trim() || details.dataset.details;
-                await showOrderDetails(details.dataset.details, details, { orderCode });
+                const mode = details.dataset.mode || 'view';
+                await showOrderDetails(details.dataset.details, details, { orderCode, mode });
                 return;
             }
 
             const paid = event.target.closest('[data-paid]');
             if (paid) {
+                if (CURRENT_ADMIN?.role === 'sale') return;
                 const row = paid.closest('.cart-row');
                 const visibleCode = row?.querySelector('.cart-code')?.textContent?.trim() || paid.dataset.paid;
                 const currentMethod = paid.dataset.method || 'cash';

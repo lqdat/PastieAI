@@ -2275,11 +2275,11 @@ function renderAdminSavedBills() {
                     : ['superseded', 'rejected', 'cancelled'].includes(String(bill.orderStatus || '')) ? 'Bản trước khi sửa'
                     : 'Đã lưu')}</span>
             </div>
-            ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(pdf || preview)}" data-preview-type="document" data-preview-title="Hóa đơn"><img src="${escapeHtml(preview)}" alt="Hóa đơn"></button>` : ''}
+            ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(preview)}" data-preview-type="image" data-preview-title="Hóa đơn" data-download-url="${escapeHtml(pdf || preview)}"><img src="${escapeHtml(preview)}" alt="Hóa đơn"></button>` : ''}
             <div class="admin-invoice-meta">
                 <span><strong>${escapeHtml(totalText)} ₫</strong></span>
                 ${methodText ? `<span><i class="ri-bank-card-line"></i> ${escapeHtml(methodText)}</span>` : ''}
-                ${pdf ? `<button type="button" class="attachment-preview-trigger admin-invoice-open" data-preview-url="${escapeHtml(pdf)}" data-preview-type="document" data-preview-title="Hóa đơn"><i class="ri-file-pdf-2-line"></i> Mở PDF</button>` : ''}
+                ${pdf ? `<button type="button" class="attachment-preview-trigger admin-invoice-open" data-preview-url="${escapeHtml(preview || pdf)}" data-preview-type="${preview ? 'image' : 'document'}" data-preview-title="Hóa đơn" data-download-url="${escapeHtml(pdf)}"><i class="ri-file-pdf-2-line"></i> Mở PDF</button>` : ''}
             </div>
         `;
         insertIntoChatFlow(wrapper, bill.createdAt);
@@ -2785,11 +2785,11 @@ function renderAdminInvoice() {
             <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> ${escapeHtml(kickerText)}</span>
             <span class="admin-invoice-status ${statusClass}">${escapeHtml(statusText)}</span>
         </div>
-        ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(pdf || preview)}" data-preview-type="document" data-preview-title="${escapeHtml(kickerText)}"><img src="${escapeHtml(preview)}" alt="${escapeHtml(kickerText)}"></button>` : ''}
+        ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(preview)}" data-preview-type="image" data-preview-title="${escapeHtml(kickerText)}" data-download-url="${escapeHtml(pdf || preview)}"><img src="${escapeHtml(preview)}" alt="${escapeHtml(kickerText)}"></button>` : ''}
         <div class="admin-invoice-meta">
             <span><strong>${escapeHtml(totalText)} ₫</strong></span>
             ${methodText ? `<span><i class="ri-bank-card-line"></i> ${escapeHtml(methodText)}</span>` : ''}
-            ${pdf ? `<button type="button" class="attachment-preview-trigger admin-invoice-open" data-preview-url="${escapeHtml(pdf)}" data-preview-type="document" data-preview-title="${escapeHtml(kickerText)}"><i class="ri-file-pdf-2-line"></i> ${escapeHtml(openPdfText)}</button>` : ''}
+            ${pdf ? `<button type="button" class="attachment-preview-trigger admin-invoice-open" data-preview-url="${escapeHtml(preview || pdf)}" data-preview-type="${preview ? 'image' : 'document'}" data-preview-title="${escapeHtml(kickerText)}" data-download-url="${escapeHtml(pdf)}"><i class="ri-file-pdf-2-line"></i> ${escapeHtml(openPdfText)}</button>` : ''}
         </div>
     `;
     // Mốc của hoá đơn là lúc GỬI BILL cho khách, không phải lúc tạo đơn: giữa
@@ -3457,7 +3457,24 @@ function openMediaPreview(url, type = 'document', title = 'Tệp đính kèm', d
 
     if (resolvedType === 'image' && mediaPreviewImage) mediaPreviewImage.src = url;
     else if (resolvedType === 'video' && mediaPreviewVideo) mediaPreviewVideo.src = url;
-    else if (mediaPreviewFrame) mediaPreviewFrame.src = url;
+    else if (mediaPreviewFrame) {
+        if (typeof url === 'string' && url.startsWith('data:application/pdf')) {
+            try {
+                const base64Part = url.split(',')[1];
+                const binaryStr = atob(base64Part);
+                const bytes = new Uint8Array(binaryStr.length);
+                for (let i = 0; i < binaryStr.length; i++) {
+                    bytes[i] = binaryStr.charCodeAt(i);
+                }
+                const blob = new Blob([bytes], { type: 'application/pdf' });
+                mediaPreviewFrame.src = URL.createObjectURL(blob);
+            } catch (err) {
+                mediaPreviewFrame.src = url;
+            }
+        } else {
+            mediaPreviewFrame.src = url;
+        }
+    }
 
     const downloadBtn = document.getElementById('media-preview-download-btn');
     if (downloadBtn) {

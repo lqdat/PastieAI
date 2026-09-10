@@ -891,7 +891,7 @@ chatMessagesContainer?.addEventListener('click', (event) => {
     const trigger = event.target.closest('.attachment-preview-trigger');
     if (!trigger) return;
     event.preventDefault();
-    openMediaPreview(trigger.dataset.previewUrl, trigger.dataset.previewType, trigger.dataset.previewTitle);
+    openMediaPreview(trigger.dataset.previewUrl, trigger.dataset.previewType, trigger.dataset.previewTitle, trigger.dataset.downloadUrl);
 });
 
 document.getElementById('media-preview-close-btn')?.addEventListener('click', closeMediaPreview);

@@ -5149,7 +5149,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   // và cache cũ phải hết hiệu lực — nếu không khách vẫn nhận lại đúng tờ bill
   // đã render trước đó với ghi chú nguyên văn.
   const latestBillId = bills[0]?.id || '';
-  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${order.status || ''}.${bills.length}.${latestBillId}.${language}.i18n6`;
+  const orderPrint = `${order.id}.${new Date(order.updated_at || order.created_at || 0).getTime()}.${order.payment_method || ''}.${order.status || ''}.${bills.length}.${latestBillId}.${language}.i18n7`;
   if (String(req.query.known || '').trim() === orderPrint) {
     res.setHeader('X-Order-Print', orderPrint);
     return res.status(200).json({ unchanged: true, fingerprint: orderPrint });
@@ -5178,7 +5178,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   // moi don dang cho.
   if (order.status === 'pending_confirm') {
     invoice = null;
-  } else if (cached && (Number(cached.orderStamp) === orderStamp || Math.abs(Number(cached.orderStamp) - orderStamp) < 5000) && Number(cached.translationVersion) === 7) {
+  } else if (cached && (Number(cached.orderStamp) === orderStamp || Math.abs(Number(cached.orderStamp) - orderStamp) < 5000) && Number(cached.translationVersion) === 8) {
     invoice = cached.invoice;
   } else {
     // TÊN CƠ SỞ VÀ TÊN BÀN CŨNG PHẢI DỊCH.
@@ -5205,7 +5205,7 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
     // Chỉ lưu khi thật sự vừa render (generated: true). Trường hợp hoá đơn đã có
     // sẵn pdfUrl thì không có gì để cache.
     if (invoice?.generated) {
-      const store = { ...(order.invoice_render || {}), [language]: { orderStamp, translationVersion: 7, invoice } };
+      const store = { ...(order.invoice_render || {}), [language]: { orderStamp, translationVersion: 8, invoice } };
       db.query('UPDATE chat_orders SET invoice_render = $1 WHERE id = $2', [JSON.stringify(store), order.id])
         .catch((error) => console.error('[Invoice] Không lưu được cache PDF:', error.message));
     }
@@ -5543,8 +5543,8 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
     );
     res.json({
       orders: rows.rows,
-      // Cho phép Agent, Superadmin và Sale phụ trách bấm "Đã thanh toán"
-      canMarkPaid: isSuperAdmin(req.admin) || isAgentManager(req.admin) || isSale(req.admin),
+      // Sale không được xác nhận thu tiền. Chỉ Agent quản lý và Superadmin được xác nhận.
+      canMarkPaid: isSuperAdmin(req.admin) || isAgentManager(req.admin),
     });
   } catch (error) {
     console.error('Order cart error:', error);
@@ -5646,6 +5646,7 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
   const order = orderRes.rows[0];
   if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
   if (!canAccessProject(req.admin, order.project_id)) return res.status(403).json({ error: 'Bạn không có quyền xác nhận đơn này.' });
+  if (isSale(req.admin)) return res.status(403).json({ error: 'Nhân viên Sale không có quyền xác nhận thu tiền.' });
   if (order.status !== 'awaiting_payment') return res.status(409).json({ error: 'Đơn không ở trạng thái chờ thanh toán.' });
   const assignedMethod = req.body?.paymentMethod || order.payment_method || 'cash';
 
@@ -12597,6 +12598,9 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
     }
     if (!isSuperAdmin(req.admin) && !canAccessProject(req.admin, order.project_id)) {
       return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa đơn hàng của dự án này.' });
+    }
+    if (isSale(req.admin)) {
+      return res.status(403).json({ error: 'Nhân viên Sale không có quyền chỉnh sửa hóa đơn.' });
     }
 
     const roleLabel = req.admin.role === 'sale' ? 'Sale' : (req.admin.role === 'superadmin' ? 'SuperAdmin' : 'Agent');

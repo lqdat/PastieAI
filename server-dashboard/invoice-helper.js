@@ -419,15 +419,21 @@ function createInvoicePdfDataUrl(invoice, language) {
     doc.moveTo(left, doc.y).lineTo(right, doc.y).strokeColor('#e6cede').stroke();
     doc.moveDown(0.6);
 
-    // Tổng kết
+    // Tổng kết 2 cột chuẩn POS: nhãn căn trái, số tiền căn phải
+    const summaryX = left + Math.round(width * 0.42);
+    const summaryW = right - summaryX;
+    const summaryValW = 95;
     const summaryRow = (label, value, options = {}) => {
-      const rowY = doc.y;
-      const labelWidth = width - colTotalW - 10;
-      (options.bold ? useBold() : useRegular()).fontSize(options.bold ? 12 : 9)
+      let rowY = doc.y;
+      if (options.bold) {
+        doc.moveTo(summaryX, rowY - 5).lineTo(right, rowY - 5).strokeColor('#e6cede').lineWidth(0.8).stroke();
+        rowY += 4;
+      }
+      (options.bold ? useBold() : useRegular()).fontSize(options.bold ? 11.5 : 9)
         .fillColor(options.bold ? '#b20c69' : '#444');
-      doc.text(label, left, rowY, { width: labelWidth, align: 'right' });
-      doc.text(value, xTotal - 10, rowY, { width: colTotalW + 10, align: 'right' });
-      doc.y = rowY + (options.bold ? 20 : 15);
+      doc.text(label, summaryX, rowY, { width: summaryW - summaryValW - 6, align: 'left' });
+      doc.text(value, right - summaryValW, rowY, { width: summaryValW, align: 'right' });
+      doc.y = rowY + (options.bold ? 19 : 14);
     };
     summaryRow(copy.subtotal, money(data.subtotal));
     if (data.totalDiscount > 0) summaryRow(copy.totalDiscount, `- ${money(data.totalDiscount)}`);
@@ -437,7 +443,7 @@ function createInvoicePdfDataUrl(invoice, language) {
     summaryRow(copy.grandTotal, money(data.totalAmount), { bold: true });
 
     useRegular().fontSize(8).fillColor('#7b6c7a');
-    doc.text(copy.vatIncluded, left, doc.y, { width, align: 'right' });
+    doc.text(copy.vatIncluded, summaryX, doc.y, { width: summaryW, align: 'right' });
     doc.y += 4;
 
     doc.moveDown(1.1);
@@ -696,19 +702,21 @@ function createInvoiceSvg(invoice, language) {
   //
   // Hai chuỗi đều căn phải, nhãn kết thúc đúng tại xDiscountEnd còn số tiền kéo
   // dài về bên trái từ xTotalEnd. Hoá đơn vài trăm nghìn thì không sao; tới
-  // "3.278.000 đ" cỡ chữ 15 đậm là số tiền lấn qua mốc kia và chồng thẳng lên
-  // chữ "TỔNG CỘNG" — đúng cái trong ảnh.
-  //
-  // Nên mốc phải của nhãn không được cố định: nó là điểm nào sớm hơn giữa
-  // xDiscountEnd và mép trái của số tiền, chừa 10px thở.
+  // GIẢI PHÁP 1: BỐ CỤC 2 CỘT CHUẨN POS CHO PHẦN TỔNG KẾT
+  // Nhãn căn trái bắt đầu từ xSummaryStart (khoảng 40% chiều ngang).
+  // Số tiền căn phải kết thúc tại xTotalEnd.
+  // Giữa nhãn và số luôn thoáng đãng, không bao giờ bị dính đè lên nhau.
+  const xSummaryStart = 175;
   const summary = (label, value, options = {}) => {
-    const size = options.bold ? 15 : 12.5;
+    const size = options.bold ? 14.5 : 12;
     const fill = options.bold ? '#b20c69' : '#4a3f52';
-    const valueLeft = xTotalEnd - approximateTextWidth(String(value), size);
-    const labelEnd = Math.min(xDiscountEnd, valueLeft - 10);
-    text(label, labelEnd, y, { size, weight: options.bold ? 700 : 400, fill, anchor: 'end' });
+    if (options.bold) {
+      parts.push(`<line x1="${xSummaryStart}" y1="${y - 8}" x2="${xTotalEnd}" y2="${y - 8}" stroke="#e6cede" stroke-width="1"/>`);
+      y += 4;
+    }
+    text(label, xSummaryStart, y, { size, weight: options.bold ? 700 : 400, fill, anchor: 'start' });
     text(value, xTotalEnd, y, { size, weight: options.bold ? 700 : 400, fill, anchor: 'end' });
-    y += options.bold ? 26 : 20;
+    y += options.bold ? 24 : 19;
   };
   summary(copy.subtotal, money(data.subtotal));
   if (data.totalDiscount > 0) summary(copy.totalDiscount, `- ${money(data.totalDiscount)}`);
@@ -716,10 +724,9 @@ function createInvoiceSvg(invoice, language) {
     summary(`${copy.serviceFee} (${data.serviceFeeRate}%)`, money(data.serviceFeeAmount));
   }
   summary(copy.grandTotal, money(data.totalAmount), { bold: true });
-  // Payment method moved to info section above; no longer repeated in summary.
 
   y += 4;
-  text(copy.vatIncluded, W - 40, y, { size: 10, fill: '#7b6c7a', anchor: 'end' });
+  text(copy.vatIncluded, xTotalEnd, y, { size: 9.5, fill: '#7b6c7a', anchor: 'end' });
   y += 12;
   text(copy.thanks, W / 2, y, { size: 13, weight: 700, fill: '#b20c69', anchor: 'middle' });
   y += 18;

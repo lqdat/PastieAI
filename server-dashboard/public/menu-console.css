@@ -1437,10 +1437,38 @@
 .cart-total { flex: 0 0 auto; font-size: 15.5px; font-weight: 800; color: var(--accent-color); white-space: nowrap; }
 .cart-row-time { font-size: 11px; color: var(--text-muted); }
 .cart-row-actions {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
+    flex-direction: column;
     gap: 8px;
-    margin-top: 4px;
+    margin-top: 6px;
+    width: 100%;
+}
+.cart-btn-full {
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+.cart-actions-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
+}
+.cart-paid-status-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 38px;
+    padding: 0 10px;
+    border-radius: 12px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #059669;
+    background: #ecfdf5;
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    text-align: center;
 }
 .cart-action-btn {
     min-width: 0;
@@ -2008,13 +2036,11 @@
     }
     /* Thao tác mỗi đơn hàng trên mobile: grid 2 cột cân đối, không ép hàng ngang */
     .cart-row-actions {
-        display: grid !important;
-        grid-template-columns: 1fr 1fr !important;
+        display: flex !important;
+        flex-direction: column !important;
         gap: 8px !important;
         margin-top: 6px !important;
-    }
-    .cart-row-actions [data-bill] {
-        grid-column: 1 / -1 !important;
+        width: 100% !important;
     }
     .cart-action-btn {
         height: 38px !important;
