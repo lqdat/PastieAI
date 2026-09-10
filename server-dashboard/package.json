@@ -10,6 +10,7 @@
     "vapid:generate": "web-push generate-vapid-keys",
     "seed:menu": "node scripts/seed-menu.js",
     "seed:menu:clean": "node scripts/seed-menu.js --clean",
+    "test": "node tests/order-retention.test.js",
     "cleanup:devices": "node scripts/cleanup-device-data.js",
     "cleanup:old-data": "node scripts/cleanup-device-data.js",
     "capacity": "node scripts/online-capacity.js"

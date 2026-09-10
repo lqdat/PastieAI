@@ -1249,6 +1249,30 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_order_revisions_order_version
                    ON chat_order_revisions(order_id, version);`);
 
+    // Nhật ký vòng đời đơn hàng là append-only. chat_order_bills chỉ chứa các
+    // tờ hóa đơn đã gửi cho khách; bảng này giữ cả thao tác chưa phát hành bill
+    // như sửa ghi chú, chọn phương thức và xác nhận đã thu tiền.
+    await query(`
+      CREATE TABLE IF NOT EXISTS chat_order_events (
+        id BIGSERIAL PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        event_type VARCHAR(40) NOT NULL,
+        actor_role VARCHAR(30) NOT NULL,
+        actor_admin_id INT REFERENCES admins(id) ON DELETE SET NULL,
+        actor_name VARCHAR(255),
+        order_version INT NOT NULL DEFAULT 1,
+        items JSONB NOT NULL DEFAULT '[]'::jsonb,
+        total_amount NUMERIC(14,0) NOT NULL DEFAULT 0,
+        payment_method VARCHAR(30),
+        status VARCHAR(30),
+        changes JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_order_events_order
+                   ON chat_order_events(order_id, created_at, id);`);
+
     // ── Tích hợp phần mềm tính tiền ───────────────────────────────────────────
     //
     // Mỗi Agent tự nối tới phần mềm tính tiền của mình. Đơn được đẩy sang đó bằng
