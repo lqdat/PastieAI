@@ -13,6 +13,8 @@
     "test": "node tests/order-retention.test.js",
     "cleanup:devices": "node scripts/cleanup-device-data.js",
     "cleanup:old-data": "node scripts/cleanup-device-data.js",
+    "cleanup:project": "node scripts/cleanup-device-data.js --project",
+    "cleanup:admin": "node scripts/cleanup-device-data.js --admin",
     "capacity": "node scripts/online-capacity.js",
     "upload:guide-s3": "node scripts/upload-guide-to-s3.js"
   },
