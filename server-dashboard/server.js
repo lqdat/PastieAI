@@ -2620,6 +2620,7 @@ app.post('/api/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, async (req, r
 
       await touchQrActivity(activeSession, newIdentity?.token || null);
       await db.query('DELETE FROM otps WHERE email = $1', [email]);
+      notifyAdminRealtime('session_update', { sessionId: activeSession.id, projectId: qrAccount?.project_id || projectId, action: 'reused' });
       return res.json({
         success: true,
         sessionId: activeSession.id,
@@ -2706,6 +2707,7 @@ app.post('/api/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, async (req, r
     // Chỉ hủy mã sau khi toàn bộ phiên được tạo thành công. Nếu DB tạm lỗi,
     // khách vẫn có thể thử lại cùng mã thay vì bị khóa khỏi form OTP.
     await db.query('DELETE FROM otps WHERE email = $1', [email]);
+    notifyAdminRealtime('session_update', { sessionId, projectId: qrAccount?.project_id || projectId, action: 'create' });
 
     res.json({ success: true, sessionId, name: finalName,
       identityToken: newIdentity?.token || null, identityExpiresAt: newIdentity?.expiresAt || null });
@@ -3839,6 +3841,7 @@ app.post('/api/chats/session/identified', async (req, res) => {
          WHERE id = $4`,
         [name || '', email || '', phone || '', existingSession.id]
       ).catch((e) => console.error('Update reused session identity failed:', e.message));
+      notifyAdminRealtime('session_update', { sessionId: existingSession.id, projectId, action: 'reused' });
       return res.json({ success: true, sessionId: existingSession.id, reused: true });
     }
   } catch (error) {
@@ -3875,6 +3878,7 @@ app.post('/api/chats/session/identified', async (req, res) => {
       [sessionId, projectId, name || 'Khách', email, phone || null, visitorLang, browser, device, clientIp, assignedAdminId, qrAccount?.id || null, qrAccount ? new Date(Date.now() + QR_CHAT_SESSION_MS) : null,
        qrAccount?.group_id || null, qrAccount?.group_id ? 'waiting' : null]
     );
+    notifyAdminRealtime('session_update', { sessionId, projectId, action: 'create' });
     res.json({ success: true, sessionId });
   } catch (error) {
     console.error('Identified session create error:', error);
@@ -6632,6 +6636,7 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
          account.group_id || null, account.owner_admin_id || null, liveSession.id]
       );
       await touchQrActivity(liveSession, identity.token);
+      notifyAdminRealtime('session_update', { sessionId: liveSession.id, projectId: account.project_id, action: 'reused' });
       return res.json({
         authenticated: true, sessionId: liveSession.id, continued: true, movedQr: false,
         identityExpiresAt: identity.expires_at,
@@ -6673,7 +6678,7 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
       placeLabel: account.label || account.group_name,
       agentId: account.owner_admin_id,
     });
-    notifyAdminRealtime('session_update', { sessionId, projectId: account.project_id });
+    notifyAdminRealtime('session_update', { sessionId, projectId: account.project_id, action: 'create' });
 
     res.json({ authenticated: true, sessionId, continued: false, movedQr: false,
       identityExpiresAt: identity.expires_at });
@@ -6723,6 +6728,7 @@ app.post('/api/qr-chat/google', async (req, res) => {
         projectId, email: profile.email, fullName: profile.name || 'Khách hàng',
         authProvider: 'google', qrAccountId: account.id,
       }).catch(() => {});
+      notifyAdminRealtime('session_update', { sessionId: live.id, projectId: account.project_id || projectId, action: 'reused' });
       return res.json({
         success: true, sessionId: live.id, continued: true, reused: true, expiresAt: live.expires_at,
         identityToken: newIdentity?.token || null, identityExpiresAt: newIdentity?.expiresAt || null,
@@ -6744,6 +6750,15 @@ app.post('/api/qr-chat/google', async (req, res) => {
       authProvider: 'google',
       qrAccountId: account.id
     }).catch((error) => console.error('Customer profile save failed after Google login:', error.message));
+    await sendQrWelcome({
+      sessionId,
+      lang: 'vi',
+      guestName: profile.name && profile.name !== 'Khách hàng' ? profile.name : nameFromEmail(profile.email),
+      venueName: account.owner_name,
+      placeLabel: account.label || account.group_name,
+      agentId: account.owner_admin_id,
+    });
+    notifyAdminRealtime('session_update', { sessionId, projectId: account.project_id || projectId, action: 'create' });
     res.json({ success: true, sessionId, expiresAt: new Date(Date.now() + QR_CHAT_SESSION_MS),
       identityToken: newIdentity?.token || null, identityExpiresAt: newIdentity?.expiresAt || null });
   } catch (error) {

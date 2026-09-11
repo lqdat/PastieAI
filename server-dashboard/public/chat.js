@@ -1023,20 +1023,17 @@ function handleAdminRealtimeEvent(data) {
 
     // 1. Cập nhật danh sách phiên chat ở sidebar khi có tin nhắn mới / cập nhật
     if (['new_message', 'session_update', 'order_update', 'reload_sessions'].includes(data.type)) {
-        // Debounce 1,5 giây, KHÔNG phải 150ms.
-        //
-        // fetchSessions() gọi /api/admin/chats — truy vấn nặng nhất hệ thống
-        // (6 subquery tương quan lên bảng messages cho mỗi phiên). Server phát
-        // sự kiện này cho MỌI admin cùng dự án, nên với 50 agent online thì một
-        // tin nhắn của khách = 50 lần chạy truy vấn đó. Ở 150ms, các sự kiện
-        // liên tiếp gần như không gộp được với nhau.
-        //
-        // 1,5 giây vẫn cảm giác tức thì với người dùng (âm thanh và huy hiệu
-        // chưa đọc đã được xử lý riêng ngay bên dưới, không đợi fetch).
         clearTimeout(realtimeRefreshTimer);
+        // Khi có khách mới vào bàn quét mã (action: 'create' hoặc 'reused'), nạp lại tức thì (150ms)
+        // thay vì đợi debounce 1,5s của tin nhắn thường.
+        const isNewGuest = data.type === 'session_update' && ['create', 'reused'].includes(data.action);
+        const delay = isNewGuest ? 150 : 1500;
         realtimeRefreshTimer = setTimeout(() => {
             fetchSessions();
-        }, 1500);
+        }, delay);
+        if (data.type === 'session_update' && data.action === 'create') {
+            playAlertSound();
+        }
     }
 
     // 1b. Phát âm thanh NGAY khi nhận tin từ khách — không chờ fetchSessions trả về.
