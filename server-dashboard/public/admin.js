@@ -470,6 +470,16 @@ const dashboardBody = document.getElementById('dashboard-body');
 
 document.getElementById('mobile-back-btn')?.addEventListener('click', () => {
     dashboardBody?.classList.remove('chat-open');
+    dashboardBody?.classList.remove('keyboard-open');
+    const chatMain = document.querySelector('.chat-main');
+    if (chatMain) {
+        chatMain.style.top = '';
+        chatMain.style.height = '';
+        chatMain.style.maxHeight = '';
+        chatMain.style.transform = '';
+        chatMain.classList.remove('keyboard-open');
+    }
+    window.updateAgentChatViewport?.();
     if (typeof currentSessionId !== 'undefined' && currentSessionId) {
         if (typeof sessionsList !== 'undefined' && Array.isArray(sessionsList)) {
             const s = sessionsList.find(x => x.id === currentSessionId);

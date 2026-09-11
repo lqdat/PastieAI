@@ -2479,11 +2479,53 @@ button:focus-visible {
   .session-client-meta { font-size: 15px; gap: 8px; }
   .session-client-meta i { font-size: 17px; }
 
+  html:has(.dashboard-body.chat-open),
+  body:has(.dashboard-body.chat-open) {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
   /* Mặc định: hiện danh sách, ẩn khung chat */
   .chat-main { display: none; }
   /* Khi mở 1 hội thoại: ẩn danh sách, hiện khung chat toàn màn */
   .dashboard-body.chat-open .sessions-sidebar { display: none; }
-  .dashboard-body.chat-open .chat-main { display: flex; min-height: 0; height: 100%; border-radius: 0; border: 0; background: var(--bg-color); }
+  .dashboard-body.chat-open .chat-main {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    z-index: 250 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    border-radius: 0 !important;
+    border: 0 !important;
+    background: #fff !important;
+    overflow: hidden !important;
+    overscroll-behavior: none;
+  }
+  .dashboard-body.chat-open .chat-main > .chat-header {
+    flex: 0 0 auto !important;
+    padding-top: max(10px, env(safe-area-inset-top)) !important;
+  }
+  .dashboard-body.chat-open .chat-main > .chat-messages {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .dashboard-body.chat-open .chat-main > .chat-input-area {
+    flex: 0 0 auto !important;
+  }
+  .dashboard-body.chat-open .chat-main.keyboard-open > .chat-input-area,
+  .dashboard-body.keyboard-open .chat-input-area {
+    padding-bottom: 8px !important;
+  }
 
   .details-sidebar {
     position: fixed; top: 0; right: 0; height: 100dvh; width: min(100vw, 420px);
@@ -5262,10 +5304,6 @@ button:focus-visible {
         line-height: 22px;
     }
     .dashboard-body.keyboard-open {
-        overflow: hidden !important;
-    }
-    .dashboard-body.keyboard-open .chat-main {
-        height: 100% !important;
         overflow: hidden !important;
     }
     .dashboard-body.keyboard-open .chat-input-area {

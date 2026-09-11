@@ -1448,12 +1448,19 @@ function bindAgentChatInputEvents() {
         handleAgentChatInputTyping();
     });
     input.addEventListener('focus', () => {
+        window.updateAgentChatViewport?.();
         const msgContainer = document.getElementById('chat-messages-container');
         if (msgContainer) {
-            setTimeout(() => { msgContainer.scrollTop = msgContainer.scrollHeight; }, 150);
+            setTimeout(() => {
+                window.updateAgentChatViewport?.();
+                msgContainer.scrollTop = msgContainer.scrollHeight;
+            }, 150);
         }
     });
-    input.addEventListener('blur', stopAgentTyping);
+    input.addEventListener('blur', () => {
+        stopAgentTyping();
+        window.updateAgentChatViewport?.();
+    });
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -1467,31 +1474,55 @@ function initAgentMobileKeyboardHandler() {
     if (!vv || window.__agentVvBound) return;
     window.__agentVvBound = true;
 
-    const onVvChange = () => {
-        if (window.innerWidth > 760) return;
+    let caoTruoc = Math.round(vv.height);
+
+    const apDungAgent = () => {
+        const chatMain = document.querySelector('.chat-main');
+        if (!chatMain) return;
+
+        if (window.innerWidth > 768) {
+            chatMain.style.top = '';
+            chatMain.style.height = '';
+            chatMain.style.maxHeight = '';
+            chatMain.style.transform = '';
+            chatMain.classList.remove('keyboard-open');
+            return;
+        }
         const dashboardBody = document.querySelector('.dashboard-body');
-        if (!dashboardBody || !dashboardBody.classList.contains('chat-open')) return;
+        if (!dashboardBody || !dashboardBody.classList.contains('chat-open')) {
+            chatMain.style.top = '';
+            chatMain.style.height = '';
+            chatMain.style.maxHeight = '';
+            chatMain.style.transform = '';
+            chatMain.classList.remove('keyboard-open');
+            dashboardBody?.classList.remove('keyboard-open');
+            return;
+        }
 
         const h = Math.round(vv.height);
-        const isKeyboard = h < (window.innerHeight || 0) - 80;
+        const top = Math.round(vv.offsetTop || 0);
 
-        if (isKeyboard) {
-            dashboardBody.classList.add('keyboard-open');
-            const header = document.querySelector('.dashboard-header');
-            const headerH = header ? header.offsetHeight : 0;
-            const top = Math.round(vv.offsetTop || 0);
-            const netH = h - (top > 0 ? 0 : headerH);
-            dashboardBody.style.height = `${netH}px`;
+        chatMain.style.top = top ? `${top}px` : '0px';
+        chatMain.style.height = `${h}px`;
+        chatMain.style.maxHeight = `${h}px`;
+        chatMain.style.transform = '';
+
+        const isKeyboard = h < (window.innerHeight || 0) - 80;
+        chatMain.classList.toggle('keyboard-open', isKeyboard);
+        dashboardBody.classList.toggle('keyboard-open', isKeyboard);
+
+        if (h < caoTruoc - 8) {
             const msgContainer = document.getElementById('chat-messages-container');
             if (msgContainer) msgContainer.scrollTop = msgContainer.scrollHeight;
-        } else {
-            dashboardBody.classList.remove('keyboard-open');
-            dashboardBody.style.height = '';
         }
+        caoTruoc = h;
     };
 
-    vv.addEventListener('resize', onVvChange, { passive: true });
-    vv.addEventListener('scroll', onVvChange, { passive: true });
+    vv.addEventListener('resize', apDungAgent, { passive: true });
+    vv.addEventListener('scroll', apDungAgent, { passive: true });
+    window.setInterval(apDungAgent, 250);
+    window.updateAgentChatViewport = apDungAgent;
+    apDungAgent();
 }
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', bindAgentChatInputEvents);
@@ -3373,6 +3404,7 @@ const SPINNER_ICON_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true" style="ani
 
 
 function resizeAgentChatInput() {
+    const chatInput = document.getElementById('chat-input');
     if (!chatInput) return;
     chatInput.style.height = '0px';
     const lineHeight = Number.parseFloat(getComputedStyle(chatInput).lineHeight) || 21;
