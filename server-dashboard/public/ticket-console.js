@@ -16,7 +16,7 @@
     'use strict';
 
     const NHAN_TRANG_THAI = {
-        moi: 'Mới', dang_xu_ly: 'Đang xử lý', cho_agent: 'Chờ Agent',
+        moi: 'Mới', dang_xu_ly: 'Đang xử lý',
         da_giai_quyet: 'Đã giải quyết', da_dong: 'Đã đóng',
     };
     const NHAN_UU_TIEN = { thap: 'Thấp', thuong: 'Thường', cao: 'Cao', khan: 'Khẩn' };
@@ -314,7 +314,7 @@
         document.getElementById('ticket-panel-title').textContent = laSuper() ? 'Ticket toàn hệ thống' : 'Ticket hỗ trợ';
         o.innerHTML = `
             <div class="ticket-filters">
-                ${[['', 'Tất cả'], ['moi', 'Mới'], ['dang_xu_ly', 'Đang xử lý'], ['cho_agent', 'Chờ Agent'], ['da_dong', 'Đã đóng']]
+                ${[['', 'Tất cả'], ['moi', 'Mới'], ['dang_xu_ly', 'Đang xử lý'], ['da_dong', 'Đã đóng']]
                 .map(([k, v]) => `<button type="button" class="ticket-chip${locTrangThai === k ? ' is-active' : ''}" data-loc="${k}">${v}</button>`).join('')}
             </div>
             <div class="ticket-search">
@@ -393,7 +393,6 @@
         if (quyen.sua) {
             if (vaiToi() === 'technical' && !t.assigned_to_admin_id) nutTrangThai.push(['claim', 'Nhận xử lý', 'primary']);
             if (t.status !== 'dang_xu_ly') nutTrangThai.push(['dang_xu_ly', 'Đang xử lý', '']);
-            if (t.status !== 'cho_agent') nutTrangThai.push(['cho_agent', 'Chờ Agent', '']);
             if (quyen.dong && t.status !== 'da_giai_quyet') nutTrangThai.push(['da_giai_quyet', 'Đã giải quyết', '']);
             if (quyen.dong && t.status !== 'da_dong') nutTrangThai.push(['da_dong', 'Đóng ticket', '']);
         }

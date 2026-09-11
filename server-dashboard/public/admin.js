@@ -791,24 +791,15 @@ document.getElementById('chat-mic-btn')?.addEventListener('click', () => {
     if (!voiceSupported) return toastError('Trình duyệt này chưa hỗ trợ ghi âm.');
     if (!currentSessionId) return;
     if (voiceBusy) return;
-    if (voiceRecorder?.state === 'recording') stopVoiceRecording();
-    else {
-        const panel = document.getElementById('voice-live-panel');
-        setVoiceUi(panel?.classList.contains('is-ready') ? 'idle' : 'ready');
-        chatInput?.blur();
+    if (voiceRecorder?.state === 'recording') {
+        stopVoiceRecording();
+    } else {
+        void startVoiceRecording();
     }
 });
 
-document.getElementById('voice-start-btn')?.addEventListener('click', () => { void startVoiceRecording(); });
-
-document.getElementById('voice-delete-btn')?.addEventListener('click', cancelVoiceRecording);
-
-document.getElementById('voice-edit-btn')?.addEventListener('click', editVoiceRecording);
-
-document.getElementById('voice-send-btn')?.addEventListener('click', sendVoiceDraft);
-
 document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !document.getElementById('voice-live-panel')?.classList.contains('hide')) cancelVoiceRecording();
+    if (event.key === 'Escape' && voiceRecorder?.state === 'recording') cancelVoiceRecording();
 });
 
 chatInput?.addEventListener('input', () => {

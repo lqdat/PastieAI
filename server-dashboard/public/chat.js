@@ -8,10 +8,11 @@
 // nạp ở đầu core.js.
 
 // =====================================================================
-// KÊNH CHAT NỘI BỘ (AGENT - SUPERADMIN, AGENT - SALE)
+// KÊNH CHAT NỘI BỘ (AGENT - SUPERADMIN, AGENT - SALE, KỸ THUẬT - AGENT)
 // =====================================================================
 let internalChats = [];
-let currentCategoryTab = 'customers'; // 'customers' | 'internal'
+let technicalAgentChats = [];
+let currentCategoryTab = 'customers'; // 'customers' | 'internal' | 'technical'
 let currentInternalChat = null;
 
 async function fetchInternalChats() {
@@ -35,6 +36,24 @@ async function fetchInternalChats() {
         }
     } catch (e) {
         console.error('Lỗi tải danh sách chat nội bộ:', e);
+    }
+}
+
+async function fetchTechnicalAgentChats() {
+    try {
+        const token = getToken();
+        if (!token) return;
+        const res = await authFetch(`${API_BASE}/api/admin/technical-agent-chats?_=${Date.now()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && Array.isArray(data.chats)) {
+            technicalAgentChats = data.chats;
+            if (currentCategoryTab === 'technical') {
+                renderTechnicalAgentSessionsList();
+            }
+        }
+    } catch (e) {
+        console.error('Lỗi tải danh sách chat Kỹ thuật - Agent:', e);
     }
 }
 
@@ -129,19 +148,166 @@ function renderInternalSessionsList() {
     });
 }
 
+function renderTechnicalAgentSessionsList() {
+    const container = document.getElementById('technical-sessions-list-container');
+    if (!container) return;
+
+    if (!technicalAgentChats || technicalAgentChats.length === 0) {
+        container.innerHTML = `<div class="empty-state">Chưa có hội thoại giữa Kỹ thuật và Agent nào.</div>`;
+        return;
+    }
+
+    container.innerHTML = '';
+    technicalAgentChats.forEach(chat => {
+        const card = createTechnicalAgentSessionCard(chat);
+        container.appendChild(card);
+    });
+}
+
+function createTechnicalAgentSessionCard(chat) {
+    const card = document.createElement('div');
+    const isSelected = currentSessionId === chat.sessionId;
+    const hasUnread = (chat.unreadCount || 0) > 0;
+    card.className = `session-card ${isSelected ? 'active-selected' : ''} ${hasUnread ? 'has-unread' : ''}`;
+    card.setAttribute('data-id', chat.sessionId);
+
+    const locale = currentLang === 'vi' ? 'vi-VN' : 'en-US';
+    let dateStr = '';
+    if (chat.lastMessageTime) {
+        const msgTime = new Date(chat.lastMessageTime);
+        dateStr = msgTime.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) + ' ' + msgTime.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
+    }
+
+    const unreadBadge = hasUnread ? `<span class="session-unread-badge">${chat.unreadCount > 99 ? '99+' : chat.unreadCount}</span>` : '';
+
+    const agentInitial = (chat.agentName || 'A')[0].toUpperCase();
+    const avatarHtml = chat.agentAvatar
+        ? `<img src="${escapeHtml(chat.agentAvatar)}" class="visitor-avatar-img internal-avatar-img" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+          + `<div class="visitor-avatar-initials internal-avatar-initials" style="display:none;">${escapeHtml(agentInitial)}</div>`
+        : `<div class="visitor-avatar-initials internal-avatar-initials">${escapeHtml(agentInitial)}</div>`;
+
+    const preview = chat.lastMessage ? chat.lastMessage : 'Chưa có tin nhắn...';
+
+    card.innerHTML = `
+        <div class="session-card-header">
+            <div class="visitor-avatar-wrap">${avatarHtml}</div>
+            <div class="session-card-info">
+                <div class="session-card-top-row">
+                    <span class="session-name" title="${escapeHtml(chat.agentName || '')}">${escapeHtml(chat.agentName || 'Agent')}</span>
+                    <span class="session-card-time">${dateStr}</span>
+                </div>
+                <div class="session-card-bottom-row">
+                    <span class="internal-role-badge internal-badge-superadmin" style="background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.25);"><i class="ri-tools-line"></i> ${escapeHtml(chat.technicalName || 'Kỹ thuật')}</span>
+                    ${unreadBadge}
+                </div>
+            </div>
+        </div>
+        <div class="session-card-preview${chat.lastMessage ? '' : ' is-empty'}">${escapeHtml(preview)}</div>
+        <div class="session-meta-footer">
+            <span class="session-group-tag" style="background:rgba(239,43,157,0.12);color:#f43aa0;border:1px solid rgba(239,43,157,0.25);font-size:10px;padding:1px 6px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:3px;"><i class="ri-git-repository-private-line"></i> Kỹ thuật ↔ Agent</span>
+        </div>
+    `;
+
+    card.addEventListener('click', () => selectTechnicalAgentSession(chat));
+    return card;
+}
+
+async function selectTechnicalAgentSession(chat) {
+    if (!chat) return;
+    currentSessionId = chat.sessionId;
+    currentInternalChat = chat;
+
+    dashboardBody?.classList.add('chat-open');
+    bindAgentChatInputEvents();
+
+    document.querySelectorAll('.session-card').forEach(c => {
+        c.classList.remove('active-selected');
+        if (c.getAttribute('data-id') === chat.sessionId) {
+            c.classList.add('active-selected');
+            c.classList.remove('has-unread');
+            c.querySelector('.session-unread-badge')?.remove();
+        }
+    });
+
+    adminMessages = [];
+    adminOffset = 0;
+    adminHasMore = false;
+    adminOrder = null;
+    adminBills = [];
+    adminOrderRevisions = [];
+
+    const peerDisplay = `${chat.agentName || 'Agent'} ↔ ${chat.technicalName || 'Kỹ thuật'}`;
+    if (chatTitleName) chatTitleName.textContent = peerDisplay;
+    if (chatTitleEmail) chatTitleEmail.textContent = 'Admin tổng đang theo dõi cuộc trò chuyện hỗ trợ';
+    document.getElementById('chat-header-group-badge')?.classList.add('hide');
+    document.getElementById('chat-header-project-badge')?.classList.add('hide');
+    document.getElementById('chat-header-qr-info')?.classList.add('hide');
+
+    const chatHeaderAvatar = document.getElementById('chat-header-avatar');
+    if (chatHeaderAvatar) {
+        chatHeaderAvatar.style.display = 'block';
+        if (chat.agentAvatar) {
+            chatHeaderAvatar.innerHTML = `<img src="${escapeHtml(chat.agentAvatar)}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid rgba(239,43,157,0.4);" alt="">`;
+        } else {
+            const initial = (chat.agentName || 'A')[0].toUpperCase();
+            chatHeaderAvatar.innerHTML = `<div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg, #ef2b9d, #c90c6c);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;border:2px solid rgba(255,255,255,0.2);">${initial}</div>`;
+        }
+    }
+
+    const supervisorBar = document.getElementById('chat-supervisor-bar');
+    if (supervisorBar) supervisorBar.style.display = 'none';
+
+    document.getElementById('claim-chat-btn')?.classList.add('hide');
+    document.getElementById('close-session-btn')?.classList.add('hide');
+    document.getElementById('handover-session-btn')?.classList.add('hide');
+    document.getElementById('assignee-selector-container')?.classList.add('hide');
+    document.getElementById('shift-draining-banner')?.classList.add('hide');
+    document.getElementById('delete-session-btn')?.classList.add('hide');
+    document.getElementById('details-toggle-btn')?.classList.add('hide');
+    dashboardBody?.classList.remove('details-open');
+
+    chatHeaderActions?.classList.add('hide');
+    chatInputContainer?.classList.remove('hide');
+    chatForm?.classList.remove('hide');
+    detailsSidebar?.classList.add('hide');
+
+    // Chế độ xem: Admin tổng chỉ theo dõi, không gửi tin nhắn chen vào
+    if (chatInput) {
+        chatInput.disabled = true;
+        chatInput.value = '';
+        chatInput.classList.remove('is-supervisor-mode');
+        chatInput.placeholder = 'Chế độ xem: Bạn đang theo dõi cuộc trò chuyện giữa Kỹ thuật và Agent';
+    }
+    const sendBtn = chatForm?.querySelector('button[type="submit"]');
+    if (sendBtn) sendBtn.disabled = true;
+    chatMicBtn?.classList.add('hide');
+
+    if (chatMessagesContainer) {
+        chatMessagesContainer.innerHTML = '<div class="chat-loading-state" style="display:flex;align-items:center;justify-content:center;height:200px;color:var(--text-muted);"><i class="ri-loader-4-line rotating" style="font-size:24px;margin-right:8px;"></i> Đang tải tin nhắn...</div>';
+    }
+
+    await loadMessages(chat.sessionId);
+
+    // Kích hoạt thanh ticket nếu có ticket giữa Agent và Kỹ thuật
+    window.TicketConsole?.onInternalChat?.(chat);
+}
+
 function initSessionCategoryTabs() {
     const tabsContainer = document.getElementById('session-category-tabs');
     const tabCustomers = document.getElementById('tab-cat-customers');
     const tabInternal = document.getElementById('tab-cat-internal');
+    const tabTechnical = document.getElementById('tab-cat-technical');
     const statusFilter = document.getElementById('session-status-filter');
     const customerList = document.getElementById('sessions-list-container');
     const internalList = document.getElementById('internal-sessions-list-container');
+    const technicalList = document.getElementById('technical-sessions-list-container');
 
     if (!tabsContainer || !tabCustomers || !tabInternal) return;
 
     const isAgent = CURRENT_ADMIN && CURRENT_ADMIN.role === 'agent';
     const isSuper = CURRENT_ADMIN && ['superadmin', 'project_admin'].includes(CURRENT_ADMIN.role);
     const isSaleWithAgent = CURRENT_ADMIN && CURRENT_ADMIN.role === 'sale';
+    const isOnlySuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
 
     if (isAgent || isSuper || isSaleWithAgent) {
         tabsContainer.classList.remove('hide');
@@ -149,25 +315,53 @@ function initSessionCategoryTabs() {
         tabsContainer.classList.add('hide');
     }
 
+    // Tab Kỹ thuật CHỈ hiển thị ở SuperAdmin
+    if (tabTechnical) {
+        if (isOnlySuper) {
+            tabTechnical.classList.remove('hide');
+        } else {
+            tabTechnical.classList.add('hide');
+        }
+    }
+
     tabCustomers.onclick = () => {
         currentCategoryTab = 'customers';
         tabCustomers.classList.add('is-active');
         tabInternal.classList.remove('is-active');
+        tabTechnical?.classList.remove('is-active');
         statusFilter?.classList.remove('hide');
         customerList?.classList.remove('hide');
         internalList?.classList.add('hide');
+        technicalList?.classList.add('hide');
     };
 
     tabInternal.onclick = () => {
         currentCategoryTab = 'internal';
         tabInternal.classList.add('is-active');
         tabCustomers.classList.remove('is-active');
+        tabTechnical?.classList.remove('is-active');
         statusFilter?.classList.add('hide');
         customerList?.classList.add('hide');
         internalList?.classList.remove('hide');
+        technicalList?.classList.add('hide');
         fetchInternalChats();
         renderInternalSessionsList();
     };
+
+    if (tabTechnical) {
+        tabTechnical.onclick = () => {
+            currentCategoryTab = 'technical';
+            tabTechnical.classList.add('is-active');
+            tabCustomers.classList.remove('is-active');
+            tabInternal.classList.remove('is-active');
+            statusFilter?.classList.add('hide');
+            customerList?.classList.add('hide');
+            internalList?.classList.add('hide');
+            technicalList?.classList.remove('hide');
+            fetchTechnicalAgentChats();
+            renderTechnicalAgentSessionsList();
+        };
+    }
 }
 
 async function selectInternalSession(chat) {
@@ -926,9 +1120,17 @@ function handleAdminRealtimeEvent(data) {
                 }
             }
 
+            let techChat = technicalAgentChats.find(c => c.sessionId === sessionId);
+            if (techChat) {
+                techChat.lastMessage = message.original_text;
+                techChat.lastMessageTime = message.created_at;
+            }
+
             renderInternalBadge();
             if (currentCategoryTab === 'internal') {
                 renderInternalSessionsList();
+            } else if (currentCategoryTab === 'technical') {
+                renderTechnicalAgentSessionsList();
             } else if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'sale') {
                 renderSessionsList(sessionsList);
             }
@@ -1254,6 +1456,9 @@ async function fetchSessions() {
     const requestGeneration = adminAuthGeneration;
     initSessionCategoryTabs();
     fetchInternalChats().catch(() => {});
+    if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin') {
+        fetchTechnicalAgentChats().catch(() => {});
+    }
     try {
         const response = await authFetch(`${API_BASE}/api/admin/chats?_=${Date.now()}`);
         if (requestGeneration !== adminAuthGeneration) return;
@@ -2954,6 +3159,11 @@ async function sendAttachment(file) {
 }
 
 
+const MIC_ICON_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.75A3.75 3.75 0 0 0 15.75 11V6.75a3.75 3.75 0 0 0-7.5 0V11A3.75 3.75 0 0 0 12 14.75Z"/><path d="M5.75 10.75v.5a6.25 6.25 0 0 0 12.5 0v-.5M12 17.5V21M8.75 21h6.5M19.25 7.75c.7.7.7 1.8 0 2.5M21 6c1.65 1.65 1.65 4.35 0 6"/></svg>`;
+const PAUSE_ICON_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+const SPINNER_ICON_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true" style="animation: spin 1s linear infinite;"><path d="M12 3a9 9 0 0 1 9 9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+
+
 function resizeAgentChatInput() {
     if (!chatInput) return;
     chatInput.style.height = '0px';
@@ -2963,49 +3173,50 @@ function resizeAgentChatInput() {
     chatInput.style.overflowY = chatInput.scrollHeight > maxHeight ? 'auto' : 'hidden';
 
     const hasText = !!chatInput.value.trim();
-    document.getElementById('chat-attach-btn')?.classList.toggle('hide', hasText);
-    document.getElementById('chat-mic-btn')?.classList.toggle('hide', hasText || !voiceSupported);
+    const isRecording = (voiceRecorder && voiceRecorder.state === 'recording') || voiceBusy;
+    document.getElementById('chat-attach-btn')?.classList.toggle('hide', hasText || isRecording);
+    document.getElementById('chat-mic-btn')?.classList.toggle('hide', (!isRecording && hasText) || !voiceSupported);
     const sendBtn = chatForm?.querySelector('.send-btn');
-    sendBtn?.classList.toggle('hide', !hasText);
+    sendBtn?.classList.toggle('hide', isRecording || !hasText);
 }
 
 
 function setVoiceUi(state) {
-    const panel = document.getElementById('voice-live-panel');
-    const label = document.getElementById('voice-live-label');
     const micBtn = document.getElementById('chat-mic-btn');
-    const readyStage = document.getElementById('voice-ready-stage');
-    const title = panel?.querySelector('.voice-live-title');
-    const wave = panel?.querySelector('.voice-wave');
+    const isRecording = state === 'recording';
+    const isWorking = state === 'working';
 
-    panel?.classList.toggle('hide', state === 'idle');
-    panel?.classList.toggle('is-ready', state === 'ready');
-    panel?.classList.toggle('is-working', state === 'working');
-    chatInputContainer?.classList.toggle('voice-active', state !== 'idle');
-    micBtn?.classList.toggle('is-active', state === 'ready');
-    micBtn?.classList.toggle('is-recording', state === 'recording' || state === 'working');
-    if (label) label.textContent = state === 'working' ? 'Đang nhận diện…' : 'Đang lắng nghe…';
+    chatInputContainer?.classList.toggle('voice-active', isRecording || isWorking);
 
-    readyStage?.classList.toggle('hide', state !== 'ready');
-    title?.classList.toggle('hide', state === 'ready');
-    wave?.classList.toggle('hide', state === 'ready');
+    if (micBtn) {
+        micBtn.classList.toggle('is-recording', isRecording);
+        micBtn.classList.toggle('is-transcribing', isWorking);
 
-    // Khi đang nhận diện nền thì chỉ còn dòng trạng thái, ba thao tác mất nghĩa.
-    const hasActions = state === 'recording';
-    document.getElementById('voice-live-send')?.classList.toggle('hide', !hasActions);
-    panel?.querySelector('.voice-live-actions')?.classList.toggle('hide', !hasActions);
-    updateVoiceSendState();
+        if (isRecording) {
+            micBtn.innerHTML = PAUSE_ICON_SVG;
+            micBtn.title = 'Bấm để dừng ghi âm';
+            micBtn.setAttribute('aria-label', 'Bấm để dừng ghi âm');
+        } else if (isWorking) {
+            micBtn.innerHTML = SPINNER_ICON_SVG;
+            micBtn.title = 'Đang chuyển giọng nói thành văn bản…';
+            micBtn.setAttribute('aria-label', 'Đang chuyển giọng nói thành văn bản…');
+        } else {
+            micBtn.innerHTML = MIC_ICON_SVG;
+            micBtn.title = 'Nhập bằng giọng nói';
+            micBtn.setAttribute('aria-label', 'Nhập bằng giọng nói');
+        }
+    }
+
+    if (chatInput) {
+        if (isRecording && /Android/i.test(navigator.userAgent)) {
+            chatInput.placeholder = 'Đang nghe… bấm nút dừng để chuyển thành chữ';
+        } else if (!isRecording && !isWorking) {
+            const dict = TRANSLATIONS[currentLang] || TRANSLATIONS.vi;
+            chatInput.placeholder = dict.chatInputPlaceholder || 'Gõ câu trả lời bằng tiếng Việt tại đây...';
+        }
+    }
+
     resizeAgentChatInput();
-}
-
-
-// Chưa có chữ nào thì không cho bấm Gửi — tránh gửi tin rỗng.
-function updateVoiceSendState() {
-    const pulse = document.getElementById('voice-live-send');
-    const sendAction = document.getElementById('voice-send-btn');
-    const disabled = voiceBusy || (!voiceRecorder || voiceRecorder.state !== 'recording') && !chatInput?.value.trim();
-    if (pulse) pulse.disabled = disabled;
-    if (sendAction) sendAction.disabled = disabled;
 }
 
 
@@ -3015,15 +3226,8 @@ function stopVoiceTracks() {
 }
 
 
-function renderVoiceTimer(seconds) {
-    const timer = document.getElementById('voice-live-timer');
-    if (timer) timer.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
-
 function tickVoiceTimer() {
     const seconds = Math.floor((Date.now() - voiceStartedAt) / 1000);
-    renderVoiceTimer(seconds);
     if (seconds >= VOICE_MAX_SECONDS) stopVoiceRecording();
 }
 
@@ -3032,11 +3236,12 @@ function applyVoiceDraft(text) {
     if (!chatInput) return;
     chatInput.value = [voiceDraftBefore.trim(), String(text || '').trim()].filter(Boolean).join(' ');
     resizeAgentChatInput();
-    updateVoiceSendState();
 }
 
 
 function startRealtimeRecognition() {
+    // Android: tạm bỏ Web Speech để tránh xung đột micro & crash, dùng Groq Whisper khi dừng
+    if (/Android/i.test(navigator.userAgent)) return;
     if (!SpeechRecognitionCtor) return;
     const recognition = new SpeechRecognitionCtor();
     recognition.continuous = true;
@@ -3055,11 +3260,10 @@ function startRealtimeRecognition() {
         voiceLiveText = /^[.\s,。!?…·\-_:;'"“”‘’`~]+$/.test(spoken) ? '' : spoken;
         applyVoiceDraft(voiceLiveText);
     };
-    // Web Speech lỗi hay không hỗ trợ thì im lặng — Groq vẫn là đường dự phòng.
     recognition.onerror = () => {};
     recognition.onend = () => {
         if (voiceRecorder?.state === 'recording' && !voiceCancelled) {
-            setTimeout(() => { try { recognition.start(); } catch { /* thử lại ở lần ghi sau */ } }, 120);
+            setTimeout(() => { try { recognition.start(); } catch { /* thử lại */ } }, 120);
         }
     };
     voiceRecognition = recognition;
@@ -3078,8 +3282,6 @@ function stopRealtimeRecognition(abort) {
 
 async function startVoiceRecording() {
     if (!currentSessionId || voiceBusy || !voiceSupported) return;
-    // Đóng bàn phím mobile trước khi mở panel ghi âm ở chính vùng composer.
-    chatInput?.blur();
     voiceCancelled = false;
     voiceSkipBatch = false;
     voiceChunks = [];
@@ -3096,8 +3298,6 @@ async function startVoiceRecording() {
         return;
     }
 
-    // Để trình duyệt tự chọn định dạng: Chrome ra WebM, iPhone ra MP4 — Whisper
-    // trên Groq nhận cả hai nên không cần ép codec.
     const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
     const mimeType = preferred.find((type) => window.MediaRecorder.isTypeSupported?.(type));
     voiceRecorder = new MediaRecorder(voiceStream, mimeType ? { mimeType } : undefined);
@@ -3109,7 +3309,6 @@ async function startVoiceRecording() {
     voiceRecorder.start();
     voiceStartedAt = Date.now();
     setVoiceUi('recording');
-    renderVoiceTimer(0);
     voiceTimerId = setInterval(tickVoiceTimer, 250);
     startRealtimeRecognition();
 }
@@ -3123,7 +3322,6 @@ function stopVoiceRecording() {
 }
 
 
-// Xóa: bỏ cả phần chữ có sẵn trước khi ghi lẫn transcript vừa nhận, như portal.
 function cancelVoiceRecording() {
     voiceCancelled = true;
     voiceSendPending = false;
@@ -3134,16 +3332,6 @@ function cancelVoiceRecording() {
     if (chatInput) chatInput.value = '';
     setVoiceUi('idle');
     stopVoiceRecording();
-}
-
-
-// Chỉnh sửa: đóng panel, đưa con trỏ về ô nhập, giữ nguyên chữ đã nhận.
-function editVoiceRecording() {
-    voiceSkipBatch = false;
-    stopVoiceRecording();
-    setVoiceUi('idle');
-    chatInput?.focus();
-    chatInput?.setSelectionRange?.(chatInput.value.length, chatInput.value.length);
 }
 
 
@@ -3163,10 +3351,7 @@ async function finishVoiceRecording() {
 
     const liveText = voiceLiveText.trim();
     const draftAtStop = [voiceDraftBefore.trim(), liveText].filter(Boolean).join(' ');
-    let returnToReady = false;
 
-    // Đã có transcript realtime thì trả giao diện về ngay; Groq vẫn chạy nền để
-    // sửa lại kết quả cuối, miễn là người dùng chưa tự gõ đè trong lúc chờ.
     setVoiceUi(liveText ? 'idle' : 'working');
     voiceBusy = !liveText;
     try {
@@ -3194,46 +3379,15 @@ async function finishVoiceRecording() {
             chatInput.focus();
             chatInput.setSelectionRange?.(chatInput.value.length, chatInput.value.length);
         }
-        if (voiceSendPending && chatInput?.value.trim()) {
-            voiceSendPending = false;
-            setVoiceUi('idle');
-            await sendMessage();
-            returnToReady = true;
-        }
     } catch (error) {
-        // Có transcript realtime rồi thì lỗi bước hiệu chỉnh nền không được che
-        // mất chữ hoặc làm gián đoạn người dùng.
-        voiceSendPending = false;
         if (!liveText) {
             toastError(error.message || 'Không nghe thấy giọng nói để chuyển thành văn bản.');
-            returnToReady = true;
         }
     } finally {
         voiceBusy = false;
-        setVoiceUi(returnToReady ? 'ready' : 'idle');
+        setVoiceUi('idle');
         resizeAgentChatInput();
     }
-}
-
-
-// Gửi: dừng ghi, bỏ luôn bước hiệu chỉnh nền rồi gửi ngay chữ đang có.
-function sendVoiceDraft() {
-    if (voiceBusy) return;
-    const hasRealtimeText = !!chatInput?.value.trim();
-    if (hasRealtimeText) {
-        voiceSkipBatch = true;
-        voiceSendPending = false;
-        stopVoiceRecording();
-        setVoiceUi('working');
-        void sendMessage().finally(() => setVoiceUi('ready'));
-        return;
-    }
-    // Giống Zalo: người dùng được bấm Gửi ngay cả khi STT chưa kịp trả chữ.
-    // Dừng thu, nhận diện file ngắn vừa ghi rồi tự gửi ngay khi có kết quả.
-    voiceSkipBatch = false;
-    voiceSendPending = true;
-    stopVoiceRecording();
-    setVoiceUi('working');
 }
 
 

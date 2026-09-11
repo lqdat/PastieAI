@@ -734,7 +734,7 @@
                     <h3 data-i18n="chatListTitle">Hội thoại chat</h3>
                     <button id="refresh-sessions-btn" class="icon-btn" title="Tải lại" data-i18n-title="refreshTitle"><i class="ri-refresh-line"></i></button>
                 </div>
-                <!-- Category Tabs (Agent / SuperAdmin): Khách hàng & Nội bộ -->
+                <!-- Category Tabs (Agent / SuperAdmin): Khách hàng, Nội bộ & Kỹ thuật (chỉ cho SuperAdmin) -->
                 <div class="session-category-tabs hide" id="session-category-tabs" role="tablist">
                     <button type="button" class="sct-tab is-active" data-tab="customers" id="tab-cat-customers" role="tab">
                         <i class="ri-chat-3-line"></i> <span>Khách hàng</span>
@@ -742,6 +742,9 @@
                     <button type="button" class="sct-tab" data-tab="internal" id="tab-cat-internal" role="tab">
                         <i class="ri-team-line"></i> <span>Nội bộ</span>
                         <span class="sct-badge hide" id="internal-unread-badge">0</span>
+                    </button>
+                    <button type="button" class="sct-tab hide" data-tab="technical" id="tab-cat-technical" role="tab">
+                        <i class="ri-tools-line"></i> <span>Kỹ thuật</span>
                     </button>
                 </div>
                 <div class="session-status-filter" id="session-status-filter" role="tablist">
@@ -755,6 +758,10 @@
                 <!-- Danh sách hội thoại nội bộ (cho Agent & SuperAdmin) -->
                 <div class="sessions-list hide" id="internal-sessions-list-container">
                     <div class="empty-state">Đang tải cuộc trò chuyện nội bộ...</div>
+                </div>
+                <!-- Danh sách hội thoại Kỹ thuật - Agent (cho SuperAdmin theo dõi) -->
+                <div class="sessions-list hide" id="technical-sessions-list-container">
+                    <div class="empty-state">Đang tải cuộc trò chuyện Kỹ thuật...</div>
                 </div>
             </aside>
 
@@ -835,29 +842,6 @@
                         <button type="button" class="attach-btn" id="chat-attach-btn" title="Gửi hình ảnh hoặc file" aria-label="Gửi hình ảnh hoặc file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.75 6.75A2.75 2.75 0 0 1 7.5 4h9A2.75 2.75 0 0 1 19.25 6.75v10.5A2.75 2.75 0 0 1 16.5 20h-9a2.75 2.75 0 0 1-2.75-2.75V6.75Z"/><path d="m5.25 16 3.45-3.45a1.4 1.4 0 0 1 1.98 0l1.3 1.3 1.42-1.42a1.4 1.4 0 0 1 1.98 0L18.75 15.8M15.75 7.5v4M13.75 9.5h4"/></svg></button>
                         <button type="submit" class="send-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3.4 20.4 18-7.5a1 1 0 0 0 0-1.8l-18-7.5A1 1 0 0 0 2 4.7l1.6 5.8 9.4 1.5-9.4 1.5L2 19.3a1 1 0 0 0 1.4 1.1Z"/></svg></button>
                     </form>
-                    <!-- Ghi âm: chữ nhận diện chạy thẳng vào ô soạn tin phía trên, panel này
-                         chỉ giữ trạng thái nghe và ba thao tác. Giống hệt portal khách.
-                         Không có lựa chọn "gửi bản ghi âm" — bản ghi bị bỏ sau khi lấy chữ. -->
-                    <section id="voice-live-panel" class="voice-live-panel hide" aria-live="polite">
-                        <div class="voice-ready-stage" id="voice-ready-stage">
-                            <p>Chạm để bắt đầu ghi âm</p>
-                            <button type="button" class="voice-ready-mic" id="voice-start-btn" aria-label="Bắt đầu ghi âm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.75A3.75 3.75 0 0 0 15.75 11V6.75a3.75 3.75 0 0 0-7.5 0V11A3.75 3.75 0 0 0 12 14.75Z"/><path d="M5.75 10.75v.5a6.25 6.25 0 0 0 12.5 0v-.5M12 17.5V21M8.75 21h6.5"/></svg><span>A</span></button>
-                            <small>Giọng nói sẽ hiển thị thành văn bản theo thời gian thực</small>
-                        </div>
-                        <div class="voice-live-title">
-                            <span class="voice-dot"></span>
-                            <span id="voice-live-label">Đang lắng nghe…</span>
-                            <time id="voice-live-timer">0:00</time>
-                        </div>
-                        <div class="voice-wave" aria-hidden="true">
-                            <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
-                        </div>
-                        <div class="voice-live-actions">
-                            <button type="button" id="voice-delete-btn" class="voice-action voice-action-delete"><span class="voice-action-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4.75h6V7M7.25 7l.65 12.25h8.2L16.75 7M10 10.5v5.75M14 10.5v5.75"/></svg></span><span class="voice-action-label">Xóa</span></button>
-                            <button type="button" id="voice-send-btn" class="voice-action voice-action-send"><span class="voice-send-orbit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 17-8L4 4l2.3 6.1L15 12l-8.7 1.9L4 20Z"/></svg></span><span class="voice-action-label">Gửi</span></button>
-                            <button type="button" id="voice-edit-btn" class="voice-action voice-action-edit"><span class="voice-action-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.25-1 10.9-10.9a2.2 2.2 0 0 0-3.1-3.1L5.15 15.9 4 20ZM14.6 6.45l3.1 3.1M4 22h16"/></svg></span><span class="voice-action-label">Chỉnh sửa</span></button>
-                        </div>
-                    </section>
                 </div>
             </main>
 
@@ -1596,13 +1580,6 @@
                     <button type="button" id="admin-edit-cancel-btn" class="secondary-btn" style="padding: 10px 18px; font-size: 13px;"><i class="ri-close-line"></i> Hủy</button>
                 </div>
             </form>
-        </div>
-    </div>
-              </div>
-            </div>
-            <div class="modal-sticky-footer" id="admin-mgmt-footer">
-                <button id="admin-mgmt-close-btn" class="secondary-btn"><i class="ri-close-line"></i> Đóng</button>
-            </div>
         </div>
     </div>
 

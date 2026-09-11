@@ -318,7 +318,7 @@ function broadcastAdminEvent(event, data) {
   for (const client of adminEventClients) {
     try {
       const admin = client.admin;
-      if (Array.isArray(event.targetAdminIds) && admin && !event.targetAdminIds.map(Number).includes(Number(admin.id))) {
+      if (Array.isArray(event.targetAdminIds) && admin && !event.targetAdminIds.map(Number).includes(Number(admin.id)) && !(admin.role === 'superadmin' && event.type === 'internal_message')) {
         continue;
       }
       if (event.adminId && admin && Number(admin.id) !== Number(event.adminId) && event.type === 'session_revoked') {
@@ -7704,7 +7704,8 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
       // Cùng một luật với đường gửi tin: chỉ hai người trong mã phiên. Cách cũ
       // dùng includes() nên admin id 1 đọc được cả `internal_agent_11_sale_3`.
       const parsedInternal = parseInternalSessionId(sessionId);
-      if (!internalChatPeerFor(req.admin, parsedInternal)) {
+      const isSuperObserving = req.admin.role === 'superadmin' && parsedInternal?.kind === 'technical';
+      if (!internalChatPeerFor(req.admin, parsedInternal) && !isSuperObserving) {
         return res.status(403).json({ error: 'Bạn không có quyền xem hội thoại nội bộ này.' });
       }
 
@@ -13103,6 +13104,65 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
   }
 });
 
+app.get('/api/admin/technical-agent-chats', checkAdminAuth, async (req, res) => {
+  try {
+    const current = req.admin;
+    if (current.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Chỉ Admin tổng mới có quyền theo dõi hội thoại Kỹ thuật - Agent.' });
+    }
+
+    const technicals = (await db.query(
+      "SELECT id, full_name, avatar_url, role FROM admins WHERE role = 'technical' AND is_active = TRUE ORDER BY full_name ASC"
+    )).rows;
+
+    const agents = (await db.query(
+      "SELECT id, full_name, avatar_url, role, project_id FROM admins WHERE role IN ('agent', 'project_admin') AND is_active = TRUE ORDER BY full_name ASC"
+    )).rows;
+
+    const chats = [];
+
+    for (const tech of technicals) {
+      for (const agent of agents) {
+        const sId = `internal_agent_${agent.id}_technical_${tech.id}`;
+        const lastMsg = (await db.query(
+          `SELECT original_text, created_at, sender, sender_admin_id FROM messages WHERE session_id = $1 ORDER BY created_at DESC LIMIT 1`,
+          [sId]
+        )).rows[0];
+
+        chats.push({
+          sessionId: sId,
+          agentId: agent.id,
+          agentName: agent.full_name || 'Agent',
+          agentAvatar: agent.avatar_url || null,
+          technicalId: tech.id,
+          technicalName: tech.full_name || 'Kỹ thuật Pastie',
+          technicalAvatar: tech.avatar_url || null,
+          peerName: agent.full_name || 'Agent',
+          badgeLabel: tech.full_name || 'Kỹ thuật',
+          lastMessage: lastMsg?.original_text || '',
+          lastMessageTime: lastMsg?.created_at || null,
+          unreadCount: 0,
+        });
+      }
+    }
+
+    // Ưu tiên các cuộc có tin nhắn lên trước, sắp xếp theo tin mới nhất
+    chats.sort((a, b) => {
+      if (a.lastMessageTime && !b.lastMessageTime) return -1;
+      if (!a.lastMessageTime && b.lastMessageTime) return 1;
+      if (a.lastMessageTime && b.lastMessageTime) {
+        return new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime();
+      }
+      return (a.agentName || '').localeCompare(b.agentName || '');
+    });
+
+    res.json({ success: true, chats });
+  } catch (error) {
+    console.error('List technical agent chats error:', error);
+    res.status(500).json({ error: 'Không thể tải danh sách chat Kỹ thuật - Agent.' });
+  }
+});
+
 app.post('/api/admin/internal-chats/message', checkAdminAuth, async (req, res) => {
   const { sessionId, text } = req.body || {};
   if (!sessionId || !text || !String(text).trim()) {
@@ -13187,9 +13247,9 @@ app.post('/api/admin/internal-chats/message', checkAdminAuth, async (req, res) =
 // Superadmin KHÔNG tạo ticket (không có cuộc chat nào để mà tạo) nhưng nhìn thấy
 // toàn bộ, để nắm tình hình hỗ trợ của cả hệ thống.
 
-const TICKET_TRANG_THAI = ['moi', 'dang_xu_ly', 'cho_agent', 'da_giai_quyet', 'da_dong'];
+const TICKET_TRANG_THAI = ['moi', 'dang_xu_ly', 'da_giai_quyet', 'da_dong'];
 const TICKET_NHAN = {
-  moi: 'Mới', dang_xu_ly: 'Đang xử lý', cho_agent: 'Chờ Agent',
+  moi: 'Mới', dang_xu_ly: 'Đang xử lý',
   da_giai_quyet: 'Đã giải quyết', da_dong: 'Đã đóng',
 };
 const TICKET_UU_TIEN = ['thap', 'thuong', 'cao', 'khan'];
@@ -13376,7 +13436,7 @@ app.get('/api/admin/tickets', checkAdminAuth, async (req, res) => {
        LEFT JOIN admins nguoi_tao ON nguoi_tao.id = t.created_by_admin_id
        LEFT JOIN admins nguoi_nhan ON nguoi_nhan.id = t.assigned_to_admin_id
       ${dieuKien.length ? 'WHERE ' + dieuKien.join(' AND ') : ''}
-      ORDER BY CASE t.status WHEN 'moi' THEN 0 WHEN 'dang_xu_ly' THEN 1 WHEN 'cho_agent' THEN 2 ELSE 3 END,
+      ORDER BY CASE t.status WHEN 'moi' THEN 0 WHEN 'dang_xu_ly' THEN 1 ELSE 2 END,
                t.updated_at DESC
       LIMIT 200`,
     thamSo
