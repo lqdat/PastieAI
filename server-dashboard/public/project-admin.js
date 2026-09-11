@@ -820,7 +820,11 @@ async function loadAdminUsers() {
         const roots = [];
         for (const u of visibleUsers) {
             const parentId = Number(u.managed_by_admin_id);
-            if (u.role === 'sale' && parentId && byId.has(parentId)) {
+            // Kỹ thuật cũng thuộc một Agent (managed_by_admin_id), y như Sale —
+            // seed-pastie-internal.js gắn Kỹ thuật Pastie vào Agent Pastie. Trước
+            // đây chỉ Sale được xếp vào nhánh con, nên Kỹ thuật đứng trơ ở mức
+            // gốc và nhìn vào không biết nó thuộc ai.
+            if (['sale', 'technical'].includes(u.role) && parentId && byId.has(parentId)) {
                 if (!childrenOf.has(parentId)) childrenOf.set(parentId, []);
                 childrenOf.get(parentId).push(u);
             } else {
@@ -863,6 +867,9 @@ async function loadAdminUsers() {
                 // đọc thấy chữ Sale nên tìm mãi không ra.
                 roleLabel = 'Kỹ thuật';
                 roleClass = 'technical';
+                // Hiện "Quản lý bởi" như Sale: Kỹ thuật cũng thuộc một Agent.
+                const quanLy = u.manager_name || u.manager_username || 'Chưa gán';
+                extraBadges = `<span class="admin-user-meta-badge is-manager"><i class="ri-user-star-line"></i> Quản lý bởi: <strong>${escapeHtml(quanLy)}</strong></span>`;
             } else if (u.role === 'superadmin') {
                 roleLabel = 'Hỗ trợ kỹ thuật';
                 roleClass = 'superadmin';

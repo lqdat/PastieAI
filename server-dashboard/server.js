@@ -13242,17 +13242,24 @@ async function postTicketNoticeToChat(ticket, text, admin) {
 }
 
 // Ai được đụng vào ticket này, và ở mức nào.
+//
+// CHỈ Kỹ thuật và Admin tổng đổi được trạng thái. Agent là người NÊU vấn đề:
+// tạo ticket, theo dõi, trả lời thêm trong đoạn chat — nhưng không tự tuyên bố
+// việc đang ở bước nào. Để Agent đổi trạng thái thì con số "đang xử lý" trở nên
+// vô nghĩa, vì nó phản ánh mong muốn của người yêu cầu chứ không phải thực tế
+// của người làm.
 function quyenTrenTicket(admin, ticket) {
   if (!admin || !ticket) return { xem: false, sua: false, dong: false };
-  if (isSuperAdmin(admin)) return { xem: true, sua: false, dong: false, chiXem: true };
+  // Admin tổng: xem toàn hệ thống VÀ chỉnh được trạng thái, kể cả đóng — vai
+  // này đứng trên cả Kỹ thuật, ticket bị bỏ quên thì phải có người dọn được.
+  if (isSuperAdmin(admin)) return { xem: true, sua: true, dong: true, toanHeThong: true };
   if (admin.role === 'technical' && Number(ticket.technical_id) === Number(admin.id)) {
     return { xem: true, sua: true, dong: true };
   }
   if (['agent', 'project_admin'].includes(admin.role) && Number(ticket.agent_id) === Number(admin.id)) {
-    // Agent phản hồi và đổi được vài trạng thái, nhưng KHÔNG tự đóng ticket mà
-    // Kỹ thuật đã tiếp nhận: đóng là lời tuyên bố "việc này xong rồi", và người
-    // đang làm mới nói được câu đó.
-    return { xem: true, sua: true, dong: false };
+    // Xem được ticket của mình, KHÔNG đổi trạng thái. Muốn nói gì thêm thì nhắn
+    // trong đoạn chat với Kỹ thuật — đó mới là chỗ trao đổi.
+    return { xem: true, sua: false, dong: false, chiXem: true };
   }
   return { xem: false, sua: false, dong: false };
 }
@@ -13377,7 +13384,12 @@ app.get('/api/admin/tickets', checkAdminAuth, async (req, res) => {
 
   res.json({
     success: true,
-    chiXem: isSuperAdmin(current),
+    // chiXem = chỉ theo dõi, không đổi được trạng thái. Giờ đó là AGENT, không
+    // phải Admin tổng nữa — trước đây cờ này gắn cứng vào isSuperAdmin, để
+    // nguyên là giao diện ẩn nút của đúng người được phép và hiện cho người
+    // không được phép, tức là ngược hoàn toàn.
+    chiXem: ['agent', 'project_admin'].includes(current.role),
+    toanHeThong: isSuperAdmin(current),
     tickets: rows.rows.map((row) => ({ ...row, statusLabel: TICKET_NHAN[row.status] })),
   });
 });
@@ -13437,7 +13449,7 @@ app.patch('/api/admin/tickets/:code', checkAdminAuth, async (req, res) => {
   if (!quyen.sua) {
     return res.status(403).json({
       error: quyen.chiXem
-        ? 'Superadmin chỉ theo dõi ticket, việc xử lý thuộc về Kỹ thuật và Agent.'
+        ? 'Agent không đổi được trạng thái ticket. Việc đó thuộc về Kỹ thuật và Admin tổng — bạn vẫn trao đổi thêm được trong đoạn chat.'
         : 'Ticket này không thuộc phạm vi của bạn.',
     });
   }
@@ -13446,11 +13458,8 @@ app.patch('/api/admin/tickets/:code', checkAdminAuth, async (req, res) => {
   if (trangThaiMoi !== undefined && !TICKET_TRANG_THAI.includes(trangThaiMoi)) {
     return res.status(400).json({ error: 'Trạng thái không hợp lệ.' });
   }
-  // Đóng ticket là lời tuyên bố "xong rồi" — chỉ Kỹ thuật nói được câu đó.
   if (['da_giai_quyet', 'da_dong'].includes(trangThaiMoi) && !quyen.dong) {
-    return res.status(403).json({
-      error: 'Ticket đã được Kỹ thuật tiếp nhận nên chỉ Kỹ thuật mới đóng được. Bạn vẫn phản hồi thêm được trong đoạn chat.',
-    });
+    return res.status(403).json({ error: 'Bạn không có quyền đóng ticket này.' });
   }
 
   const uuTienMoi = TICKET_UU_TIEN.includes(req.body?.priority) ? req.body.priority : null;

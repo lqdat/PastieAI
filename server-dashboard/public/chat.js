@@ -229,8 +229,10 @@ async function selectInternalSession(chat) {
     document.getElementById('assignee-selector-container')?.classList.add('hide');
     document.getElementById('shift-draining-banner')?.classList.add('hide');
     document.getElementById('delete-session-btn')?.classList.add('hide');
+    document.getElementById('details-toggle-btn')?.classList.add('hide');
+    dashboardBody?.classList.remove('details-open');
 
-    chatHeaderActions?.classList.remove('hide');
+    chatHeaderActions?.classList.add('hide');
     chatInputContainer?.classList.remove('hide');
     chatForm?.classList.remove('hide');
     detailsSidebar?.classList.add('hide');
@@ -1583,6 +1585,8 @@ function applyChatPermissionUI(session) {
         document.getElementById('assignee-selector-container')?.classList.add('hide');
         document.getElementById('shift-draining-banner')?.classList.add('hide');
         document.getElementById('delete-session-btn')?.classList.add('hide');
+        document.getElementById('details-toggle-btn')?.classList.add('hide');
+        dashboardBody?.classList.remove('details-open');
 
         chatInputContainer?.classList.remove('hide');
         chatForm?.classList.remove('hide');
@@ -1596,6 +1600,7 @@ function applyChatPermissionUI(session) {
         if (sendBtn) sendBtn.disabled = false;
         return;
     }
+    document.getElementById('details-toggle-btn')?.classList.remove('hide');
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
     const isAgent = CURRENT_ADMIN && CURRENT_ADMIN.role === 'agent';
@@ -1722,6 +1727,7 @@ async function selectSession(sessionId) {
         }
     }
     currentSessionId = sessionId;
+    document.getElementById('details-toggle-btn')?.classList.remove('hide');
     renderVisitorTypingIndicator(false);
     bindAgentChatInputEvents();
     if (adminVisitorTypingPollTimer) clearInterval(adminVisitorTypingPollTimer);

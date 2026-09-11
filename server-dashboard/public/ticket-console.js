@@ -119,7 +119,17 @@
         .ticket-msg-btn{border:none;background:transparent;color:var(--accent-color,#ef2b9d);cursor:pointer;font-size:12px;padding:2px 6px;border-radius:8px;display:inline-flex;align-items:center;gap:4px}
         .ticket-msg-btn:hover{background:var(--accent-soft,#fdf1f8)}
         .ticket-note{font-size:12px;color:var(--text-muted,#94869c);line-height:1.5}
-        @media (max-width:520px){.ticket-panel-body{width:100%}}
+        /* Màn Ticket của Admin tổng là màn làm việc riêng nên rộng hơn hẳn
+           panel phụ mà Agent/Kỹ thuật mở từ trong đoạn chat. */
+        .ticket-panel.rong .ticket-panel-body{width:min(720px,100%)}
+        /* LỊCH SỬ XỬ LÝ CÓ THANH CUỘN RIÊNG.
+           Không có trần chiều cao thì một ticket qua tay nhiều người sẽ đẩy nút
+           "← Danh sách ticket" xuống tận đáy, và phần trạng thái ở trên trôi ra
+           khỏi tầm nhìn — muốn xem lại đầu ticket phải cuộn ngược cả trang. */
+        .ticket-history{max-height:280px;overflow-y:auto;padding-right:4px}
+        .ticket-history::-webkit-scrollbar{width:8px}
+        .ticket-history::-webkit-scrollbar-thumb{background:var(--panel-border,rgba(84,62,100,.18));border-radius:8px}
+        @media (max-width:520px){.ticket-panel-body{width:100%}.ticket-history{max-height:220px}}
         `;
         document.head.appendChild(style);
 
@@ -140,16 +150,28 @@
         // Bấm Esc để đóng: người dùng bàn phím không phải rê chuột đi tìm nút ✕.
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape') dong(); });
 
-        // Nút nổi cho Superadmin — vai này không có đoạn chat nội bộ nào để mà
-        // mở thanh ticket, nhưng vẫn cần nhìn thấy toàn hệ thống.
-        const nut = document.createElement('button');
-        nut.type = 'button';
-        nut.id = 'ticket-float-btn';
-        nut.className = 'ticket-btn primary ticket-float hide';
-        nut.innerHTML = '<i class="ri-coupon-3-line"></i> Ticket hệ thống';
-        nut.addEventListener('click', () => moPanel({ tieuDe: 'Ticket toàn hệ thống' }));
-        document.body.appendChild(nut);
-        if (laSuper()) nut.classList.remove('hide');
+        // MÀN RIÊNG CHO ADMIN TỔNG: nút "Ticket" trên thanh công cụ, cạnh nút
+        // Quản trị. Trước đây là một nút nổi đè lên góc màn hình — nó che nội
+        // dung và không nằm cùng chỗ với các nút quản trị khác, nên người dùng
+        // không coi đó là một màn hình thật sự.
+        //
+        // Nút nằm sẵn trong admin.html (id ticket-manage-btn) và mặc định ẩn;
+        // ở đây chỉ gỡ lớp 'hide' cho đúng vai. Đặt trong HTML thay vì tự tạo
+        // bằng JS để nó ăn đúng kiểu .header-quick-btn của thanh công cụ.
+        const nutThanhCongCu = document.getElementById('ticket-manage-btn');
+        if (nutThanhCongCu && nutThanhCongCu.dataset.daGan !== '1') {
+            nutThanhCongCu.dataset.daGan = '1';
+            nutThanhCongCu.addEventListener('click', () => moPanel({ tieuDe: 'Ticket toàn hệ thống' }));
+        }
+        capNhatNut();
+    }
+
+    // Bật/tắt nút theo vai. Gọi được nhiều lần, và core.js gọi lại sau khi biết
+    // người đăng nhập là ai (loadAdminProfile) — vì lúc dựng khung thì
+    // CURRENT_ADMIN còn rỗng, mọi phép thử vai đều ra false.
+    function capNhatNut() {
+        const nut = document.getElementById('ticket-manage-btn');
+        if (nut) nut.classList.toggle('hide', !laSuper());
     }
 
     /* ── Thanh ticket trong đoạn chat ────────────────────────────────────── */
@@ -225,6 +247,9 @@
         dungKhung();
         const panel = document.getElementById('ticket-panel');
         panel.classList.add('is-open');
+        // Admin tổng mở màn riêng thì nới rộng; Agent/Kỹ thuật mở từ trong đoạn
+        // chat thì giữ hẹp để còn nhìn thấy cuộc trò chuyện phía sau.
+        panel.classList.toggle('rong', laSuper());
         document.getElementById('ticket-panel-title').textContent = tieuDe;
         if (taoMoi) veFormTao(moTa); else veDanhSach();
     }
@@ -389,14 +414,13 @@
                 </div>
             </div>
             ${t.description ? `<div class="ticket-note" style="white-space:pre-wrap">${thoat(t.description)}</div>` : ''}
-            ${quyen.chiXem ? '<p class="ticket-note"><i class="ri-eye-line"></i> Bạn đang xem với quyền theo dõi. Việc xử lý thuộc về Kỹ thuật và Agent.</p>' : ''}
+            ${quyen.chiXem ? '<p class="ticket-note"><i class="ri-eye-line"></i> Bạn theo dõi được ticket này nhưng không đổi trạng thái. Việc đó thuộc về Kỹ thuật và Admin tổng — cần nói thêm gì thì nhắn trong đoạn chat với Kỹ thuật.</p>' : ''}
             ${nutTrangThai.length ? `
               <div><label class="ticket-note" for="tk-note">Ghi chú kèm theo (không bắt buộc)</label>
               <input id="tk-note" class="ticket-form" placeholder="Ví dụ: đã thay driver máy in"></div>
               <div class="ticket-detail-actions">
                 ${nutTrangThai.map(([k, nhan, kieu]) => `<button type="button" class="ticket-btn ${kieu}" data-hanh-dong="${k}">${nhan}</button>`).join('')}
               </div>` : ''}
-            ${!quyen.dong && quyen.sua ? '<p class="ticket-note"><i class="ri-information-line"></i> Ticket đã được Kỹ thuật tiếp nhận nên chỉ Kỹ thuật mới đóng được. Bạn vẫn phản hồi thêm trong đoạn chat.</p>' : ''}
             <div>
                 <label class="ticket-note" style="display:block;margin-bottom:6px"><i class="ri-history-line"></i> Lịch sử xử lý</label>
                 <div class="ticket-history">${(data.history || []).map(dongLichSu).join('') || '<div class="ticket-empty">Chưa có gì.</div>'}</div>
@@ -449,7 +473,7 @@
         if (dangMoPanel && maDangMo && payload?.ticketCode === maDangMo) veChiTiet(maDangMo);
     }
 
-    window.TicketConsole = { onInternalChat, onMessagesRendered, onTicketUpdate, moPanel, dong };
+    window.TicketConsole = { onInternalChat, onMessagesRendered, onTicketUpdate, moPanel, dong, capNhatNut };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', dungKhung);
     else dungKhung();

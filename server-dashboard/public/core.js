@@ -865,6 +865,12 @@ async function loadAdminProfile() {
             projectFilter.title = `Dự án được phân quyền: ${admin.project_id}`;
         }
 
+        // Nút "Ticket" trên thanh công cụ chỉ hiện với Admin tổng. Phải bật ở
+        // ĐÂY chứ không phải lúc ticket-console dựng khung: khung dựng xong từ
+        // lúc nạp trang, mà tới đây mới biết người đăng nhập là ai. Bật sớm thì
+        // vai nào cũng ra false và nút không bao giờ hiện.
+        window.TicketConsole?.capNhatNut?.();
+
         updateAgentHeaderUI();
     } catch (e) {
         console.error('Failed to load admin profile:', e);
@@ -1063,11 +1069,7 @@ function updateAgentHeaderUI() {
     // mình — header là để nhận ra ĐANG Ở CƠ SỞ NÀO.
     const badge = document.getElementById('agent-avatar-badge');
     const avatarChar = document.getElementById('agent-avatar-char');
-    // Ảnh của CHÍNH NGƯỜI ĐANG ĐĂNG NHẬP: Sale thấy ảnh Sale, Agent thấy ảnh
-    // Agent. Trước đây Sale chưa có ảnh riêng thì rơi về ảnh của Agent quản lý,
-    // nên hai người ngồi cạnh nhau nhìn thấy cùng một khuôn mặt trên header và
-    // không biết máy nào đang đăng nhập bằng tài khoản nào.
-    const avatarUrl = CURRENT_ADMIN.avatar_url || '';
+    const avatarUrl = CURRENT_ADMIN.avatar_url || (isSaleView ? (CURRENT_ADMIN.manager_avatar_url || '') : '');
     if (badge) {
         let img = badge.querySelector('img');
         if (/^https?:\/\/|^\//.test(String(avatarUrl))) {
@@ -1086,6 +1088,7 @@ function updateAgentHeaderUI() {
                 avatarChar.textContent = src.trim().charAt(0).toUpperCase() || 'P';
             }
         }
+        bindSaleAvatarUpload();
     }
     badge?.classList.toggle('hide', !visibleName);
 
@@ -1100,12 +1103,47 @@ function updateAgentHeaderUI() {
     if (typeof initSessionCategoryTabs === 'function') initSessionCategoryTabs();
 }
 
-// (Đã bỏ bindSaleAvatarUpload.)
-//
-// Bấm vào avatar trên header trước đây mở ngay hộp chọn ảnh. Đó là chỗ người ta
-// bấm nhầm nhiều nhất khi muốn xem thông tin tài khoản, và một lần bấm nhầm là
-// ảnh đại diện của cả cơ sở đổi theo. Việc đổi ảnh vẫn làm được ở màn hình
-// "Tài khoản" — nơi người dùng chủ động vào để sửa thông tin.
+function bindSaleAvatarUpload() {
+    const badge = document.getElementById('agent-avatar-badge');
+    const uploadInput = document.getElementById('sale-avatar-upload-input');
+    if (!badge || !uploadInput || badge.dataset.uploadBound === 'true') return;
+    badge.dataset.uploadBound = 'true';
+
+    badge.addEventListener('click', (e) => {
+        e.stopPropagation();
+        uploadInput.click();
+    });
+
+    uploadInput.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            if (typeof toastInfo === 'function') toastInfo('Đang tải ảnh đại diện lên...');
+            const res = await authFetch(`${API_BASE}/api/admin/me/avatar`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (data.success && data.avatarUrl) {
+                if (CURRENT_ADMIN) CURRENT_ADMIN.avatar_url = data.avatarUrl;
+                renderAgentIdentityHeader();
+                if (typeof renderAdminMessages === 'function' && typeof currentSessionId !== 'undefined' && currentSessionId) {
+                    renderAdminMessages(false);
+                }
+                if (typeof toastSuccess === 'function') toastSuccess('Đã cập nhật ảnh đại diện thành công!');
+            } else {
+                if (typeof toastError === 'function') toastError('Không thể tải ảnh: ' + (data.error || 'Lỗi server'));
+            }
+        } catch (err) {
+            if (typeof toastError === 'function') toastError('Lỗi kết nối tải ảnh: ' + err.message);
+        } finally {
+            uploadInput.value = '';
+        }
+    });
+}
 
 
 // Số Sale hiện có của Agent, hiện ngay dưới tên cơ sở trên header.
