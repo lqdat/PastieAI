@@ -205,6 +205,9 @@
 
         if (!doanChatHienTai) { bar.classList.add('hide'); return; }
         bar.classList.remove('hide');
+        if (typeof window.scrollChatToBottom === 'function') {
+            setTimeout(() => window.scrollChatToBottom(true), 50);
+        }
         // Đếm ticket CHƯA đóng của đúng đoạn chat này. Con số kèm nút là thứ
         // khiến người ta nhớ là mình còn việc treo.
         try {
@@ -220,6 +223,7 @@
     // Agent ↔ Kỹ thuật. Gọi lại sau mỗi lần khung tin nhắn vẽ lại.
     function onMessagesRendered() {
         if (!doanChatHienTai) return;
+        let added = false;
         document.querySelectorAll('#chat-messages-container .message-wrapper').forEach((el) => {
             if (el.querySelector('.ticket-msg-btn')) return;
             const id = el.getAttribute('data-message-id') || el.dataset.messageId;
@@ -234,7 +238,11 @@
                 moPanel({ taoMoi: true, moTa: chu.slice(0, 400) });
             });
             el.querySelector('.msg-body-wrap')?.appendChild(btn) || el.appendChild(btn);
+            added = true;
         });
+        if (added && typeof window.scrollChatToBottom === 'function') {
+            window.scrollChatToBottom(true);
+        }
     }
 
     /* ── Panel ───────────────────────────────────────────────────────────── */

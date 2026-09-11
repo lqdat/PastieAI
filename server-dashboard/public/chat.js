@@ -332,6 +332,7 @@ async function selectTechnicalAgentSession(chat) {
     }
 
     await loadMessages(chat.sessionId);
+    scrollChatToBottom(true);
 
     // Kích hoạt thanh ticket nếu có ticket giữa Agent và Kỹ thuật
     window.TicketConsole?.onInternalChat?.(chat);
@@ -504,6 +505,7 @@ async function selectInternalSession(chat) {
 
     // Load messages
     await loadMessages(chat.sessionId);
+    scrollChatToBottom(true);
 
     // Mark read
     authFetch(`${API_BASE}/api/admin/chats/${chat.sessionId}/read`, { method: 'POST' }).catch(() => {});
@@ -538,6 +540,7 @@ async function sendInternalMessage(text) {
     };
     adminMessages.push(newMsgObj);
     renderAdminMessages(false, true);
+    scrollChatToBottom(true);
 
     try {
         const response = await authFetch(`${API_BASE}/api/admin/internal-chats/message`, {
@@ -555,6 +558,7 @@ async function sendInternalMessage(text) {
                 adminMessages[idx] = data.message;
             }
             renderAdminMessages(false, true);
+            scrollChatToBottom(true);
             const ch = internalChats.find(c => c.sessionId === currentSessionId);
             if (ch) {
                 ch.lastMessage = text;
@@ -1213,6 +1217,7 @@ function handleAdminRealtimeEvent(data) {
                     adminMessages.push(message);
                     renderAdminMessages(false, true);
                 }
+                scrollChatToBottom(true);
                 authFetch(`${API_BASE}/api/admin/chats/${sessionId}/read`, { method: 'POST' }).catch(() => {});
                 if (isFromOther && document.visibilityState !== 'visible') {
                     showInternalMessageNotification(message.sender_admin_name || chat?.peerName, message.original_text, sessionId);
@@ -2422,6 +2427,7 @@ async function selectSession(sessionId) {
             await Promise.all([loadOrderForAdmin(sessionId), loadBillsForAdmin(sessionId)]);
         }
         await loadMessages(sessionId);
+        scrollChatToBottom(true);
     } catch (error) {
         console.error('Mở cuộc trò chuyện lỗi:', error);
     } finally {
@@ -2771,7 +2777,7 @@ async function loadMessages(sessionId, isLoadMore = false) {
             const orderChanged = String(sessionId).startsWith('internal_') ? false : await loadOrderForAdmin(sessionId);
 
             if (isDiff || hasLoadingState || orderChanged) {
-                renderAdminMessages(false);
+                renderAdminMessages(false, hasLoadingState);
             }
         }
     } catch (e) {
@@ -2838,6 +2844,26 @@ function renderMsgAvatarHtml(msg) {
 
     return '';
 }
+
+function scrollChatToBottom(force = false) {
+    if (!chatMessagesContainer) return;
+    const isNearBottom = (chatMessagesContainer.scrollHeight - chatMessagesContainer.scrollTop - chatMessagesContainer.clientHeight) < 140;
+    if (!force && !isNearBottom) return;
+
+    const doScroll = () => {
+        if (!chatMessagesContainer) return;
+        chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+    };
+
+    doScroll();
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(doScroll);
+    }
+    setTimeout(doScroll, 40);
+    setTimeout(doScroll, 120);
+    setTimeout(doScroll, 260);
+}
+window.scrollChatToBottom = scrollChatToBottom;
 
 function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
     // Vẽ xong mới gắn nút ticket vào từng tin (module ticket-console.js lo phần
@@ -3024,7 +3050,7 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
         chatMessagesContainer.scrollTop = heightDiff > 0 ? heightDiff : previousScrollTop;
     } else {
         if (forceScrollToLatest || isFirstLoad || isNearBottom) {
-            chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+            scrollChatToBottom(true);
         }
     }
 }

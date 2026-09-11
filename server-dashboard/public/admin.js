@@ -804,8 +804,14 @@ document.addEventListener('keydown', (event) => {
 
 chatInput?.addEventListener('input', () => {
     resizeAgentChatInput();
-    updateVoiceSendState();
+    if (typeof updateVoiceSendState === 'function') updateVoiceSendState();
     if (typeof handleAgentChatInputTyping === 'function') handleAgentChatInputTyping();
+});
+
+chatInput?.addEventListener('focus', () => {
+    setTimeout(() => {
+        if (typeof window.scrollChatToBottom === 'function') window.scrollChatToBottom(true);
+    }, 220);
 });
 
 chatInput?.addEventListener('blur', () => {
