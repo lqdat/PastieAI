@@ -33,7 +33,7 @@ async function sendOTPEmail(toEmail, otpCode) {
 
   const sender = process.env.SENDER_EMAIL || 'onboarding@resend.dev';
   const baseUrl = getBaseUrl();
-  const logoUrl = `${baseUrl}/logoApp.png`;
+  const logoUrl = `${baseUrl}/pastie-chat-biz-compact.png`;
 
   try {
     const data = await resendClient.emails.send({
@@ -128,7 +128,7 @@ async function sendAdminOTPEmail(toEmail, otpCode, recipientName = 'Quản trị
 
   const sender = process.env.SENDER_EMAIL || 'onboarding@resend.dev';
   const baseUrl = getBaseUrl();
-  const logoUrl = `${baseUrl}/logoApp.png`;
+  const logoUrl = `${baseUrl}/pastie-chat-biz-compact.png`;
 
   try {
     const data = await resendClient.emails.send({
@@ -224,7 +224,7 @@ async function sendAccountActivationEmail({ toEmail, fullName, role, createdByNa
 
   const sender = process.env.SENDER_EMAIL || 'onboarding@resend.dev';
   const baseUrl = getBaseUrl();
-  const logoUrl = `${baseUrl}/logoApp.png`;
+  const logoUrl = `${baseUrl}/pastie-chat-biz-compact.png`;
   const guideUrl = `${baseUrl}/guide`;
 
   const roleNameMap = {

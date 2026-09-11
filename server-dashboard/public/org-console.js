@@ -118,7 +118,7 @@ async function createBrandedQrPoster(imageUrl, businessName) {
     }
     const [qrImage, logoImage] = await Promise.all([
         loadPosterImage(imageUrl),
-        loadPosterImage('/pastie-logo@2x.png'),
+        loadPosterImage('/pastie-chat-biz-compact.png'),
     ]);
     const canvas = document.createElement('canvas');
     // Poster 4:5 nhỏ gọn để in bảng để bàn/giấy nhỏ, không dùng tỷ lệ A4.

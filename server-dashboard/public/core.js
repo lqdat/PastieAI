@@ -369,9 +369,8 @@ async function initGoogleAuth() {
                             width: 340
                         });
                     } catch(e) {}
-                    if (customBtn && slot.childElementCount > 0) {
-                        customBtn.classList.add('hide');
-                    }
+                    // Giữ customBtn luôn hiển thị chữ "Đăng nhập bằng Gmail",
+                    // slot Google iframe trong CSS được phủ lên trên để nhận click trực tiếp.
                 }
             }
         };
