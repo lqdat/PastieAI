@@ -857,6 +857,12 @@ async function loadAdminUsers() {
                 roleClass = 'sale';
                 const managerText = u.manager_name || u.manager_username || 'Chưa gán';
                 extraBadges = `<span class="admin-user-meta-badge is-manager"><i class="ri-user-star-line"></i> Quản lý bởi: <strong>${escapeHtml(managerText)}</strong></span>`;
+            } else if (u.role === 'technical') {
+                // Không có nhánh này thì tài khoản Kỹ thuật rơi vào nhãn mặc định
+                // "Sale" ở đầu hàm — nó VẪN nằm trong danh sách, nhưng người xem
+                // đọc thấy chữ Sale nên tìm mãi không ra.
+                roleLabel = 'Kỹ thuật';
+                roleClass = 'technical';
             } else if (u.role === 'superadmin') {
                 roleLabel = 'Hỗ trợ kỹ thuật';
                 roleClass = 'superadmin';
@@ -1188,6 +1194,11 @@ async function editAdminUser(id) {
         const roleSelect = document.getElementById('admin-edit-role');
         if (roleSelect) {
             roleSelect.value = u.role;
+            // Nhớ vai THẬT của tài khoản. Gán một giá trị không có trong danh
+            // sách thì trình duyệt lặng lẽ bỏ qua và ô rơi về mục đầu — lúc lưu
+            // sẽ gửi lên một vai mà không ai chọn. Có mốc này thì chỗ lưu biết
+            // đường giữ nguyên vai cũ thay vì đoán.
+            roleSelect.dataset.vaiGoc = u.role || '';
             roleSelect.disabled = u.role === 'sale' || CURRENT_ADMIN?.role === 'project_admin';
         }
 
@@ -1251,7 +1262,12 @@ async function handleEditUserSubmit(e) {
     if (!id) return;
 
     const isProjectAdmin = CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin';
-    const effectiveRole = isProjectAdmin ? 'agent' : (document.getElementById('admin-edit-role')?.value || 'agent');
+    // Vai mặc định khi ô trống phải là VAI CŨ của chính tài khoản, không phải
+    // 'agent'. Lấy 'agent' làm mặc định nghĩa là bất kỳ vai nào ô chọn không
+    // hiển thị được đều bị đổi thành Agent chỉ vì người dùng bấm Lưu.
+    const oVaiEdit = document.getElementById('admin-edit-role');
+    const vaiGoc = oVaiEdit?.dataset.vaiGoc || 'agent';
+    const effectiveRole = isProjectAdmin ? 'agent' : (oVaiEdit?.value || vaiGoc);
     const effectiveProject = isProjectAdmin
         ? CURRENT_ADMIN.project_id
         : CURRENT_ADMIN?.role === 'superadmin'

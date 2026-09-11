@@ -118,7 +118,12 @@ function renderInternalSessionsList() {
     }
 
     container.innerHTML = '';
-    internalChats.forEach(chat => {
+    // Hội thoại được GHIM (Kỹ thuật) luôn lên đầu. Máy chủ đã trả về theo thứ tự
+    // này rồi; sắp lại ở đây là lớp thứ hai, để một thay đổi phía máy chủ hay một
+    // lần chèn tin nhắn mới không đẩy nó xuống. sort giữ nguyên thứ tự các phần
+    // bằng nhau nên phần còn lại không xáo trộn.
+    const theoThuTu = [...internalChats].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+    theoThuTu.forEach(chat => {
         const card = createInternalSessionCard(chat, false);
         container.appendChild(card);
     });

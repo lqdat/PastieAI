@@ -12931,7 +12931,9 @@ function parseInternalSessionId(sessionId) {
 function internalChatPeerFor(admin, parsed) {
   if (!parsed || !admin) return null;
   const me = Number(admin.id);
-  if (me === parsed.agentId && ['agent', 'project_admin'].includes(admin.role)) return parsed.peerId;
+  // Admin tổng cũng đứng ở vế agentId khi trò chuyện với Kỹ thuật. Thiếu vai này
+  // thì phiên của Admin tổng dựng ra được nhưng gửi tin là bị từ chối.
+  if (me === parsed.agentId && ['agent', 'project_admin', 'superadmin'].includes(admin.role)) return parsed.peerId;
   if (me === parsed.peerId && parsed.kind === 'technical' && admin.role === 'technical') return parsed.agentId;
   if (me === parsed.peerId && parsed.kind === 'sale' && admin.role === 'sale') return parsed.agentId;
   return null;
@@ -12966,7 +12968,11 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
           peerName: tech.full_name || 'Kỹ thuật Pastie',
           peerRole: 'technical',
           peerAvatar: tech.avatar_url || null,
-          badgeLabel: 'Hỗ trợ kỹ thuật'
+          badgeLabel: 'Hỗ trợ kỹ thuật',
+          // GHIM: luôn nằm đầu danh sách, kể cả khi chưa có tin nhắn nào. Đây là
+          // đường duy nhất để Agent gọi hỗ trợ, nên nó không được trôi xuống dưới
+          // mấy hội thoại Sale vừa nhắn.
+          pinned: true,
         });
       }
 
@@ -13007,11 +13013,38 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
           badgeLabel: 'Agent Quản Lý'
         });
       }
+    } else if (current.role === 'superadmin') {
+      // Admin tổng cũng phải gọi được Kỹ thuật. Trước đây nhánh này không tồn
+      // tại, nên Admin tổng mở chat nội bộ ra là thấy trống trơn.
+      //
+      // Dùng CHÍNH dạng session id của Agent (internal_agent_<id>_technical_<id>)
+      // thay vì đặt dạng mới: parseInternalSessionId chỉ hiểu hai dạng, thêm dạng
+      // thứ ba là phải sửa cả đường gửi tin, đường phân quyền và dữ liệu đã có.
+      const technicals = (await db.query(
+        "SELECT id, full_name, avatar_url, role FROM admins WHERE role = 'technical' AND is_active = TRUE ORDER BY id ASC"
+      )).rows;
+
+      for (const tech of technicals) {
+        const sId = `internal_agent_${current.id}_technical_${tech.id}`;
+        await ensureInternalSession(sId, 'Hỗ trợ kỹ thuật', current.project_id);
+        chats.push({
+          sessionId: sId,
+          peerId: tech.id,
+          peerName: tech.full_name || 'Kỹ thuật Pastie',
+          peerRole: 'technical',
+          peerAvatar: tech.avatar_url || null,
+          badgeLabel: 'Hỗ trợ kỹ thuật',
+          pinned: true,
+        });
+      }
     } else if (current.role === 'technical') {
       // Kỹ thuật thấy danh sách TẤT CẢ Agent đang hoạt động — không có bảng phân
       // công, đúng như Superadmin vẫn làm trước đây, chỉ đổi vai.
+      //
+      // Có cả superadmin trong câu này: Admin tổng nhắn sang mà bên Kỹ thuật
+      // không thấy hội thoại đó thì tin nhắn rơi vào hư không.
       const agents = (await db.query(
-        "SELECT id, full_name, avatar_url, role, project_id FROM admins WHERE (role = 'agent' OR role = 'project_admin') AND is_active = TRUE ORDER BY full_name ASC"
+        "SELECT id, full_name, avatar_url, role, project_id FROM admins WHERE role IN ('agent', 'project_admin', 'superadmin') AND is_active = TRUE ORDER BY full_name ASC"
       )).rows;
 
       for (const agent of agents) {
@@ -13053,6 +13086,15 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
       chat.lastSender = lastMsg?.sender || null;
       chat.unreadCount = unreadCount;
     }
+
+    // GHIM LÊN ĐẦU, tách khỏi thứ tự dựng danh sách.
+    //
+    // Hội thoại Kỹ thuật đang tình cờ được đẩy vào mảng trước tiên, nên nó nằm
+    // đầu — nhưng đó là ăn may theo thứ tự viết mã. Thêm một dòng sắp xếp tường
+    // minh để dù sau này ai chèn thêm loại hội thoại nào vào trước, Kỹ thuật vẫn
+    // ở đầu. sort của JavaScript giữ nguyên thứ tự các phần bằng nhau, nên thứ
+    // tự những hội thoại còn lại không đổi.
+    chats.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
 
     res.json({ success: true, chats });
   } catch (error) {
