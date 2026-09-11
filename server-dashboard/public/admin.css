@@ -6459,6 +6459,7 @@ button:focus-visible {
     to { opacity: 1; transform: scale(1) translateY(0); }
 }
 #admin-create-user-modal, #admin-edit-user-modal {
+    z-index: 2200 !important;
     background: rgba(20, 12, 22, 0.52);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
