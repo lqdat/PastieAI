@@ -1663,6 +1663,7 @@ const TECHNICAL_ALLOWED_PATHS = [
   { methods: ['GET'], path: /^\/api\/admin\/events$/ },
   { methods: ['GET', 'POST', 'PUT', 'PATCH'], path: /^\/api\/admin\/tickets(\/[^/]+)?(\/[^/]+)?$/ },
   { methods: ['GET', 'POST', 'DELETE'], path: /^\/api\/admin\/push\/(public-key|subscribe|unsubscribe|status)$/ },
+  { methods: ['POST'], path: /^\/api\/chats\/internal_[A-Za-z0-9_]+\/(attachments|transcribe)$/ },
 ];
 
 function isPathAllowedForTechnical(method, path) {
@@ -3368,8 +3369,25 @@ app.post('/api/chats/:sessionId/attachments', uploadAttachmentMiddleware, async 
     const session = sessionRes.rows[0];
 
     // Same claim/assignment/project-access rules as sending a text reply.
+    const isInternal = sessionId.startsWith('internal_');
     let senderAdminId = null;
-    if (sender === 'agent') {
+    let targetAdminId = null;
+    let senderRole = sender;
+    let senderAdmin = null;
+
+    if (isInternal) {
+      senderAdmin = await getAdminFromToken(req);
+      if (!senderAdmin?.is_active) {
+        return res.status(401).json({ error: 'Cần đăng nhập bằng tài khoản hợp lệ để gửi file.' });
+      }
+      const parsed = parseInternalSessionId(sessionId);
+      targetAdminId = internalChatPeerFor(senderAdmin, parsed);
+      if (!targetAdminId) {
+        return res.status(403).json({ error: 'Bạn không có quyền gửi file trong cuộc trò chuyện nội bộ này.' });
+      }
+      senderAdminId = senderAdmin.id;
+      senderRole = senderAdmin.role;
+    } else if (sender === 'agent') {
       const sendingAdmin = await getAdminFromToken(req);
       if (!sendingAdmin?.is_active || !isChatStaff(sendingAdmin)) {
         return res.status(401).json({ error: 'Cần đăng nhập bằng tài khoản nhân viên hợp lệ để gửi file.' });
@@ -3417,8 +3435,42 @@ app.post('/api/chats/:sessionId/attachments', uploadAttachmentMiddleware, async 
          (session_id, sender, original_text, translated_text, sender_admin_id,
           attachment_key, attachment_url, attachment_name, attachment_mime, attachment_size, attachment_type)
        VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-      [sessionId, sender, placeholderText, senderAdminId, key, url, req.file.originalname, req.file.mimetype, req.file.size, attachmentType]
+      [sessionId, senderRole, placeholderText, senderAdminId, key, url, req.file.originalname, req.file.mimetype, req.file.size, attachmentType]
     );
+
+    if (isInternal) {
+      const msgPayload = {
+        id: msgRes.rows[0].id,
+        session_id: sessionId,
+        sender: senderAdmin.role,
+        sender_admin_id: senderAdmin.id,
+        sender_admin_name: senderAdmin.full_name,
+        sender_admin_avatar: senderAdmin.avatar_url,
+        original_text: msgRes.rows[0].original_text,
+        translated_text: msgRes.rows[0].translated_text,
+        created_at: msgRes.rows[0].created_at,
+        attachment_key: msgRes.rows[0].attachment_key,
+        attachment_url: msgRes.rows[0].attachment_url,
+        attachment_name: msgRes.rows[0].attachment_name,
+        attachment_mime: msgRes.rows[0].attachment_mime,
+        attachment_size: msgRes.rows[0].attachment_size,
+        attachment_type: msgRes.rows[0].attachment_type,
+        is_internal: true
+      };
+      const targetIds = [Number(senderAdmin.id)];
+      if (targetAdminId) targetIds.push(Number(targetAdminId));
+      broadcastAdminEvent('internal_message', {
+        targetAdminIds: targetIds,
+        sessionId,
+        message: msgPayload
+      });
+      void notifyInternalMessage(targetAdminId, {
+        fromName: senderAdmin.full_name || senderAdmin.username,
+        text: placeholderText,
+        sessionId
+      });
+      return res.json({ success: true, message: msgPayload });
+    }
 
     const sessionExpiresAt = await extendQrSessionOnActivity(session);
     notifyAdminRealtime('new_message', { sessionId, projectId: session.project_id, sender, messageId: msgRes.rows[0]?.id });

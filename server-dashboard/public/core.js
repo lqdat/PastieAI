@@ -434,8 +434,8 @@ function startLoginRetryCountdown(seconds) {
 }
 
 
-// Bắt đầu đếm ngược OTP (mặc định 60 giây; nếu đang bật bypass thì 0 giây)
-async function startOtpCountdown(seconds = 60) {
+// Bắt đầu đếm ngược OTP (mặc định 120 giây / 2 phút; nếu đang bật bypass thì 0 giây)
+async function startOtpCountdown(seconds = 120) {
     if (adminOtpCountdownInterval) clearInterval(adminOtpCountdownInterval);
     const countdownEl = document.getElementById('admin-otp-countdown');
     const resendBtn = document.getElementById('resend-admin-otp-btn');
@@ -584,7 +584,7 @@ async function handleSendAdminOtp(e) {
             const titleEl = document.getElementById('dpq-login-title');
             if (titleEl) titleEl.textContent = 'Nhập mã xác nhận';
 
-            startOtpCountdown(300);
+            startOtpCountdown(120);
             clearAdminOtpDigits();
         } else if (res.status === 429) {
             // Máy chủ trả về số giây còn lại ở header Retry-After. In thẳng
@@ -732,10 +732,10 @@ async function verifyAuthAndInit() {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/api/admin/chats`, {
+        const response = await fetch(`${API_BASE}/api/admin/me`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (response.status === 200) {
+        if (response.ok) {
             hideLogin();
             initDashboard();
         } else {

@@ -506,6 +506,8 @@ async function selectInternalSession(chat) {
     // Load messages
     await loadMessages(chat.sessionId);
     scrollChatToBottom(true);
+    setTimeout(() => scrollChatToBottom(true), 100);
+    setTimeout(() => scrollChatToBottom(true), 350);
 
     // Mark read
     authFetch(`${API_BASE}/api/admin/chats/${chat.sessionId}/read`, { method: 'POST' }).catch(() => {});
@@ -2853,6 +2855,12 @@ function scrollChatToBottom(force = false) {
     const doScroll = () => {
         if (!chatMessagesContainer) return;
         chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+        const last = chatMessagesContainer.lastElementChild;
+        if (last && typeof last.scrollIntoView === 'function') {
+            try {
+                last.scrollIntoView({ block: 'end', inline: 'nearest' });
+            } catch (_) {}
+        }
     };
 
     doScroll();
@@ -2861,7 +2869,8 @@ function scrollChatToBottom(force = false) {
     }
     setTimeout(doScroll, 40);
     setTimeout(doScroll, 120);
-    setTimeout(doScroll, 260);
+    setTimeout(doScroll, 300);
+    setTimeout(doScroll, 600);
 }
 window.scrollChatToBottom = scrollChatToBottom;
 
@@ -2950,13 +2959,15 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
             const isMe = msg.sender_admin_id
                 ? (Number(msg.sender_admin_id) === Number(CURRENT_ADMIN?.id))
                 : (msg.sender === CURRENT_ADMIN?.role);
+            const attachmentHtml = renderAttachmentHtml(msg);
 
             if (isMe) {
                 wrapper.className = 'message-wrapper agent';
                 wrapper.innerHTML = `
                     <div class="msg-body-wrap">
-                        <div class="message-bubble">
-                            <div class="original-text">${escapeHtml(msg.original_text)}</div>
+                        <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
+                            ${attachmentHtml}
+                            ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(msg.original_text)}</div>`}
                         </div>
                         <div class="message-time"><span>${timeStr}</span></div>
                     </div>
@@ -2976,8 +2987,9 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
                     ${peerAvatarHtml}
                     <div class="msg-body-wrap">
                         <div style="font-size:11px;color:var(--text-secondary);margin-bottom:3px;font-weight:600;">${escapeHtml(peerName)}</div>
-                        <div class="message-bubble">
-                            <div class="original-text">${escapeHtml(msg.original_text)}</div>
+                        <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
+                            ${attachmentHtml}
+                            ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(msg.original_text)}</div>`}
                         </div>
                         <div class="message-time">${timeStr}</div>
                     </div>
@@ -3049,7 +3061,7 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
         const heightDiff = chatMessagesContainer.scrollHeight - previousScrollHeight;
         chatMessagesContainer.scrollTop = heightDiff > 0 ? heightDiff : previousScrollTop;
     } else {
-        if (forceScrollToLatest || isFirstLoad || isNearBottom) {
+        if (forceScrollToLatest || isFirstLoad || isNearBottom || isInternal) {
             scrollChatToBottom(true);
         }
     }
@@ -3254,12 +3266,17 @@ async function sendAttachment(file) {
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
 
     adminIsUploadingAttachment = true;
+    const isInternal = String(currentSessionId).startsWith('internal_');
     const tempId = 'temp_' + Date.now();
     const tempObjectUrl = URL.createObjectURL(file);
     const tempType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'document';
     const newMsgObj = {
         id: tempId,
-        sender: 'agent',
+        session_id: currentSessionId,
+        sender: CURRENT_ADMIN?.role || 'agent',
+        sender_admin_id: CURRENT_ADMIN?.id,
+        sender_admin_name: CURRENT_ADMIN?.full_name || CURRENT_ADMIN?.username,
+        sender_admin_avatar: CURRENT_ADMIN?.avatar_url,
         original_text: tempType === 'image' ? '📷 [Hình ảnh]' : tempType === 'video' ? '🎥 [Video]' : '📎 [Tài liệu]',
         created_at: new Date(),
         attachment_key: 'pending',
@@ -3267,14 +3284,16 @@ async function sendAttachment(file) {
         attachment_type: tempType,
         attachment_name: file.name,
         attachment_size: file.size,
+        is_internal: isInternal
     };
     adminMessages.push(newMsgObj);
     renderAdminMessages(false, true);
+    scrollChatToBottom(true);
 
     try {
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('sender', 'agent');
+        formData.append('sender', isInternal ? (CURRENT_ADMIN?.role || 'agent') : 'agent');
 
         const response = await authFetch(`${API_BASE}/api/chats/${currentSessionId}/attachments`, {
             method: 'POST',
@@ -3284,11 +3303,21 @@ async function sendAttachment(file) {
         const idx = adminMessages.findIndex(m => m.id === tempId);
         if (data.success && data.message) {
             if (idx !== -1) adminMessages[idx] = data.message;
+            if (isInternal) {
+                const ch = internalChats.find(c => c.sessionId === currentSessionId);
+                if (ch) {
+                    ch.lastMessage = newMsgObj.original_text;
+                    ch.lastMessageTime = new Date().toISOString();
+                    if (currentCategoryTab === 'internal') renderInternalSessionsList();
+                    else if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'sale') renderSessionsList(sessionsList);
+                }
+            }
         } else {
             if (idx !== -1) adminMessages.splice(idx, 1);
             toastError(dict.sendError ? dict.sendError + (data.error || '') : (data.error || 'Không thể gửi file.'));
         }
         renderAdminMessages(false, true);
+        scrollChatToBottom(true);
     } catch (e) {
         console.error('Attachment upload error:', e);
         adminMessages = adminMessages.filter(m => m.id !== tempId);
@@ -3719,7 +3748,7 @@ function renderAttachmentHtml(msg) {
 
     if (msg.attachment_type === 'image') {
         return `<button type="button" class="attachment-card attachment-image attachment-preview-trigger" data-preview-url="${url}" data-preview-type="image" data-preview-title="${name}">
-            <img src="${url}" alt="${name}" loading="lazy" />
+            <img src="${url}" alt="${name}" loading="lazy" onload="window.scrollChatToBottom && window.scrollChatToBottom(true)" />
         </button>`;
     }
     if (msg.attachment_type === 'video') {
@@ -3727,7 +3756,7 @@ function renderAttachmentHtml(msg) {
         // duyệt vẽ một kiểu và chiếm mất phần đáng kể của khung hình nhỏ. Chỉ hiện
         // khung hình đầu tiên kèm nút play trong suốt; bấm vào mở trình xem lớn.
         return `<button type="button" class="attachment-card attachment-video attachment-preview-trigger" data-preview-url="${url}" data-preview-type="video" data-preview-title="${name}">
-            <video src="${url}" preload="metadata" muted playsinline></video>
+            <video src="${url}" preload="metadata" muted playsinline onloadeddata="window.scrollChatToBottom && window.scrollChatToBottom(true)"></video>
             <span class="attachment-play"><i class="ri-play-fill"></i></span>
         </button>`;
     }
