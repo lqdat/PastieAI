@@ -1447,6 +1447,12 @@ function bindAgentChatInputEvents() {
         if (typeof resizeAgentChatInput === 'function') resizeAgentChatInput();
         handleAgentChatInputTyping();
     });
+    input.addEventListener('focus', () => {
+        const msgContainer = document.getElementById('chat-messages-container');
+        if (msgContainer) {
+            setTimeout(() => { msgContainer.scrollTop = msgContainer.scrollHeight; }, 150);
+        }
+    });
     input.addEventListener('blur', stopAgentTyping);
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -1454,6 +1460,38 @@ function bindAgentChatInputEvents() {
             document.getElementById('chat-form')?.requestSubmit();
         }
     });
+    initAgentMobileKeyboardHandler();
+}
+function initAgentMobileKeyboardHandler() {
+    const vv = window.visualViewport;
+    if (!vv || window.__agentVvBound) return;
+    window.__agentVvBound = true;
+
+    const onVvChange = () => {
+        if (window.innerWidth > 760) return;
+        const dashboardBody = document.querySelector('.dashboard-body');
+        if (!dashboardBody || !dashboardBody.classList.contains('chat-open')) return;
+
+        const h = Math.round(vv.height);
+        const isKeyboard = h < (window.innerHeight || 0) - 80;
+
+        if (isKeyboard) {
+            dashboardBody.classList.add('keyboard-open');
+            const header = document.querySelector('.dashboard-header');
+            const headerH = header ? header.offsetHeight : 0;
+            const top = Math.round(vv.offsetTop || 0);
+            const netH = h - (top > 0 ? 0 : headerH);
+            dashboardBody.style.height = `${netH}px`;
+            const msgContainer = document.getElementById('chat-messages-container');
+            if (msgContainer) msgContainer.scrollTop = msgContainer.scrollHeight;
+        } else {
+            dashboardBody.classList.remove('keyboard-open');
+            dashboardBody.style.height = '';
+        }
+    };
+
+    vv.addEventListener('resize', onVvChange, { passive: true });
+    vv.addEventListener('scroll', onVvChange, { passive: true });
 }
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', bindAgentChatInputEvents);
@@ -3338,9 +3376,14 @@ function resizeAgentChatInput() {
     if (!chatInput) return;
     chatInput.style.height = '0px';
     const lineHeight = Number.parseFloat(getComputedStyle(chatInput).lineHeight) || 21;
-    const maxHeight = lineHeight * 5 + 24;
-    chatInput.style.height = `${Math.min(chatInput.scrollHeight, maxHeight)}px`;
-    chatInput.style.overflowY = chatInput.scrollHeight > maxHeight ? 'auto' : 'hidden';
+    // Tối đa 2 dòng: nếu gõ/ghi âm qua dòng thứ 3 thì hiển thị 2 dòng mới nhất
+    const maxHeight = lineHeight * 2 + 18;
+    const scrollHeight = chatInput.scrollHeight;
+    chatInput.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+    chatInput.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
+    if (scrollHeight > maxHeight) {
+        chatInput.scrollTop = chatInput.scrollHeight;
+    }
 
     const hasText = !!chatInput.value.trim();
     const isRecording = (voiceRecorder && voiceRecorder.state === 'recording') || voiceBusy;
