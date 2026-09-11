@@ -5085,8 +5085,8 @@ app.post('/api/admin/orders', checkAdminAuth, requireWorkingHours, async (req, r
   let created;
   try {
     created = await db.query(
-      `INSERT INTO chat_orders (id, order_code, session_id, project_id, created_by_admin_id, total_amount, items, invoice)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      `INSERT INTO chat_orders (id, order_code, session_id, project_id, created_by_admin_id, total_amount, items, invoice, bill_sent_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`,
       [orderId, orderCode, sessionId, session.project_id, req.admin.id, totalAmount, JSON.stringify(normalizedItems), JSON.stringify(invoice)]
     );
   } catch (error) {
@@ -5129,8 +5129,8 @@ app.post('/samplebill', checkAdminAuth, async (req, res) => {
   try {
     await client.query('BEGIN');
     const orderRes = await client.query(
-      `INSERT INTO chat_orders (id, order_code, session_id, project_id, created_by_admin_id, total_amount, items, invoice)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      `INSERT INTO chat_orders (id, order_code, session_id, project_id, created_by_admin_id, total_amount, items, invoice, bill_sent_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`,
       [orderId, orderCode, sessionId, session.project_id, req.admin.id, 20000, JSON.stringify(items), JSON.stringify(invoice)]
     );
     // KHÔNG chèn tin nhắn mô tả hóa đơn nữa.
@@ -13739,8 +13739,10 @@ async function sendOrderThankYou(sessionId, method, { autoSelected, orderCode } 
 const PAYMENT_WINDOW_MS = 120000;
 
 function paymentDueAt(order) {
-  if (!order?.bill_sent_at || order.payment_paused_at) return null;
-  const due = new Date(order.bill_sent_at).getTime()
+  if (!order || order.payment_paused_at) return null;
+  const sentAt = order.bill_sent_at || order.confirmed_at || order.created_at;
+  if (!sentAt) return null;
+  const due = new Date(sentAt).getTime()
     + PAYMENT_WINDOW_MS + Number(order.payment_paused_ms || 0);
   return Number.isFinite(due) ? due : null;
 }
