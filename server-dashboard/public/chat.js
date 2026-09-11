@@ -1477,39 +1477,48 @@ function initAgentMobileKeyboardHandler() {
     let caoTruoc = Math.round(vv.height);
 
     const apDungAgent = () => {
+        const container = document.getElementById('main-dashboard') || document.querySelector('.dashboard-container');
         const chatMain = document.querySelector('.chat-main');
-        if (!chatMain) return;
+        const dashboardBody = document.querySelector('.dashboard-body');
 
         if (window.innerWidth > 768) {
-            chatMain.style.top = '';
-            chatMain.style.height = '';
-            chatMain.style.maxHeight = '';
-            chatMain.style.transform = '';
-            chatMain.classList.remove('keyboard-open');
+            if (container) {
+                container.style.top = '';
+                container.style.height = '';
+                container.style.maxHeight = '';
+                container.style.transform = '';
+            }
+            if (chatMain) {
+                chatMain.style.top = '';
+                chatMain.style.height = '';
+                chatMain.style.maxHeight = '';
+                chatMain.style.transform = '';
+                chatMain.classList.remove('keyboard-open');
+            }
+            if (dashboardBody) dashboardBody.classList.remove('keyboard-open');
             return;
         }
-        const dashboardBody = document.querySelector('.dashboard-body');
-        if (!dashboardBody || !dashboardBody.classList.contains('chat-open')) {
-            chatMain.style.top = '';
-            chatMain.style.height = '';
-            chatMain.style.maxHeight = '';
-            chatMain.style.transform = '';
-            chatMain.classList.remove('keyboard-open');
-            dashboardBody?.classList.remove('keyboard-open');
-            return;
-        }
+
+        if (!container) return;
 
         const h = Math.round(vv.height);
         const top = Math.round(vv.offsetTop || 0);
 
-        chatMain.style.top = top ? `${top}px` : '0px';
-        chatMain.style.height = `${h}px`;
-        chatMain.style.maxHeight = `${h}px`;
-        chatMain.style.transform = '';
+        container.style.top = top ? `${top}px` : '0px';
+        container.style.height = `${h}px`;
+        container.style.maxHeight = `${h}px`;
+        container.style.transform = '';
+
+        if (chatMain) {
+            chatMain.style.top = '';
+            chatMain.style.height = '';
+            chatMain.style.maxHeight = '';
+            chatMain.style.transform = '';
+        }
 
         const isKeyboard = h < (window.innerHeight || 0) - 80;
-        chatMain.classList.toggle('keyboard-open', isKeyboard);
-        dashboardBody.classList.toggle('keyboard-open', isKeyboard);
+        if (chatMain) chatMain.classList.toggle('keyboard-open', isKeyboard);
+        if (dashboardBody) dashboardBody.classList.toggle('keyboard-open', isKeyboard);
 
         if (h < caoTruoc - 8) {
             const msgContainer = document.getElementById('chat-messages-container');

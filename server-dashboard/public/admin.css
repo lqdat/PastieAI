@@ -2420,8 +2420,29 @@ button:focus-visible {
   .bg-glow-2 { background: radial-gradient(circle, #f42b9d 0%, transparent 70%); }
   .glass-panel { box-shadow: 0 10px 32px rgba(110, 43, 83, 0.09); }
   body { min-height: 100svh; min-height: 100dvh; }
-  .dashboard-container { width: 100%; padding: 0; gap: 0; height: 100svh; height: 100dvh; background: var(--bg-color); }
-  .dashboard-header { min-height: calc(112px + env(safe-area-inset-top)); height: calc(112px + env(safe-area-inset-top)); padding: calc(10px + env(safe-area-inset-top)) 14px 10px; border-radius: 0; flex-wrap: nowrap; gap: 10px; border-left: 0; border-right: 0; background: rgba(255,255,255,.96); }
+  .dashboard-container {
+    width: 100%;
+    padding: 0;
+    gap: 0;
+    height: 100svh;
+    height: 100dvh;
+    background: var(--bg-color);
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+  .dashboard-header {
+    min-height: calc(112px + env(safe-area-inset-top));
+    height: calc(112px + env(safe-area-inset-top));
+    padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+    border-radius: 0;
+    flex-wrap: nowrap;
+    gap: 10px;
+    border-left: 0;
+    border-right: 0;
+    background: rgba(255,255,255,.96);
+    flex: 0 0 auto !important;
+  }
   .header-left { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; width: 100%; min-width: 0; padding-right: 98px; justify-content: flex-start; }
   .logo { gap: 8px; min-width: 0; flex-shrink: 0; }
   .logo span { display: block; font-size: 16px; white-space: nowrap; overflow: visible; text-overflow: clip; }
@@ -2452,11 +2473,18 @@ button:focus-visible {
   .sdm-text small { color: #8b718c; }
   .sdm-divider { background: rgba(239,43,157,.12); }
 
-  .dashboard-body { grid-template-columns: 1fr !important; height: calc(100dvh - 112px - env(safe-area-inset-top)); }
+  .dashboard-body {
+    grid-template-columns: 1fr !important;
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    display: flex !important;
+    overflow: hidden !important;
+  }
   .mobile-only { display: inline-flex !important; }
   .tablet-only { display: inline-flex !important; }
 
-  .sessions-sidebar { border-radius: 0; border: 0; background: transparent; }
+  .sessions-sidebar { border-radius: 0; border: 0; background: transparent; width: 100%; height: 100%; }
   .sidebar-header { padding: 18px 16px 12px; border-bottom: 0; }
   .sessions-list {
     padding: 0 12px calc(18px + env(safe-area-inset-bottom));
@@ -2488,29 +2516,23 @@ button:focus-visible {
 
   /* Mặc định: hiện danh sách, ẩn khung chat */
   .chat-main { display: none; }
-  /* Khi mở 1 hội thoại: ẩn danh sách, hiện khung chat toàn màn */
-  .dashboard-body.chat-open .sessions-sidebar { display: none; }
+  /* Khi mở 1 hội thoại: ẩn danh sách, hiện khung chat */
+  .dashboard-body.chat-open .sessions-sidebar { display: none !important; }
   .dashboard-body.chat-open .chat-main {
-    position: fixed !important;
-    top: 0;
-    left: 0;
-    right: 0;
-    width: 100%;
-    height: 100dvh;
-    max-height: 100dvh;
-    z-index: 250 !important;
     display: flex !important;
     flex-direction: column !important;
+    flex: 1 1 0% !important;
     min-height: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
     border-radius: 0 !important;
     border: 0 !important;
     background: #fff !important;
     overflow: hidden !important;
-    overscroll-behavior: none;
   }
   .dashboard-body.chat-open .chat-main > .chat-header {
     flex: 0 0 auto !important;
-    padding-top: max(10px, env(safe-area-inset-top)) !important;
+    padding: 10px 14px !important;
   }
   .dashboard-body.chat-open .chat-main > .chat-messages {
     flex: 1 1 0% !important;
