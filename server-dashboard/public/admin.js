@@ -1767,16 +1767,34 @@ document.getElementById('org-sale-form')?.addEventListener('submit', async (even
     const accessHours = orgHourWindows('org-sale-start', 'org-sale-end');
     const groupIds = groupId ? [Number(groupId)] : [];
 
+    // Đổi email đăng nhập của Sale: Sale bị đăng xuất ngay và từ đó OTP chỉ gửi
+    // tới hộp thư mới. Gõ nhầm là khoá người ta ở ngoài, nên hỏi lại cho chắc.
+    const emailGoc = (document.getElementById('org-sale-email')?.dataset.emailGoc || '').toLowerCase();
+    const doiEmail = Boolean(saleId) && Boolean(emailGoc) && email.toLowerCase() !== emailGoc;
+    if (doiEmail) {
+        const dongY = await pastieConfirm(
+            `Đổi email đăng nhập của Sale từ "${emailGoc}" sang "${email.toLowerCase()}"?\n\n`
+            + 'Sale này sẽ bị đăng xuất ngay. Từ giờ mã OTP chỉ gửi tới email mới, '
+            + 'nên phải chắc chắn hộp thư đó vào được.',
+            { title: 'Đổi email đăng nhập', confirmText: 'Đổi email', danger: true });
+        if (!dongY) return;
+    }
+
     try {
         let targetSaleId = saleId;
         if (saleId) {
             const res = await orgFetch(`/api/agent/sales/${saleId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fullName, accessHours, groupIds }),
+                // Chỉ gửi email khi THẬT SỰ đổi. Gửi kèm mỗi lần lưu thì một lần
+                // sửa ca trực cũng thành một lần "đổi email" và Sale bị đăng xuất
+                // oan — backend không phân biệt được ý định, chỗ này mới biết.
+                body: JSON.stringify(doiEmail ? { fullName, accessHours, groupIds, email } : { fullName, accessHours, groupIds }),
             });
             targetSaleId = res.sale?.id || saleId;
-            setOrgStatus('Đã cập nhật thông tin Sale thành công.');
+            setOrgStatus(res.emailChanged
+                ? `Đã đổi email đăng nhập của Sale sang ${res.sale?.username || email}. Sale này đã bị đăng xuất.`
+                : 'Đã cập nhật thông tin Sale thành công.');
         } else {
             const res = await orgFetch('/api/agent/sales', {
                 method: 'POST',
@@ -2022,9 +2040,11 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         if (nameEl) nameEl.value = sale.full_name || '';
         if (emailEl) {
             emailEl.value = sale.username || '';
-            emailEl.readOnly = true;
-            emailEl.style.opacity = '0.75';
-            emailEl.title = 'Email đăng nhập là duy nhất không thể sửa';
+            emailEl.readOnly = false;
+            emailEl.style.opacity = '1';
+            emailEl.title = 'Đổi email là đổi đường đăng nhập: Sale này sẽ bị đăng xuất và lần sau phải dùng email mới.';
+            // Mốc để lúc lưu biết có đổi hay không, chỉ hỏi lại khi thật sự đổi.
+            emailEl.dataset.emailGoc = sale.username || '';
         }
         // API trả về mỗi nhóm dưới dạng { group_id, name } — KHÔNG phải { id }.
         // Đọc nhầm .id nên giá trị luôn undefined và ô nhóm luôn hiện "Chưa gán".

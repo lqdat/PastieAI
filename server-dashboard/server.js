@@ -1670,7 +1670,12 @@ function isPathAllowedForTechnical(method, path) {
   return TECHNICAL_ALLOWED_PATHS.some((rule) => rule.methods.includes(verb) && rule.path.test(clean));
 }
 
-const ADMIN_ROLES = new Set(['superadmin', 'project_owner', 'project_admin', 'agent', 'sale']);
+// 'technical' bị thiếu ở đây từ đầu, dù nó là vai có thật và đang chạy (xem
+// isPathAllowedForTechnical và luồng ticket). Hậu quả: API sửa tài khoản chặn
+// ngay ở bước kiểm vai, nên tài khoản Kỹ thuật KHÔNG sửa được gì — tên, khóa/mở,
+// email đều không. Thêm vào đây không nới quyền: vai 'technical' vẫn bị giới hạn
+// bằng danh sách đường dẫn cho phép ở checkAdminAuth.
+const ADMIN_ROLES = new Set(['superadmin', 'project_owner', 'project_admin', 'agent', 'sale', 'technical']);
 const isSuperAdmin = (admin) => admin?.role === 'superadmin';
 const isProjectOwner = (admin) => admin?.role === 'project_owner';
 const isProjectAdmin = (admin) => admin?.role === 'project_admin';
@@ -1682,6 +1687,23 @@ const isChatStaff = (admin) => isSuperAdmin(admin) || isProjectOwner(admin) || i
 
 function canAccessProject(admin, projectId) {
   return isSuperAdmin(admin) || (admin?.project_id && admin.project_id === projectId);
+}
+
+// DỌN DẸP SAU KHI ĐỔI EMAIL ĐĂNG NHẬP.
+//
+// Email chính là cột username, và cũng là nơi OTP gửi tới — đổi email là chuyển
+// quyền vào tài khoản sang một hộp thư khác. Hai việc phải làm ngay, nếu không
+// thì việc đổi chỉ đúng một nửa:
+//
+//   1. Đóng mọi phiên đang mở. Token gắn theo admin_id chứ không theo email, nên
+//      không xoá thì người đang đăng nhập bằng email CŨ vẫn dùng tiếp bình thường
+//      — đúng thứ mình muốn chặn khi đổi email vì nghi tài khoản bị chiếm.
+//   2. Xoá mã OTP đang chờ của cả email cũ lẫn email mới. Mã cũ thành vô nghĩa,
+//      còn mã mới (nếu ai đó vừa xin trước lúc đổi) thì không nên dùng lại được.
+async function dongPhienSauKhiDoiEmail(adminId, emailCu, emailMoi) {
+  await db.query('DELETE FROM admin_sessions WHERE admin_id = $1', [adminId]);
+  await db.query('DELETE FROM admin_otps WHERE email = $1 OR email = $2',
+    [String(emailCu || '').toLowerCase(), String(emailMoi || '').toLowerCase()]);
 }
 
 // --- Khung giờ làm việc ------------------------------------------------------
@@ -7127,11 +7149,20 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
     if (username !== undefined && (!username || !username.includes('@'))) {
       return res.status(400).json({ error: 'Email đăng nhập không hợp lệ.' });
     }
-    // If email changes, check if it is already registered.
-    if (username && username !== currentAdmin.username) {
-      const uRes = await db.query('SELECT id FROM admins WHERE username = $1', [username]);
+    // Đổi email = đổi đường đăng nhập vào tài khoản, nên chỉ Admin tổng được làm.
+    // Project Admin vẫn sửa được tên, khóa/mở, avatar như trước.
+    const doiEmail = Boolean(username) && username !== String(currentAdmin.username || '').toLowerCase();
+    if (doiEmail && !isSuperAdmin(req.admin)) {
+      return res.status(403).json({ error: 'Chỉ Admin tổng được đổi email đăng nhập.' });
+    }
+    // Trùng email phải so KHÔNG phân biệt hoa thường: đăng nhập tra bằng
+    // LOWER(username), nên "A@x.com" và "a@x.com" là cùng một đường vào. So
+    // bằng dấu = như cũ thì vẫn tạo được hai tài khoản chỉ khác hoa thường,
+    // và lúc đăng nhập không đoán được sẽ vào tài khoản nào.
+    if (doiEmail) {
+      const uRes = await db.query('SELECT id FROM admins WHERE LOWER(username) = $1 AND id <> $2', [username, id]);
       if (uRes.rows.length > 0) {
-        return res.status(400).json({ error: 'Email này đã tồn tại trong hệ thống.' });
+        return res.status(400).json({ error: 'Email này đã có tài khoản khác dùng.' });
       }
     }
 
@@ -7170,6 +7201,8 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
       [updatedUsername, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, updatedProject, updatedSaleLimit, updatedDeferred, id]
     );
 
+    if (doiEmail) await dongPhienSauKhiDoiEmail(id, currentAdmin.username, username);
+
     if (updatedRole === 'agent' && updatedFullName) {
       const { prefix } = gemini.splitVenueName(updatedFullName);
       if (prefix) void pretranslateVenuePrefix(prefix);
@@ -7177,7 +7210,10 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Cập nhật tài khoản nhân viên thành công.',
+      message: doiEmail
+        ? `Đã đổi email đăng nhập sang ${username}. Tài khoản này đã bị đăng xuất, lần sau đăng nhập bằng email mới.`
+        : 'Cập nhật tài khoản nhân viên thành công.',
+      emailChanged: doiEmail,
       user: updateRes.rows[0]
     });
   } catch (error) {
@@ -10015,10 +10051,25 @@ app.post('/api/agent/sales', checkAdminAuth, async (req, res) => {
 app.put('/api/agent/sales/:saleId', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
   const saleId = Number(req.params.saleId);
-  const { fullName, accessHours, groupIds } = req.body || {};
+  const { fullName, accessHours, groupIds, email } = req.body || {};
   try {
     const sale = await loadOwnedSale(req, saleId);
     if (!sale) return res.status(404).json({ error: 'Không tìm thấy Sale trong phạm vi của bạn.' });
+
+    // Agent được đổi email đăng nhập của Sale DO CHÍNH MÌNH quản lý — loadOwnedSale
+    // ở trên đã chặn Sale của Agent khác, nên tới đây là trong phạm vi.
+    const emailMoi = email === undefined ? undefined : String(email || '').trim().toLowerCase();
+    const doiEmail = Boolean(emailMoi) && emailMoi !== String(sale.username || '').toLowerCase();
+    if (emailMoi !== undefined && (!emailMoi || !emailMoi.includes('@'))) {
+      return res.status(400).json({ error: 'Email đăng nhập không hợp lệ.' });
+    }
+    if (doiEmail) {
+      // So LOWER: đăng nhập tra bằng LOWER(username) nên khác hoa thường vẫn là trùng.
+      const trung = await db.query('SELECT id FROM admins WHERE LOWER(username) = $1 AND id <> $2', [emailMoi, saleId]);
+      if (trung.rows.length > 0) {
+        return res.status(400).json({ error: 'Email này đã có tài khoản khác dùng.' });
+      }
+    }
 
     // Kiểm tra xung đột khung giờ làm việc khi cập nhật
     const currentGroups = (await db.query('SELECT group_id FROM agent_group_sales WHERE sale_id = $1 AND is_active = TRUE', [saleId])).rows.map(r => r.group_id);
@@ -10033,10 +10084,12 @@ app.put('/api/agent/sales/:saleId', checkAdminAuth, async (req, res) => {
     }
 
     const updated = await db.query(
-      `UPDATE admins SET full_name = COALESCE($2, full_name) WHERE id = $1
+      `UPDATE admins SET full_name = COALESCE($2, full_name), username = COALESCE($3, username)
+        WHERE id = $1
        RETURNING id, username, full_name, is_active`,
-      [saleId, fullName ? String(fullName).trim().slice(0, 255) : null]
+      [saleId, fullName ? String(fullName).trim().slice(0, 255) : null, doiEmail ? emailMoi : null]
     );
+    if (doiEmail) await dongPhienSauKhiDoiEmail(saleId, sale.username, emailMoi);
     if (Array.isArray(accessHours)) await replaceAccessHours(saleId, accessHours);
 
     if (Array.isArray(groupIds)) {
@@ -10056,7 +10109,14 @@ app.put('/api/agent/sales/:saleId', checkAdminAuth, async (req, res) => {
       }
     }
 
-    res.json({ success: true, sale: updated.rows[0] });
+    res.json({
+      success: true,
+      emailChanged: doiEmail,
+      message: doiEmail
+        ? `Đã đổi email đăng nhập của Sale sang ${emailMoi}. Sale này đã bị đăng xuất, lần sau đăng nhập bằng email mới.`
+        : undefined,
+      sale: updated.rows[0],
+    });
   } catch (error) {
     console.error('Update sale error:', error);
     res.status(500).json({ error: 'Không cập nhật được Sale.' });

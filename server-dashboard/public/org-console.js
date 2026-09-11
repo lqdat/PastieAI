@@ -508,6 +508,9 @@ function resetOrgSaleForm() {
         emailEl.readOnly = false;
         emailEl.style.opacity = '1';
         emailEl.title = '';
+        // Xoá mốc email cũ: bỏ sót thì form thêm Sale mới sẽ so với email của Sale
+        // vừa sửa và hỏi nhầm "bạn có muốn đổi email không".
+        delete emailEl.dataset.emailGoc;
     }
     const fileEl = document.getElementById('org-sale-avatar-file');
     if (fileEl) fileEl.value = '';

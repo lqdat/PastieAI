@@ -1153,7 +1153,18 @@ async function editAdminUser(id) {
         const emailInput = document.getElementById('admin-edit-email');
         if (emailInput) {
             emailInput.value = u.username || '';
-            emailInput.readOnly = true;
+            // Admin tổng sửa được email đăng nhập của mọi tài khoản; các vai khác
+            // thì không — backend cũng chặn ở đúng chỗ này, khoá ô ở đây chỉ để
+            // người dùng khỏi gõ xong mới bị từ chối.
+            const duocDoiEmail = CURRENT_ADMIN?.role === 'superadmin';
+            emailInput.readOnly = !duocDoiEmail;
+            emailInput.style.opacity = duocDoiEmail ? '1' : '0.75';
+            emailInput.title = duocDoiEmail
+                ? 'Đổi email là đổi đường đăng nhập: tài khoản này sẽ bị đăng xuất và lần sau phải dùng email mới.'
+                : 'Chỉ Admin tổng được đổi email đăng nhập';
+            // Nhớ email gốc để lúc lưu còn biết người dùng CÓ đổi hay không —
+            // chỉ hỏi lại khi thật sự đổi, chứ không hỏi mỗi lần bấm Lưu.
+            emailInput.dataset.emailGoc = u.username || '';
         }
 
         // Dự án select
@@ -1265,6 +1276,23 @@ async function handleEditUserSubmit(e) {
     const bare = (document.getElementById('admin-edit-fullname')?.value || '').trim();
     if (type && bare) {
         payload.full_name = `${titleCaseVi(type)} ${bare}`;
+    }
+
+    // Đổi email đăng nhập là việc không quay lui được bằng một cú bấm: tài khoản
+    // bị đăng xuất ngay, và từ đó chỉ hộp thư MỚI nhận được mã OTP. Gõ nhầm một
+    // chữ là khoá người ta ở ngoài. Nên hỏi lại, và nói rõ hậu quả.
+    {
+        const emailEl = document.getElementById('admin-edit-email');
+        const goc = (emailEl?.dataset.emailGoc || '').toLowerCase();
+        const moi = String(payload.email || '').toLowerCase();
+        if (goc && moi && moi !== goc) {
+            const dongY = await pastieConfirm(
+                `Đổi email đăng nhập từ "${goc}" sang "${moi}"?\n\n`
+                + 'Tài khoản này sẽ bị đăng xuất ngay. Từ giờ mã OTP chỉ gửi tới email mới, '
+                + 'nên phải chắc chắn hộp thư đó vào được.',
+                { title: 'Đổi email đăng nhập', confirmText: 'Đổi email', danger: true });
+            if (!dongY) return;
+        }
     }
 
     const submitBtn = document.getElementById('admin-edit-submit-btn');
