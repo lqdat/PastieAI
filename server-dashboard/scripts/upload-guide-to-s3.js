@@ -54,15 +54,8 @@ async function main() {
       await s3.uploadBuffer(s3Key, buffer, contentType);
       console.log(`✅ Đã tải lên S3: ${s3Key} (${(buffer.length / 1024).toFixed(1)} KB)`);
 
-      // TỰ ĐỘNG XÓA FILE NGUỒN TRONG SRC / LOCAL SAU KHI ĐẨY THÀNH CÔNG LÊN S3
-      fs.unlinkSync(filePath);
-      console.log(`🗑️ Đã xóa file trong public/agent_guide: ${file}`);
-
-      // Đồng thời dọn dẹp trong docs/assets nếu tồn tại
-      const docsPath = path.join(__dirname, '../../docs/assets/agent_guide', file);
-      if (fs.existsSync(docsPath)) {
-        try { fs.unlinkSync(docsPath); console.log(`🗑️ Đã xóa file trong docs/assets/agent_guide: ${file}`); } catch (_) {}
-      }
+      // Giữ nguyên file local để phục vụ web app và docs không bị lỗi 404
+      console.log(`📁 File local vẫn được bảo toàn: ${file}`);
     } catch (err) {
       console.error(`❌ Lỗi tải lên S3 (${file}):`, err.message);
     }

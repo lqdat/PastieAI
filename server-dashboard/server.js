@@ -842,24 +842,39 @@ app.get(['/admin', '/admin.html'], (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+// Phục vụ ảnh & video sổ tay hướng dẫn trực tiếp từ Cloudflare R2 / S3
+const guideUrlCache = new Map();
+app.get('/agent_guide/:file', async (req, res, next) => {
+  const fileName = path.basename(req.params.file);
+  const now = Date.now();
+  let presigned = null;
+
+  const cached = guideUrlCache.get(fileName);
+  if (cached && cached.expireAt > now) {
+    presigned = cached.url;
+  } else {
+    try {
+      const s3Key = `guide/agent/${fileName}`;
+      presigned = await s3.getPresignedUrl(s3Key, 7 * 24 * 3600);
+      if (presigned) {
+        guideUrlCache.set(fileName, { url: presigned, expireAt: now + 5 * 24 * 3600 * 1000 });
+      }
+    } catch (err) {
+      console.error('[S3 Guide] Lỗi lấy URL S3:', err.message);
+    }
+  }
+
+  if (presigned) {
+    res.set('Cache-Control', 'public, max-age=86400');
+    return res.redirect(presigned);
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/privacy-policy', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
 app.get('/terms', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
 app.get('/guide', (_req, res) => res.redirect('/admin?guide=video'));
-
-// Fallback phục vụ ảnh & video sổ tay hướng dẫn từ local hoặc S3
-app.get('/agent_guide/:file', async (req, res, next) => {
-  const localFile = path.join(__dirname, 'public', 'agent_guide', req.params.file);
-  if (fs.existsSync(localFile)) {
-    return res.sendFile(localFile);
-  }
-  try {
-    const s3Key = `guide/agent/${req.params.file}`;
-    const presigned = await s3.getPresignedUrl(s3Key, 3600);
-    if (presigned) return res.redirect(presigned);
-  } catch (_) {}
-  next();
-});
 
 // Serve widget files statically (as a fallback)
 app.use(express.static(path.join(__dirname, '../widget')));
