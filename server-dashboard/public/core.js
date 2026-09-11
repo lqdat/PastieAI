@@ -966,18 +966,24 @@ function updateConsoleBrand() {
 function updateAgentHeaderUI() {
     const isAgentRole = isRestrictedConsole();
     const role = CURRENT_ADMIN?.role || 'agent';
+    const isTechnical = role === 'technical';
+    const isStaffHeader = isAgentRole || isTechnical;
 
     updateConsoleBrand();
+
+    document.body.classList.toggle('role-technical', isTechnical);
 
     const identityEl = document.getElementById('agent-identity');
     const labelEl = document.getElementById('agent-identity-label');
     const nameEl = document.getElementById('agent-display-name');
-    const ownName = isAgentRole ? (CURRENT_ADMIN.full_name || CURRENT_ADMIN.username || '') : '';
+    const ownName = isAgentRole
+        ? (CURRENT_ADMIN.full_name || CURRENT_ADMIN.username || '')
+        : (isTechnical ? (CURRENT_ADMIN.full_name || CURRENT_ADMIN.username || 'Kỹ thuật Pastie') : '');
 
     // Giao diện Sale luôn hiển thị thành hai hàng tên riêng, không ghi role:
     //     [tên Agent quản lý]
     //     [tên Sale đang đăng nhập]
-    // Giao diện Agent vẫn chỉ hiển thị tên của chính Agent.
+    // Giao diện Agent/Kỹ thuật hiển thị tên của chính mình.
     const isSaleView = role === 'sale';
     const managerName = isSaleView
         ? (CURRENT_ADMIN.manager_name || CURRENT_ADMIN.manager_username || 'Chưa xác định')
@@ -985,17 +991,13 @@ function updateAgentHeaderUI() {
     const visibleName = ownName;
 
     if (identityEl) identityEl.classList.toggle('sale-identity', isSaleView);
-    // Header của Sale có bố cục riêng: nút ở hàng trên bên phải, logo ở góc
-    // phải dưới. Đặt class trên chính thẻ <header> để CSS không phải suy ra
-    // vai trò từ một thẻ con nằm sâu bên trong.
-    // Cùng một bố cục header cho Sale VÀ Agent: cột trái tên, nút hàng trên bên
-    // phải, logo góc phải dưới. Giữ tên lớp 'sale-header' để không phải sửa lại
-    // toàn bộ CSS đã viết và đã đo.
-    document.querySelector('.dashboard-header')?.classList.toggle('sale-header', isAgentRole);
+    // Cùng một bố cục header cho Sale, Agent VÀ Kỹ thuật: cột trái tên & avatar, nút hàng trên bên
+    // phải (menu Công cụ), logo watermark góc phải dưới.
+    document.querySelector('.dashboard-header')?.classList.toggle('sale-header', isStaffHeader);
     if (labelEl) {
-        labelEl.textContent = isSaleView ? managerName : '';
-        labelEl.title = isSaleView ? managerName : '';
-        labelEl.classList.toggle('hide', !isSaleView);
+        labelEl.textContent = isSaleView ? managerName : (isTechnical ? 'KỸ THUẬT VIÊN' : '');
+        labelEl.title = isSaleView ? managerName : (isTechnical ? 'Kỹ thuật viên' : '');
+        labelEl.classList.toggle('hide', !isSaleView && !isTechnical);
     }
     if (nameEl) {
         nameEl.textContent = visibleName;
@@ -1013,13 +1015,13 @@ function updateAgentHeaderUI() {
     document.getElementById('order-cart-btn')?.classList.toggle('hide', !isAgentRole);
     document.getElementById('sale-menu-btn')?.classList.toggle('hide', !isSaleView);
 
-    document.getElementById('project-selector-wrap')?.classList.toggle('hide', isAgentRole);
+    document.getElementById('project-selector-wrap')?.classList.toggle('hide', isAgentRole || isTechnical);
 
     // Agent/Sale chỉ được XEM ngôn ngữ của cuộc trò chuyện, không được đổi.
     const detailLangEl = document.getElementById('detail-lang-select');
     if (detailLangEl) {
-        detailLangEl.disabled = isAgentRole;
-        detailLangEl.title = isAgentRole ? 'Chỉ quản trị viên mới đổi được ngôn ngữ' : '';
+        detailLangEl.disabled = isAgentRole || isTechnical;
+        detailLangEl.title = (isAgentRole || isTechnical) ? 'Chỉ quản trị viên mới đổi được ngôn ngữ' : '';
     }
     
     // Superadmin & Project Admin: gom tất cả công cụ vào menu Quản trị duy nhất
@@ -1034,11 +1036,8 @@ function updateAgentHeaderUI() {
     document.getElementById('superadmin-report-modal-btn')?.classList.toggle('hide', !(isSuperadmin || isProjectAdmin));
     document.getElementById('superadmin-otp-unlock-btn')?.classList.toggle('hide', !isSuperadmin);
 
-    // Ẩn ô chọn ngôn ngữ giao diện với Agent/Sale của dự án QR. Console của họ
-    // chỉ dùng tiếng Việt, còn ngôn ngữ hội thoại đã tự nhận diện theo khách —
-    // để ô này lại chỉ khiến người dùng tưởng nó đổi ngôn ngữ chat.
-    // Chỉ áp cho dự án QR; DealPhuQuoc và Pastie Landing giữ nguyên.
-    const hideLangPicker = isRestrictedConsole() && isQrConciergeProject(CURRENT_ADMIN?.project_id);
+    // Ẩn ô chọn ngôn ngữ giao diện với Agent/Sale của dự án QR hoặc Kỹ thuật
+    const hideLangPicker = (isRestrictedConsole() && isQrConciergeProject(CURRENT_ADMIN?.project_id)) || isTechnical;
     document.getElementById('admin-lang-selector-wrap')?.classList.toggle('hide', hideLangPicker);
 
     // Báo cáo là công cụ quản lý: nút trên header chỉ hiện cho Agent quản lý (gom vào bảng Công cụ)
@@ -1056,13 +1055,20 @@ function updateAgentHeaderUI() {
     const hasQr = isAgentManagerRole() && isQrConciergeProject(CURRENT_ADMIN.project_id);
     document.getElementById('agent-qr-btn')?.classList.toggle('hide', !hasQr);
 
-    // Agent không còn dùng dropdown Cài đặt cũ (mọi thứ đã tách thành các nút riêng)
-    document.getElementById('settings-dropdown-wrapper')?.classList.toggle('hide', isAgentRole);
+    // Agent/Kỹ thuật không dùng dropdown Quản trị
+    document.getElementById('settings-dropdown-wrapper')?.classList.toggle('hide', isAgentRole || isTechnical);
+
+    // Nút đăng xuất dành riêng cho Kỹ thuật: trong menu Công cụ đã có nút Đăng xuất (#agent-logout-btn)
+    document.getElementById('tech-logout-btn')?.classList.add('hide');
+
+    // Cập nhật trạng thái nút Ticket trên header
+    window.TicketConsole?.capNhatNut?.();
+
     // Ẩn nếu không phải Agent/Sale, đang trong iframe, HOẶC thông báo đã bật (khi
     // đó không còn thao tác nào để làm — xem setPushButtonState).
     document.getElementById('agent-push-btn')?.classList.toggle('hide', !isAgentRole || inIframe || pushHeaderHidden);
 
-    if (isAgentRole) document.getElementById('manage-admins-btn')?.classList.add('hide');
+    if (isAgentRole || isTechnical) document.getElementById('manage-admins-btn')?.classList.add('hide');
 
     // Ô avatar: ẢNH của cơ sở nếu Agent đã tải lên, không có thì lấy chữ cái
     // đầu. Sale nhìn thấy ảnh của Agent quản lý mình, không phải ảnh của chính
@@ -1102,7 +1108,7 @@ function updateAgentHeaderUI() {
     if (subEl && isSaleView) subEl.classList.add('hide');
     if (isAgentManagerRole()) void refreshAgentSaleCount();
 
-    layoutHeaderQuickMenu(isAgentRole);
+    layoutHeaderQuickMenu(isStaffHeader);
     if (typeof initSessionCategoryTabs === 'function') initSessionCategoryTabs();
 }
 
@@ -1264,6 +1270,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) void
 // trình xử lý sự kiện đã gắn ở nơi khác vẫn còn nguyên, kể cả các chỗ gọi
 // classList.toggle('hide', ...) để ẩn nút theo vai trò.
 const HEADER_MENU_BTN_IDS = [
+    'ticket-manage-btn',
     'org-manage-btn', 'order-cart-btn', 'sale-menu-btn', 'agent-qr-btn',
     'report-modal-btn', 'agent-account-btn', 'agent-guide-btn', 'agent-push-btn',
 ];

@@ -33,6 +33,14 @@ async function fetchInternalChats() {
                     renderSessionsList(sessionsList);
                 }
             }
+            const notificationSessionId = new URLSearchParams(window.location.search).get('session');
+            if (notificationSessionId && String(notificationSessionId).startsWith('internal_') && notificationSessionId !== currentSessionId) {
+                const targetChat = internalChats.find(c => c.sessionId === notificationSessionId);
+                if (targetChat) {
+                    window.history.replaceState({}, '', window.location.pathname);
+                    selectInternalSession(targetChat);
+                }
+            }
         }
     } catch (e) {
         console.error('Lỗi tải danh sách chat nội bộ:', e);
@@ -73,7 +81,8 @@ function createInternalSessionCard(chat, isPinned = false) {
     const card = document.createElement('div');
     const isSelected = currentSessionId === chat.sessionId;
     const hasUnread = (chat.unreadCount || 0) > 0;
-    card.className = `session-card ${isPinned ? 'is-pinned-agent' : ''} ${isSelected ? 'active-selected' : ''} ${hasUnread ? 'has-unread' : ''}`;
+    const isTechnical = chat.peerRole === 'technical';
+    card.className = `session-card ${isPinned ? 'is-pinned-agent' : ''} ${isTechnical ? 'is-technical-pinned' : ''} ${isSelected ? 'active-selected' : ''} ${hasUnread ? 'has-unread' : ''}`;
     card.setAttribute('data-id', chat.sessionId);
 
     const locale = currentLang === 'vi' ? 'vi-VN' : 'en-US';
@@ -87,9 +96,12 @@ function createInternalSessionCard(chat, isPinned = false) {
 
     let roleBadgeClass = 'internal-badge-sale';
     let roleBadgeText = chat.badgeLabel || 'Nội bộ';
-    if (chat.peerRole === 'superadmin') {
+    if (isTechnical) {
+        roleBadgeClass = 'internal-badge-technical';
+        roleBadgeText = chat.badgeLabel || 'Hỗ trợ kỹ thuật';
+    } else if (chat.peerRole === 'superadmin') {
         roleBadgeClass = 'internal-badge-superadmin';
-        roleBadgeText = 'Hỗ trợ kỹ thuật';
+        roleBadgeText = CURRENT_ADMIN?.role === 'technical' ? 'Superadmin' : 'Hỗ trợ kỹ thuật';
     } else if (chat.peerRole === 'agent') {
         roleBadgeClass = 'internal-badge-agent';
         roleBadgeText = isPinned ? '📌 Agent Quản Lý' : 'Agent';
@@ -97,29 +109,62 @@ function createInternalSessionCard(chat, isPinned = false) {
 
     const peerInitial = (chat.peerName || '?')[0].toUpperCase();
     const avatarHtml = chat.peerAvatar
-        ? `<img src="${escapeHtml(chat.peerAvatar)}" class="visitor-avatar-img internal-avatar-img" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
-          + `<div class="visitor-avatar-initials internal-avatar-initials" style="display:none;">${escapeHtml(peerInitial)}</div>`
-        : `<div class="visitor-avatar-initials internal-avatar-initials">${escapeHtml(peerInitial)}</div>`;
+        ? `<img src="${escapeHtml(chat.peerAvatar)}" class="visitor-avatar-img internal-avatar-img ${isTechnical ? 'tech-peer-avatar' : ''}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+          + `<div class="visitor-avatar-initials internal-avatar-initials ${isTechnical ? 'tech-peer-initials' : ''}" style="display:none;">${escapeHtml(peerInitial)}</div>`
+        : `<div class="visitor-avatar-initials internal-avatar-initials ${isTechnical ? 'tech-peer-initials' : ''}">${isTechnical ? '<i class="ri-customer-service-2-fill"></i>' : escapeHtml(peerInitial)}</div>`;
 
-    const preview = chat.lastMessage ? chat.lastMessage : 'Chưa có tin nhắn...';
+    const onlineIndicatorHtml = isTechnical
+        ? `<div class="tech-online-indicator" title="Kỹ thuật viên luôn trực tuyến 24/7">
+               <span class="tech-radar-ring"></span>
+               <span class="tech-radar-dot"></span>
+           </div>`
+        : '';
+
+    const namePrefix = isTechnical
+        ? `<i class="ri-shield-flash-fill tech-name-icon" title="Kênh kỹ thuật chính thức"></i> `
+        : (isPinned && !isTechnical ? '📌 ' : '');
+
+    const onlinePillHtml = isTechnical
+        ? `<span class="tech-online-pill" title="Đang trực tuyến 24/7"><span class="tech-pulse-dot"></span> 24/7 Online</span>`
+        : '';
+
+    let preview = chat.lastMessage ? chat.lastMessage : '';
+    let previewHtml = '';
+    if (preview) {
+        previewHtml = escapeHtml(preview);
+    } else if (isTechnical) {
+        previewHtml = `<span class="tech-welcome-preview"><i class="ri-flashlight-line"></i> Sẵn sàng hỗ trợ 24/7 · Phản hồi tức thì</span>`;
+    } else {
+        previewHtml = 'Chưa có tin nhắn...';
+    }
+
+    const footerTagHtml = isTechnical
+        ? `<span class="session-group-tag tech-group-tag"><i class="ri-customer-service-2-line"></i> Kênh kỹ thuật ưu tiên 24/7</span>`
+        : `<span class="session-group-tag" style="background:rgba(99,102,241,0.12);color:#818cf8;border:1px solid rgba(99,102,241,0.25);font-size:10px;padding:1px 6px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:3px;"><i class="ri-team-line"></i> Hội thoại nội bộ</span>`;
 
     card.innerHTML = `
         <div class="session-card-header">
-            <div class="visitor-avatar-wrap">${avatarHtml}</div>
+            <div class="visitor-avatar-wrap ${isTechnical ? 'tech-avatar-wrap' : ''}">
+                ${avatarHtml}
+                ${onlineIndicatorHtml}
+            </div>
             <div class="session-card-info">
                 <div class="session-card-top-row">
-                    <span class="session-name" title="${escapeHtml(chat.peerName || '')}">${escapeHtml(chat.peerName || 'Nội bộ')}</span>
+                    <span class="session-name ${isTechnical ? 'tech-session-name' : ''}" title="${escapeHtml(chat.peerName || '')}">${namePrefix}${escapeHtml(chat.peerName || (isTechnical ? 'Kỹ thuật Pastie' : 'Nội bộ'))}</span>
                     <span class="session-card-time">${dateStr}</span>
                 </div>
                 <div class="session-card-bottom-row">
-                    <span class="internal-role-badge ${roleBadgeClass}">${roleBadgeText}</span>
+                    <div class="tech-badges-wrap" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                        <span class="internal-role-badge ${roleBadgeClass}">${roleBadgeText}</span>
+                        ${onlinePillHtml}
+                    </div>
                     ${unreadBadge}
                 </div>
             </div>
         </div>
-        <div class="session-card-preview${chat.lastMessage ? '' : ' is-empty'}">${escapeHtml(preview)}</div>
+        <div class="session-card-preview${chat.lastMessage || isTechnical ? '' : ' is-empty'}">${previewHtml}</div>
         <div class="session-meta-footer">
-            <span class="session-group-tag" style="background:rgba(99,102,241,0.12);color:#818cf8;border:1px solid rgba(99,102,241,0.25);font-size:10px;padding:1px 6px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:3px;"><i class="ri-team-line"></i> Hội thoại nội bộ</span>
+            ${footerTagHtml}
         </div>
     `;
 
@@ -143,7 +188,7 @@ function renderInternalSessionsList() {
     // bằng nhau nên phần còn lại không xáo trộn.
     const theoThuTu = [...internalChats].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
     theoThuTu.forEach(chat => {
-        const card = createInternalSessionCard(chat, false);
+        const card = createInternalSessionCard(chat, !!chat.pinned);
         container.appendChild(card);
     });
 }
@@ -309,6 +354,17 @@ function initSessionCategoryTabs() {
     const isSaleWithAgent = CURRENT_ADMIN && CURRENT_ADMIN.role === 'sale';
     const isOnlySuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
 
+    const isTechnical = CURRENT_ADMIN && CURRENT_ADMIN.role === 'technical';
+    if (isTechnical) {
+        tabsContainer.classList.add('hide');
+        statusFilter?.classList.add('hide');
+        customerList?.classList.add('hide');
+        technicalList?.classList.add('hide');
+        internalList?.classList.remove('hide');
+        currentCategoryTab = 'internal';
+        return;
+    }
+
     if (isAgent || isSuper || isSaleWithAgent) {
         tabsContainer.classList.remove('hide');
     } else {
@@ -395,9 +451,10 @@ async function selectInternalSession(chat) {
     adminOrderRevisions = [];
 
     // Header updates
-    const peerDisplay = chat.peerName || (chat.peerRole === 'superadmin' ? 'Hỗ trợ kỹ thuật' : 'Nội bộ');
+    const isTech = CURRENT_ADMIN && CURRENT_ADMIN.role === 'technical';
+    const peerDisplay = chat.peerName || (chat.peerRole === 'superadmin' ? (isTech ? 'Admin tổng' : 'Hỗ trợ kỹ thuật') : 'Nội bộ');
     if (chatTitleName) chatTitleName.textContent = peerDisplay;
-    if (chatTitleEmail) chatTitleEmail.textContent = chat.peerRole === 'superadmin' ? 'Hỗ trợ kỹ thuật' : (chat.peerRole === 'agent' ? 'Agent quản lý' : 'Nhân viên Sale');
+    if (chatTitleEmail) chatTitleEmail.textContent = chat.peerRole === 'superadmin' ? (isTech ? 'Superadmin' : 'Hỗ trợ kỹ thuật') : (chat.peerRole === 'agent' ? 'Agent quản lý' : 'Nhân viên Sale');
     document.getElementById('chat-header-group-badge')?.classList.add('hide');
     document.getElementById('chat-header-project-badge')?.classList.add('hide');
     document.getElementById('chat-header-qr-info')?.classList.add('hide');
@@ -940,6 +997,50 @@ function showNewMessageNotification(session, unread) {
     playAlertSound();
 }
 
+function showInternalMessageNotification(senderName, text, sessionId) {
+    if (document.visibilityState === 'visible' && sessionId === currentSessionId) return;
+
+    const name = senderName || 'Đồng nghiệp';
+    const preview = text ? (text.length > 80 ? text.substring(0, 80) + '...' : text) : 'Có tin nhắn mới';
+
+    // Nhúng trong iframe: nhờ trang cha hiển thị thông báo
+    if (inIframe) {
+        postToParent({ type: 'pastie-notify', title: `💬 ${name}`, body: preview, tag: `internal-${sessionId}` });
+        playAlertSound();
+        return;
+    }
+
+    if (typeof toastSuccess === 'function' && document.visibilityState === 'visible') {
+        toastSuccess(`💬 ${name}: ${preview}`);
+    }
+
+    if (!('Notification' in window) || Notification.permission !== 'granted') {
+        playAlertSound();
+        return;
+    }
+
+    try {
+        const n = new Notification(`💬 ${name}`, {
+            body: preview,
+            icon: '/icon-192.png',
+            tag: `internal-${sessionId}`,
+            renotify: true,
+            silent: false,
+        });
+
+        n.onclick = () => {
+            window.focus();
+            const ch = internalChats.find(c => c.sessionId === sessionId);
+            if (ch) selectInternalSession(ch);
+            n.close();
+        };
+    } catch (e) {
+        console.warn('[Push] Không tạo được Notification:', e);
+    }
+
+    playAlertSound();
+}
+
 
 function updateAppBadge(totalUnread) {
     const nav = window.navigator || navigator;
@@ -1097,10 +1198,13 @@ function handleAdminRealtimeEvent(data) {
     if (data.type === 'internal_message') {
         const { sessionId, message } = data;
         if (sessionId && message) {
+            const isFromOther = Number(message.sender_admin_id) !== Number(CURRENT_ADMIN?.id);
             let chat = internalChats.find(c => c.sessionId === sessionId);
             if (chat) {
                 chat.lastMessage = message.original_text;
                 chat.lastMessageTime = message.created_at;
+            } else {
+                fetchInternalChats().catch(() => {});
             }
 
             if (currentSessionId === sessionId) {
@@ -1110,10 +1214,15 @@ function handleAdminRealtimeEvent(data) {
                     renderAdminMessages(false, true);
                 }
                 authFetch(`${API_BASE}/api/admin/chats/${sessionId}/read`, { method: 'POST' }).catch(() => {});
+                if (isFromOther && document.visibilityState !== 'visible') {
+                    showInternalMessageNotification(message.sender_admin_name || chat?.peerName, message.original_text, sessionId);
+                }
             } else {
-                if (chat && Number(message.sender_admin_id) !== Number(CURRENT_ADMIN?.id)) {
-                    chat.unreadCount = (chat.unreadCount || 0) + 1;
-                    playAlertSound();
+                if (isFromOther) {
+                    if (chat) {
+                        chat.unreadCount = (chat.unreadCount || 0) + 1;
+                    }
+                    showInternalMessageNotification(message.sender_admin_name || chat?.peerName, message.original_text, sessionId);
                 }
             }
 
@@ -1124,6 +1233,9 @@ function handleAdminRealtimeEvent(data) {
             }
 
             renderInternalBadge();
+            const totalUnreadInternal = internalChats.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+            updateAppBadge(totalUnreadInternal);
+
             if (currentCategoryTab === 'internal') {
                 renderInternalSessionsList();
             } else if (currentCategoryTab === 'technical') {
@@ -1452,6 +1564,12 @@ function connectAdminEvents() {
 async function fetchSessions() {
     const requestGeneration = adminAuthGeneration;
     initSessionCategoryTabs();
+    if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'technical') {
+        currentCategoryTab = 'internal';
+        await fetchInternalChats();
+        renderInternalSessionsList();
+        return;
+    }
     fetchInternalChats().catch(() => {});
     if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin') {
         fetchTechnicalAgentChats().catch(() => {});

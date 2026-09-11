@@ -50,8 +50,9 @@ const KHONG_CO_MAT_KHAU = 'khong-dung-mat-khau-dang-nhap-bang-otp-hoac-google';
 
 // Mã QR mà trang giới thiệu PastieChat trỏ tới. Đổi nhãn thì đổi ở đây, đổi mã
 // thì phải dựng lại ảnh QR bên pastiechat-landing (scripts/make-qr.js).
-const QR_CODE = process.env.QR_CODE || 'PASTIECARE';
-const QR_LABEL = process.env.QR_LABEL || 'Chăm sóc khách hàng Pastie';
+const QR_CODE = process.env.QR_CODE || 'PASTIECARE';
+const QR_GROUP = process.env.QR_GROUP || 'Công Ty TNHH Pastie Việt Nam';
+const QR_LABEL = process.env.QR_LABEL || 'Chăm Sóc Khách Hàng';
 
 const ACCOUNTS = {
   agent: { email: process.env.AGENT_EMAIL || 'ai@pastie.vn', role: 'agent', name: 'Agent Pastie' },
@@ -113,19 +114,24 @@ const ACCOUNTS = {
 
   // ── Mã QR chăm sóc khách hàng ────────────────────────────────────────────
   //
-  // Mã trên trang giới thiệu PastieChat trỏ vào ĐÂY: khách quét là mở một cuộc
-  // trò chuyện mà Sale Pastie trực. Nhãn "Chăm sóc khách hàng Pastie" chính là
-  // dòng khách nhìn thấy trong khung chat, nên nó phải là tên nghiệp vụ chứ
-  // không phải tên bàn.
+  // Mã trên trang giới thiệu PastieChat trỏ vào ĐÂY: khách quét là mở một cuộc
+  // trò chuyện mà Sale Pastie trực. Nhóm là pháp nhân Pastie; nhãn QR là tên
+  // nghiệp vụ khách nhìn thấy trong khung chat.
   //
   // Mã (code) cố định PASTIECARE để trang giới thiệu không phải dựng lại mỗi
   // lần chạy script; nhãn thì cập nhật được.
-  const nhomRes = await db.query(
-    `SELECT id FROM agent_groups WHERE agent_id = $1 AND project_id = 'qr-concierge' AND name = $2`,
-    [agentId, QR_LABEL]);
-  const nhomId = nhomRes.rows[0]?.id || (await db.query(
-    `INSERT INTO agent_groups (agent_id, project_id, name) VALUES ($1, 'qr-concierge', $2) RETURNING id`,
-    [agentId, QR_LABEL])).rows[0].id;
+  const nhomRes = await db.query(
+    `SELECT g.id
+       FROM agent_groups g
+       LEFT JOIN qr_chat_accounts q ON q.group_id = g.id AND q.code = $3
+      WHERE g.agent_id = $1 AND g.project_id = 'qr-concierge' AND (g.name = $2 OR q.id IS NOT NULL)
+      ORDER BY (g.name = $2) DESC
+      LIMIT 1`,
+    [agentId, QR_GROUP, QR_CODE]);
+  const nhomId = nhomRes.rows[0]?.id || (await db.query(
+    `INSERT INTO agent_groups (agent_id, project_id, name) VALUES ($1, 'qr-concierge', $2) RETURNING id`,
+    [agentId, QR_GROUP])).rows[0].id;
+  await db.query('UPDATE agent_groups SET name = $2 WHERE id = $1', [nhomId, QR_GROUP]);
   // Sale Pastie trực nhóm này — không gắn thì khách quét vào mà không ai nhận.
   await db.query(
     `INSERT INTO agent_group_sales (group_id, sale_id, is_active) VALUES ($1, $2, TRUE)

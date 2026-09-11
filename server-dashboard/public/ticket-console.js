@@ -161,7 +161,7 @@
         const nutThanhCongCu = document.getElementById('ticket-manage-btn');
         if (nutThanhCongCu && nutThanhCongCu.dataset.daGan !== '1') {
             nutThanhCongCu.dataset.daGan = '1';
-            nutThanhCongCu.addEventListener('click', () => moPanel({ tieuDe: 'Ticket toàn hệ thống' }));
+            nutThanhCongCu.addEventListener('click', () => moPanel({ tieuDe: laSuper() ? 'Ticket toàn hệ thống' : 'Ticket hỗ trợ' }));
         }
         capNhatNut();
     }
@@ -171,7 +171,7 @@
     // CURRENT_ADMIN còn rỗng, mọi phép thử vai đều ra false.
     function capNhatNut() {
         const nut = document.getElementById('ticket-manage-btn');
-        if (nut) nut.classList.toggle('hide', !laSuper());
+        if (nut) nut.classList.toggle('hide', !laSuper() && vaiToi() !== 'technical');
     }
 
     /* ── Thanh ticket trong đoạn chat ────────────────────────────────────── */

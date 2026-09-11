@@ -1662,6 +1662,7 @@ const TECHNICAL_ALLOWED_PATHS = [
   { methods: ['POST'], path: /^\/api\/admin\/chats\/internal_[A-Za-z0-9_]+\/read$/ },
   { methods: ['GET'], path: /^\/api\/admin\/events$/ },
   { methods: ['GET', 'POST', 'PUT', 'PATCH'], path: /^\/api\/admin\/tickets(\/[^/]+)?(\/[^/]+)?$/ },
+  { methods: ['GET', 'POST', 'DELETE'], path: /^\/api\/admin\/push\/(public-key|subscribe|unsubscribe|status)$/ },
 ];
 
 function isPathAllowedForTechnical(method, path) {
@@ -13065,14 +13066,16 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
 
       for (const agent of agents) {
         const sId = `internal_agent_${agent.id}_technical_${current.id}`;
-        await ensureInternalSession(sId, `Agent (${agent.full_name})`, agent.project_id);
+        const isSuper = agent.role === 'superadmin';
+        await ensureInternalSession(sId, isSuper ? `Admin tổng (${agent.full_name})` : `Agent (${agent.full_name})`, agent.project_id);
         chats.push({
           sessionId: sId,
           peerId: agent.id,
-          peerName: agent.full_name || 'Agent',
-          peerRole: 'agent',
+          peerName: agent.full_name || (isSuper ? 'Admin tổng' : 'Agent'),
+          peerRole: isSuper ? 'superadmin' : 'agent',
           peerAvatar: agent.avatar_url || null,
-          badgeLabel: 'Agent'
+          badgeLabel: isSuper ? 'Superadmin' : 'Agent',
+          pinned: isSuper
         });
       }
     }
@@ -13105,12 +13108,15 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
 
     // GHIM LÊN ĐẦU, tách khỏi thứ tự dựng danh sách.
     //
-    // Hội thoại Kỹ thuật đang tình cờ được đẩy vào mảng trước tiên, nên nó nằm
-    // đầu — nhưng đó là ăn may theo thứ tự viết mã. Thêm một dòng sắp xếp tường
-    // minh để dù sau này ai chèn thêm loại hội thoại nào vào trước, Kỹ thuật vẫn
-    // ở đầu. sort của JavaScript giữ nguyên thứ tự các phần bằng nhau, nên thứ
-    // tự những hội thoại còn lại không đổi.
-    chats.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+    // Hội thoại được ghim (Kỹ thuật đối với Agent, Superadmin đối với Kỹ thuật)
+    // luôn lên đầu, sau đó sắp theo thời gian tin nhắn mới nhất.
+    chats.sort((a, b) => {
+      if (b.pinned !== a.pinned) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+      const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+      const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+      if (timeA || timeB) return timeB - timeA;
+      return 0;
+    });
 
     res.json({ success: true, chats });
   } catch (error) {
