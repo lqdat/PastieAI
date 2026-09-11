@@ -1345,9 +1345,8 @@
                     <p id="self-profile-status" class="self-profile-status"></p>
                 </section>
 
-                <!-- Grid: Left side list of users, Right side add/edit form -->
+                <!-- Danh sách nhân viên (full width, không bị chia đôi form) -->
                 <div class="admin-management-grid">
-                    <!-- Left panel: List -->
                     <div class="admin-users-panel">
                         <div class="admin-list-head">
                             <h3 class="admin-list-title">
@@ -1355,135 +1354,240 @@
                             </h3>
                             <div class="admin-list-actions">
                                 <span id="admin-user-count-badge" class="admin-user-count-badge">0 nhân viên</span>
-                                <button type="button" class="pane-add" id="admin-add-toggle" data-addbox-toggle="staff"><i class="ri-user-add-line"></i> <span>Thêm nhân viên</span></button>
+                                <button type="button" class="pane-add" id="admin-add-toggle"><i class="ri-user-add-line"></i> <span>Thêm nhân viên</span></button>
                             </div>
                         </div>
                         <div id="admin-list-container">
                             <!-- Dynamically populated -->
                         </div>
                     </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-sticky-footer" id="admin-mgmt-footer">
+                <button id="admin-mgmt-close-btn" class="secondary-btn"><i class="ri-close-line"></i> Đóng</button>
+            </div>
+        </div>
+    </div>
 
-                    <!-- Right panel: Form -->
-                    <div class="admin-user-form-panel hide" data-addbox="staff">
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                            <h3 id="admin-form-title" style="font-size: 13.5px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px;">
-                                <i class="ri-user-add-line" style="color: var(--accent-color);"></i> Thêm nhân viên
-                            </h3>
-                        </div>
-                        <form id="admin-user-form" style="display: flex; flex-direction: column; gap: 12px;">
-                            <input type="hidden" id="admin-form-id">
-
-                            <!-- Tách LOẠI HÌNH khỏi TÊN RIÊNG.
-                                 Máy chủ dịch loại hình ("Hộ Kinh Doanh" -> "Business
-                                 household") nhưng giữ nguyên tên riêng ("Đan Trinh").
-                                 Nhập chung một ô thì phải đoán chỗ cắt; nhập tách thì
-                                 chắc chắn đúng. Ô loại hình để trống cũng được — tài
-                                 khoản Sale và quản trị là tên người, không có loại hình. -->
-                            <div class="form-group" id="admin-form-venue-group" style="margin: 0;">
-                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Loại hình cơ sở</label>
-                                <!-- Ô NHẬP kèm gợi ý, không phải danh sách chọn:
-                                     loại hình ngoài đời nhiều hơn danh sách có
-                                     sẵn ("Trung tâm hội nghị", "Nhà xe"...), bắt
-                                     chọn là không nhập được cái mình cần. -->
-                                <input id="admin-form-venue-type" list="admin-venue-type-list"
-                                       style="width:100%;" autocomplete="off"
-                                       placeholder="Hộ Kinh Doanh, Nhà hàng, Khách sạn… (để trống nếu là tên người)">
-                                <datalist id="admin-venue-type-list"></datalist>
-                            </div>
-
-                            <div class="form-group" style="margin: 0;">
-                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;"><span id="admin-form-name-label">Họ và tên</span> *</label>
-                                <input type="text" id="admin-form-fullname" placeholder="Đan Trinh Pastie / Nguyễn Văn A..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
-                                <small id="admin-form-name-preview" style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;"></small>
-                            </div>
-
-                            <div class="form-group" style="margin: 0;">
-                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Email đăng nhập *</label>
-                                <input type="email" id="admin-form-email" placeholder="agent@company.com" autocomplete="email" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
-                            </div>
-
-                            <div class="form-group" id="admin-form-project-group" style="margin: 0;">
-                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Dự án phân quyền</label>
-                                <select id="admin-form-project" style="width:100%;">
-                                    <option value="">— Tất cả dự án (toàn quyền) —</option>
-                                </select>
-                            </div>
-
-                            <div class="form-group" id="admin-form-role-group" style="margin: 0;">
-                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Vai trò (Role)</label>
-                                <select id="admin-form-role" style="width:100%;">
-                                    <!-- Thiếu lựa chọn này là gốc của "không sửa được Sale": mở sửa
-                                         một Sale thì select nhận giá trị không tồn tại rồi rỗng đi. -->
-                                    <option value="sale">Chuyên viên tư vấn</option>
-                                    <option value="agent">Quản lý cơ sở</option>
-                                    <option value="project_admin">Project Admin (Quản trị dự án)</option>
-                                    <option value="superadmin">Hỗ trợ kỹ thuật</option>
-                                </select>
-                            </div>
-
-                            <div class="form-group" id="admin-form-sale-limit-group" style="margin: 0;">
-                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Hạn mức số Sale cấp phép cho Agent</label>
-                                <input type="number" id="admin-form-sale-limit" min="0" step="1" placeholder="Để trống = Không giới hạn" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;">
-                                <small style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;">Số lượng tài khoản Sale tối đa mà Agent này được tạo.</small>
-                            </div>
-
-                            <div class="form-group" id="admin-form-deferred-group" style="margin: 0;">
-                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Phương thức thanh toán cho khách</label>
-                                <!-- Ba phương thức trả ngay LUÔN bật: không quán nào từ chối
-                                     tiền mặt hay chuyển khoản, nên cho tắt chỉ tạo ra một
-                                     trạng thái sai mà không ai cần. Hiện ra để người dùng
-                                     thấy đủ danh sách, khoá lại để khỏi nhầm là tắt được. -->
-                                <div class="pay-method-list">
-                                    <label class="pay-method-row is-fixed">
-                                        <input type="checkbox" checked disabled><span>Tiền mặt</span>
-                                    </label>
-                                    <label class="pay-method-row is-fixed">
-                                        <input type="checkbox" checked disabled><span>Chuyển khoản QR</span>
-                                    </label>
-                                    <label class="pay-method-row is-fixed">
-                                        <input type="checkbox" checked disabled><span>Thẻ</span>
-                                    </label>
-                                </div>
-                                <div class="pay-method-list" id="admin-form-deferred-group-inner" style="margin-top:8px;">
-                                    <label class="pay-method-row">
-                                        <input type="checkbox" id="admin-form-pay-room" value="room_charge"><span>Cộng vào tiền phòng</span>
-                                    </label>
-                                    <label class="pay-method-row">
-                                        <input type="checkbox" id="admin-form-pay-later" value="pay_later"><span>Thanh toán sau</span>
-                                    </label>
-                                </div>
-                                <input type="hidden" id="admin-form-deferred" value="none">
-                                <small style="display:block; margin-top:5px; color:var(--text-muted); font-size:10.5px;">Chỉ áp dụng cho tài khoản Agent. Hai mục dưới loại trừ nhau: chọn mục này thì mục kia tự bỏ chọn.</small>
-                            </div>
-
-                            <!-- Ảnh đại diện thật thay cho năm ô màu. Ảnh này còn được
-                                 dùng làm LOGO CƠ SỞ trên cổng khách, nên nó không chỉ là
-                                 trang trí trong console. -->
-                            <div class="form-group" id="admin-form-avatar-group" style="margin: 0;">
-                                <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Ảnh đại diện</label>
-                                <div class="avatar-upload-row">
-                                    <div class="avatar-upload-preview" id="admin-avatar-preview"></div>
-                                    <div class="avatar-upload-actions">
-                                        <button type="button" class="avatar-upload-btn" id="admin-avatar-pick"><i class="ri-image-add-line"></i> Chọn ảnh</button>
-                                        <small id="admin-avatar-hint">PNG hoặc JPG, tối đa 10MB.</small>
-                                    </div>
-                                </div>
-                                <input type="file" id="admin-avatar-file" accept="image/*" hidden>
-                                <input type="hidden" id="admin-form-avatar">
-                            </div>
-
-                            <div class="form-group" id="admin-form-status-group" style="display:none; align-items:center; gap:8px; margin: 0; padding: 9px 12px; background: var(--surface-neutral); border-radius: 10px;">
-                                <input type="checkbox" id="admin-form-active" style="cursor:pointer; width: 16px; height: 16px; accent-color: var(--accent-color);">
-                                <label for="admin-form-active" style="font-size: 12px; font-weight: 600; color: var(--text-primary); cursor:pointer;">Tài khoản đang hoạt động</label>
-                            </div>
-
-                            <div style="display: flex; gap: 8px; margin-top: 4px;">
-                                <button type="submit" id="admin-form-submit-btn" class="primary-btn" style="flex:1; padding: 9px 14px; font-size: 12.5px;"><i class="ri-user-add-line"></i> Lưu nhân viên</button>
-                                <button type="button" id="admin-form-cancel-btn" class="secondary-btn" style="padding: 9px 16px; font-size: 12.5px;"><i class="ri-close-line"></i> Hủy</button>
-                            </div>
-                        </form>
+    <!-- Modal Thêm nhân viên mới (Popup riêng) -->
+    <div id="admin-create-user-modal" class="modal-overlay hide" style="z-index: 1050;">
+        <div class="login-box glass-panel admin-dialog-box" style="max-width: 560px; width: 95%; max-height: min(88vh, 760px); padding: 24px 26px; border-radius: 20px;">
+            <div class="brand-header staff-modal-head" style="margin-bottom: 16px;">
+                <div class="staff-modal-heading">
+                    <div class="brand-logo admin-mgmt-brand-icon"><i class="ri-user-add-line"></i></div>
+                    <div class="staff-modal-title-copy">
+                        <span class="account-section-kicker">THÊM MỚI</span>
+                        <h2>Thêm nhân viên mới</h2>
+                        <p>Tạo tài khoản quản lý cơ sở hoặc quản trị viên dự án</p>
                     </div>
                 </div>
+                <button id="admin-create-close-top-btn" type="button" class="icon-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
+            </div>
+            <form id="admin-create-user-form" style="display: flex; flex-direction: column; gap: 13px; max-height: min(70vh, 600px); overflow-y: auto; padding-right: 4px;">
+                <div class="form-group" id="admin-create-venue-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Loại hình cơ sở</label>
+                    <input id="admin-create-venue-type" list="admin-create-venue-type-list"
+                           style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" autocomplete="off"
+                           placeholder="Hộ Kinh Doanh, Nhà hàng, Khách sạn… (để trống nếu là tên người)">
+                    <datalist id="admin-create-venue-type-list"></datalist>
+                </div>
+
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Họ và tên *</label>
+                    <input type="text" id="admin-create-fullname" placeholder="Đan Trinh Pastie / Nguyễn Văn A..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
+                    <small id="admin-create-name-preview" style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;"></small>
+                </div>
+
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Email đăng nhập *</label>
+                    <input type="email" id="admin-create-email" placeholder="agent@company.com" autocomplete="email" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
+                </div>
+
+                <div class="form-group" id="admin-create-project-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Dự án phân quyền</label>
+                    <select id="admin-create-project" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;">
+                        <option value="">— Tất cả dự án (toàn quyền) —</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="admin-create-role-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Vai trò (Role)</label>
+                    <select id="admin-create-role" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;">
+                        <option value="agent">Quản lý cơ sở</option>
+                        <option value="project_admin">Project Admin (Quản trị dự án)</option>
+                        <option value="superadmin">Hỗ trợ kỹ thuật</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="admin-create-sale-limit-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Hạn mức số Sale cấp phép cho Agent</label>
+                    <input type="number" id="admin-create-sale-limit" min="0" step="1" placeholder="Để trống = Không giới hạn" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;">
+                    <small style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;">Số lượng tài khoản Sale tối đa mà Agent này được tạo.</small>
+                </div>
+
+                <div class="form-group" id="admin-create-deferred-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Phương thức thanh toán cho khách</label>
+                    <div class="pay-method-list">
+                        <label class="pay-method-row is-fixed">
+                            <input type="checkbox" checked disabled><span>Tiền mặt</span>
+                        </label>
+                        <label class="pay-method-row is-fixed">
+                            <input type="checkbox" checked disabled><span>Chuyển khoản QR</span>
+                        </label>
+                        <label class="pay-method-row is-fixed">
+                            <input type="checkbox" checked disabled><span>Thẻ</span>
+                        </label>
+                    </div>
+                    <div class="pay-method-list" style="margin-top:8px;">
+                        <label class="pay-method-row">
+                            <input type="checkbox" id="admin-create-pay-room" value="room_charge"><span>Cộng vào tiền phòng</span>
+                        </label>
+                        <label class="pay-method-row">
+                            <input type="checkbox" id="admin-create-pay-later" value="pay_later"><span>Thanh toán sau</span>
+                        </label>
+                    </div>
+                    <input type="hidden" id="admin-create-deferred" value="none">
+                    <small style="display:block; margin-top:5px; color:var(--text-muted); font-size:10.5px;">Chỉ áp dụng cho tài khoản Agent. Hai mục dưới loại trừ nhau: chọn mục này thì mục kia tự bỏ chọn.</small>
+                </div>
+
+                <div class="form-group" id="admin-create-avatar-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Ảnh đại diện</label>
+                    <div class="avatar-upload-row">
+                        <div class="avatar-upload-preview" id="admin-create-avatar-preview"></div>
+                        <div class="avatar-upload-actions">
+                            <button type="button" class="avatar-upload-btn" id="admin-create-avatar-pick"><i class="ri-image-add-line"></i> Chọn ảnh</button>
+                            <small id="admin-create-avatar-hint">PNG hoặc JPG, tối đa 10MB.</small>
+                        </div>
+                    </div>
+                    <input type="file" id="admin-create-avatar-file" accept="image/*" hidden>
+                    <input type="hidden" id="admin-create-avatar">
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-top: 6px; padding-top: 6px;">
+                    <button type="submit" id="admin-create-submit-btn" class="primary-btn" style="flex:1; padding: 10px 14px; font-size: 13px;"><i class="ri-user-add-line"></i> Lưu nhân viên</button>
+                    <button type="button" id="admin-create-cancel-btn" class="secondary-btn" style="padding: 10px 18px; font-size: 13px;"><i class="ri-close-line"></i> Hủy</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Chỉnh sửa nhân viên (Popup riêng) -->
+    <div id="admin-edit-user-modal" class="modal-overlay hide" style="z-index: 1050;">
+        <div class="login-box glass-panel admin-dialog-box" style="max-width: 560px; width: 95%; max-height: min(88vh, 760px); padding: 24px 26px; border-radius: 20px;">
+            <div class="brand-header staff-modal-head" style="margin-bottom: 16px;">
+                <div class="staff-modal-heading">
+                    <div class="brand-logo admin-mgmt-brand-icon" style="color:#ec4899; background:rgba(236,72,153,0.1);"><i class="ri-edit-line"></i></div>
+                    <div class="staff-modal-title-copy">
+                        <span class="account-section-kicker" style="color:#ec4899;">CHỈNH SỬA TÀI KHOẢN</span>
+                        <h2>Chỉnh sửa nhân viên</h2>
+                        <p id="admin-edit-subtitle">Cập nhật thông tin và quyền hạn nhân viên</p>
+                    </div>
+                </div>
+                <button id="admin-edit-close-top-btn" type="button" class="icon-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
+            </div>
+            <form id="admin-edit-user-form" style="display: flex; flex-direction: column; gap: 13px; max-height: min(70vh, 600px); overflow-y: auto; padding-right: 4px;">
+                <input type="hidden" id="admin-edit-id">
+
+                <div class="form-group" id="admin-edit-venue-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Loại hình cơ sở</label>
+                    <input id="admin-edit-venue-type" list="admin-edit-venue-type-list"
+                           style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" autocomplete="off"
+                           placeholder="Hộ Kinh Doanh, Nhà hàng, Khách sạn… (để trống nếu là tên người)">
+                    <datalist id="admin-edit-venue-type-list"></datalist>
+                </div>
+
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Họ và tên *</label>
+                    <input type="text" id="admin-edit-fullname" placeholder="Họ và tên..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
+                    <small id="admin-edit-name-preview" style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;"></small>
+                </div>
+
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Email đăng nhập</label>
+                    <input type="email" id="admin-edit-email" readonly style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px; background:rgba(0,0,0,0.035); opacity:0.85; cursor:not-allowed;" title="Email là định danh cố định không thể sửa">
+                </div>
+
+                <div class="form-group" id="admin-edit-project-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Dự án phân quyền</label>
+                    <select id="admin-edit-project" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;">
+                        <option value="">— Tất cả dự án (toàn quyền) —</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="admin-edit-role-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Vai trò (Role)</label>
+                    <select id="admin-edit-role" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;">
+                        <option value="sale">Chuyên viên tư vấn</option>
+                        <option value="agent">Quản lý cơ sở</option>
+                        <option value="project_admin">Project Admin (Quản trị dự án)</option>
+                        <option value="superadmin">Hỗ trợ kỹ thuật</option>
+                    </select>
+                </div>
+
+                <!-- Dòng "Thuộc Agent" khi sửa Sale -->
+                <div class="form-group admin-form-manager hide" id="admin-edit-manager-row" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Thuộc Agent</label>
+                    <p class="admin-form-manager-value" id="admin-edit-manager-value" style="margin:0; padding:8px 12px; background:rgba(99,102,241,0.08); border-radius:8px; font-weight:700; color:#4f46e5; font-size:12px; display:flex; align-items:center; gap:6px;"></p>
+                    <small style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;">Đổi Agent quản lý phải làm trong console của Agent, nơi còn thấy hạn mức Sale.</small>
+                </div>
+
+                <div class="form-group" id="admin-edit-sale-limit-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Hạn mức số Sale cấp phép cho Agent</label>
+                    <input type="number" id="admin-edit-sale-limit" min="0" step="1" placeholder="Để trống = Không giới hạn" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;">
+                    <small style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;">Số lượng tài khoản Sale tối đa mà Agent này được tạo.</small>
+                </div>
+
+                <div class="form-group" id="admin-edit-deferred-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Phương thức thanh toán cho khách</label>
+                    <div class="pay-method-list">
+                        <label class="pay-method-row is-fixed">
+                            <input type="checkbox" checked disabled><span>Tiền mặt</span>
+                        </label>
+                        <label class="pay-method-row is-fixed">
+                            <input type="checkbox" checked disabled><span>Chuyển khoản QR</span>
+                        </label>
+                        <label class="pay-method-row is-fixed">
+                            <input type="checkbox" checked disabled><span>Thẻ</span>
+                        </label>
+                    </div>
+                    <div class="pay-method-list" style="margin-top:8px;">
+                        <label class="pay-method-row">
+                            <input type="checkbox" id="admin-edit-pay-room" value="room_charge"><span>Cộng vào tiền phòng</span>
+                        </label>
+                        <label class="pay-method-row">
+                            <input type="checkbox" id="admin-edit-pay-later" value="pay_later"><span>Thanh toán sau</span>
+                        </label>
+                    </div>
+                    <input type="hidden" id="admin-edit-deferred" value="none">
+                    <small style="display:block; margin-top:5px; color:var(--text-muted); font-size:10.5px;">Chỉ áp dụng cho tài khoản Agent. Hai mục dưới loại trừ nhau: chọn mục này thì mục kia tự bỏ chọn.</small>
+                </div>
+
+                <div class="form-group" id="admin-edit-avatar-group" style="margin: 0;">
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Ảnh đại diện</label>
+                    <div class="avatar-upload-row">
+                        <div class="avatar-upload-preview" id="admin-edit-avatar-preview"></div>
+                        <div class="avatar-upload-actions">
+                            <button type="button" class="avatar-upload-btn" id="admin-edit-avatar-pick"><i class="ri-image-add-line"></i> Chọn ảnh mới</button>
+                            <small id="admin-edit-avatar-hint">PNG hoặc JPG, tối đa 10MB.</small>
+                        </div>
+                    </div>
+                    <input type="file" id="admin-edit-avatar-file" accept="image/*" hidden>
+                    <input type="hidden" id="admin-edit-avatar">
+                </div>
+
+                <div class="form-group" id="admin-edit-status-group" style="display:flex; align-items:center; gap:8px; margin: 0; padding: 10px 14px; background: rgba(0,0,0,0.03); border-radius: 10px; border: 1px solid var(--panel-border);">
+                    <input type="checkbox" id="admin-edit-active" style="cursor:pointer; width: 16px; height: 16px; accent-color: var(--accent-color);">
+                    <label for="admin-edit-active" style="font-size: 12.5px; font-weight: 600; color: var(--text-primary); cursor:pointer;">Tài khoản đang hoạt động</label>
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-top: 6px; padding-top: 6px;">
+                    <button type="submit" id="admin-edit-submit-btn" class="primary-btn" style="flex:1; padding: 10px 14px; font-size: 13px;"><i class="ri-save-line"></i> Cập nhật</button>
+                    <button type="button" id="admin-edit-cancel-btn" class="secondary-btn" style="padding: 10px 18px; font-size: 13px;"><i class="ri-close-line"></i> Hủy</button>
+                </div>
+            </form>
+        </div>
+    </div>
               </div>
             </div>
             <div class="modal-sticky-footer" id="admin-mgmt-footer">

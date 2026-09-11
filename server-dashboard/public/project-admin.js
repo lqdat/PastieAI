@@ -442,15 +442,18 @@ function titleCaseVi(text) {
 let VENUE_PREFIXES = [];
 
 async function loadVenuePrefixes() {
-    const list = document.getElementById('admin-venue-type-list');
-    if (!list || VENUE_PREFIXES.length) return;
-    try {
-        const res = await authFetch(`${API_BASE}/api/admin/venue-prefixes`);
-        const data = await res.json();
-        VENUE_PREFIXES = Array.isArray(data.prefixes) ? data.prefixes : [];
-    } catch { VENUE_PREFIXES = []; }
-    // Gợi ý, không ép: người dùng gõ được loại hình ngoài danh sách.
-    list.innerHTML = VENUE_PREFIXES.map((prefix) => `<option value="${escapeHtml(titleCaseVi(prefix))}"></option>`).join('');
+    if (!VENUE_PREFIXES.length) {
+        try {
+            const res = await authFetch(`${API_BASE}/api/admin/venue-prefixes`);
+            const data = await res.json();
+            VENUE_PREFIXES = Array.isArray(data.prefixes) ? data.prefixes : [];
+        } catch { VENUE_PREFIXES = []; }
+    }
+    const html = VENUE_PREFIXES.map((prefix) => `<option value="${escapeHtml(titleCaseVi(prefix))}"></option>`).join('');
+    ['admin-create-venue-type-list', 'admin-edit-venue-type-list', 'admin-venue-type-list'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+    });
 }
 
 // Tách một tên đầy đủ thành loại hình + tên riêng, dùng ĐÚNG danh sách của máy
@@ -475,23 +478,36 @@ function removeVietnameseTones(text) {
         .normalize('NFC');
 }
 
-function updateVenueNamePreview() {
-    const type = document.getElementById('admin-form-venue-type')?.value || '';
-    const name = (adminFormFullname?.value || '').trim();
-    const preview = document.getElementById('admin-form-name-preview');
+function updateCreateVenueNamePreview() {
+    const type = document.getElementById('admin-create-venue-type')?.value || '';
+    const name = (document.getElementById('admin-create-fullname')?.value || '').trim();
+    const preview = document.getElementById('admin-create-name-preview');
     if (!preview) return;
     preview.textContent = type && name
         ? `Tên đầy đủ: ${titleCaseVi(type)} ${name} — khách nước ngoài thấy loại hình đã dịch (Anh/Nga/Trung/Hàn), tên riêng "${removeVietnameseTones(name)}" bỏ dấu.`
         : '';
 }
-document.getElementById('admin-form-venue-type')?.addEventListener('input', updateVenueNamePreview);
-document.getElementById('admin-form-fullname')?.addEventListener('input', updateVenueNamePreview);
+document.getElementById('admin-create-venue-type')?.addEventListener('input', updateCreateVenueNamePreview);
+document.getElementById('admin-create-fullname')?.addEventListener('input', updateCreateVenueNamePreview);
 
-// Ảnh đại diện: xem trước + tải lên. Thay hẳn bộ năm ô màu gradient.
-//
-// avatar_url của tài khoản cũ đang giữ một mã kiểu 'gradient-1'. Không xoá dữ
-// liệu đó: chưa có ảnh thật thì vẫn vẽ gradient như trước, có ảnh thì vẽ ảnh.
-// Phân biệt bằng việc chuỗi có bắt đầu bằng http hay không.
+function updateEditVenueNamePreview() {
+    const type = document.getElementById('admin-edit-venue-type')?.value || '';
+    const name = (document.getElementById('admin-edit-fullname')?.value || '').trim();
+    const preview = document.getElementById('admin-edit-name-preview');
+    if (!preview) return;
+    preview.textContent = type && name
+        ? `Tên đầy đủ: ${titleCaseVi(type)} ${name} — khách nước ngoài thấy loại hình đã dịch (Anh/Nga/Trung/Hàn), tên riêng "${removeVietnameseTones(name)}" bỏ dấu.`
+        : '';
+}
+document.getElementById('admin-edit-venue-type')?.addEventListener('input', updateEditVenueNamePreview);
+document.getElementById('admin-edit-fullname')?.addEventListener('input', updateEditVenueNamePreview);
+
+// Giữ tương thích nếu có nơi gọi hàm cũ
+function updateVenueNamePreview() {
+    updateCreateVenueNamePreview();
+    updateEditVenueNamePreview();
+}
+
 const AVATAR_GRADIENTS = {
     'gradient-1': 'linear-gradient(135deg,#a78bfa,#7c3aed)',
     'gradient-2': 'linear-gradient(135deg,#f472b6,#db2777)',
@@ -499,31 +515,44 @@ const AVATAR_GRADIENTS = {
     'gradient-4': 'linear-gradient(135deg,#fbbf24,#d97706)',
     'gradient-5': 'linear-gradient(135deg,#60a5fa,#2563eb)',
 };
-// Nhận cả ảnh đã lưu trên máy chủ (http) LẪN ảnh vừa chọn từ máy (data:).
-// Thiếu 'data:' là chọn ảnh xong ô xem trước vẫn hiện dấu "?" — người dùng
-// tưởng chưa chọn được gì.
 const isImageUrl = (value) => /^(https?:\/\/|data:image\/|\/)/i.test(String(value || ''));
 
-// previewOnly: ảnh chỉ để NHÌN, chưa phải giá trị sẽ lưu. Ảnh vừa chọn từ máy
-// là một chuỗi data: dài hàng trăm KB — nhét vào ô ẩn rồi gửi lên là hỏng cả
-// bản ghi; đường dẫn thật chỉ có sau khi tải ảnh lên xong.
-function renderAdminAvatarPreview(value, fallbackName, previewOnly = false) {
-    const box = document.getElementById('admin-avatar-preview');
+let pendingCreateAvatarFile = null;
+let pendingEditAvatarFile = null;
+let pendingAvatarFile = null; // fallback tương thích
+
+function renderCreateAvatarPreview(value, fallbackName, previewOnly = false) {
+    const box = document.getElementById('admin-create-avatar-preview');
     if (!box) return;
     if (isImageUrl(value)) {
         box.style.background = 'none';
-        box.innerHTML = `<img src="${escapeHtml(value)}" alt="">`;
+        box.innerHTML = `<img src="${escapeHtml(value)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
     } else {
         box.style.background = AVATAR_GRADIENTS[value] || AVATAR_GRADIENTS['gradient-1'];
         box.innerHTML = `<span>${escapeHtml(String(fallbackName || '?').trim().charAt(0).toUpperCase() || '?')}</span>`;
     }
-    if (adminFormAvatar && !previewOnly) adminFormAvatar.value = value || '';
+    const hidden = document.getElementById('admin-create-avatar');
+    if (hidden && !previewOnly) hidden.value = value || '';
 }
 
-// Tài khoản CHƯA LƯU thì chưa có id để gắn ảnh vào. Giữ tệp lại, tải lên ngay
-// sau khi lưu xong — nếu không, người dùng chọn ảnh rồi bấm Lưu và ảnh im lặng
-// biến mất.
-let pendingAvatarFile = null;
+function renderEditAvatarPreview(value, fallbackName, previewOnly = false) {
+    const box = document.getElementById('admin-edit-avatar-preview');
+    if (!box) return;
+    if (isImageUrl(value)) {
+        box.style.background = 'none';
+        box.innerHTML = `<img src="${escapeHtml(value)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
+    } else {
+        box.style.background = AVATAR_GRADIENTS[value] || AVATAR_GRADIENTS['gradient-1'];
+        box.innerHTML = `<span>${escapeHtml(String(fallbackName || '?').trim().charAt(0).toUpperCase() || '?')}</span>`;
+    }
+    const hidden = document.getElementById('admin-edit-avatar');
+    if (hidden && !previewOnly) hidden.value = value || '';
+}
+
+function renderAdminAvatarPreview(value, fallbackName, previewOnly = false) {
+    renderCreateAvatarPreview(value, fallbackName, previewOnly);
+    renderEditAvatarPreview(value, fallbackName, previewOnly);
+}
 
 async function uploadAdminAvatar(adminId, file) {
     const form = new FormData();
@@ -536,19 +565,34 @@ async function uploadAdminAvatar(adminId, file) {
     return data.avatarUrl;
 }
 
-document.getElementById('admin-avatar-pick')?.addEventListener('click', () => {
-    document.getElementById('admin-avatar-file')?.click();
+// Avatar upload events - Form Thêm
+document.getElementById('admin-create-avatar-pick')?.addEventListener('click', () => {
+    document.getElementById('admin-create-avatar-file')?.click();
 });
-document.getElementById('admin-avatar-file')?.addEventListener('change', (event) => {
+document.getElementById('admin-create-avatar-file')?.addEventListener('change', (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) { showToast('Chỉ nhận tệp ảnh.', 'error'); return; }
     if (file.size > 10 * 1024 * 1024) { showToast('Ảnh vượt quá 10MB.', 'error'); return; }
-    pendingAvatarFile = file;
-    // Xem trước ngay bằng chính tệp vừa chọn, không đợi tải lên xong: người dùng
-    // cần biết mình chọn đúng ảnh trước khi bấm Lưu.
+    pendingCreateAvatarFile = file;
     const reader = new FileReader();
-    reader.onload = () => renderAdminAvatarPreview(String(reader.result || ''), '', true);
+    reader.onload = () => renderCreateAvatarPreview(String(reader.result || ''), '', true);
+    reader.readAsDataURL(file);
+    event.target.value = '';
+});
+
+// Avatar upload events - Form Sửa
+document.getElementById('admin-edit-avatar-pick')?.addEventListener('click', () => {
+    document.getElementById('admin-edit-avatar-file')?.click();
+});
+document.getElementById('admin-edit-avatar-file')?.addEventListener('change', (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { showToast('Chỉ nhận tệp ảnh.', 'error'); return; }
+    if (file.size > 10 * 1024 * 1024) { showToast('Ảnh vượt quá 10MB.', 'error'); return; }
+    pendingEditAvatarFile = file;
+    const reader = new FileReader();
+    reader.onload = () => renderEditAvatarPreview(String(reader.result || ''), '', true);
     reader.readAsDataURL(file);
     event.target.value = '';
 });
@@ -869,150 +913,411 @@ async function loadAdminUsers() {
 }
 
 
-// Dong "Thuoc Agent" trong form sua. Chi de doc: doi cha con phai lam o console
-// cua Agent, noi con biet han muc Sale con lai bao nhieu.
-function renderAdminFormManager(user) {
-    const roleGroup = document.getElementById('admin-form-role-group');
-    if (!roleGroup) return;
-    let row = document.getElementById('admin-form-manager-row');
-    if (!user || user.role !== 'sale') { row?.remove(); return; }
-    if (!row) {
-        row = document.createElement('div');
-        row.id = 'admin-form-manager-row';
-        row.className = 'form-group admin-form-manager';
-        roleGroup.insertAdjacentElement('afterend', row);
-    }
-    const manager = user.manager_name || user.manager_username || 'Chưa gán';
-    row.innerHTML = `
-        <label>Thuộc Agent</label>
-        <p class="admin-form-manager-value"><i class="ri-user-star-line"></i> ${escapeHtml(manager)}</p>
-        <small>Đổi Agent quản lý phải làm trong console của Agent, nơi còn thấy hạn mức Sale.</small>`;
-}
+// ── TÁCH BIỆT: FORM THÊM MỚI VÀ FORM CHỈNH SỬA THÀNH 2 POPUP RIÊNG ─────────
 
-function resetAdminForm() {
-    if (!adminUserForm) return;
-    adminUserForm.reset();
-    renderAdminFormManager(null);
-    if (adminFormRole) adminFormRole.disabled = false;
-    if (adminFormId) adminFormId.value = '';
-    if (adminFormEmail) {
-        adminFormEmail.readOnly = false;
-        adminFormEmail.style.opacity = '1';
-        adminFormEmail.title = '';
-    }
-    if (adminFormTitle) adminFormTitle.innerHTML = '<i class="ri-user-add-line" style="color:var(--accent-color);"></i> Thêm nhân viên mới';
-    if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-user-add-line"></i> Lưu nhân viên';
-    if (adminFormCancelBtn) adminFormCancelBtn.style.display = 'inline-flex';
-    if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'none';
-    
-    if (CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin') {
-        if (adminFormRole) { adminFormRole.value = 'agent'; adminFormRole.disabled = true; }
-        if (adminFormProject) { adminFormProject.value = CURRENT_ADMIN.project_id || ''; }
-    } else {
-        if (adminFormRole) { adminFormRole.value = 'agent'; adminFormRole.disabled = false; }
-        if (CURRENT_ADMIN?.role === 'superadmin' && adminFormProject) {
-            adminFormProject.value = getAdminMgmtProjectId();
-        }
-    }
-
-    setDeferredMode('none');
-    const adminFormDeferredGroup = document.getElementById('admin-form-deferred-group');
-    if (adminFormDeferredGroup) adminFormDeferredGroup.style.display = 'block';
-
-    const venueType = document.getElementById('admin-form-venue-type');
-    if (venueType) venueType.value = '';
-    updateVenueNamePreview();
-    pendingAvatarFile = null;
-    renderAdminAvatarPreview('gradient-1');
-    void loadVenuePrefixes();
-}
-
-// Hai mục trả chậm LOẠI TRỪ NHAU: chọn mục này thì mục kia tự bỏ chọn. Dùng
-// checkbox thay radio vì phải bỏ chọn được cả hai (nghĩa là "không có").
-function setDeferredMode(mode) {
-    const room = document.getElementById('admin-form-pay-room');
-    const later = document.getElementById('admin-form-pay-later');
-    const hidden = document.getElementById('admin-form-deferred');
+// --- CREATE USER POPUP LOGIC ---
+function setCreateDeferredMode(mode) {
+    const room = document.getElementById('admin-create-pay-room');
+    const later = document.getElementById('admin-create-pay-later');
+    const hidden = document.getElementById('admin-create-deferred');
     if (room) room.checked = mode === 'room_charge';
     if (later) later.checked = mode === 'pay_later';
     if (hidden) hidden.value = mode || 'none';
 }
-document.getElementById('admin-form-pay-room')?.addEventListener('change', (event) => {
-    setDeferredMode(event.target.checked ? 'room_charge' : 'none');
+document.getElementById('admin-create-pay-room')?.addEventListener('change', (event) => {
+    setCreateDeferredMode(event.target.checked ? 'room_charge' : 'none');
 });
-document.getElementById('admin-form-pay-later')?.addEventListener('change', (event) => {
-    setDeferredMode(event.target.checked ? 'pay_later' : 'none');
+document.getElementById('admin-create-pay-later')?.addEventListener('change', (event) => {
+    setCreateDeferredMode(event.target.checked ? 'pay_later' : 'none');
 });
 
+function updateCreateRoleVisibility() {
+    const roleSelect = document.getElementById('admin-create-role');
+    const role = roleSelect ? roleSelect.value : 'agent';
+    const isAgent = role === 'agent';
+    const saleLimitGroup = document.getElementById('admin-create-sale-limit-group');
+    const deferredGroup = document.getElementById('admin-create-deferred-group');
+    if (saleLimitGroup) saleLimitGroup.style.display = isAgent ? 'block' : 'none';
+    if (deferredGroup) deferredGroup.style.display = isAgent ? 'block' : 'none';
+}
+document.getElementById('admin-create-role')?.addEventListener('change', updateCreateRoleVisibility);
 
-async function editAdminUser(id) {
-    // Form gap lai theo mac dinh, nen bam Sua ma khong mo ra thi khong thay gi.
-    window.toggleAddBox?.('staff', true);
-    try {
-        const res = await authFetch(`${API_BASE}/api/admin/users`);
-        const users = await res.json();
-        const u = users.find(x => x.id === id);
-        if (!u) return;
-        if (adminFormId) adminFormId.value = u.id;
-        if (adminFormFullname) adminFormFullname.value = u.full_name || '';
-        if (adminFormEmail) {
-            adminFormEmail.value = u.username || '';
-            adminFormEmail.readOnly = true;
-            adminFormEmail.style.opacity = '0.75';
-            adminFormEmail.title = 'Email là định danh cố định không thể sửa';
+async function openCreateUserModal() {
+    const modal = document.getElementById('admin-create-user-modal');
+    const form = document.getElementById('admin-create-user-form');
+    if (!modal || !form) return;
+    form.reset();
+    pendingCreateAvatarFile = null;
+
+    // Nạp dự án
+    const projSelect = document.getElementById('admin-create-project');
+    if (projSelect) {
+        projSelect.innerHTML = '<option value="">— Tất cả dự án (toàn quyền) —</option>';
+        (PROJECTS || []).forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = `${p.name || p.id} (${p.id})`;
+            projSelect.appendChild(opt);
+        });
+        const curProject = CURRENT_ADMIN?.role === 'superadmin' ? getAdminMgmtProjectId() : (CURRENT_ADMIN?.project_id || '');
+        if (curProject) projSelect.value = curProject;
+    }
+
+    // Thiết lập vai trò theo quyền hiện tại
+    const roleSelect = document.getElementById('admin-create-role');
+    const projGroup = document.getElementById('admin-create-project-group');
+    if (CURRENT_ADMIN?.role === 'project_admin') {
+        if (roleSelect) {
+            roleSelect.innerHTML = '<option value="agent">Quản lý cơ sở</option>';
+            roleSelect.value = 'agent';
+            roleSelect.disabled = true;
         }
-        if (adminFormRole) {
-            adminFormRole.value = u.role;
-            // Sale: khoa o vai tro lai.
-            //
-            // Duong day Sale -> Agent nam o managed_by_admin_id, ma endpoint sua
-            // tai khoan khong nhan truong do. Neu de doi vai tro tu do, mot Sale
-            // co the thanh Agent trong khi van con tro toi Agent cu - han muc va
-            // quyen doc hoi thoai tu do lech nhau, khong ai nhin ra.
-            //
-            // Sua ten, khoa/mo, doi avatar thi van lam duoc binh thuong.
-            adminFormRole.disabled = u.role === 'sale' || CURRENT_ADMIN?.role === 'project_admin';
+        if (projGroup) projGroup.classList.add('hide');
+    } else {
+        if (roleSelect) {
+            roleSelect.innerHTML = `
+                <option value="agent">Quản lý cơ sở</option>
+                <option value="project_admin">Project Admin (Quản trị dự án)</option>
+                <option value="superadmin">Hỗ trợ kỹ thuật</option>
+            `;
+            roleSelect.value = 'agent';
+            roleSelect.disabled = false;
         }
-        // Ai la Agent quan ly - chi de doc, vi day chinh la thu man hinh cu
-        // khong noi ra duoc.
-        renderAdminFormManager(u);
-        if (adminFormSaleLimitGroup) adminFormSaleLimitGroup.style.display = u.role === 'agent' ? 'block' : 'none';
-        {
-            setDeferredMode(u.deferred_payment_mode || (u.allow_room_charge ? 'room_charge' : 'none'));
-        }
-        const adminFormDeferredGroup = document.getElementById('admin-form-deferred-group');
-        if (adminFormDeferredGroup) {
-            adminFormDeferredGroup.style.display = u.role === 'agent' ? 'block' : 'none';
-        }
-        if (adminFormProject) adminFormProject.value = u.project_id || '';
-        // Đổ lại hạn mức Sale đang có. Bỏ bước này thì ô luôn trống, và lần bấm
-        // "Cập nhật" kế tiếp sẽ âm thầm xoá hạn mức thành "không giới hạn".
-        // Chú ý: 0 là giá trị hợp lệ (không được tạo Sale nào) nên không dùng
-        // `u.sale_limit || ''` — số 0 sẽ bị nuốt mất.
-        if (adminFormSaleLimit) {
-            adminFormSaleLimit.value = (u.sale_limit === null || u.sale_limit === undefined) ? '' : String(u.sale_limit);
-        }
-        if (adminFormActive) adminFormActive.checked = u.is_active;
-        // Tách tên đầy đủ đang lưu thành loại hình + tên riêng để hai ô hiện đúng.
-        await loadVenuePrefixes();
-        const parts = splitVenueName(u.full_name || '');
-        const venueType = document.getElementById('admin-form-venue-type');
-        if (venueType) venueType.value = parts.prefix.toLowerCase();
-        if (adminFormFullname) adminFormFullname.value = parts.name;
-        updateVenueNamePreview();
-        pendingAvatarFile = null;
-        renderAdminAvatarPreview(u.avatar_url || 'gradient-1', parts.name || u.username);
-        if (adminFormStatusGroup) adminFormStatusGroup.style.display = 'flex';
-        // Tên cơ sở đầy đủ dài hơn hẳn "Sửa nhân viên": bọc riêng để cắt được
-        // sau 2 hàng, nếu không nó đẩy vỡ cả hàng tiêu đề trên màn hẹp.
-        if (adminFormTitle) adminFormTitle.innerHTML = `<i class="ri-edit-line" style="color:#ec4899;"></i>`
-            + `<span class="admin-form-title-text">Sửa nhân viên: `
-            + `<b class="admin-form-title-name">${escapeHtml(u.full_name || u.username)}</b></span>`;
-        if (adminFormSubmitBtn) adminFormSubmitBtn.innerHTML = '<i class="ri-save-line"></i> Cập nhật';
-        if (adminFormCancelBtn) adminFormCancelBtn.style.display = 'inline-flex';
-    } catch(e) { console.error('Error in editAdminUser:', e); }
+        if (projGroup) projGroup.classList.remove('hide');
+    }
+
+    setCreateDeferredMode('none');
+    updateCreateRoleVisibility();
+    updateCreateVenueNamePreview();
+    renderCreateAvatarPreview('gradient-1');
+    await loadVenuePrefixes();
+
+    modal.classList.remove('hide');
 }
 
+function closeCreateUserModal() {
+    document.getElementById('admin-create-user-modal')?.classList.add('hide');
+}
+
+document.getElementById('admin-add-toggle')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    openCreateUserModal();
+});
+document.getElementById('admin-create-close-top-btn')?.addEventListener('click', closeCreateUserModal);
+document.getElementById('admin-create-cancel-btn')?.addEventListener('click', closeCreateUserModal);
+document.getElementById('admin-create-user-modal')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeCreateUserModal();
+});
+
+async function handleCreateUserSubmit(e) {
+    e.preventDefault();
+    const isProjectAdmin = CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin';
+    const effectiveRole = isProjectAdmin ? 'agent' : (document.getElementById('admin-create-role')?.value || 'agent');
+    const effectiveProject = isProjectAdmin
+        ? CURRENT_ADMIN.project_id
+        : CURRENT_ADMIN?.role === 'superadmin'
+        ? (getAdminMgmtProjectId() || null)
+        : (document.getElementById('admin-create-project')?.value.trim() || null);
+
+    const payload = {
+        email: document.getElementById('admin-create-email')?.value.trim(),
+        full_name: document.getElementById('admin-create-fullname')?.value.trim(),
+        role: effectiveRole,
+        avatar_url: document.getElementById('admin-create-avatar')?.value || 'gradient-1',
+        project_id: effectiveProject,
+        is_active: true
+    };
+
+    if (effectiveRole === 'agent') {
+        payload.sale_limit = (document.getElementById('admin-create-sale-limit')?.value ?? '').trim();
+        payload.deferred_payment_mode = document.getElementById('admin-create-deferred')?.value || 'none';
+    }
+
+    const type = (document.getElementById('admin-create-venue-type')?.value || '').trim();
+    const bare = (document.getElementById('admin-create-fullname')?.value || '').trim();
+    if (type && bare) {
+        payload.full_name = `${titleCaseVi(type)} ${bare}`;
+    }
+
+    const submitBtn = document.getElementById('admin-create-submit-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang lưu...';
+    }
+
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/users`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok) {
+            const savedId = data?.user?.id || data?.id;
+            if (pendingCreateAvatarFile && savedId) {
+                try {
+                    await uploadAdminAvatar(savedId, pendingCreateAvatarFile);
+                } catch (error) {
+                    showToast(`Đã lưu nhân viên nhưng chưa tải được ảnh: ${error.message}`, 'error');
+                }
+                pendingCreateAvatarFile = null;
+            }
+            closeCreateUserModal();
+            await loadAdminUsers();
+            if (data.qr?.chat_url) {
+                const copy = await pastieConfirm(
+                    `Khách quét mã này sẽ được chuyển tới Agent vừa tạo.\n\n${data.qr.chat_url}`,
+                    { title: 'Đã tạo Agent và mã QR', confirmText: 'Sao chép link', cancelText: 'Để sau' }
+                );
+                if (copy) {
+                    try { await navigator.clipboard.writeText(data.qr.chat_url); toastSuccess('Đã sao chép link QR.'); }
+                    catch { toastError('Trình duyệt không cho sao chép. Hãy chọn và copy thủ công.'); }
+                }
+            } else {
+                toastSuccess('Đã tạo tài khoản nhân viên thành công.');
+            }
+        } else {
+            toastError(data.error || 'Không thể tạo nhân viên.');
+        }
+    } catch(e) {
+        toastError('Lỗi kết nối máy chủ: ' + e.message);
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="ri-user-add-line"></i> Lưu nhân viên';
+        }
+    }
+}
+document.getElementById('admin-create-user-form')?.addEventListener('submit', handleCreateUserSubmit);
+
+
+// --- EDIT USER POPUP LOGIC ---
+function setEditDeferredMode(mode) {
+    const room = document.getElementById('admin-edit-pay-room');
+    const later = document.getElementById('admin-edit-pay-later');
+    const hidden = document.getElementById('admin-edit-deferred');
+    if (room) room.checked = mode === 'room_charge';
+    if (later) later.checked = mode === 'pay_later';
+    if (hidden) hidden.value = mode || 'none';
+}
+document.getElementById('admin-edit-pay-room')?.addEventListener('change', (event) => {
+    setEditDeferredMode(event.target.checked ? 'room_charge' : 'none');
+});
+document.getElementById('admin-edit-pay-later')?.addEventListener('change', (event) => {
+    setEditDeferredMode(event.target.checked ? 'pay_later' : 'none');
+});
+
+function updateEditRoleVisibility() {
+    const roleSelect = document.getElementById('admin-edit-role');
+    const role = roleSelect ? roleSelect.value : 'agent';
+    const isAgent = role === 'agent';
+    const saleLimitGroup = document.getElementById('admin-edit-sale-limit-group');
+    const deferredGroup = document.getElementById('admin-edit-deferred-group');
+    if (saleLimitGroup) saleLimitGroup.style.display = isAgent ? 'block' : 'none';
+    if (deferredGroup) deferredGroup.style.display = isAgent ? 'block' : 'none';
+}
+document.getElementById('admin-edit-role')?.addEventListener('change', updateEditRoleVisibility);
+
+function closeEditUserModal() {
+    document.getElementById('admin-edit-user-modal')?.classList.add('hide');
+}
+document.getElementById('admin-edit-close-top-btn')?.addEventListener('click', closeEditUserModal);
+document.getElementById('admin-edit-cancel-btn')?.addEventListener('click', closeEditUserModal);
+document.getElementById('admin-edit-user-modal')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeEditUserModal();
+});
+
+async function editAdminUser(id) {
+    const modal = document.getElementById('admin-edit-user-modal');
+    const form = document.getElementById('admin-edit-user-form');
+    if (!modal || !form) return;
+
+    try {
+        let u = (adminMgmtUsers || []).find(x => Number(x.id) === Number(id));
+        if (!u) {
+            const res = await authFetch(`${API_BASE}/api/admin/users`);
+            const users = await res.json();
+            if (Array.isArray(users)) {
+                adminMgmtUsers = users;
+                u = users.find(x => Number(x.id) === Number(id));
+            }
+        }
+        if (!u) { toastError('Không tìm thấy tài khoản nhân viên.'); return; }
+
+        form.reset();
+        pendingEditAvatarFile = null;
+
+        const idInput = document.getElementById('admin-edit-id');
+        if (idInput) idInput.value = u.id;
+
+        const emailInput = document.getElementById('admin-edit-email');
+        if (emailInput) {
+            emailInput.value = u.username || '';
+            emailInput.readOnly = true;
+        }
+
+        // Dự án select
+        const projSelect = document.getElementById('admin-edit-project');
+        if (projSelect) {
+            projSelect.innerHTML = '<option value="">— Tất cả dự án (toàn quyền) —</option>';
+            (PROJECTS || []).forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = `${p.name || p.id} (${p.id})`;
+                projSelect.appendChild(opt);
+            });
+            projSelect.value = u.project_id || '';
+            const projGroup = document.getElementById('admin-edit-project-group');
+            if (projGroup) {
+                projGroup.classList.toggle('hide', CURRENT_ADMIN?.role === 'project_admin');
+            }
+        }
+
+        // Vai trò
+        const roleSelect = document.getElementById('admin-edit-role');
+        if (roleSelect) {
+            roleSelect.value = u.role;
+            roleSelect.disabled = u.role === 'sale' || CURRENT_ADMIN?.role === 'project_admin';
+        }
+
+        // Dòng Thuộc Agent
+        const managerRow = document.getElementById('admin-edit-manager-row');
+        const managerValue = document.getElementById('admin-edit-manager-value');
+        if (managerRow && managerValue) {
+            if (u.role === 'sale') {
+                managerRow.classList.remove('hide');
+                managerValue.innerHTML = `<i class="ri-user-star-line"></i> ${escapeHtml(u.manager_name || u.manager_username || 'Chưa gán')}`;
+            } else {
+                managerRow.classList.add('hide');
+            }
+        }
+
+        // Hạn mức và thanh toán
+        const isAgent = u.role === 'agent';
+        const saleLimitGroup = document.getElementById('admin-edit-sale-limit-group');
+        const deferredGroup = document.getElementById('admin-edit-deferred-group');
+        if (saleLimitGroup) saleLimitGroup.style.display = isAgent ? 'block' : 'none';
+        if (deferredGroup) deferredGroup.style.display = isAgent ? 'block' : 'none';
+
+        const saleLimitInput = document.getElementById('admin-edit-sale-limit');
+        if (saleLimitInput) {
+            saleLimitInput.value = (u.sale_limit === null || u.sale_limit === undefined) ? '' : String(u.sale_limit);
+        }
+        setEditDeferredMode(u.deferred_payment_mode || (u.allow_room_charge ? 'room_charge' : 'none'));
+
+        // Trạng thái hoạt động
+        const activeCheckbox = document.getElementById('admin-edit-active');
+        if (activeCheckbox) activeCheckbox.checked = !!u.is_active;
+
+        // Tách loại hình và tên
+        await loadVenuePrefixes();
+        const parts = splitVenueName(u.full_name || '');
+        const venueType = document.getElementById('admin-edit-venue-type');
+        const fullname = document.getElementById('admin-edit-fullname');
+        if (venueType) venueType.value = parts.prefix.toLowerCase();
+        if (fullname) fullname.value = parts.name;
+        updateEditVenueNamePreview();
+
+        // Avatar
+        renderEditAvatarPreview(u.avatar_url || 'gradient-1', parts.name || u.username);
+
+        // Subtitle
+        const subtitle = document.getElementById('admin-edit-subtitle');
+        if (subtitle) {
+            subtitle.innerHTML = `Sửa thông tin: <strong style="color:var(--text-primary);">${escapeHtml(u.full_name || u.username)}</strong>`;
+        }
+
+        modal.classList.remove('hide');
+    } catch(e) {
+        console.error('Error in editAdminUser:', e);
+        toastError('Lỗi hiển thị thông tin: ' + e.message);
+    }
+}
+
+async function handleEditUserSubmit(e) {
+    e.preventDefault();
+    const id = document.getElementById('admin-edit-id')?.value;
+    if (!id) return;
+
+    const isProjectAdmin = CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin';
+    const effectiveRole = isProjectAdmin ? 'agent' : (document.getElementById('admin-edit-role')?.value || 'agent');
+    const effectiveProject = isProjectAdmin
+        ? CURRENT_ADMIN.project_id
+        : CURRENT_ADMIN?.role === 'superadmin'
+        ? (getAdminMgmtProjectId() || null)
+        : (document.getElementById('admin-edit-project')?.value.trim() || null);
+
+    const payload = {
+        email: document.getElementById('admin-edit-email')?.value.trim(),
+        full_name: document.getElementById('admin-edit-fullname')?.value.trim(),
+        role: effectiveRole,
+        avatar_url: document.getElementById('admin-edit-avatar')?.value || 'gradient-1',
+        project_id: effectiveProject,
+        is_active: !!document.getElementById('admin-edit-active')?.checked
+    };
+
+    if (effectiveRole === 'agent') {
+        payload.sale_limit = (document.getElementById('admin-edit-sale-limit')?.value ?? '').trim();
+        payload.deferred_payment_mode = document.getElementById('admin-edit-deferred')?.value || 'none';
+    }
+
+    const type = (document.getElementById('admin-edit-venue-type')?.value || '').trim();
+    const bare = (document.getElementById('admin-edit-fullname')?.value || '').trim();
+    if (type && bare) {
+        payload.full_name = `${titleCaseVi(type)} ${bare}`;
+    }
+
+    const submitBtn = document.getElementById('admin-edit-submit-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang cập nhật...';
+    }
+
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/users/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok) {
+            if (pendingEditAvatarFile && id) {
+                try {
+                    await uploadAdminAvatar(id, pendingEditAvatarFile);
+                } catch (error) {
+                    showToast(`Đã cập nhật nhân viên nhưng chưa tải được ảnh: ${error.message}`, 'error');
+                }
+                pendingEditAvatarFile = null;
+            }
+            closeEditUserModal();
+            await loadAdminUsers();
+            toastSuccess('Đã cập nhật tài khoản nhân viên thành công.');
+        } else {
+            toastError(data.error || 'Không thể cập nhật nhân viên.');
+        }
+    } catch(e) {
+        toastError('Lỗi kết nối máy chủ: ' + e.message);
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="ri-save-line"></i> Cập nhật';
+        }
+    }
+}
+document.getElementById('admin-edit-user-form')?.addEventListener('submit', handleEditUserSubmit);
+
+// Hàm tương thích ngược nếu có lời gọi từ bên ngoài
+function resetAdminForm() {
+    closeCreateUserModal();
+    closeEditUserModal();
+}
+function setDeferredMode(mode) {
+    setCreateDeferredMode(mode);
+    setEditDeferredMode(mode);
+}
+function handleAdminUserSubmit(e) {
+    handleCreateUserSubmit(e);
+}
 
 async function deleteAdminUser(id) {
     if (!await pastieConfirm('Bạn có chắc chắn muốn xóa tài khoản nhân viên này?')) return;
@@ -1027,92 +1332,6 @@ async function deleteAdminUser(id) {
     } catch(e) { toastError('Lỗi kết nối máy chủ.'); }
 }
 
-
-async function handleAdminUserSubmit(e) {
-    e.preventDefault();
-    const id = adminFormId ? adminFormId.value : '';
-    
-    const isProjectAdmin = CURRENT_ADMIN && CURRENT_ADMIN.role === 'project_admin';
-    const effectiveRole = isProjectAdmin ? 'agent' : (adminFormRole?.value || 'agent');
-    const effectiveProject = isProjectAdmin
-        ? CURRENT_ADMIN.project_id
-        : CURRENT_ADMIN?.role === 'superadmin'
-        ? (getAdminMgmtProjectId() || null)
-        : (adminFormProject?.value.trim() || null);
-
-    const payload = {
-        email: adminFormEmail?.value.trim(),
-        full_name: adminFormFullname?.value.trim(),
-        role: effectiveRole,
-        avatar_url: adminFormAvatar?.value || 'gradient-1',
-        project_id: effectiveProject,
-        is_active: adminFormActive ? adminFormActive.checked : true
-    };
-
-    // Hạn mức Sale chỉ có nghĩa với role 'agent'. Backend đã nhận trường sale_limit
-    // từ trước nhưng form này chưa bao giờ gửi lên, nên ô nhập trông như lưu được
-    // mà thực ra giá trị bị bỏ rơi ngay tại trình duyệt.
-    //
-    // Ô để trống -> gửi chuỗi rỗng, backend hiểu là KHÔNG giới hạn (NULL).
-    // Nhập 0     -> Agent không được tạo Sale nào. Hai ý nghĩa này khác nhau nên
-    //               không được gộp thành cùng một giá trị.
-    if (effectiveRole === 'agent') {
-        payload.sale_limit = (adminFormSaleLimit?.value ?? '').trim();
-        const adminFormDeferred = document.getElementById('admin-form-deferred');
-        payload.deferred_payment_mode = adminFormDeferred?.value || 'none';
-    }
-
-    // Ghép LOẠI HÌNH + TÊN RIÊNG thành full_name. Máy chủ vẫn lưu một chuỗi như
-    // trước và splitVenueName tách lại đúng chỗ mình vừa ghép — không phải đoán.
-    {
-        const type = (document.getElementById('admin-form-venue-type')?.value || '').trim();
-        const bare = (adminFormFullname?.value || '').trim();
-        if (type && bare) {
-            payload.full_name = `${titleCaseVi(type)} ${bare}`;
-        }
-    }
-    try {
-        const url = id ? `${API_BASE}/api/admin/users/${id}` : `${API_BASE}/api/admin/users`;
-        const method = id ? 'PUT' : 'POST';
-        const res = await authFetch(url, {
-            method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (res.ok) {
-            // Tải ảnh SAU khi lưu: tài khoản mới tới đây mới có id để gắn ảnh vào.
-            // Ảnh hỏng thì tài khoản vẫn đã lưu — báo riêng, đừng nuốt im lặng.
-            const savedId = id || data?.user?.id || data?.id;
-            if (pendingAvatarFile && savedId) {
-                try {
-                    await uploadAdminAvatar(savedId, pendingAvatarFile);
-                } catch (error) {
-                    showToast(`Đã lưu nhân viên nhưng chưa tải được ảnh: ${error.message}`, 'error');
-                }
-                pendingAvatarFile = null;
-            }
-            resetAdminForm();
-            await loadAdminUsers(); 
-            if (!id && data.qr?.chat_url) {
-                // Link QR cần đọc và sao chép được nên dùng hộp thoại có nút, không
-                // dùng toast tự tắt sau vài giây.
-                const copy = await pastieConfirm(
-                    `Khách quét mã này sẽ được chuyển tới Agent vừa tạo.\n\n${data.qr.chat_url}`,
-                    { title: 'Đã tạo Agent và mã QR', confirmText: 'Sao chép link', cancelText: 'Để sau' }
-                );
-                if (copy) {
-                    try { await navigator.clipboard.writeText(data.qr.chat_url); toastSuccess('Đã sao chép link QR.'); }
-                    catch { toastError('Trình duyệt không cho sao chép. Hãy chọn và copy thủ công.'); }
-                }
-            } else {
-                toastSuccess(id ? 'Đã cập nhật tài khoản.' : 'Đã tạo tài khoản nhân viên.');
-            }
-        } else { 
-            toastError(data.error || 'Không thể lưu.'); 
-        }
-    } catch(e) { toastError('Lỗi kết nối máy chủ: ' + e.message); }
-}
 
 
 function openReportModal() {
