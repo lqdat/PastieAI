@@ -13268,8 +13268,18 @@ app.post('/api/admin/tickets', checkAdminAuth, async (req, res) => {
   const sessionId = String(req.body?.sessionId || '');
   const parsed = parseInternalSessionId(sessionId);
 
-  // Cửa hẹp duy nhất: phải là cuộc Agent ↔ Kỹ thuật, và người tạo phải là một
-  // trong hai người đó. Superadmin không lọt qua đây vì không thuộc cuộc nào.
+  // Superadmin CHỈ XEM ticket, không tạo — đúng như quyenTrenTicket quy định.
+  //
+  // Phải chặn tường minh ở đây. Trước kia câu "Superadmin không lọt qua vì không
+  // thuộc cuộc nào" là đúng, nhưng chỉ đúng NHỜ một chuyện không liên quan:
+  // internalChatPeerFor không nhận vai superadmin. Khi thêm vai đó vào để Admin
+  // tổng chat được với Kỹ thuật, cửa này mở ra theo mà không ai nhận ra — đo được
+  // là Admin tổng tạo ticket thành công (HTTP 201). Một quy tắc dựa vào tác dụng
+  // phụ của hàm khác thì sớm muộn cũng gãy như vậy.
+  if (isSuperAdmin(current)) {
+    return res.status(403).json({ error: 'Admin tổng chỉ xem ticket, không tạo. Ticket do Agent hoặc Kỹ thuật tạo trong đoạn chat của họ.' });
+  }
+  // Cửa hẹp: phải là cuộc Agent ↔ Kỹ thuật, và người tạo phải là một trong hai.
   if (!parsed || parsed.kind !== 'technical') {
     return res.status(400).json({ error: 'Ticket chỉ được tạo từ đoạn chat giữa Agent và Kỹ thuật.' });
   }

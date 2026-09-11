@@ -55,56 +55,70 @@
         const style = document.createElement('style');
         style.id = 'ticket-console-style';
         style.textContent = `
-        .ticket-bar{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border-color,rgba(148,163,184,.18));background:rgba(99,102,241,.06);flex-wrap:wrap}
+        /* MÀU THEO ĐÚNG HỆ THỐNG PASTIE (hồng #ef2b9d trên nền sáng).
+           Bản trước viết theo giao diện tối: nó tham chiếu --bg-card và
+           --border-color, mà hai biến đó KHÔNG TỒN TẠI trong admin.css, nên
+           trình duyệt lấy giá trị dự phòng #0f172a — panel thành nền xanh đen
+           trong khi chữ vẫn là chữ tối của nền sáng, đọc không ra. Ở đây chỉ
+           dùng biến CÓ THẬT trong :root, và mỗi chỗ dự phòng đều là màu sáng. */
+        .ticket-bar{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--panel-border,rgba(84,62,100,.09));background:var(--surface-tint,rgba(239,43,157,.035));flex-wrap:wrap}
         .ticket-bar.hide{display:none}
-        .ticket-bar-label{font-size:12px;font-weight:700;color:#818cf8;display:inline-flex;align-items:center;gap:5px}
-        .ticket-btn{min-height:34px;padding:0 12px;border-radius:999px;border:1px solid rgba(99,102,241,.35);background:rgba(99,102,241,.1);color:#818cf8;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-        .ticket-btn:hover{background:rgba(99,102,241,.2)}
-        .ticket-btn.primary{background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;border-color:transparent}
+        .ticket-bar-label{font-size:12px;font-weight:700;color:var(--accent-color,#ef2b9d);display:inline-flex;align-items:center;gap:5px}
+        .ticket-btn{min-height:34px;padding:0 12px;border-radius:999px;border:1px solid var(--glass-border,rgba(239,43,157,.13));background:var(--surface-tint-strong,rgba(239,43,157,.08));color:var(--accent-color,#ef2b9d);font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+        .ticket-btn:hover{background:var(--accent-soft,#fdf1f8);border-color:var(--accent-color,#ef2b9d)}
+        .ticket-btn.primary{background:var(--primary-gradient,linear-gradient(135deg,#ef2b9d 0%,#db2777 100%));color:#fff;border-color:transparent}
+        .ticket-btn.primary:hover{filter:brightness(1.05)}
         .ticket-btn[disabled]{opacity:.5;cursor:not-allowed}
-        .ticket-float{position:fixed;right:22px;bottom:22px;z-index:900;box-shadow:0 12px 28px rgba(99,102,241,.35)}
+        .ticket-float{position:fixed;right:22px;bottom:22px;z-index:900;box-shadow:0 12px 28px var(--accent-glow,rgba(239,43,157,.24))}
         .ticket-float.hide{display:none}
         .ticket-panel{position:fixed;inset:0;z-index:1200;display:none}
         .ticket-panel.is-open{display:block}
-        .ticket-panel-mask{position:absolute;inset:0;background:rgba(2,6,23,.55)}
-        .ticket-panel-body{position:absolute;top:0;right:0;height:100%;width:min(460px,100%);background:var(--bg-card,#0f172a);border-left:1px solid var(--border-color,rgba(148,163,184,.18));display:flex;flex-direction:column;box-shadow:-18px 0 40px rgba(2,6,23,.4)}
-        .ticket-panel-head{padding:14px 16px;border-bottom:1px solid var(--border-color,rgba(148,163,184,.18));display:flex;align-items:center;justify-content:space-between;gap:10px}
-        .ticket-panel-head h3{margin:0;font-size:15px;font-weight:700}
-        .ticket-close{width:34px;height:34px;border-radius:10px;border:none;background:rgba(148,163,184,.14);color:inherit;cursor:pointer;font-size:16px}
-        .ticket-filters{display:flex;gap:6px;padding:10px 16px;flex-wrap:wrap;border-bottom:1px solid var(--border-color,rgba(148,163,184,.14))}
-        .ticket-chip{min-height:32px;padding:0 12px;border-radius:999px;border:1px solid rgba(148,163,184,.28);background:transparent;color:inherit;font-size:12px;font-weight:600;cursor:pointer}
-        .ticket-chip.is-active{background:rgba(99,102,241,.2);border-color:rgba(99,102,241,.5);color:#a5b4fc}
+        .ticket-panel-mask{position:absolute;inset:0;background:rgba(45,26,48,.38)}
+        .ticket-panel-body{position:absolute;top:0;right:0;height:100%;width:min(460px,100%);background:#fff;color:var(--text-primary,#1e1b2e);border-left:1px solid var(--panel-border,rgba(84,62,100,.09));display:flex;flex-direction:column;box-shadow:-18px 0 40px rgba(45,26,48,.16)}
+        .ticket-panel-head{padding:14px 16px;border-bottom:1px solid var(--panel-border,rgba(84,62,100,.09));display:flex;align-items:center;justify-content:space-between;gap:10px}
+        .ticket-panel-head h3{margin:0;font-size:15px;font-weight:800;color:var(--text-heading,#140d1f)}
+        .ticket-close{width:34px;height:34px;border-radius:10px;border:none;background:var(--surface-neutral,rgba(84,62,100,.04));color:var(--text-secondary,#5f546b);cursor:pointer;font-size:16px}
+        .ticket-close:hover{background:var(--accent-soft,#fdf1f8);color:var(--accent-color,#ef2b9d)}
+        .ticket-filters{display:flex;gap:6px;padding:10px 16px;flex-wrap:wrap;border-bottom:1px solid var(--panel-border,rgba(84,62,100,.09))}
+        .ticket-chip{min-height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--panel-border,rgba(84,62,100,.12));background:#fff;color:var(--text-secondary,#5f546b);font-size:12px;font-weight:600;cursor:pointer}
+        .ticket-chip:hover{border-color:var(--accent-color,#ef2b9d);color:var(--accent-color,#ef2b9d)}
+        .ticket-chip.is-active{background:var(--accent-soft,#fdf1f8);border-color:var(--accent-color,#ef2b9d);color:var(--accent-color-dark,#be185d)}
         .ticket-search{margin:10px 16px 0;display:flex;gap:8px}
-        .ticket-search input{flex:1;min-height:38px;padding:0 12px;border-radius:10px;border:1px solid var(--border-color,rgba(148,163,184,.25));background:rgba(148,163,184,.08);color:inherit;font-size:13px}
+        .ticket-search input{flex:1;min-height:38px;padding:0 12px;border-radius:10px;border:1px solid var(--panel-border,rgba(84,62,100,.12));background:#fff;color:var(--text-primary,#1e1b2e);font-size:13px}
+        .ticket-search input::placeholder{color:var(--text-muted,#94869c)}
+        .ticket-search input:focus{outline:none;border-color:var(--accent-color,#ef2b9d);box-shadow:0 0 0 3px var(--accent-subtle,rgba(239,43,157,.05))}
         .ticket-list{flex:1;overflow-y:auto;padding:12px 16px 18px;display:flex;flex-direction:column;gap:10px}
-        .ticket-card{padding:12px;border-radius:14px;border:1px solid var(--border-color,rgba(148,163,184,.2));background:rgba(148,163,184,.06);cursor:pointer}
-        .ticket-card:hover{border-color:rgba(99,102,241,.5)}
+        .ticket-card{padding:12px;border-radius:14px;border:1px solid var(--panel-border,rgba(84,62,100,.09));background:#fff;box-shadow:var(--shadow-xs,0 1px 2px rgba(45,26,48,.04));cursor:pointer}
+        .ticket-card:hover{border-color:var(--accent-color,#ef2b9d);background:var(--panel-hover,rgba(239,43,157,.045))}
         .ticket-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
-        .ticket-code{font-family:ui-monospace,Menlo,monospace;font-size:12px;font-weight:700;color:#a5b4fc}
+        .ticket-code{font-family:ui-monospace,Menlo,monospace;font-size:12px;font-weight:700;color:var(--accent-color-dark,#be185d)}
         .ticket-status{font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
-        .ticket-status.moi{background:rgba(239,68,68,.16);color:#fca5a5}
-        .ticket-status.dang_xu_ly{background:rgba(59,130,246,.16);color:#93c5fd}
-        .ticket-status.cho_agent{background:rgba(245,158,11,.16);color:#fcd34d}
-        .ticket-status.da_giai_quyet{background:rgba(34,197,94,.16);color:#86efac}
-        .ticket-status.da_dong{background:rgba(148,163,184,.16);color:#cbd5e1}
-        .ticket-subject{font-size:13.5px;font-weight:600;line-height:1.4}
-        .ticket-meta{margin-top:6px;font-size:11.5px;color:var(--text-muted,#94a3b8);display:flex;gap:10px;flex-wrap:wrap}
+        /* Nền nhạt + chữ đậm: trên nền sáng phải đảo lại so với bản cũ, bản cũ
+           dùng chữ nhạt (#fca5a5) vốn chỉ đọc được trên nền tối. */
+        .ticket-status.moi{background:var(--danger-soft,#fff1f2);color:#be123c}
+        .ticket-status.dang_xu_ly{background:var(--info-soft,#eef2ff);color:#4338ca}
+        .ticket-status.cho_agent{background:var(--warning-soft,#fffbeb);color:#b45309}
+        .ticket-status.da_giai_quyet{background:var(--success-soft,#ecfdf5);color:#047857}
+        .ticket-status.da_dong{background:var(--surface-neutral,rgba(84,62,100,.04));color:var(--text-secondary,#5f546b)}
+        .ticket-subject{font-size:13.5px;font-weight:600;line-height:1.4;color:var(--text-primary,#1e1b2e)}
+        .ticket-meta{margin-top:6px;font-size:11.5px;color:var(--text-muted,#94869c);display:flex;gap:10px;flex-wrap:wrap}
         .ticket-form{padding:14px 16px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
-        .ticket-form label{font-size:12px;font-weight:600;color:var(--text-muted,#94a3b8)}
-        .ticket-form input,.ticket-form textarea,.ticket-form select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border-color,rgba(148,163,184,.25));background:rgba(148,163,184,.08);color:inherit;font-size:13px;font-family:inherit}
+        .ticket-form label{font-size:12px;font-weight:700;color:var(--text-secondary,#5f546b)}
+        .ticket-form input,.ticket-form textarea,.ticket-form select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--panel-border,rgba(84,62,100,.12));background:#fff;color:var(--text-primary,#1e1b2e);font-size:13px;font-family:inherit}
+        .ticket-form input:focus,.ticket-form textarea:focus,.ticket-form select:focus{outline:none;border-color:var(--accent-color,#ef2b9d);box-shadow:0 0 0 3px var(--accent-subtle,rgba(239,43,157,.05))}
         .ticket-form textarea{min-height:96px;resize:vertical}
         .ticket-form-row{display:flex;gap:10px}
         .ticket-form-row>div{flex:1}
         .ticket-detail{padding:14px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
         .ticket-detail-actions{display:flex;gap:8px;flex-wrap:wrap}
         .ticket-history{display:flex;flex-direction:column;gap:8px}
-        .ticket-history-row{font-size:12px;padding:9px 11px;border-radius:10px;background:rgba(148,163,184,.07);border-left:2px solid rgba(99,102,241,.5)}
-        .ticket-history-row .who{font-weight:700}
-        .ticket-history-row .when{color:var(--text-muted,#94a3b8);font-size:11px}
-        .ticket-empty{padding:26px 10px;text-align:center;color:var(--text-muted,#94a3b8);font-size:13px}
-        .ticket-msg-btn{border:none;background:transparent;color:#818cf8;cursor:pointer;font-size:12px;padding:2px 6px;border-radius:8px;display:inline-flex;align-items:center;gap:4px}
-        .ticket-msg-btn:hover{background:rgba(99,102,241,.14)}
-        .ticket-note{font-size:12px;color:var(--text-muted,#94a3b8);line-height:1.5}
+        .ticket-history-row{font-size:12px;padding:9px 11px;border-radius:10px;background:var(--surface-tint,rgba(239,43,157,.035));border-left:2px solid var(--accent-color,#ef2b9d);color:var(--text-secondary,#5f546b)}
+        .ticket-history-row .who{font-weight:700;color:var(--text-primary,#1e1b2e)}
+        .ticket-history-row .when{color:var(--text-muted,#94869c);font-size:11px}
+        .ticket-empty{padding:26px 10px;text-align:center;color:var(--text-muted,#94869c);font-size:13px}
+        .ticket-msg-btn{border:none;background:transparent;color:var(--accent-color,#ef2b9d);cursor:pointer;font-size:12px;padding:2px 6px;border-radius:8px;display:inline-flex;align-items:center;gap:4px}
+        .ticket-msg-btn:hover{background:var(--accent-soft,#fdf1f8)}
+        .ticket-note{font-size:12px;color:var(--text-muted,#94869c);line-height:1.5}
         @media (max-width:520px){.ticket-panel-body{width:100%}}
         `;
         document.head.appendChild(style);
@@ -282,7 +296,7 @@
                 <input id="tk-search" placeholder="Tìm theo mã ticket, ví dụ PT-260910-000001" value="${thoat(tuKhoa)}">
                 <button type="button" class="ticket-btn" id="tk-search-btn"><i class="ri-search-line"></i></button>
             </div>
-            ${doanChatHienTai ? '<div class="ticket-search"><button type="button" class="ticket-btn primary" id="tk-new" style="flex:1"><i class="ri-add-line"></i> Tạo ticket mới</button></div>' : ''}
+            ${doanChatHienTai && !laSuper() ? '<div class="ticket-search"><button type="button" class="ticket-btn primary" id="tk-new" style="flex:1"><i class="ri-add-line"></i> Tạo ticket mới</button></div>' : ''}
             <div class="ticket-list" id="tk-list"><div class="ticket-empty">Đang tải…</div></div>`;
 
         o.querySelectorAll('[data-loc]').forEach((b) => b.addEventListener('click', () => {
@@ -378,7 +392,7 @@
             ${quyen.chiXem ? '<p class="ticket-note"><i class="ri-eye-line"></i> Bạn đang xem với quyền theo dõi. Việc xử lý thuộc về Kỹ thuật và Agent.</p>' : ''}
             ${nutTrangThai.length ? `
               <div><label class="ticket-note" for="tk-note">Ghi chú kèm theo (không bắt buộc)</label>
-              <input id="tk-note" class="ticket-form" style="width:100%;padding:9px 11px;border-radius:10px;border:1px solid rgba(148,163,184,.25);background:rgba(148,163,184,.08);color:inherit;font-size:13px" placeholder="Ví dụ: đã thay driver máy in"></div>
+              <input id="tk-note" class="ticket-form" placeholder="Ví dụ: đã thay driver máy in"></div>
               <div class="ticket-detail-actions">
                 ${nutTrangThai.map(([k, nhan, kieu]) => `<button type="button" class="ticket-btn ${kieu}" data-hanh-dong="${k}">${nhan}</button>`).join('')}
               </div>` : ''}
