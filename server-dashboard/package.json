@@ -16,7 +16,8 @@
     "cleanup:project": "node scripts/cleanup-device-data.js --project",
     "cleanup:admin": "node scripts/cleanup-device-data.js --admin",
     "capacity": "node scripts/online-capacity.js",
-    "upload:guide-s3": "node scripts/upload-guide-to-s3.js"
+    "upload:guide-s3": "node scripts/upload-guide-to-s3.js",
+    "test:email": "node test-send-emails.js"
   },
   "keywords": [
     "chat",

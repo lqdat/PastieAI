@@ -389,14 +389,14 @@ function updateAdminFormRoleVisibility() {
 
     if (isQrProject) {
         if (adminFormRole) {
-            adminFormRole.innerHTML = '<option value="agent">Agent (Tư vấn viên trực chat / Quản lý Sale)</option>';
+            adminFormRole.innerHTML = '<option value="agent">Quản lý cơ sở</option>';
             adminFormRole.value = 'agent';
         }
     } else if (CURRENT_ADMIN?.role === 'superadmin') {
         const prevRole = adminFormRole ? adminFormRole.value : 'agent';
         if (adminFormRole) {
             adminFormRole.innerHTML = `
-                <option value="agent">Agent (Tư vấn viên trực chat / Quản lý Sale)</option>
+                <option value="agent">Quản lý cơ sở</option>
                 <option value="project_admin">Project Admin (Quản trị dự án)</option>
                 <option value="superadmin">Hỗ trợ kỹ thuật</option>
             `;
@@ -679,7 +679,7 @@ function openAdminMgmt() {
         if (projectMgmtBox) projectMgmtBox.classList.add('hide');
         if (projectFormGroup) projectFormGroup.classList.add('hide');
         if (roleSelect) {
-            roleSelect.innerHTML = '<option value="agent">Agent (Tư vấn viên trực chat / Quản lý Sale)</option>';
+            roleSelect.innerHTML = '<option value="agent">Quản lý cơ sở</option>';
             roleSelect.value = 'agent';
             roleSelect.disabled = true;
         }
@@ -804,15 +804,15 @@ async function loadAdminUsers() {
             let extraBadges = '';
 
             if (u.role === 'agent') {
-                roleLabel = 'Admin Agent';
+                roleLabel = 'Quản lý cơ sở';
                 roleClass = 'agent';
                 const limitStr = u.sale_limit ? `${u.used_sales_count || 0}/${u.sale_limit} Sale` : `${u.used_sales_count || 0} Sale (Không giới hạn)`;
                 extraBadges = `<span class="admin-user-meta-badge is-license"><i class="ri-team-line"></i> Cấp phép: <strong>${limitStr}</strong></span>`;
             } else if (u.role === 'sale') {
-                roleLabel = 'Sale';
+                roleLabel = 'Chuyên viên tư vấn';
                 roleClass = 'sale';
                 const managerText = u.manager_name || u.manager_username || 'Chưa gán';
-                extraBadges = `<span class="admin-user-meta-badge is-manager"><i class="ri-user-star-line"></i> Thuộc Agent: <strong>${escapeHtml(managerText)}</strong></span>`;
+                extraBadges = `<span class="admin-user-meta-badge is-manager"><i class="ri-user-star-line"></i> Quản lý bởi: <strong>${escapeHtml(managerText)}</strong></span>`;
             } else if (u.role === 'superadmin') {
                 roleLabel = 'Hỗ trợ kỹ thuật';
                 roleClass = 'superadmin';

@@ -1556,6 +1556,24 @@ document.querySelectorAll('#agent-guide-modal .guide-tab-btn').forEach(btn => {
     });
 });
 
+// Cho phép bấm vào bất kỳ ảnh/video nào trong sổ tay để mở kích thước đầy đủ trong tab mới
+document.querySelectorAll('#agent-guide-modal .agent-guide-body img').forEach(img => {
+    img.style.cursor = 'zoom-in';
+    img.title = 'Bấm để mở xem ảnh/video kích thước lớn';
+    img.addEventListener('click', () => {
+        if (img.src) window.open(img.src, '_blank');
+    });
+});
+
+try {
+    const guideUrlParams = new URLSearchParams(window.location.search);
+    if (guideUrlParams.has('guide') || window.location.hash === '#guide') {
+        const guideTab = guideUrlParams.get('guide');
+        const tabKey = (guideTab && guideTab !== '1' && guideTab !== 'true') ? guideTab : 'video';
+        setTimeout(() => openAgentGuideModal(tabKey), 300);
+    }
+} catch (_) {}
+
 if (adminMgmtCloseTopBtn) adminMgmtCloseTopBtn.addEventListener('click', closeAdminMgmt);
 
 if (adminMgmtCloseBtn) adminMgmtCloseBtn.addEventListener('click', closeAdminMgmt);

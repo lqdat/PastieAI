@@ -11,11 +11,18 @@ if (apiKey) {
   console.error('WARNING: RESEND_API_KEY is not defined. OTP emails cannot be sent.');
 }
 
+// URL gốc phục vụ ảnh logo và liên kết
+const DEFAULT_BASE_URL = 'https://app.pastiechat.com';
+
+function getBaseUrl() {
+  return (process.env.FRONTEND_URL || DEFAULT_BASE_URL).replace(/\/$/, '');
+}
+
 /**
- * Sends a 6-digit OTP code to a visitor's email.
+ * Sends a 6-digit OTP code to a visitor's email for Chat Verification.
  * @param {string} toEmail The recipient's email address.
  * @param {string} otpCode The 6-digit verification code.
- * @returns {Promise<boolean>} True if successful, false otherwise.
+ * @returns {Promise<{ok: boolean, reason?: string}>}
  */
 async function sendOTPEmail(toEmail, otpCode) {
   if (!resendClient) {
@@ -25,27 +32,73 @@ async function sendOTPEmail(toEmail, otpCode) {
   }
 
   const sender = process.env.SENDER_EMAIL || 'onboarding@resend.dev';
+  const baseUrl = getBaseUrl();
+  const logoUrl = `${baseUrl}/logoApp.png`;
 
   try {
     const data = await resendClient.emails.send({
-      from: `Pastie Support <${sender}>`,
+      from: `Pastie Chat <${sender}>`,
       to: [toEmail],
-      subject: `[OTP] Mã xác thực: ${otpCode}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #ffffff;">
-          <h2 style="color: #4f46e5; text-align: center;">Xác Thực Tài Khoản Pastie</h2>
-          <p>Chào bạn,</p>
-          <p>Vui lòng nhập mã OTP dưới đây vào khung chat để xác thực email và bắt đầu hỗ trợ:</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #1e1b4b; background-color: #f3f4f6; padding: 12px 24px; border-radius: 8px; border: 1px solid #d1d5db;">
-              ${otpCode}
-            </span>
-          </div>
-          <p style="color: #6b7280; font-size: 14px;">Mã có hiệu lực trong <b>5 phút</b>.</p>
-          <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-          <p style="text-align: center; font-size: 12px; color: #9ca3af;">&copy; ${new Date().getFullYear()} Pastie Support</p>
-        </div>
-      `
+      subject: `[Mã OTP] ${otpCode} - Thông báo mã xác thực Pastie Chat biz`,
+      html: `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pastie Chat</title></head><body style="margin:0;padding:0;background-color:#eef0f3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased">
+<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="width:100%;background-color:#eef0f3;margin:0;padding:24px 10px;border-collapse:collapse">
+  <tr>
+    <td align="center" style="padding:0">
+      <!-- MAIN CARD CONTAINER -->
+      <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e7e8ee;border-radius:14px;border-collapse:separate;overflow:hidden;text-align:left">
+        <tr>
+          <td style="height:5px;background:linear-gradient(90deg,#F438A1,#C90C6C);font-size:0;line-height:0;margin:0;padding:0" height="5">&nbsp;</td>
+        </tr>
+        <tr>
+          <td style="padding:26px 30px 0;background-color:#ffffff">
+            <img src="${logoUrl}" alt="Pastie Chat" height="42" style="height:42px;width:auto;display:block;border:0" />
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 30px 6px;background-color:#ffffff">
+            <h1 style="margin:0;font-size:21px;line-height:1.35;color:#16161f;font-weight:800;text-transform:uppercase">Thông báo mã đăng nhập<br>Pastie Chat biz</h1>
+            <p style="margin:10px 0 0;color:#9a9aa6;font-size:12px;font-style:italic">* Vui lòng không phản hồi email này. Đây là email được gửi tự động từ hệ thống của Pastie Chat.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:14px 30px 6px;background-color:#ffffff;color:#3a3a48;font-size:15px;line-height:1.7">
+            <p style="margin:0 0 12px">Xin chào Quý khách,</p>
+            <p style="margin:0">Pastie Chat cảm ơn Quý khách đã sử dụng dịch vụ. Mã đăng nhập một lần (OTP) của Quý khách như sau:</p>
+            
+            <div style="text-align:center;background:#faf7f8;border:1px solid #f1dfe9;border-radius:12px;padding:24px;margin:20px 0">
+              <div style="font-size:12px;letter-spacing:2px;color:#8a8a96;font-weight:700;text-transform:uppercase">Mã đăng nhập (OTP)</div>
+              <div style="font-size:34px;font-weight:800;letter-spacing:8px;color:#C90C6C;margin-top:10px">${otpCode}</div>
+            </div>
+            
+            <p style="margin:0">Mã có hiệu lực trong <b>5 phút</b> và chỉ sử dụng được một lần.</p>
+            <p style="margin:12px 0 0;color:#8a8a96;font-size:13px">Nếu cần thêm sự hỗ trợ, quý khách vui lòng liên hệ theo thông tin bên dưới.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 30px 22px;background-color:#ffffff;color:#3a3a48;font-size:15px;line-height:1.7">
+            <p style="margin:0 0 2px">Trân trọng,</p>
+            <p style="margin:0;font-weight:700;color:#C90C6C">Pastie Chat</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 30px;background-color:#ffffff">
+            <div style="border-top:1px solid #ececf0;height:1px;line-height:1px;font-size:1px">&nbsp;</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:18px 30px 26px;background-color:#ffffff;color:#9a9aa6;font-size:12px;line-height:1.9">
+            <div><b style="color:#7c7c8a">Hotline:</b> 0984 448 834</div>
+            <div><b style="color:#7c7c8a">Email:</b> <a href="mailto:ai@pastie.vn" style="color:#C90C6C;text-decoration:none">ai@pastie.vn</a></div>
+            <div><b style="color:#7c7c8a">Website:</b> <a href="${baseUrl}" style="color:#C90C6C;text-decoration:none">app.pastiechat.com</a></div>
+            <div style="margin-top:10px;color:#b6b6c0">© 2026 Pastie Chat — Nền tảng tư vấn &amp; CSKH đa kênh thông minh.</div>
+          </td>
+        </tr>
+      </table>
+      <!-- END MAIN CARD CONTAINER -->
+    </td>
+  </tr>
+</table>
+</body></html>`
     });
 
     if (data.error) {
@@ -74,30 +127,76 @@ async function sendAdminOTPEmail(toEmail, otpCode, recipientName = 'Quản trị
   }
 
   const sender = process.env.SENDER_EMAIL || 'onboarding@resend.dev';
+  const baseUrl = getBaseUrl();
+  const logoUrl = `${baseUrl}/logoApp.png`;
 
   try {
     const data = await resendClient.emails.send({
-      from: `Pastie AI Console <${sender}>`,
+      from: `Pastie Chat <${sender}>`,
       to: [toEmail],
-      subject: `[Mã Đăng Nhập] OTP: ${otpCode} - Pastie AI Console`,
-      html: `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 28px 24px; border: 1px solid rgba(0,0,0,0.08); border-radius: 16px; background-color: #ffffff; color: #1e293b;">
-          <div style="text-align: center; margin-bottom: 20px;">
-            <h2 style="color: #ec4899; margin: 0 0 6px 0; font-size: 22px; font-weight: 700;">Pastie AI Console</h2>
-            <p style="color: #64748b; font-size: 13px; margin: 0;">Mã xác thực đăng nhập quản trị viên / nhân viên</p>
-          </div>
-          <p style="font-size: 14px; line-height: 1.5; color: #334155;">Chào <b>${recipientName}</b>,</p>
-          <p style="font-size: 14px; line-height: 1.5; color: #334155;">Hệ thống nhận được yêu cầu đăng nhập vào Dashboard quản trị. Vui lòng sử dụng mã OTP dưới đây để hoàn tất:</p>
-          <div style="text-align: center; margin: 26px 0;">
-            <span style="font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #0f172a; background: #fdf2f8; padding: 14px 28px; border-radius: 12px; border: 1px solid #fbcfe8; display: inline-block;">
-              ${otpCode}
-            </span>
-          </div>
-          <p style="color: #64748b; font-size: 13px; text-align: center; margin: 0 0 16px 0;">Mã xác thực có hiệu lực trong vòng <b>5 phút</b>. Vui lòng không chia sẻ mã này cho bất kỳ ai.</p>
-          <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 20px 0;">
-          <p style="text-align: center; font-size: 11.5px; color: #94a3b8; margin: 0;">&copy; ${new Date().getFullYear()} Pastie AI Console &bull; DealPhuQuoc Integration</p>
-        </div>
-      `
+      subject: `[Mã Đăng Nhập] OTP: ${otpCode} - Pastie Chat biz`,
+      html: `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pastie Chat</title></head><body style="margin:0;padding:0;background-color:#eef0f3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased">
+<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="width:100%;background-color:#eef0f3;margin:0;padding:24px 10px;border-collapse:collapse">
+  <tr>
+    <td align="center" style="padding:0">
+      <!-- MAIN CARD CONTAINER -->
+      <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e7e8ee;border-radius:14px;border-collapse:separate;overflow:hidden;text-align:left">
+        <tr>
+          <td style="height:5px;background:linear-gradient(90deg,#F438A1,#C90C6C);font-size:0;line-height:0;margin:0;padding:0" height="5">&nbsp;</td>
+        </tr>
+        <tr>
+          <td style="padding:26px 30px 0;background-color:#ffffff">
+            <img src="${logoUrl}" alt="Pastie Chat" height="42" style="height:42px;width:auto;display:block;border:0" />
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 30px 6px;background-color:#ffffff">
+            <h1 style="margin:0;font-size:21px;line-height:1.35;color:#16161f;font-weight:800;text-transform:uppercase">Thông báo mã đăng nhập<br>Pastie Chat biz</h1>
+            <p style="margin:10px 0 0;color:#9a9aa6;font-size:12px;font-style:italic">* Vui lòng không phản hồi email này. Đây là email được gửi tự động từ hệ thống của Pastie Chat.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:14px 30px 6px;background-color:#ffffff;color:#3a3a48;font-size:15px;line-height:1.7">
+            <p style="margin:0 0 12px">Xin chào <b>${recipientName}</b>,</p>
+            <p style="margin:0">Pastie Chat cảm ơn Quý khách đã sử dụng dịch vụ. Mã đăng nhập một lần (OTP) của Quý khách như sau:</p>
+            
+            <div style="text-align:center;background:#faf7f8;border:1px solid #f1dfe9;border-radius:12px;padding:24px;margin:20px 0">
+              <div style="font-size:12px;letter-spacing:2px;color:#8a8a96;font-weight:700;text-transform:uppercase">Mã đăng nhập (OTP)</div>
+              <div style="font-size:34px;font-weight:800;letter-spacing:8px;color:#C90C6C;margin-top:10px">${otpCode}</div>
+            </div>
+            
+            <p style="margin:0">Mã có hiệu lực trong <b>5 phút</b> và chỉ sử dụng được một lần.</p>
+            <div style="text-align:center;margin:22px 0 6px">
+              <a href="${baseUrl}" style="display:inline-block;background:linear-gradient(90deg,#F438A1,#C90C6C);color:#ffffff;padding:13px 30px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Đăng nhập PastieChat ngay! &rarr;</a>
+            </div>
+            <p style="margin:16px 0 0;color:#8a8a96;font-size:13px">Nếu cần thêm sự hỗ trợ, quý khách vui lòng liên hệ theo thông tin bên dưới.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 30px 22px;background-color:#ffffff;color:#3a3a48;font-size:15px;line-height:1.7">
+            <p style="margin:0 0 2px">Trân trọng,</p>
+            <p style="margin:0;font-weight:700;color:#C90C6C">Pastie Chat</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 30px;background-color:#ffffff">
+            <div style="border-top:1px solid #ececf0;height:1px;line-height:1px;font-size:1px">&nbsp;</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:18px 30px 26px;background-color:#ffffff;color:#9a9aa6;font-size:12px;line-height:1.9">
+            <div><b style="color:#7c7c8a">Hotline:</b> 0984 448 834</div>
+            <div><b style="color:#7c7c8a">Email:</b> <a href="mailto:ai@pastie.vn" style="color:#C90C6C;text-decoration:none">ai@pastie.vn</a></div>
+            <div><b style="color:#7c7c8a">Website:</b> <a href="${baseUrl}" style="color:#C90C6C;text-decoration:none">app.pastiechat.com</a></div>
+            <div style="margin-top:10px;color:#b6b6c0">© 2026 Pastie Chat — Nền tảng tư vấn &amp; CSKH đa kênh thông minh.</div>
+          </td>
+        </tr>
+      </table>
+      <!-- END MAIN CARD CONTAINER -->
+    </td>
+  </tr>
+</table>
+</body></html>`
     });
 
     if (data.error) {
@@ -124,48 +223,93 @@ async function sendAccountActivationEmail({ toEmail, fullName, role, createdByNa
   }
 
   const sender = process.env.SENDER_EMAIL || 'onboarding@resend.dev';
+  const baseUrl = getBaseUrl();
+  const logoUrl = `${baseUrl}/logoApp.png`;
+  const guideUrl = `${baseUrl}/guide`;
+
   const roleNameMap = {
-    superadmin: 'Quản trị viên cấp cao (Superadmin)',
+    superadmin: 'Quản trị viên cấp cao',
     project_admin: 'Quản trị viên dự án',
-    subadmin: 'Quản trị viên (Admin)',
-    agent: 'Chủ cơ sở / Quản lý (Agent)',
-    sale: 'Nhân viên tư vấn (Sale)'
+    subadmin: 'Quản trị viên',
+    agent: 'Quản lý cơ sở',
+    sale: 'Chuyên viên tư vấn'
   };
   const displayRole = roleNameMap[role] || 'Thành viên quản trị';
-  const resolvedLoginUrl = loginUrl || `${process.env.FRONTEND_URL || 'https://pastie.dealhot.info'}/admin.html`;
+  const resolvedLoginUrl = loginUrl || baseUrl;
 
   try {
     const data = await resendClient.emails.send({
-      from: `Pastie AI Console <${sender}>`,
+      from: `Pastie Chat <${sender}>`,
       to: [toEmail],
-      subject: `[Kích hoạt tài khoản] Chào mừng bạn gia nhập Pastie AI Console (${displayRole})`,
-      html: `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; border: 1px solid rgba(0,0,0,0.08); border-radius: 16px; background-color: #ffffff; color: #1e293b;">
-          <div style="text-align: center; margin-bottom: 24px;">
-            <h2 style="color: #ec4899; margin: 0 0 6px 0; font-size: 24px; font-weight: 800;">Pastie AI Console</h2>
-            <p style="color: #64748b; font-size: 13.5px; margin: 0;">Thông báo kích hoạt tài khoản quản trị & CSKH đa kênh</p>
-          </div>
-          <p style="font-size: 15px; line-height: 1.6; color: #334155;">Xin chào <b>${fullName || toEmail}</b>,</p>
-          <p style="font-size: 14.5px; line-height: 1.6; color: #334155;">
-            Tài khoản của bạn đã được khởi tạo thành công trên hệ thống <b>Pastie AI Console</b>${createdByName ? ` bởi <b>${createdByName}</b>` : ''}.
-          </p>
-          <div style="background: #fdf2f8; border: 1px solid #fbcfe8; border-radius: 12px; padding: 16px 20px; margin: 20px 0;">
-            <p style="margin: 4px 0; font-size: 13.5px; color: #831843;"><b>Email đăng nhập:</b> ${toEmail}</p>
-            <p style="margin: 4px 0; font-size: 13.5px; color: #831843;"><b>Vai trò:</b> ${displayRole}</p>
-            <p style="margin: 4px 0; font-size: 13.5px; color: #831843;"><b>Trạng thái:</b> <span style="color: #059669; font-weight: 700;">Đã kích hoạt</span></p>
-          </div>
-          <p style="font-size: 14px; line-height: 1.6; color: #475569;">
-            Bạn có thể đăng nhập ngay vào hệ thống bằng địa chỉ email trên thông qua tính năng <b>Đăng nhập bằng Email OTP</b> hoặc <b>Đăng nhập bằng Google</b>:
-          </p>
-          <div style="text-align: center; margin: 28px 0;">
-            <a href="${resolvedLoginUrl}" target="_blank" style="background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 10px; font-weight: 700; font-size: 14.5px; display: inline-block; box-shadow: 0 4px 12px rgba(236, 72, 153, 0.35);">
-              Truy cập Pastie AI Console &rarr;
-            </a>
-          </div>
-          <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 24px 0;">
-          <p style="text-align: center; font-size: 12px; color: #94a3b8; margin: 0;">&copy; ${new Date().getFullYear()} Pastie AI Console &bull; DealPhuQuoc Integration</p>
-        </div>
-      `
+      subject: `[Thông báo kích hoạt] Thông báo kích hoạt tài khoản quản trị & CSKH Pastie Chat biz`,
+      html: `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pastie Chat</title></head><body style="margin:0;padding:0;background-color:#eef0f3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased">
+<table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="width:100%;background-color:#eef0f3;margin:0;padding:24px 10px;border-collapse:collapse">
+  <tr>
+    <td align="center" style="padding:0">
+      <!-- MAIN CARD CONTAINER -->
+      <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e7e8ee;border-radius:14px;border-collapse:separate;overflow:hidden;text-align:left">
+        <tr>
+          <td style="height:5px;background:linear-gradient(90deg,#F438A1,#C90C6C);font-size:0;line-height:0;margin:0;padding:0" height="5">&nbsp;</td>
+        </tr>
+        <tr>
+          <td style="padding:26px 30px 0;background-color:#ffffff">
+            <img src="${logoUrl}" alt="Pastie Chat" height="42" style="height:42px;width:auto;display:block;border:0" />
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 30px 6px;background-color:#ffffff">
+            <h1 style="margin:0;font-size:21px;line-height:1.35;color:#16161f;font-weight:800;text-transform:uppercase">Thông báo kích hoạt<br>tài khoản quản trị &amp; CSKH</h1>
+            <p style="margin:10px 0 0;color:#9a9aa6;font-size:12px;font-style:italic">* Vui lòng không phản hồi email này. Đây là email được gửi tự động từ hệ thống của Pastie Chat.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:14px 30px 6px;background-color:#ffffff;color:#3a3a48;font-size:15px;line-height:1.7">
+            <p style="margin:0 0 12px">Xin chào <b>${fullName || toEmail}</b>,</p>
+            <p style="margin:0">Tài khoản quản trị của bạn đã được khởi tạo thành công trên PastieChat.</p>
+            
+            <div style="background:#faf7f8;border:1px solid #f1dfe9;border-radius:12px;padding:16px 20px;margin:20px 0">
+              <div style="font-size:14px;color:#3a3a48;margin-bottom:6px"><b>Email đăng nhập:</b> ${toEmail}</div>
+              <div style="font-size:14px;color:#3a3a48;margin-bottom:6px"><b>Vai trò:</b> <span style="color:#C90C6C;font-weight:700">${displayRole}</span></div>
+              <div style="font-size:14px;color:#3a3a48"><b>Trạng thái:</b> <span style="color:#059669;font-weight:700">Đã kích hoạt</span></div>
+            </div>
+
+            <p style="margin:0 0 10px">Dùng email trên để đăng nhập và quản lý hoạt động kinh doanh trên PastieChat.</p>
+
+            <div style="text-align:center;margin:22px 0 6px">
+              <a href="${resolvedLoginUrl}" style="display:inline-block;background:linear-gradient(90deg,#F438A1,#C90C6C);color:#ffffff;padding:13px 30px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Đăng nhập PastieChat ngay! &rarr;</a>
+            </div>
+            <div style="text-align:center;margin-top:8px;font-size:13px">
+              <a href="${guideUrl}" style="color:#C90C6C;text-decoration:none;font-weight:600">📖 Sổ tay &amp; Video hướng dẫn sử dụng: ${guideUrl}</a>
+            </div>
+
+            <p style="margin:16px 0 0;color:#8a8a96;font-size:13px">Nếu cần thêm sự hỗ trợ, quý khách vui lòng liên hệ theo thông tin bên dưới.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 30px 22px;background-color:#ffffff;color:#3a3a48;font-size:15px;line-height:1.7">
+            <p style="margin:0 0 2px">Trân trọng,</p>
+            <p style="margin:0;font-weight:700;color:#C90C6C">Pastie Chat</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 30px;background-color:#ffffff">
+            <div style="border-top:1px solid #ececf0;height:1px;line-height:1px;font-size:1px">&nbsp;</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:18px 30px 26px;background-color:#ffffff;color:#9a9aa6;font-size:12px;line-height:1.9">
+            <div><b style="color:#7c7c8a">Hotline:</b> 0984 448 834</div>
+            <div><b style="color:#7c7c8a">Email:</b> <a href="mailto:ai@pastie.vn" style="color:#C90C6C;text-decoration:none">ai@pastie.vn</a></div>
+            <div><b style="color:#7c7c8a">Website:</b> <a href="${baseUrl}" style="color:#C90C6C;text-decoration:none">app.pastiechat.com</a></div>
+            <div style="margin-top:10px;color:#b6b6c0">© 2026 Pastie Chat — Nền tảng tư vấn &amp; CSKH đa kênh thông minh.</div>
+          </td>
+        </tr>
+      </table>
+      <!-- END MAIN CARD CONTAINER -->
+    </td>
+  </tr>
+</table>
+</body></html>`
     });
 
     if (data.error) {
@@ -186,4 +330,3 @@ module.exports = {
   sendAdminOTPEmail,
   sendAccountActivationEmail
 };
-

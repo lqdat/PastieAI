@@ -172,7 +172,7 @@
                 <!-- Nút riêng cho Agent / Sale: Quản lý Sale & Nhóm, Bill, Thực đơn, Báo cáo, Tài khoản, Thông báo
                      (Khi Agent/Sale đăng nhập, layoutHeaderQuickMenu gom gọn toàn bộ vào nút "Công cụ") -->
                 <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, Nhóm tiếp nhận, Mã QR và Thực đơn">
-                    <i class="ri-organization-chart"></i><span>Sale &amp; Nhóm</span>
+                    <i class="ri-organization-chart"></i><span>Quản trị</span>
                 </button>
                 <button id="order-cart-btn" class="header-quick-btn hide" type="button" title="Quản lý hóa đơn: đơn của khách theo từng cuộc trò chuyện">
                     <i class="ri-bill-line"></i><span>Quản lý hóa đơn</span>
@@ -1414,8 +1414,8 @@
                                 <select id="admin-form-role" style="width:100%;">
                                     <!-- Thiếu lựa chọn này là gốc của "không sửa được Sale": mở sửa
                                          một Sale thì select nhận giá trị không tồn tại rồi rỗng đi. -->
-                                    <option value="sale">Sale (Nhân viên tư vấn, thuộc một Agent)</option>
-                                    <option value="agent">Agent (Tư vấn viên trực chat / Quản lý Sale)</option>
+                                    <option value="sale">Chuyên viên tư vấn</option>
+                                    <option value="agent">Quản lý cơ sở</option>
                                     <option value="project_admin">Project Admin (Quản trị dự án)</option>
                                     <option value="superadmin">Hỗ trợ kỹ thuật</option>
                                 </select>
@@ -1687,7 +1687,7 @@
             <header class="agent-guide-head">
                 <div class="agent-guide-title-box">
                     <span class="agent-guide-badge"><i class="ri-book-open-line"></i> Hướng Dẫn Sử Dụng</span>
-                    <h2>Sổ tay Vận hành Role Agent (Chủ cơ sở)</h2>
+                    <h2>Sổ tay Hướng dẫn Sử dụng Role Agent (Chủ cơ sở)</h2>
                 </div>
                 <div class="agent-guide-head-actions">
                     <button type="button" class="icon-btn" id="agent-guide-close-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
@@ -1711,7 +1711,12 @@
                         <p>Video ghi lại toàn bộ quy trình: Đăng nhập OTP 123456, Tạo nhóm sảnh, Thêm Sale ca trực, Gán Sale, Tạo bàn QR, Cài đặt menu VAT và Quản lý bill.</p>
                     </div>
                     <div class="guide-media-center">
-                        <img src="/agent_guide/agent_mobile_guide_video.webp" alt="Video Hướng Dẫn Agent Mobile" class="guide-media-preview">
+                        <img src="/agent_guide/agent_mobile_guide_video.webp" alt="Video Hướng Dẫn Agent Mobile" class="guide-media-preview" style="cursor: pointer;" title="Bấm để xem video kích thước đầy đủ">
+                        <div style="margin-top: 12px;">
+                            <a href="/agent_guide/agent_mobile_guide_video.webp" target="_blank" rel="noopener noreferrer" class="secondary-btn" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; text-decoration: none; padding: 7px 16px;">
+                                <i class="ri-external-link-line"></i> <span>Mở xem video toàn màn hình</span>
+                            </a>
+                        </div>
                     </div>
                 </div>
 
@@ -1722,7 +1727,7 @@
                         <p>Nhóm tiếp nhận giúp điều phối đơn gọi món và chat của từng bàn về đúng nhân sự trực ca phụ trách khu vực đó.</p>
                     </div>
                     <ol class="guide-steps-list">
-                        <li>Bấm nút <strong>Sale &amp; Nhóm</strong> trên thanh công cụ -> Chọn tab <strong>Nhóm</strong>.</li>
+                        <li>Bấm nút <strong>Quản trị</strong> trên thanh công cụ -> Chọn tab <strong>Nhóm</strong>.</li>
                         <li>Bấm nút <strong>+ Thêm nhóm</strong> ở góc phải tiêu đề.</li>
                         <li>Điền <strong>Tên nhóm *</strong> (VD: <em>Sảnh A (VIP)</em>, <em>Khu Sân Vườn</em>) và <strong>Ghi chú</strong> (VD: <em>Bàn 1 đến 10 sảnh chính</em>).</li>
                         <li>Tại mục <strong>Chọn Sale vào nhóm ngay</strong>, chạm vào từng nhân viên để gán trực tiếp.</li>

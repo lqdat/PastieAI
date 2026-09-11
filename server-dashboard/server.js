@@ -829,6 +829,11 @@ app.get('/', (req, res) => {
   res.redirect('/admin');
 });
 
+// Sổ tay hướng dẫn sử dụng Agent / Sale
+app.get(['/guide', '/huong-dan'], (_req, res) => {
+  res.redirect('/admin?guide=1');
+});
+
 // Admin dashboard HTML: luôn yêu cầu trình duyệt kiểm tra lại bản mới (no-cache)
 app.get(['/admin', '/admin.html'], (_req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -840,6 +845,22 @@ app.get(['/admin', '/admin.html'], (_req, res) => {
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/privacy-policy', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
 app.get('/terms', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
+app.get('/guide', (_req, res) => res.redirect('/admin?guide=video'));
+
+// Fallback phục vụ ảnh & video sổ tay hướng dẫn từ local hoặc S3
+app.get('/agent_guide/:file', async (req, res, next) => {
+  const localFile = path.join(__dirname, 'public', 'agent_guide', req.params.file);
+  if (fs.existsSync(localFile)) {
+    return res.sendFile(localFile);
+  }
+  try {
+    const s3Key = `guide/agent/${req.params.file}`;
+    const presigned = await s3.getPresignedUrl(s3Key, 3600);
+    if (presigned) return res.redirect(presigned);
+  } catch (_) {}
+  next();
+});
+
 // Serve widget files statically (as a fallback)
 app.use(express.static(path.join(__dirname, '../widget')));
 
