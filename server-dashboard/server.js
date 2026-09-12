@@ -6895,7 +6895,7 @@ app.get('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
   }
 
   const result = await db.query(
-    `SELECT q.id, q.code, q.label, q.is_active, q.created_at, a.id AS owner_admin_id, a.full_name AS owner_name
+    `SELECT q.id, q.code, q.label, q.is_active, q.created_at, a.id AS owner_admin_id, a.full_name AS owner_name, a.full_name AS agent_name, a.avatar_url AS agent_avatar_url
        FROM qr_chat_accounts q JOIN admins a ON a.id = q.owner_admin_id
       WHERE q.project_id = $1 AND q.is_active = TRUE ${scopeSql}
       ORDER BY q.created_at DESC`,
@@ -10558,9 +10558,11 @@ app.get('/api/agent/qr-accounts', checkAdminAuth, async (req, res) => {
   try {
     const result = await db.query(
       `SELECT q.id, q.code, q.label, q.display_label, q.is_active, q.created_at,
-              g.id AS group_id, g.name AS group_name
+              g.id AS group_id, g.name AS group_name,
+              a.full_name AS agent_name, a.avatar_url AS agent_avatar_url
          FROM qr_chat_accounts q
          JOIN agent_groups g ON g.id = q.group_id
+         JOIN admins a ON a.id = g.agent_id
         WHERE q.is_active = TRUE AND g.agent_id = $1
         ORDER BY g.name, q.created_at DESC`,
       [req.admin.id]

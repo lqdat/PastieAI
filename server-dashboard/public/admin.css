@@ -3309,22 +3309,114 @@ button:focus-visible {
    .modal-overlay (z-index: 2000); khi z-index bằng nhau thì thứ tự trong DOM
    quyết định, mà modal Quản lý nằm sau nên sẽ đè lên. Nâng lớp để QR luôn nổi trên. */
 #qr-preview-modal { z-index: 2100; }
-.qr-preview-box { width: min(92vw, 680px); max-width: 680px; max-height: 92vh; overflow-y: auto; padding: 30px 34px; text-align: center; }
+.qr-preview-box { width: min(94vw, 560px); max-width: 560px; max-height: 94vh; overflow-y: auto; padding: 22px 24px; text-align: center; }
 .qr-preview-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; text-align: left; }
-.qr-preview-heading h2 { margin: 0 0 4px; font-size: 21px; }
+.qr-preview-heading h2 { margin: 0 0 4px; font-size: 20px; }
 .qr-preview-heading p { margin: 0; color: var(--text-secondary); font-size: 13px; }
 .qr-preview-heading p:empty { display: none; }
-.qr-preview-body { display: flex; flex-direction: column; align-items: center; gap: 16px; padding-top: 10px; }
-.qr-preview-body img {
-    width: min(480px, 100%);
-    max-height: 62vh;
-    height: auto;
-    padding: 14px;
+.qr-preview-body { display: flex; flex-direction: column; align-items: center; gap: 14px; padding-top: 6px; }
+/* Segmented Tabs chuyển đổi kiểu poster QR (Co-branded & Standard) */
+.qr-poster-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px;
+    background: rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(244, 56, 161, 0.18);
+    border-radius: 999px;
+    margin: 6px auto 2px;
+    box-shadow: 0 2px 8px rgba(201, 12, 108, 0.04);
+}
+.qr-poster-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 16px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-secondary, #666);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+}
+.qr-poster-tab-btn:hover {
+    color: #c90c6c;
+}
+.qr-poster-tab-btn.is-active {
+    background: linear-gradient(110deg, #f438a1, #c90c6c);
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 4px 14px rgba(201, 12, 108, 0.28);
+}
+.qr-poster-tab-btn i {
+    font-size: 14px;
+}
+
+/* Khung poster tỷ lệ 4:5 vừa vặn và mở rộng theo chiều rộng của popup */
+.qr-poster-frame {
+    position: relative;
+    width: 100%;
+    max-width: 512px;
+    aspect-ratio: 4 / 5;
+    border-radius: 18px;
+    overflow: hidden;
+    background: #fffafd;
+    border: 1px solid rgba(244, 56, 161, 0.22);
+    box-shadow: 0 14px 34px rgba(100, 48, 78, 0.14);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.qr-poster-loader {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: linear-gradient(135deg, #fff9fc 0%, #fff1f8 100%);
+    z-index: 2;
+    transition: opacity 0.25s ease, visibility 0.25s;
+}
+.qr-poster-loader.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+.qr-poster-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3.5px solid rgba(244, 56, 161, 0.18);
+    border-top-color: #c90c6c;
+    border-radius: 50%;
+    animation: qrPosterSpin 0.75s linear infinite;
+}
+@keyframes qrPosterSpin {
+    to { transform: rotate(360deg); }
+}
+.qr-poster-loader-text {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #b62b70;
+    margin: 0;
+}
+
+.qr-preview-poster-img {
+    width: 100%;
+    height: 100%;
     object-fit: contain;
-    border: 1px solid var(--panel-border);
-    border-radius: var(--radius-lg, 14px);
-    background: #fff;
-    box-shadow: var(--shadow-sm);
+    display: block;
+    border-radius: inherit;
+    transition: opacity 0.25s ease;
+    opacity: 1;
+}
+.qr-preview-poster-img.is-hidden {
+    opacity: 0;
 }
 .qr-preview-link {
     margin: 0;
@@ -3349,8 +3441,8 @@ button:focus-visible {
     text-decoration: none;
 }
 @media (max-width: 600px) {
-    .qr-preview-box { width: min(100%, 430px); max-height: 94dvh; padding: 22px 18px; }
-    .qr-preview-body img { width: min(360px, 100%); max-height: 58dvh; padding: 10px; }
+    .qr-preview-box { width: min(100%, 460px); max-height: 94dvh; padding: 18px 14px; }
+    .qr-preview-body .qr-preview-poster-img { width: 100%; max-height: none; padding: 0; }
     .qr-preview-heading h2 { font-size: 18px; }
     .qr-preview-link { font-size: 11.5px; }
 }

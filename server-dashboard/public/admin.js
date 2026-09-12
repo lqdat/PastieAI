@@ -1459,36 +1459,155 @@ window.copyQrChatLink = async (url, isEncoded = false) => {
 let qrPreviewPosterUrl = '';
 
 
-window.openQrPreview = async (encodedImageUrl, encodedLabel, encodedOwner, encodedChatUrl) => {
-    const imageUrl = decodeURIComponent(encodedImageUrl);
-    const label = decodeURIComponent(encodedLabel);
-    const owner = decodeURIComponent(encodedOwner);
-    const chatUrl = decodeURIComponent(encodedChatUrl);
-    if (!qrPreviewModal) return;
-    qrPreviewTitle.textContent = 'Poster QR dành cho khách hàng';
-    qrPreviewAgent.textContent = label || owner || '';
-    qrPreviewImage.src = imageUrl;
-    qrPreviewLink.textContent = chatUrl;
-    qrPreviewDownloadBtn.disabled = true;
-    qrPreviewDownloadBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang tạo poster…';
-    qrPreviewCopyBtn.onclick = () => window.copyQrChatLink(chatUrl);
-    qrPreviewModal.classList.remove('hide');
-    try {
-        const posterBlob = await createBrandedQrPoster(imageUrl, label || owner);
-        if (qrPreviewPosterUrl) URL.revokeObjectURL(qrPreviewPosterUrl);
-        qrPreviewPosterUrl = URL.createObjectURL(posterBlob);
+let activeQrPreviewState = null;
+
+function setPosterLoading(isLoading) {
+    const loader = document.getElementById('qr-poster-loader');
+    const img = document.getElementById('qr-preview-image');
+    if (loader) loader.classList.toggle('is-hidden', !isLoading);
+    if (img) img.classList.toggle('is-hidden', isLoading);
+    if (qrPreviewDownloadBtn) qrPreviewDownloadBtn.disabled = isLoading;
+}
+
+function applyPosterBlob(blob, style) {
+    if (qrPreviewPosterUrl) URL.revokeObjectURL(qrPreviewPosterUrl);
+    qrPreviewPosterUrl = URL.createObjectURL(blob);
+    if (qrPreviewImage) {
         qrPreviewImage.src = qrPreviewPosterUrl;
+    }
+    setPosterLoading(false);
+    if (qrPreviewDownloadBtn) {
         qrPreviewDownloadBtn.disabled = false;
-        qrPreviewDownloadBtn.innerHTML = '<i class="ri-download-2-line"></i> Tải poster QR';
-        qrPreviewDownloadBtn.onclick = () => downloadPosterBlob(posterBlob, label || owner || 'pastie-qr');
+        qrPreviewDownloadBtn.innerHTML = '<i class="ri-download-2-line"></i> Tải poster QR / Download Poster';
+        const label = activeQrPreviewState?.label || activeQrPreviewState?.agentName || 'pastie-qr';
+        qrPreviewDownloadBtn.onclick = () => downloadPosterBlob(blob, label, style);
+    }
+}
+
+async function switchPosterStyle(style) {
+    if (!activeQrPreviewState) return;
+    activeQrPreviewState.activeStyle = style;
+
+    const tabCobranded = document.getElementById('qr-tab-cobranded');
+    const tabStandard = document.getElementById('qr-tab-standard');
+    if (tabCobranded) {
+        const isCo = (style === 'cobranded');
+        tabCobranded.classList.toggle('is-active', isCo);
+        tabCobranded.setAttribute('aria-selected', isCo ? 'true' : 'false');
+    }
+    if (tabStandard) {
+        const isStd = (style === 'standard');
+        tabStandard.classList.toggle('is-active', isStd);
+        tabStandard.setAttribute('aria-selected', isStd ? 'true' : 'false');
+    }
+
+    const { imageUrl, label, owner, agentName, agentLogoUrl } = activeQrPreviewState;
+
+    if (activeQrPreviewState.blobs[style]) {
+        applyPosterBlob(activeQrPreviewState.blobs[style], style);
+        return;
+    }
+
+    setPosterLoading(true);
+    if (qrPreviewDownloadBtn) {
+        qrPreviewDownloadBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang tạo poster… / Generating…';
+    }
+
+    try {
+        const blob = await createBrandedQrPoster(imageUrl, {
+            businessName: agentName || label || owner,
+            qrLabel: label,
+            agentLogoUrl,
+            style,
+        });
+        if (activeQrPreviewState && activeQrPreviewState.imageUrl === imageUrl) {
+            activeQrPreviewState.blobs[style] = blob;
+            if (activeQrPreviewState.activeStyle === style) {
+                applyPosterBlob(blob, style);
+            }
+        }
     } catch (error) {
         console.error('QR poster error:', error);
-        qrPreviewDownloadBtn.disabled = false;
-        qrPreviewDownloadBtn.innerHTML = '<i class="ri-refresh-line"></i> Thử tạo lại';
-        qrPreviewDownloadBtn.onclick = () => window.openQrPreview(encodedImageUrl, encodedLabel, encodedOwner, encodedChatUrl);
+        setPosterLoading(false);
+        if (qrPreviewDownloadBtn) {
+            qrPreviewDownloadBtn.disabled = false;
+            qrPreviewDownloadBtn.innerHTML = '<i class="ri-refresh-line"></i> Thử tạo lại / Retry';
+            qrPreviewDownloadBtn.onclick = () => switchPosterStyle(style);
+        }
     }
+}
+
+window.openQrPreview = async (encodedImageUrl, encodedLabel, encodedOwner, encodedChatUrl, encodedAgentName, encodedAgentLogoUrl, options = {}) => {
+    const imageUrl = decodeURIComponent(encodedImageUrl || '');
+    const label = decodeURIComponent(encodedLabel || '');
+    const owner = decodeURIComponent(encodedOwner || '');
+    const chatUrl = decodeURIComponent(encodedChatUrl || '');
+
+    let agentName = '';
+    let agentLogoUrl = '';
+    if (typeof encodedAgentName === 'object' && encodedAgentName !== null) {
+        options = encodedAgentName;
+        agentName = options.agentName || '';
+        agentLogoUrl = options.agentLogoUrl || '';
+    } else {
+        agentName = decodeURIComponent(encodedAgentName || '');
+        agentLogoUrl = decodeURIComponent(encodedAgentLogoUrl || '');
+    }
+    if (!agentName) agentName = owner || window.CURRENT_ADMIN?.full_name || '';
+    if (!agentLogoUrl) agentLogoUrl = window.CURRENT_ADMIN?.avatar_url || '';
+
+    if (!qrPreviewModal) return;
+
+    activeQrPreviewState = {
+        imageUrl,
+        label,
+        owner,
+        chatUrl,
+        agentName,
+        agentLogoUrl,
+        activeStyle: 'cobranded',
+        blobs: {},
+    };
+
+    if (qrPreviewTitle) qrPreviewTitle.textContent = 'Poster QR dành cho khách hàng / Customer QR Poster';
+    if (qrPreviewAgent) qrPreviewAgent.textContent = label || agentName || owner || '';
+    if (qrPreviewLink) qrPreviewLink.textContent = chatUrl;
+    if (qrPreviewCopyBtn) qrPreviewCopyBtn.onclick = () => window.copyQrChatLink(chatUrl);
+
+    // Xóa ảnh cũ trước khi vẽ poster mới để không bị giật hay kéo giãn layout
+    if (qrPreviewImage) {
+        qrPreviewImage.removeAttribute('src');
+    }
+    setPosterLoading(true);
+
+    qrPreviewModal.classList.remove('hide');
+
+    // Vẽ kiểu 1 trước
+    await switchPosterStyle('cobranded');
+
+    // Chạy ngầm vẽ trước kiểu 2 vào bộ nhớ để chuyển tab tức thì
+    createBrandedQrPoster(imageUrl, {
+        businessName: agentName || label || owner,
+        qrLabel: label,
+        agentLogoUrl,
+        style: 'standard',
+    }).then(blob => {
+        if (activeQrPreviewState && activeQrPreviewState.imageUrl === imageUrl) {
+            activeQrPreviewState.blobs['standard'] = blob;
+        }
+    }).catch(err => console.warn('Pre-render standard poster error:', err));
 };
 
+document.getElementById('qr-tab-cobranded')?.addEventListener('click', () => {
+    if (activeQrPreviewState?.activeStyle !== 'cobranded') {
+        switchPosterStyle('cobranded');
+    }
+});
+document.getElementById('qr-tab-standard')?.addEventListener('click', () => {
+    if (activeQrPreviewState?.activeStyle !== 'standard') {
+        switchPosterStyle('standard');
+    }
+});
 
 qrPreviewCloseBtn?.addEventListener('click', closeQrPreview);
 
@@ -1669,7 +1788,7 @@ verifyAuthAndInit();
 document.getElementById('org-qr-group-filter')?.addEventListener('change', renderOrgQrList);
 
 
-// Nút "Xem poster". Gọi window.openQrPreview(imageUrl, label, owner, chatUrl).
+// Nút "Xem poster". Gọi window.openQrPreview(imageUrl, label, owner, chatUrl, agentName, agentLogoUrl).
 document.getElementById('org-qr-list')?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-qr-poster]');
     if (!button) return;
@@ -1677,7 +1796,16 @@ document.getElementById('org-qr-list')?.addEventListener('click', (event) => {
     if (!account) return;
     const imageUrl = `https://quickchart.io/qr?size=360&text=${encodeURIComponent(account.chat_url)}`;
     const enc = (value) => encodeURIComponent(value ?? '').replace(/'/g, '%27');
-    window.openQrPreview(enc(imageUrl), enc(account.label), enc(account.group_name || account.label), enc(account.chat_url));
+    const agentName = account.agent_name || window.CURRENT_ADMIN?.full_name || '';
+    const agentLogoUrl = account.agent_avatar_url || window.CURRENT_ADMIN?.avatar_url || '';
+    window.openQrPreview(
+        enc(imageUrl),
+        enc(account.label),
+        enc(account.group_name || account.label),
+        enc(account.chat_url),
+        enc(agentName),
+        enc(agentLogoUrl)
+    );
 });
 
 
