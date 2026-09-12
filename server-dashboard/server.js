@@ -6216,7 +6216,21 @@ app.post('/api/admin/auth/otp/send', limitOtpSendIp, limitOtpSendEmail, async (r
     `, [cleanEmail, otpCode, expiresAt]);
 
     // Send email via Resend
-    const sendResult = await resend.sendAdminOTPEmail(cleanEmail, otpCode, userName);
+    const originUrl = (req.headers.origin || '').trim().replace(/\/$/, '');
+    const role = localCheck?.role;
+    let targetLoginUrl = '';
+    if (originUrl && originUrl.includes('localhost')) {
+      targetLoginUrl = originUrl;
+    } else if (role === 'sale') {
+      targetLoginUrl = process.env.SALE_PUBLIC_URL || 'https://sale.pastiechat.com';
+    } else if (role === 'agent' || role === 'superadmin' || role === 'project_admin' || role === 'subadmin') {
+      targetLoginUrl = process.env.AGENT_PUBLIC_URL || 'https://agent.pastiechat.com';
+    } else if (originUrl) {
+      targetLoginUrl = originUrl;
+    } else {
+      targetLoginUrl = 'https://agent.pastiechat.com';
+    }
+    const sendResult = await resend.sendAdminOTPEmail(cleanEmail, otpCode, userName, { loginUrl: targetLoginUrl, role });
     if (!sendResult.ok) {
       return res.status(500).json({ error: 'Không thể gửi email OTP: ' + (sendResult.reason || 'Lỗi dịch vụ email') });
     }
@@ -7170,11 +7184,17 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
       if (prefix) void pretranslateVenuePrefix(prefix);
     }
 
+    const originUrl = (req.headers.origin || '').trim().replace(/\/$/, '');
+    const activationLoginUrl = originUrl && originUrl.includes('localhost')
+      ? originUrl
+      : (effectiveRole === 'sale' ? (process.env.SALE_PUBLIC_URL || 'https://sale.pastiechat.com') : (process.env.AGENT_PUBLIC_URL || 'https://agent.pastiechat.com'));
+
     void resend.sendAccountActivationEmail({
       toEmail: username,
       fullName: full_name.trim(),
       role: effectiveRole,
       createdByName: req.admin.full_name || req.admin.username,
+      loginUrl: activationLoginUrl,
     }).catch((err) => console.error('[ActivationEmail] Error sending to admin user:', err.message));
 
     res.status(201).json({
@@ -9956,11 +9976,17 @@ app.post('/api/superadmin/agents', checkAdminAuth, async (req, res) => {
     const adoptedGroupId = await db.adoptOrphanQrDataForProject(projectId, created.rows[0].id)
       .catch((error) => { console.error('Adopt orphan QR data failed:', error.message); return null; });
 
+    const originUrl = (req.headers.origin || '').trim().replace(/\/$/, '');
+    const agentLoginUrl = originUrl && originUrl.includes('localhost')
+      ? originUrl
+      : (process.env.AGENT_PUBLIC_URL || 'https://agent.pastiechat.com');
+
     void resend.sendAccountActivationEmail({
       toEmail: username,
       fullName: String(fullName).trim(),
       role: 'agent',
       createdByName: req.admin.full_name || req.admin.username,
+      loginUrl: agentLoginUrl,
     }).catch((err) => console.error('[ActivationEmail] Error sending to agent:', err.message));
 
     res.status(201).json({ success: true, agent: created.rows[0], adoptedGroupId });
@@ -10106,11 +10132,17 @@ app.post('/api/agent/sales', checkAdminAuth, async (req, res) => {
       );
     }
 
+    const originUrl = (req.headers.origin || '').trim().replace(/\/$/, '');
+    const saleLoginUrl = originUrl && originUrl.includes('localhost')
+      ? originUrl
+      : (process.env.SALE_PUBLIC_URL || 'https://sale.pastiechat.com');
+
     void resend.sendAccountActivationEmail({
       toEmail: username,
       fullName: String(fullName).trim(),
       role: 'sale',
       createdByName: req.admin.full_name || req.admin.username,
+      loginUrl: saleLoginUrl,
     }).catch((err) => console.error('[ActivationEmail] Error sending to sale:', err.message));
 
     res.status(201).json({ success: true, sale: { ...created.rows[0], access_hours: hours } });
