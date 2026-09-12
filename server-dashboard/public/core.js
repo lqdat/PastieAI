@@ -637,7 +637,7 @@ async function handleVerifyAdminOtp(e) {
                 initDashboard();
             }, 400);
         } else {
-            setLoginError(data.error || 'Mã OTP không hợp lệ hoặc đã hết hạn.');
+            setLoginError(data.error || 'Mã xác thực không chính xác.');
             clearAdminOtpDigits();
         }
     } catch (e) {

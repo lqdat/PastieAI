@@ -6210,9 +6210,9 @@ app.post('/api/admin/auth/otp/send', limitOtpSendIp, limitOtpSendEmail, async (r
 
     // Upsert into admin_otps table
     await db.query(`
-      INSERT INTO admin_otps (email, code, expires_at)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (email) DO UPDATE SET code = $2, expires_at = $3, created_at = CURRENT_TIMESTAMP
+      INSERT INTO admin_otps (email, code, expires_at, attempts)
+      VALUES ($1, $2, $3, 0)
+      ON CONFLICT (email) DO UPDATE SET code = $2, expires_at = $3, created_at = CURRENT_TIMESTAMP, attempts = 0
     `, [cleanEmail, otpCode, expiresAt]);
 
     // Send email via Resend
@@ -6250,7 +6250,7 @@ app.post('/api/admin/auth/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, as
       [cleanEmail]
     );
     if (pending.rows.length === 0) {
-      return res.status(400).json({ error: 'Mã xác thực OTP không chính xác hoặc đã hết hạn.' });
+      return res.status(400).json({ error: 'Mã xác thực OTP đã hết hạn hoặc không tồn tại. Vui lòng yêu cầu mã mới.' });
     }
     if (pending.rows[0].attempts >= OTP_MAX_ATTEMPTS) {
       await db.query('DELETE FROM admin_otps WHERE email = $1', [cleanEmail]);
@@ -6266,10 +6266,13 @@ app.post('/api/admin/auth/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, as
       // Sai thì tăng bộ đếm; đủ 5 lần là mã bị huỷ, phải xin mã mới.
       await db.query('UPDATE admin_otps SET attempts = attempts + 1 WHERE email = $1', [cleanEmail]);
       const left = OTP_MAX_ATTEMPTS - pending.rows[0].attempts - 1;
+      if (left <= 0) {
+        await db.query('DELETE FROM admin_otps WHERE email = $1', [cleanEmail]);
+      }
       return res.status(400).json({
         error: left > 0
           ? `Mã xác thực không chính xác. Còn ${left} lần thử.`
-          : 'Mã xác thực không chính xác. Vui lòng yêu cầu mã mới.',
+          : 'Mã xác thực không chính xác. Bạn đã hết số lần thử, vui lòng yêu cầu mã mới.',
       });
     }
 
