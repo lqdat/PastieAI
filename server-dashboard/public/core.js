@@ -801,7 +801,7 @@ function willAutoRequestPermission() {
 }
 
 async function initDashboard() {
-    await loadAdminProfile();   // biết role + project_id trước khi dựng filter
+    if (!await loadAdminProfile()) return; // biết role + project_id trước khi dựng filter
     await loadProjects();        // tải registry dự án
     await setupPushNotifications();
     // Không await: hộp thoại quyền của trình duyệt không được chặn phần còn lại của dashboard khởi động.
@@ -837,12 +837,21 @@ async function initDashboard() {
 }
 
 
+const isConsoleRoleAllowed = (role) => !Array.isArray(window.PASTIE_CONSOLE_ROLES)
+    || window.PASTIE_CONSOLE_ROLES.includes(role);
+
 async function loadAdminProfile() {
     try {
         const res = await authFetch(`${API_BASE}/api/admin/me`);
         if (!res.ok) return;
         const data = await res.json();
         const admin = data.admin || data; // /me trả { admin: {...} }
+        if (!isConsoleRoleAllowed(admin.role)) {
+            localStorage.removeItem('pastie_admin_token');
+            showLogin();
+            setLoginError('Tài khoản này không được phép truy cập giao diện này.');
+            return false;
+        }
         CURRENT_ADMIN = admin;
         const nameEl = document.getElementById('admin-profile-name');
         const badgeEl = document.getElementById('admin-profile-badge');
@@ -871,8 +880,10 @@ async function loadAdminProfile() {
         window.TicketConsole?.capNhatNut?.();
 
         updateAgentHeaderUI();
+        return true;
     } catch (e) {
         console.error('Failed to load admin profile:', e);
+        return false;
     }
 }
 
