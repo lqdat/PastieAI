@@ -34,6 +34,9 @@ _to_delete/
 .DS_Store
 Thumbs.db
 
+# Local development scripts
+scripts/
+
 #md file
 *.md
 PLAN_AGENT_SALE_QR.md
