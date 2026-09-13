@@ -2804,10 +2804,10 @@ button:focus-visible {
    qr-chat-portal/app/globals.css): cùng font, cùng 17px, cùng nét 400. Đổi ở
    đây thì phải đổi luôn bên kia, nếu không hai màn lại lệch nhau. */
 .dpq-title {
-  font-family: 'Playfair Display', 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, serif;
+  font-family: 'Nunito', 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 18px;
   font-weight: 600;
-  font-style: normal;
+  font-style: italic;
   letter-spacing: .008em;
   color: #374151;
   line-height: 1.5;
