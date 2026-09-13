@@ -6031,7 +6031,7 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null, 
       } else {
         // Không tìm thấy trên DealPhuQuoc
         if (!isSuperAdminUser && !localAdmin) {
-          const err = new Error('Tài khoản này chưa được đăng ký trên DealPhuQuoc hoặc hệ thống Pastie AI.');
+          const err = new Error('Tài khoản email không chính xác hoặc chưa được cấp quyền truy cập.');
           err.status = 403;
           throw err;
         }
@@ -6044,8 +6044,8 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null, 
       if (err.status) throw err;
       console.warn('[DirectAuth] Không thể kết nối DealPhuQuoc DB, dùng thông tin local:', err.message);
       if (!localAdmin) {
-        const fallbackErr = new Error('Không thể kết nối cơ sở dữ liệu DealPhuQuoc để xác thực tài khoản.');
-        fallbackErr.status = 500;
+        const fallbackErr = new Error('Tài khoản email không chính xác hoặc chưa được cấp quyền truy cập.');
+        fallbackErr.status = 403;
         throw fallbackErr;
       }
       determinedRole = localAdmin.role;
@@ -6054,6 +6054,10 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null, 
   } else if (localAdmin) {
     determinedRole = localAdmin.role;
     determinedProjectId = localAdmin.project_id;
+  } else if (!isSuperAdminUser) {
+    const err = new Error('Tài khoản email không chính xác hoặc chưa được cấp quyền truy cập.');
+    err.status = 403;
+    throw err;
   }
 
   // 3. Upsert vào bảng `admins`
@@ -6195,13 +6199,18 @@ app.post('/api/admin/auth/otp/send', limitOtpSendIp, limitOtpSendEmail, async (r
         } else {
           // Check local admins
           if (!localCheck) {
-            return res.status(403).json({ error: 'Tài khoản email này chưa được cấp quyền trên DealPhuQuoc hoặc Pastie AI.' });
+            return res.status(403).json({ error: 'Tài khoản email không chính xác hoặc chưa được cấp quyền truy cập.' });
           }
           if (localCheck.full_name) userName = localCheck.full_name;
         }
       } catch (checkErr) {
         console.warn('[AdminOTP] Pre-check failed:', checkErr.message);
+        if (!localCheck) {
+          return res.status(403).json({ error: 'Tài khoản email không chính xác hoặc chưa được cấp quyền truy cập.' });
+        }
       }
+    } else if (!localCheck) {
+      return res.status(403).json({ error: 'Tài khoản email không chính xác hoặc chưa được cấp quyền truy cập.' });
     }
 
     // Generate 6-digit OTP
