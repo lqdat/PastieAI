@@ -217,7 +217,7 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
 
     const canvas = document.createElement('canvas');
     canvas.width = 1080;
-    canvas.height = 1350;
+    canvas.height = 1080;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Trình duyệt không hỗ trợ tạo ảnh QR.');
     const posterFont = '"Be Vietnam Pro", "Segoe UI", Arial, sans-serif';
@@ -226,12 +226,12 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     ctx.fillStyle = '#fffafd';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const topGradient = ctx.createLinearGradient(0, 0, canvas.width, 360);
+    const topGradient = ctx.createLinearGradient(0, 0, canvas.width, 300);
     topGradient.addColorStop(0, '#fff0f7');
     topGradient.addColorStop(0.55, '#fff8ed');
     topGradient.addColorStop(1, '#f9f3fc');
     ctx.fillStyle = topGradient;
-    ctx.fillRect(0, 0, canvas.width, 380);
+    ctx.fillRect(0, 0, canvas.width, 300);
 
     // Dải màu gradient thương hiệu trên cùng
     const accent = ctx.createLinearGradient(0, 0, canvas.width, 0);
@@ -239,100 +239,100 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     accent.addColorStop(0.5, '#c90c6c');
     accent.addColorStop(1, '#f4a62a');
     ctx.fillStyle = accent;
-    ctx.fillRect(0, 0, canvas.width, 16);
+    ctx.fillRect(0, 0, canvas.width, 14);
 
-    // 2. Header thương hiệu
+    // 2. Header thương hiệu — logo tăng 30%
     if (hasAgentLogo) {
         // Kiểu 1 (Đồng thương hiệu): Logo Pastie Chat bên trái, Logo Agent bên phải
-        const pHeight = 66;
+        const pHeight = 86;  // 66 * 1.3
         const pWidth = pHeight * (logoImage.naturalWidth / logoImage.naturalHeight);
-        ctx.drawImage(logoImage, 76, 44, pWidth, pHeight);
+        ctx.drawImage(logoImage, 56, 30, pWidth, pHeight);
 
-        const badgeSize = 74;
-        const badgeX = canvas.width - 76 - badgeSize;
-        const badgeY = 40;
+        const badgeSize = 96;  // 74 * 1.3
+        const badgeX = canvas.width - 56 - badgeSize;
+        const badgeY = 28;
 
         ctx.save();
         ctx.shadowColor = 'rgba(201, 12, 108, 0.18)';
         ctx.shadowBlur = 14;
         ctx.shadowOffsetY = 5;
-        drawPosterRoundedRect(ctx, badgeX, badgeY, badgeSize, badgeSize, 18);
+        drawPosterRoundedRect(ctx, badgeX, badgeY, badgeSize, badgeSize, 22);
         ctx.fillStyle = '#ffffff';
         ctx.fill();
         ctx.restore();
 
         ctx.strokeStyle = '#f6d3e6';
         ctx.lineWidth = 2;
-        drawPosterRoundedRect(ctx, badgeX, badgeY, badgeSize, badgeSize, 18);
+        drawPosterRoundedRect(ctx, badgeX, badgeY, badgeSize, badgeSize, 22);
         ctx.stroke();
 
         ctx.save();
-        drawPosterRoundedRect(ctx, badgeX + 4, badgeY + 4, badgeSize - 8, badgeSize - 8, 14);
+        drawPosterRoundedRect(ctx, badgeX + 5, badgeY + 5, badgeSize - 10, badgeSize - 10, 17);
         ctx.clip();
-        ctx.drawImage(agentLogoImage, badgeX + 4, badgeY + 4, badgeSize - 8, badgeSize - 8);
+        ctx.drawImage(agentLogoImage, badgeX + 5, badgeY + 5, badgeSize - 10, badgeSize - 10);
         ctx.restore();
     } else {
         // Kiểu 2 (Chuẩn Pastie) hoặc Agent không có logo: Logo Pastie Chat ở giữa
-        const pHeight = 74;
+        const pHeight = 96;  // 74 * 1.3
         const pWidth = pHeight * (logoImage.naturalWidth / logoImage.naturalHeight);
-        ctx.drawImage(logoImage, (canvas.width - pWidth) / 2, 44, pWidth, pHeight);
+        ctx.drawImage(logoImage, (canvas.width - pWidth) / 2, 30, pWidth, pHeight);
     }
 
     ctx.textAlign = 'center';
 
-    // 3. Slogan nhận diện song ngữ Anh - Việt
+    // 3. Slogan nhận diện song ngữ — cùng kích cỡ chữ VN và EN
     ctx.fillStyle = '#c90c6c';
-    ctx.font = `800 25px ${posterFont}`;
-    ctx.fillText('Không rào cản ngôn ngữ, thấu hiểu mọi khách hàng', canvas.width / 2, 154);
+    ctx.font = `800 28px ${posterFont}`;
+    ctx.fillText('Không rào cản ngôn ngữ, thấu hiểu mọi khách hàng', canvas.width / 2, 146);
 
     ctx.fillStyle = '#755a68';
-    ctx.font = `600 18px ${posterFont}`;
-    ctx.fillText('No language barriers • Understand every customer', canvas.width / 2, 184);
+    ctx.font = `600 28px ${posterFont}`;
+    ctx.fillText('No language barriers • Understand every customer', canvas.width / 2, 180);
 
     // 4. Tên Agent và Tên QR
     const nameText = businessName || 'Pastie Chat Partner';
     ctx.fillStyle = '#30233a';
-    ctx.font = `800 32px ${posterFont}`;
-    drawPosterText(ctx, nameText, canvas.width / 2, 226, 860, 38, 1);
+    ctx.font = `800 36px ${posterFont}`;
+    drawPosterText(ctx, nameText, canvas.width / 2, 224, 900, 40, 1);
 
     if (qrLabel && qrLabel.trim() && qrLabel.trim() !== nameText.trim()) {
         const labelText = String(qrLabel).trim();
-        ctx.font = `700 19px ${posterFont}`;
+        ctx.font = `700 22px ${posterFont}`;
         const textW = ctx.measureText(labelText).width;
         const pillW = Math.min(Math.max(textW + 48, 150), 520);
-        const pillH = 38;
+        const pillH = 40;
         const pillX = (canvas.width - pillW) / 2;
-        const pillY = 248;
+        const pillY = 242;
 
         ctx.fillStyle = '#fff0f7';
-        drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 19);
+        drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 20);
         ctx.fill();
 
         ctx.strokeStyle = '#f6d3e6';
         ctx.lineWidth = 1.5;
-        drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 19);
+        drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 20);
         ctx.stroke();
 
         ctx.fillStyle = '#c90c6c';
-        ctx.fillText(labelText, canvas.width / 2, pillY + 25);
+        ctx.fillText(labelText, canvas.width / 2, pillY + 27);
     }
 
-    // 5. Khung thẻ QR (.vo-qr + .the-qr + 4 góc ngắm camera)
-    const cardSize = 630;
+    // 5. Khung thẻ QR
+    const cardSize = 560;
     const cardX = (canvas.width - cardSize) / 2;
-    const cardY = 302;
+    const cardY = 296;
 
     // Lớp hào quang vo-qr ngoài
-    const voPadding = 14;
+    const voPadding = 12;
     const voX = cardX - voPadding;
     const voY = cardY - voPadding;
     const voSize = cardSize + voPadding * 2;
-    const voRadius = 36;
+    const voRadius = 32;
 
     ctx.save();
     ctx.shadowColor = 'rgba(201, 12, 108, 0.24)';
-    ctx.shadowBlur = 46;
-    ctx.shadowOffsetY = 20;
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 16;
     const auraGrad = ctx.createLinearGradient(voX, voY, voX + voSize, voY + voSize);
     auraGrad.addColorStop(0, 'rgba(239, 43, 157, 0.35)');
     auraGrad.addColorStop(1, 'rgba(255, 190, 120, 0.35)');
@@ -343,28 +343,28 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
 
     // Thẻ the-qr trắng bên trong
     ctx.fillStyle = '#ffffff';
-    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 24);
+    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 22);
     ctx.fill();
     ctx.strokeStyle = '#f6d3e6';
     ctx.lineWidth = 2;
-    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 24);
+    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 22);
     ctx.stroke();
 
-    // 4 góc ngắm camera (.goc)
-    drawCameraCorners(ctx, cardX + 16, cardY + 16, cardSize - 32, cardSize - 32, 40, 10, 5, '#ef2b9d');
+    // 4 góc ngắm camera
+    drawCameraCorners(ctx, cardX + 14, cardY + 14, cardSize - 28, cardSize - 28, 36, 9, 4.5, '#ef2b9d');
 
     // Vẽ mã QR
-    const qrPadding = 48;
+    const qrPadding = 42;
     const qrSize = cardSize - qrPadding * 2;
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(qrImage, cardX + qrPadding, cardY + qrPadding, qrSize, qrSize);
     ctx.imageSmoothingEnabled = true;
 
-    // Tâm khung QR: có logo Agent ở Kiểu 1, không có logo ở Kiểu 2 / khi không có logo
+    // Tâm khung QR: có logo Agent ở Kiểu 1
     if (hasAgentLogo) {
         const cX = canvas.width / 2;
         const cY = cardY + cardSize / 2;
-        const badgeQrSize = 98;
+        const badgeQrSize = 127;  // 98 * 1.3
         const bX = cX - badgeQrSize / 2;
         const bY = cY - badgeQrSize / 2;
 
@@ -372,60 +372,57 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
         ctx.shadowColor = 'rgba(61, 10, 38, 0.18)';
         ctx.shadowBlur = 16;
         ctx.shadowOffsetY = 4;
-        drawPosterRoundedRect(ctx, bX, bY, badgeQrSize, badgeQrSize, 18);
+        drawPosterRoundedRect(ctx, bX, bY, badgeQrSize, badgeQrSize, 22);
         ctx.fillStyle = '#ffffff';
         ctx.fill();
         ctx.restore();
 
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 4;
-        drawPosterRoundedRect(ctx, bX, bY, badgeQrSize, badgeQrSize, 18);
+        drawPosterRoundedRect(ctx, bX, bY, badgeQrSize, badgeQrSize, 22);
         ctx.stroke();
 
         ctx.save();
-        drawPosterRoundedRect(ctx, bX + 6, bY + 6, badgeQrSize - 12, badgeQrSize - 12, 14);
+        drawPosterRoundedRect(ctx, bX + 7, bY + 7, badgeQrSize - 14, badgeQrSize - 14, 17);
         ctx.clip();
-        ctx.drawImage(agentLogoImage, bX + 6, bY + 6, badgeQrSize - 12, badgeQrSize - 12);
+        ctx.drawImage(agentLogoImage, bX + 7, bY + 7, badgeQrSize - 14, badgeQrSize - 14);
         ctx.restore();
     }
 
-    // 6. Khu vực chỉ dẫn quét mã song ngữ dưới khung QR
+    // 6. Khu vực chỉ dẫn quét mã song ngữ — cùng kích cỡ chữ
     ctx.fillStyle = '#30233a';
-    ctx.font = `800 29px ${posterFont}`;
-    ctx.fillText('QUÉT MÃ ĐỂ BẮT ĐẦU TRÒ CHUYỆN', canvas.width / 2, 984);
+    ctx.font = `800 32px ${posterFont}`;
+    ctx.fillText('QUÉT MÃ ĐỂ BẮT ĐẦU TRÒ CHUYỆN', canvas.width / 2, 900);
 
     ctx.fillStyle = '#786b7b';
-    ctx.font = `700 21px ${posterFont}`;
-    ctx.fillText('SCAN TO START A CHAT', canvas.width / 2, 1022);
+    ctx.font = `700 32px ${posterFont}`;
+    ctx.fillText('SCAN TO START A CHAT', canvas.width / 2, 940);
 
     // Thanh hướng dẫn camera song ngữ
-    const pillY = 1058;
-    const pillH = 54;
-    const pillW = 730;
-    const pillX = (canvas.width - pillW) / 2;
+    {
+        const pillY2 = 966;
+        const pillH2 = 52;
+        const pillW2 = 780;
+        const pillX2 = (canvas.width - pillW2) / 2;
 
-    ctx.fillStyle = '#fff0f7';
-    drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 27);
-    ctx.fill();
+        ctx.fillStyle = '#fff0f7';
+        drawPosterRoundedRect(ctx, pillX2, pillY2, pillW2, pillH2, 26);
+        ctx.fill();
 
-    ctx.strokeStyle = '#f6d3e6';
-    ctx.lineWidth = 1.5;
-    drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 27);
-    ctx.stroke();
+        ctx.strokeStyle = '#f6d3e6';
+        ctx.lineWidth = 1.5;
+        drawPosterRoundedRect(ctx, pillX2, pillY2, pillW2, pillH2, 26);
+        ctx.stroke();
 
-    ctx.fillStyle = '#b62b70';
-    ctx.font = `700 17px ${posterFont}`;
-    ctx.fillText('Mở Camera / Open Camera  •  Hướng vào QR / Point at QR', canvas.width / 2, pillY + 34);
-
-    // Tính năng nổi bật song ngữ
-    ctx.fillStyle = '#8d7889';
-    ctx.font = `600 16px ${posterFont}`;
-    ctx.fillText('Dịch tự động đa ngôn ngữ  •  Real-time AI Translation', canvas.width / 2, 1146);
+        ctx.fillStyle = '#b62b70';
+        ctx.font = `700 20px ${posterFont}`;
+        ctx.fillText('Mở Camera / Open Camera  •  Hướng vào QR / Point at QR', canvas.width / 2, pillY2 + 33);
+    }
 
     // Chân trang song ngữ
     ctx.fillStyle = '#9a8b99';
-    ctx.font = `500 16px ${posterFont}`;
-    ctx.fillText('Vận hành bởi Pastie  •  Powered by Pastie', canvas.width / 2, 1316);
+    ctx.font = `500 18px ${posterFont}`;
+    ctx.fillText('Vận hành bởi Pastie  •  Powered by Pastie', canvas.width / 2, 1054);
 
     return new Promise((resolve, reject) => canvas.toBlob(
         blob => blob ? resolve(blob) : reject(new Error('Không thể xuất poster QR.')),
