@@ -2790,11 +2790,11 @@ button:focus-visible {
 }
 
 .dpq-brand-logo {
-  height: 52px;
+  height: 64px;
   width: auto;
-  max-width: 220px;
+  max-width: 270px;
   object-fit: contain;
-  margin: 0 auto 14px;
+  margin: 0 auto 6px;
   display: block;
 }
 
@@ -2804,9 +2804,10 @@ button:focus-visible {
    qr-chat-portal/app/globals.css): cùng font, cùng 17px, cùng nét 400. Đổi ở
    đây thì phải đổi luôn bên kia, nếu không hai màn lại lệch nhau. */
 .dpq-title {
-  font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 17px;
-  font-weight: 400;
+  font-family: 'Lora', 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, serif;
+  font-size: 17.5px;
+  font-weight: 500;
+  font-style: italic;
   letter-spacing: .008em;
   color: #374151;
   line-height: 1.5;

@@ -363,6 +363,9 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
             document.fonts.load('800 18px "Be Vietnam Pro"'),
             document.fonts.load('800 24px "Be Vietnam Pro"'),
             document.fonts.load('800 36px "Be Vietnam Pro"'),
+            document.fonts.load('600 18px "Lora"'),
+            document.fonts.load('italic 600 18px "Lora"'),
+            document.fonts.load('italic 500 18px "Lora"'),
         ]);
     }
 
@@ -387,6 +390,7 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     if (!ctx) throw new Error('Trình duyệt không hỗ trợ tạo ảnh QR.');
     ctx.scale(scale, scale);
     const posterFont = '"Be Vietnam Pro", "Segoe UI", Arial, sans-serif';
+    const sloganFont = '"Lora", "Be Vietnam Pro", "Segoe UI", serif';
 
     // 1. Nền canvas tổng & Khung viền poster
     ctx.fillStyle = '#f6f2f7';
@@ -573,13 +577,13 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
         ctx.fillText(qrDisplayText, baseW / 2, pillY + 39);
     }
 
-    // 4. Khối 2: Slogan nhận diện song ngữ (SIZE BẰNG VỚI KHỐI QUÉT MÃ: 18px / 18px)
+    // 4. Khối 2: Slogan nhận diện song ngữ (SIZE BẰNG VỚI KHỐI QUÉT MÃ: 18px / 18px - FONT LORA MỀM MẠI, TINH TẾ)
     ctx.fillStyle = '#c90c6c';
-    ctx.font = `700 18px ${posterFont}`;
+    ctx.font = `italic 600 18px ${sloganFont}`;
     ctx.fillText('Không rào cản ngôn ngữ, thấu hiểu mọi khách hàng', baseW / 2, y2 + 16);
 
     ctx.fillStyle = '#6b5667';
-    ctx.font = `600 18px ${posterFont}`;
+    ctx.font = `italic 500 18px ${sloganFont}`;
     ctx.fillText('No language barriers • Understand every customer', baseW / 2, y2 + 42);
 
     // 5. Khối 3: Thẻ QR — UI/UX PRO MAX: DIMENSIONAL LAYERING & BENTO LUXURY FRAMING

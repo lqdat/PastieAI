@@ -10,7 +10,7 @@
 const TRANSLATIONS = {
     vi: {
         loginTitle: "Không rào cản ngôn ngữ\nThấu hiểu mọi khách hàng",
-        loginSubtitle: "Nhập email để kết nối Pastie Chat",
+        loginSubtitle: "Nhập email để đăng nhập Pastie Chat",
         googleLoginBtn: "Đăng nhập bằng Gmail",
         passwordPlaceholder: "Mật khẩu bảo mật...",
         loginError: "Mật khẩu không hợp lệ, vui lòng thử lại.",
@@ -83,8 +83,8 @@ const TRANSLATIONS = {
         msgStatusSeenAt: "Đã xem lúc {t}"
     },
     en: {
-        loginTitle: "No Language Barriers\nUnderstanding Every Guest",
-        loginSubtitle: "Enter admin email to connect console",
+        loginTitle: "No language barriers\nUnderstanding every guest",
+        loginSubtitle: "Enter email to log in to Pastie Chat",
         googleLoginBtn: "Sign in with Gmail",
         passwordPlaceholder: "Secure password...",
         loginError: "Invalid password, please try again.",
@@ -158,7 +158,7 @@ const TRANSLATIONS = {
     },
     ru: {
         loginTitle: "Без языковых барьеров\nПонимание каждого гостя",
-        loginSubtitle: "Введите email администратора для подключения",
+        loginSubtitle: "Введите эл. почту для входа в Pastie Chat",
         googleLoginBtn: "Войти через Gmail",
         passwordPlaceholder: "Пароль...",
         loginError: "Неверный пароль, попробуйте еще раз.",
@@ -231,8 +231,8 @@ const TRANSLATIONS = {
         msgStatusSeenAt: "Просмотрено в {t}"
     },
     zh: {
-        loginTitle: "跨越语言障碍\n理解每一位顾客",
-        loginSubtitle: "输入管理员邮箱以连接控制台",
+        loginTitle: "语言无障碍\n理解每一位客人",
+        loginSubtitle: "输入邮箱以登录 Pastie Chat",
         googleLoginBtn: "使用 Gmail 登录",
         passwordPlaceholder: "安全密码...",
         loginError: "密码无效，请重试。",
@@ -306,7 +306,7 @@ const TRANSLATIONS = {
     },
     ko: {
         loginTitle: "언어 장벽 없이\n모든 고객을 이해합니다",
-        loginSubtitle: "콘솔에 접속하려면 관리자 이메일을 입력하세요",
+        loginSubtitle: "Pastie Chat에 로그인하려면 이메일을 입력하세요",
         googleLoginBtn: "Gmail로 로그인",
         passwordPlaceholder: "보안 비밀번호...",
         loginError: "비밀번호가 올바르지 않습니다. 다시 시도해 주세요.",
