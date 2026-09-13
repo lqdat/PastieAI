@@ -1449,6 +1449,29 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS agent_menu_enabled BOOLEAN NOT NULL DEFAULT TRUE;`);
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS superadmin_menu_disabled BOOLEAN NOT NULL DEFAULT FALSE;`);
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS menu_custom_label VARCHAR(100);`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS showcase_mode VARCHAR(20) NOT NULL DEFAULT 'menu';`);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS agent_posts (
+        id SERIAL PRIMARY KEY,
+        agent_id INTEGER NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        title_vi VARCHAR(255) NOT NULL,
+        title_en VARCHAR(255),
+        category VARCHAR(100) DEFAULT 'ƯU ĐÃI',
+        cover_url TEXT,
+        excerpt_vi TEXT,
+        excerpt_en TEXT,
+        content_vi TEXT,
+        content_en TEXT,
+        sort_order INTEGER DEFAULT 0,
+        is_featured BOOLEAN DEFAULT FALSE,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_posts_agent_id ON agent_posts(agent_id);
+      ALTER TABLE agent_posts ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE;
+    `);
 
     await migrateQrAgentsToSales();
 

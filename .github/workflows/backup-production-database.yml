@@ -1,0 +1,46 @@
+name: Backup production database
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-production-database
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - name: Create and verify PostgreSQL dump
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          backup_file="pastie-$(date -u +'%Y-%m-%dT%H-%M-%SZ').dump"
+          echo "BACKUP_FILE=$backup_file" >> "$GITHUB_ENV"
+          mkdir backup
+          docker run --rm \
+            -e DATABASE_URL \
+            -v "$PWD/backup:/backup" \
+            postgres:18-alpine \
+            sh -c "pg_dump \"\$DATABASE_URL\" --format=custom --compress=9 --file=/backup/$backup_file && pg_restore --list /backup/$backup_file >/dev/null"
+
+      - name: Upload dump to Backblaze B2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AWS_DEFAULT_REGION: us-east-005
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+        run: >-
+          aws s3 cp "backup/$BACKUP_FILE"
+          "s3://$B2_BUCKET/database/$BACKUP_FILE"
+          --endpoint-url "$B2_ENDPOINT"
+          --only-show-errors

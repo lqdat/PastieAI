@@ -14,6 +14,8 @@ if (apiKey) {
 // URL gốc phục vụ ảnh logo và liên kết
 const DEFAULT_AGENT_URL = 'https://agent.pastiechat.com';
 const DEFAULT_SALE_URL = 'https://sale.pastiechat.com';
+const MAIN_WEBSITE_URL = 'https://pastiechat.com';
+const MAIN_WEBSITE_DISPLAY = 'pastiechat.com';
 
 function getAgentUrl() {
   return (process.env.AGENT_PUBLIC_URL || DEFAULT_AGENT_URL).replace(/\/$/, '');
@@ -99,7 +101,7 @@ async function sendOTPEmail(toEmail, otpCode) {
           <td style="padding:18px 30px 26px;background-color:#ffffff;color:#9a9aa6;font-size:12px;line-height:1.9">
             <div><b style="color:#7c7c8a">Hotline:</b> 0984 448 834</div>
             <div><b style="color:#7c7c8a">Email:</b> <a href="mailto:ai@pastie.vn" style="color:#C90C6C;text-decoration:none">ai@pastie.vn</a></div>
-            <div><b style="color:#7c7c8a">Website:</b> <a href="${customerUrl}" style="color:#C90C6C;text-decoration:none">pastiechat.com</a></div>
+            <div><b style="color:#7c7c8a">Website:</b> <a href="${MAIN_WEBSITE_URL}" style="color:#C90C6C;text-decoration:none">${MAIN_WEBSITE_DISPLAY}</a></div>
             <div style="margin-top:10px;color:#b6b6c0">© 2026 Pastie Chat — Nền tảng tư vấn &amp; CSKH đa kênh thông minh.</div>
           </td>
         </tr>
@@ -138,8 +140,8 @@ async function sendAdminOTPEmail(toEmail, otpCode, recipientName = 'Quản trị
 
   const { loginUrl, role } = typeof options === 'string' ? { loginUrl: options } : (options || {});
   const sender = process.env.SENDER_EMAIL || 'onboarding@resend.dev';
-  const targetUrl = (loginUrl || (role === 'sale' ? getSaleUrl() : getAgentUrl())).replace(/\/$/, '');
-  const displayHost = targetUrl.replace(/^https?:\/\//, '');
+  // Nút đăng nhập theo role: agent.pastiechat.com hoặc sale.pastiechat.com
+  const targetUrl = (role === 'sale' ? getSaleUrl() : getAgentUrl()).replace(/\/$/, '');
   const logoUrl = `${getAgentUrl()}/pastie-chat-biz-compact.png`;
 
   try {
@@ -199,7 +201,7 @@ async function sendAdminOTPEmail(toEmail, otpCode, recipientName = 'Quản trị
           <td style="padding:18px 30px 26px;background-color:#ffffff;color:#9a9aa6;font-size:12px;line-height:1.9">
             <div><b style="color:#7c7c8a">Hotline:</b> 0984 448 834</div>
             <div><b style="color:#7c7c8a">Email:</b> <a href="mailto:ai@pastie.vn" style="color:#C90C6C;text-decoration:none">ai@pastie.vn</a></div>
-            <div><b style="color:#7c7c8a">Website:</b> <a href="${targetUrl}" style="color:#C90C6C;text-decoration:none">${displayHost}</a></div>
+            <div><b style="color:#7c7c8a">Website:</b> <a href="${MAIN_WEBSITE_URL}" style="color:#C90C6C;text-decoration:none">${MAIN_WEBSITE_DISPLAY}</a></div>
             <div style="margin-top:10px;color:#b6b6c0">© 2026 Pastie Chat — Nền tảng tư vấn &amp; CSKH đa kênh thông minh.</div>
           </td>
         </tr>
@@ -235,9 +237,8 @@ async function sendAccountActivationEmail({ toEmail, fullName, role, createdByNa
   }
 
   const sender = process.env.SENDER_EMAIL || 'onboarding@resend.dev';
-  const roleDefaultUrl = role === 'sale' ? getSaleUrl() : getAgentUrl();
-  const resolvedLoginUrl = (loginUrl || roleDefaultUrl).replace(/\/$/, '');
-  const displayHost = resolvedLoginUrl.replace(/^https?:\/\//, '');
+  // Nút đăng nhập theo role: agent.pastiechat.com hoặc sale.pastiechat.com
+  const resolvedLoginUrl = (role === 'sale' ? getSaleUrl() : getAgentUrl()).replace(/\/$/, '');
   const logoUrl = `${getAgentUrl()}/pastie-chat-biz-compact.png`;
   const guideUrl = `${getAgentUrl()}/guide`;
 
@@ -313,7 +314,7 @@ async function sendAccountActivationEmail({ toEmail, fullName, role, createdByNa
           <td style="padding:18px 30px 26px;background-color:#ffffff;color:#9a9aa6;font-size:12px;line-height:1.9">
             <div><b style="color:#7c7c8a">Hotline:</b> 0984 448 834</div>
             <div><b style="color:#7c7c8a">Email:</b> <a href="mailto:ai@pastie.vn" style="color:#C90C6C;text-decoration:none">ai@pastie.vn</a></div>
-            <div><b style="color:#7c7c8a">Website:</b> <a href="${resolvedLoginUrl}" style="color:#C90C6C;text-decoration:none">${displayHost}</a></div>
+            <div><b style="color:#7c7c8a">Website:</b> <a href="${MAIN_WEBSITE_URL}" style="color:#C90C6C;text-decoration:none">${MAIN_WEBSITE_DISPLAY}</a></div>
             <div style="margin-top:10px;color:#b6b6c0">© 2026 Pastie Chat — Nền tảng tư vấn &amp; CSKH đa kênh thông minh.</div>
           </td>
         </tr>
