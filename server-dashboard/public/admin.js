@@ -1501,7 +1501,7 @@ async function switchPosterStyle(style) {
         tabStandard.setAttribute('aria-selected', isStd ? 'true' : 'false');
     }
 
-    const { imageUrl, label, owner, agentName, agentLogoUrl } = activeQrPreviewState;
+    const { imageUrl, label, owner, agentName, agentNameEn, agentLogoUrl } = activeQrPreviewState;
 
     if (activeQrPreviewState.blobs[style]) {
         applyPosterBlob(activeQrPreviewState.blobs[style], style);
@@ -1516,6 +1516,7 @@ async function switchPosterStyle(style) {
     try {
         const blob = await createBrandedQrPoster(imageUrl, {
             businessName: agentName || label || owner,
+            businessNameEn: agentNameEn || '',
             qrLabel: label,
             agentLogoUrl,
             style,
@@ -1545,15 +1546,19 @@ window.openQrPreview = async (encodedImageUrl, encodedLabel, encodedOwner, encod
 
     let agentName = '';
     let agentLogoUrl = '';
+    let agentNameEn = '';
     if (typeof encodedAgentName === 'object' && encodedAgentName !== null) {
         options = encodedAgentName;
         agentName = options.agentName || '';
+        agentNameEn = options.agentNameEn || '';
         agentLogoUrl = options.agentLogoUrl || '';
     } else {
         agentName = decodeURIComponent(encodedAgentName || '');
         agentLogoUrl = decodeURIComponent(encodedAgentLogoUrl || '');
+        agentNameEn = decodeURIComponent(options.agentNameEn || '');
     }
     if (!agentName) agentName = owner || window.CURRENT_ADMIN?.full_name || '';
+    if (!agentNameEn) agentNameEn = window.CURRENT_ADMIN?.full_name_en || '';
     if (!agentLogoUrl) agentLogoUrl = window.CURRENT_ADMIN?.avatar_url || '';
 
     if (!qrPreviewModal) return;
@@ -1564,6 +1569,7 @@ window.openQrPreview = async (encodedImageUrl, encodedLabel, encodedOwner, encod
         owner,
         chatUrl,
         agentName,
+        agentNameEn,
         agentLogoUrl,
         activeStyle: 'cobranded',
         blobs: {},
@@ -1588,6 +1594,7 @@ window.openQrPreview = async (encodedImageUrl, encodedLabel, encodedOwner, encod
     // Chạy ngầm vẽ trước kiểu 2 vào bộ nhớ để chuyển tab tức thì
     createBrandedQrPoster(imageUrl, {
         businessName: agentName || label || owner,
+        businessNameEn: agentNameEn || '',
         qrLabel: label,
         agentLogoUrl,
         style: 'standard',
@@ -1797,6 +1804,7 @@ document.getElementById('org-qr-list')?.addEventListener('click', (event) => {
     const imageUrl = `https://quickchart.io/qr?size=360&text=${encodeURIComponent(account.chat_url)}`;
     const enc = (value) => encodeURIComponent(value ?? '').replace(/'/g, '%27');
     const agentName = account.agent_name || window.CURRENT_ADMIN?.full_name || '';
+    const agentNameEn = account.agent_name_en || window.CURRENT_ADMIN?.full_name_en || '';
     const agentLogoUrl = account.agent_avatar_url || window.CURRENT_ADMIN?.avatar_url || '';
     window.openQrPreview(
         enc(imageUrl),
@@ -1804,7 +1812,8 @@ document.getElementById('org-qr-list')?.addEventListener('click', (event) => {
         enc(account.group_name || account.label),
         enc(account.chat_url),
         enc(agentName),
-        enc(agentLogoUrl)
+        enc(agentLogoUrl),
+        { agentNameEn: enc(agentNameEn) }
     );
 });
 

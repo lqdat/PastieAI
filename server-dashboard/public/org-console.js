@@ -42,11 +42,12 @@ async function refreshQrAccounts() {
             const imageUrl = `https://quickchart.io/qr?size=360&text=${encodeURIComponent(account.chat_url)}`;
             const eventValue = (value) => encodeURIComponent(value || '').replace(/'/g, '%27');
             const agentName = account.agent_name || account.owner_name || '';
+            const agentNameEn = account.agent_name_en || '';
             const agentLogoUrl = account.agent_avatar_url || '';
             return `<article class="qr-account-card">
                 <img src="${imageUrl}" alt="QR chat của ${escapeHtml(account.owner_name)}" loading="lazy">
                 <div class="qr-account-info"><strong>${escapeHtml(account.label)}</strong><span><i class="ri-user-3-line"></i> ${escapeHtml(account.owner_name)}</span><small>${escapeHtml(account.chat_url)}</small></div>
-                <div class="qr-account-actions"><button type="button" onclick="window.copyQrChatLink('${eventValue(account.chat_url)}', true)"><i class="ri-file-copy-line"></i> Sao chép</button><button type="button" onclick="window.openQrPreview('${eventValue(imageUrl)}', '${eventValue(account.label)}', '${eventValue(account.owner_name)}', '${eventValue(account.chat_url)}', '${eventValue(agentName)}', '${eventValue(agentLogoUrl)}')"><i class="ri-zoom-in-line"></i> Mở QR</button></div>
+                <div class="qr-account-actions"><button type="button" onclick="window.copyQrChatLink('${eventValue(account.chat_url)}', true)"><i class="ri-file-copy-line"></i> Sao chép</button><button type="button" onclick="window.openQrPreview('${eventValue(imageUrl)}', '${eventValue(account.label)}', '${eventValue(account.owner_name)}', '${eventValue(account.chat_url)}', '${eventValue(agentName)}', '${eventValue(agentLogoUrl)}', { agentNameEn: '${eventValue(agentNameEn)}' })"><i class="ri-zoom-in-line"></i> Mở QR</button></div>
             </article>`;
         }).join('');
     } catch (error) {
@@ -437,27 +438,27 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     drawPosterRoundedRect(ctx, frameX, frameY, frameW, frameH, frameR);
     ctx.stroke();
 
-    // 2. Header thương hiệu (Logo Pastie bên trái, Logo Agent/chữ LOGO bên phải)
+    // 2. Header thương hiệu (Logo Pastie bên trái, Logo Agent/chữ LOGO bên phải - TĂNG SIZE RÕ RÀNG)
     const logoY = frameY + 28;
-    const logoH = 74;
+    const logoH = 96;
     const logoBottom = logoY + logoH;
 
     if (style === 'cobranded') {
-        // Logo Pastie Chat Biz (BÊN TRÁI, hoàn toàn không nền)
-        const pHeight = 70;
+        // Logo Pastie Chat Biz (BÊN TRÁI, hoàn toàn không nền, kích thước lớn nổi bật)
+        const pHeight = 90;
         const pWidth = pHeight * (logoImage.naturalWidth / logoImage.naturalHeight);
         const pX = frameX + 40;
         const pY = logoY + (logoH - pHeight) / 2;
         ctx.drawImage(logoImage, pX, pY, pWidth, pHeight);
 
-        // Logo Agent (BÊN PHẢI - SIZE BẰNG NHAU VỚI LOGO TRÁI, không viền, không background)
+        // Logo Agent (BÊN PHẢI - SIZE BẰNG NHAU VỚI LOGO TRÁI: 90px, không viền, không background)
         if (hasAgentLogo) {
             const aNaturalW = agentLogoImage.naturalWidth || 100;
             const aNaturalH = agentLogoImage.naturalHeight || 100;
             const aRatio = aNaturalW / aNaturalH;
-            const aHeight = 70; // Bằng chiều cao logo Pastie bên trái
+            const aHeight = 90; // Bằng chiều cao logo Pastie bên trái
             const aWidth = aHeight * aRatio;
-            const maxAWidth = 340;
+            const maxAWidth = 360;
             const finalAWidth = Math.min(aWidth, maxAWidth);
             const finalAHeight = finalAWidth / aRatio;
             const aX = frameX + frameW - 40 - finalAWidth;
@@ -465,17 +466,17 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
 
             ctx.drawImage(agentLogoImage, aX, aY, finalAWidth, finalAHeight);
         } else {
-            // Khi chưa có logo tải lên: hiển thị chữ LOGO kích thước BẰNG NHAU với logo bên trái (~70px)
+            // Khi chưa có logo tải lên: hiển thị chữ LOGO kích thước BẰNG NHAU với logo bên trái (~90px)
             ctx.save();
             ctx.textAlign = 'right';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = '#b62b70';
-            ctx.font = `800 58px ${posterFont}`;
+            ctx.font = `800 74px ${posterFont}`;
             ctx.fillText('LOGO', frameX + frameW - 40, logoY + logoH / 2);
             ctx.restore();
         }
     } else {
-        const pHeight = 82;
+        const pHeight = 96;
         const pWidth = pHeight * (logoImage.naturalWidth / logoImage.naturalHeight);
         ctx.drawImage(logoImage, (baseW - pWidth) / 2, frameY + 24, pWidth, pHeight);
     }
@@ -493,7 +494,7 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     // Chiều cao từng khối:
     // Khối 1: Tên Agent & Tên QR
     let h1 = 44;
-    if (hasAgentEn) h1 += 24;
+    if (hasAgentEn) h1 += 44;
     if (hasCustomLabel) h1 += 54;
 
     // Khối 2: Slogan song ngữ (2 dòng 18px)
@@ -536,17 +537,17 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     ctx.font = `800 36px ${posterFont}`;
     drawPosterText(ctx, agentBilingual.vi, baseW / 2, curY1, 880, 42, 1);
 
-    // Dịch tiếng Anh Tên Agent (Size 2: 18px)
+    // Dịch tiếng Anh Tên Agent (SIZE 1: 36px - BẰNG CHÍNH XÁC VỚI TIẾNG VIỆT)
     if (hasAgentEn) {
-        curY1 += 24;
-        ctx.fillStyle = '#7a6679';
-        ctx.font = `600 18px ${posterFont}`;
-        ctx.fillText(agentBilingual.en, baseW / 2, curY1);
+        curY1 += 44;
+        ctx.fillStyle = '#4a384b';
+        ctx.font = `700 36px ${posterFont}`;
+        drawPosterText(ctx, agentBilingual.en, baseW / 2, curY1, 880, 42, 1);
     }
 
     // Tên QR song ngữ (Size 1: 36px trong Pill tinh tế)
     if (hasCustomLabel) {
-        curY1 += 44;
+        curY1 += 48;
         const qrDisplayText = qrBilingual.en
             ? `${qrBilingual.vi} • ${qrBilingual.en}`
             : qrBilingual.vi;

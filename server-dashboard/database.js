@@ -221,6 +221,7 @@ async function initializeDatabase() {
     // NULL = xem tất cả project (dùng cho superadmin hoặc subadmin toàn quyền).
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS project_id VARCHAR(100);`);
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS created_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS full_name_en VARCHAR(255);`);
 
     // Registry dự án (multi-project): mỗi dự án 1 dòng; KB + tài khoản gắn theo project_id này.
     await query(`
@@ -870,6 +871,26 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
         last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (admin_id, device_id)
       );
+    `);
+    // CREATE TABLE IF NOT EXISTS không bổ sung UNIQUE cho bảng production đã
+    // tồn tại từ schema cũ. Giữ dòng dùng gần nhất, rồi tạo index để câu
+    // ON CONFLICT (admin_id, device_id) trong registerDevice có arbiter hợp lệ.
+    await query(`
+      WITH ranked AS (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY admin_id, device_id
+                 ORDER BY last_seen DESC NULLS LAST, id DESC
+               ) AS rn
+          FROM admin_devices
+      )
+      DELETE FROM admin_devices d
+       USING ranked r
+       WHERE d.id = r.id AND r.rn > 1;
+    `);
+    await query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_devices_admin_device
+        ON admin_devices(admin_id, device_id);
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_admin_devices_admin ON admin_devices(admin_id, status);`);
     // Một MÁY, nhiều trình duyệt: mỗi trình duyệt có mã riêng, gom hết vào

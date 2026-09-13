@@ -26,6 +26,9 @@ console.log('  ✓ Vân tay orderPrint theo dõi số lượng bills để clien
 assert.match(serverSource, /INSERT INTO chat_order_bills/);
 console.log('  ✓ Cơ chế auto-sync hóa đơn vào chat_order_bills đã được tích hợp.');
 
+assert.match(dbSource, /CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_devices_admin_device\s+ON admin_devices\(admin_id, device_id\)/);
+console.log('  ✓ Database cũ được bổ sung unique index phục vụ đăng ký thiết bị.');
+
 // ---------------------------------------------------------------------------
 // 2. CHẠY KỊCH BẢN TRÊN POSTGRESQL (Khách - Sale - Agent E2E Scenarios)
 // ---------------------------------------------------------------------------
@@ -45,6 +48,15 @@ const check = (name, condition, detail) => {
 
 (async () => {
   await db.initPromise;
+
+  const deviceUniqueIndex = await db.query(`
+    SELECT 1 FROM pg_indexes
+     WHERE tablename = 'admin_devices'
+       AND indexdef ILIKE '%UNIQUE%'
+       AND indexdef ILIKE '%(admin_id, device_id)%'
+     LIMIT 1
+  `);
+  check('DB: admin_devices có unique index (admin_id, device_id)', deviceUniqueIndex.rows.length === 1);
 
   const testSuffix = crypto.randomBytes(4).toString('hex');
   const projectId = `test_proj_${testSuffix}`;

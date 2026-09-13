@@ -1691,7 +1691,7 @@ async function checkAdminAuth(req, res, next) {
   try {
     // 1. Check if token exists in admin_sessions and joins admins
     const sessionRes = await db.query(
-      `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.role, a.avatar_url, a.is_active, a.project_id, a.sale_limit,
+      `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.full_name_en, a.role, a.avatar_url, a.is_active, a.project_id, a.sale_limit,
               a.managed_by_admin_id,
               m.full_name AS manager_name, m.username AS manager_username,
               m.avatar_url AS manager_avatar_url
@@ -7054,7 +7054,7 @@ app.get('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
   }
 
   const result = await db.query(
-    `SELECT q.id, q.code, q.label, q.is_active, q.created_at, a.id AS owner_admin_id, a.full_name AS owner_name, a.full_name AS agent_name, a.avatar_url AS agent_avatar_url
+    `SELECT q.id, q.code, q.label, q.is_active, q.created_at, a.id AS owner_admin_id, a.full_name AS owner_name, a.full_name AS agent_name, a.full_name_en AS agent_name_en, a.avatar_url AS agent_avatar_url
        FROM qr_chat_accounts q JOIN admins a ON a.id = q.owner_admin_id
       WHERE q.project_id = $1 AND q.is_active = TRUE ${scopeSql}
       ORDER BY q.created_at DESC`,
@@ -10900,7 +10900,7 @@ app.get('/api/agent/qr-accounts', checkAdminAuth, async (req, res) => {
     const result = await db.query(
       `SELECT q.id, q.code, q.label, q.display_label, q.is_active, q.created_at,
               g.id AS group_id, g.name AS group_name,
-              a.full_name AS agent_name, a.avatar_url AS agent_avatar_url
+              a.full_name AS agent_name, a.full_name_en AS agent_name_en, a.avatar_url AS agent_avatar_url
          FROM qr_chat_accounts q
          JOIN agent_groups g ON g.id = q.group_id
          JOIN admins a ON a.id = g.agent_id
