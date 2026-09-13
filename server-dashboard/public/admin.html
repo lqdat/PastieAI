@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r128">
-    <link rel="stylesheet" href="menu-console.css?v=r128">
+    <link rel="stylesheet" href="admin.css?v=r130">
+    <link rel="stylesheet" href="menu-console.css?v=r130">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -132,7 +132,7 @@
                 <!-- Step 1: Input Email -->
                 <form id="otp-step-email" class="dpq-form-step" onsubmit="handleSendAdminOtp(event); return false;">
                     <div class="dpq-input-wrap">
-                        <input type="email" id="admin-otp-email-input" class="dpq-input" placeholder="Email nhân viên / quản trị..." autocomplete="email" required>
+                        <input type="email" id="admin-otp-email-input" class="dpq-input" placeholder="Nhập email để kết nối Pastie Chat" autocomplete="email" required>
                     </div>
                     <p class="dpq-helper-text">Chúng tôi sẽ gửi mã xác thực 6 số đến email của bạn.</p>
                     <button type="submit" id="send-admin-otp-btn" class="dpq-primary-btn">
@@ -871,7 +871,7 @@
                 </div>
                 <div class="session-status-filter" id="session-status-filter" role="tablist">
                     <button type="button" class="ssf-btn is-active" data-status="all" role="tab"><span class="ssf-label">Tất cả</span><span class="ssf-count" id="ssf-count-all">0</span></button>
-                    <button type="button" class="ssf-btn" data-status="active" role="tab"><span class="ssf-label">Đang mở</span><span class="ssf-count" id="ssf-count-active">0</span></button>
+                    <button type="button" class="ssf-btn" data-status="active" role="tab"><span class="ssf-label">Đang chat</span><span class="ssf-count" id="ssf-count-active">0</span></button>
                     <button type="button" class="ssf-btn" data-status="closed" role="tab"><span class="ssf-label">Đã đóng</span><span class="ssf-count" id="ssf-count-closed">0</span></button>
                 </div>
                 <div class="sessions-list" id="sessions-list-container">
@@ -2282,15 +2282,15 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r129"></script>
-    <script src="core.js?v=r129"></script>
-    <script src="chat.js?v=r128"></script>
-    <script src="org-console.js?v=r128"></script>
-    <script src="project-admin.js?v=r128"></script>
-    <script src="menu-console.js?v=r128"></script>
-    <script src="order-console.js?v=r128"></script>
-    <script src="cart-console.js?v=r128"></script>
-    <script src="ticket-console.js?v=r128"></script>
-    <script src="admin.js?v=r128"></script>
+    <script src="config.js?v=r130"></script>
+    <script src="core.js?v=r130"></script>
+    <script src="chat.js?v=r130"></script>
+    <script src="org-console.js?v=r130"></script>
+    <script src="project-admin.js?v=r130"></script>
+    <script src="menu-console.js?v=r130"></script>
+    <script src="order-console.js?v=r130"></script>
+    <script src="cart-console.js?v=r130"></script>
+    <script src="ticket-console.js?v=r130"></script>
+    <script src="admin.js?v=r130"></script>
 </body>
 </html>

@@ -2198,27 +2198,27 @@ function buildQrGreeting({ lang, guestName, venueName, placeLabel }) {
     vi: {
       hi: name ? `Xin chào ${name}!` : 'Xin chào!',
       at: place ? ` tại ${place}` : '',
-      body: (v, at) => `${v ? v + ' r' : 'R'}ất vui được đón bạn${at}. Chúng tôi có thể giúp gì cho bạn ? Nhắn tin cho chúng tôi ngay nhé !`,
+      body: (v, at) => `${v ? v + ' r' : 'R'}ất vui được đón bạn${at}. Chúng tôi có thể giúp gì được cho bạn? Chat ngay nhé! :)))`,
     },
     en: {
       hi: name ? `Hi ${name}!` : 'Hello!',
       at: place ? ` You're at ${place}.` : '',
-      body: (v, at) => `Welcome to ${v || 'our place'}.${at} Message us right here whenever you need anything.`,
+      body: (v, at) => `Welcome to ${v || 'our place'}.${at} How can we help you? Chat with us right here! :)))`,
     },
     ru: {
       hi: name ? `Здравствуйте, ${name}!` : 'Здравствуйте!',
       at: place ? ` Вы за столиком ${place}.` : '',
-      body: (v, at) => `Добро пожаловать в ${v || 'наше заведение'}.${at} Пишите нам прямо здесь, если что-то понадобится.`,
+      body: (v, at) => `Добро пожаловать в ${v || 'наше заведение'}.${at} Чем мы можем помочь? Напишите нам прямо здесь! :)))`,
     },
     zh: {
       hi: name ? `${name}，您好！` : '您好！',
       at: place ? `您在${place}。` : '',
-      body: (v, at) => `欢迎光临${v || '本店'}。${at}有任何需要，随时在这里留言。`,
+      body: (v, at) => `欢迎光临${v || '本店'}。${at}有什么可以帮您的吗？现在就在这里聊聊吧！:)))`,
     },
     ko: {
       hi: name ? `${name}님, 안녕하세요!` : '안녕하세요!',
       at: place ? ` ${place} 좌석입니다.` : '',
-      body: (v, at) => `${v || '저희 매장'}에 오신 것을 환영합니다.${at} 필요하신 것이 있으면 여기로 메시지를 남겨 주세요.`,
+      body: (v, at) => `${v || '저희 매장'}에 오신 것을 환영합니다.${at} 무엇을 도와드릴까요? 지금 바로 여기서 채팅해 보세요! :)))`,
     },
   };
   const t = T[String(lang || 'vi').toLowerCase()] || T.vi;
@@ -2247,13 +2247,70 @@ async function sendQrWelcome({ sessionId, lang, guestName, venueName, placeLabel
     // không cần dịch lại và cũng không nên tốn một lượt gọi AI cho nó.
     await db.query(
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language, system_kind)
-       VALUES ($1, 'system', $2, $2, $3, 'guest_only')`,
+       VALUES ($1, 'system', $2, $2, $3, 'guest_welcome')`,
       [sessionId, text, language]
     );
     return text;
   } catch (error) {
     // Không chào được thì thôi, không được làm hỏng việc đăng nhập của khách.
     console.error('[QR] Không gửi được lời chào:', error.message);
+    return null;
+  }
+}
+
+// ── Lời chào phải được DỰNG LẠI, không được DỊCH LẠI ────────────────────────
+//
+// Lỗi đã xảy ra trên thật: câu chào được ghép MỘT LẦN theo ngôn ngữ lúc khách
+// tạo phiên, và tên cơ sở được chèn vào lúc đó là bản ĐÃ DỊCH
+// ("Hộ Kinh Doanh" -> "Household Business"). Khách đổi sang tiếng Việt thì cả
+// câu đi qua máy dịch như mọi tin nhắn khác, nên "Household Business" bị dịch
+// ngược thành "Cửa hàng gia dụng" — sai hẳn tên quán, ngay dòng đầu tiên khách
+// đọc. Chặn tên riêng không cứu được: protectedNamesForSession cố ý thả LOẠI
+// HÌNH cơ sở cho máy dịch, và thứ bị hỏng chính là loại hình.
+//
+// Cách chữa: câu chào không bao giờ đi qua máy dịch nữa. Mỗi lần khách đọc,
+// nó được ghép lại từ TÊN GỐC trong cơ sở dữ liệu theo đúng ngôn ngữ đang xem.
+// Vi -> ngôn ngữ đích, một chặng duy nhất, không còn đường dịch vòng.
+const qrGreetingCache = new Map();
+const QR_GREETING_CACHE_MS = 5 * 60 * 1000;
+
+async function renderQrGreeting(sessionId, lang) {
+  if (!sessionId) return null;
+  const language = String(lang || 'vi').toLowerCase().slice(0, 2) || 'vi';
+  const key = `${sessionId}|${language}`;
+  const hit = qrGreetingCache.get(key);
+  if (hit && hit.expiresAt > Date.now()) return hit.text;
+
+  try {
+    const result = await db.query(
+      `SELECT s.visitor_name, s.visitor_email,
+              owner.full_name AS venue_name,
+              owner.id AS agent_id,
+              COALESCE(q.label, g.name) AS place_label
+         FROM sessions s
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN admins owner ON owner.id = COALESCE(q.owner_admin_id, g.agent_id)
+        WHERE s.id = $1`,
+      [sessionId]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+
+    // Localize từ TÊN GỐC, không phải từ bản đã dịch trong tin nhắn cũ.
+    const [venue, place] = await Promise.all([
+      localizeVenueName(row.venue_name || '', language, row.agent_id),
+      localizeQrText(row.place_label || '', language, row.agent_id),
+    ]);
+    const rawName = String(row.visitor_name || '').trim();
+    const guestName = rawName && rawName !== 'Khách hàng' ? rawName : nameFromEmail(row.visitor_email || '');
+    const text = buildQrGreeting({ lang: language, guestName, venueName: venue, placeLabel: place });
+    qrGreetingCache.set(key, { text, expiresAt: Date.now() + QR_GREETING_CACHE_MS });
+    return text;
+  } catch (error) {
+    // Dựng lại hỏng thì trả null để nơi gọi dùng nguyên văn đã lưu. Thà câu chào
+    // cũ còn hơn khung chat trống.
+    console.error('[QR] Không dựng lại được lời chào:', error.message);
     return null;
   }
 }
@@ -4302,6 +4359,15 @@ async function preloadTranslations(messages, targetLang) {
  *   Có nó thì bỏ hẳn được câu SELECT riêng cho từng tin.
  */
 async function getOrTranslateMessage(msg, targetLang, preloaded, protect) {
+  // Lời chào KHÔNG đi qua máy dịch. Nó được ghép lại từ tên gốc theo ngôn ngữ
+  // đang xem — xem renderQrGreeting để biết vì sao dịch nó là sai.
+  //
+  // Đặt TRƯỚC mọi đường tắt bên dưới: đường tắt "msgLang === targetLang" sẽ trả
+  // về nguyên văn đã lưu, mà nguyên văn đó chính là bản mang tên quán đã dịch.
+  if (msg.system_kind === 'guest_welcome') {
+    const rebuilt = await renderQrGreeting(msg.session_id, targetLang || msg.language);
+    return rebuilt || msg.original_text;
+  }
   // Attachment messages carry a fixed placeholder caption ("[Đính kèm] ...") —
   // translating it every time would just waste Gemini calls for no benefit.
   if (msg.attachment_key) return msg.translated_text || msg.original_text;
@@ -7834,7 +7900,7 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
       LEFT JOIN LATERAL (
         SELECT original_text, sender FROM messages
          WHERE session_id = s.id
-           AND COALESCE(system_kind, '') <> 'guest_only'
+           AND COALESCE(system_kind, '') NOT IN ('guest_only', 'guest_welcome')
          ORDER BY created_at DESC LIMIT 1
       ) mlast ON TRUE
       LEFT JOIN LATERAL (
@@ -8038,7 +8104,7 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
        WHERE m.session_id = $1
          -- Lời chào và lời cảm ơn là câu nói VỚI KHÁCH. Sale mở khung chat ra
          -- là để làm việc, không phải đọc lại phép lịch sự của hệ thống.
-         AND COALESCE(m.system_kind, '') <> 'guest_only'
+         AND COALESCE(m.system_kind, '') NOT IN ('guest_only', 'guest_welcome')
        ORDER BY m.created_at DESC LIMIT $2 OFFSET $3`,
       [sessionId, limit, offset]
     );

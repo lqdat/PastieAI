@@ -553,6 +553,45 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
       console.error('[Migration] Không đánh dấu được tin guest_only:', error.message);
     }
 
+    // Migration: tách LỜI CHÀO ra khỏi 'guest_only' thành 'guest_welcome'.
+    //
+    // Lời chào phải được DỰNG LẠI theo ngôn ngữ khách đang xem chứ không được
+    // dịch lại (xem renderQrGreeting trong server.js — dịch lại làm tên quán bị
+    // méo thành một cái tên khác hẳn). Máy chủ nhận ra nó bằng system_kind, nên
+    // tin cũ phải được đánh dấu lại, nếu không các phiên còn trong lịch sử vẫn
+    // hiện tên quán sai.
+    //
+    // Dấu hiệu: trong một phiên QR, lời chào LUÔN là tin đầu tiên — nó được ghi
+    // ngay lúc tạo phiên và chỉ ghi khi phiên chưa có tin nào. Lời cảm ơn sau
+    // thanh toán thì không bao giờ đứng đầu.
+    try {
+      const doi = await query(
+        `UPDATE messages m
+            SET system_kind = 'guest_welcome'
+          WHERE m.system_kind = 'guest_only'
+            AND m.sender = 'system'
+            AND EXISTS (SELECT 1 FROM sessions s
+                         WHERE s.id = m.session_id AND s.qr_account_id IS NOT NULL)
+            AND m.id = (SELECT MIN(x.id) FROM messages x WHERE x.session_id = m.session_id)`
+      );
+      if (doi.rowCount) console.log(`[Migration] Đã đánh dấu ${doi.rowCount} lời chào là guest_welcome.`);
+    } catch (error) {
+      // Không đánh dấu được thì tin cũ giữ nguyên hành vi cũ. Phiên QR chỉ sống
+      // 15 phút nên chuyện này tự hết, không đáng chặn khởi động.
+      console.error('[Migration] Không tách được lời chào:', error.message);
+    }
+
+    // Migration: bỏ trạng thái "Chờ Agent" khỏi ticket.
+    //
+    // TICKET_TRANG_THAI đã bỏ 'cho_agent', nên ticket cũ đang kẹt ở trạng thái
+    // đó sẽ không còn nhãn và không đổi trạng thái được nữa.
+    try {
+      await query(`UPDATE support_tickets SET status = 'dang_xu_ly', updated_at = NOW()
+                    WHERE status = 'cho_agent';`);
+    } catch (error) {
+      console.error('[Migration] Không dọn được ticket cho_agent:', error.message);
+    }
+
     // Migration: sửa lại chữ hoa của LOẠI HÌNH trong tên cơ sở đã lưu.
     //
     // Hàm viết hoa cũ dùng /\b\p{L}/gu, mà `\b` trong JavaScript vẫn dựa trên
