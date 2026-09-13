@@ -26,9 +26,81 @@
     <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="Pastie Console">
+    <!-- Preload critical brand logo -->
+    <link rel="preload" as="image" href="/pastie-chat-biz-compact.png" fetchpriority="high">
+
+    <!-- Zero-Flicker Instant Auth Gatekeeper: Ngăn 100% giật form đăng nhập và màn đen khi mở/tải lại -->
+    <script>
+        (function() {
+            try {
+                var token = localStorage.getItem('pastie_admin_token');
+                if (token && token.trim()) {
+                    document.documentElement.classList.add('has-auth-token');
+                    window.__authPreflight = fetch('/api/admin/me', {
+                        headers: { 'Authorization': 'Bearer ' + token.trim() }
+                    }).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; });
+                }
+            } catch(e) {}
+        })();
+    </script>
+    <style>
+        /* Ẩn tức thời form đăng nhập khi máy đã lưu phiên, không bị chớp form 1 frame nào */
+        html.has-auth-token:not(.auth-ready) #login-modal {
+            display: none !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+        /* Màn hình nạp app êm ái chống giật/màn đen trong chớp mắt khi vào trang */
+        #app-boot-splash {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(145deg, #ffffff 0%, #fff7fb 52%, #fff0f8 100%);
+            transition: opacity 0.26s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.26s;
+            visibility: hidden;
+            opacity: 0;
+            pointer-events: none;
+        }
+        html.has-auth-token:not(.auth-ready) #app-boot-splash {
+            visibility: visible;
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .boot-splash-logo {
+            width: 190px;
+            height: auto;
+            max-width: 65vw;
+            margin-bottom: 20px;
+            animation: bootPulse 1.8s ease-in-out infinite;
+        }
+        .boot-splash-spinner {
+            width: 26px;
+            height: 26px;
+            border: 2.5px solid rgba(239, 43, 157, 0.18);
+            border-top-color: #ef2b9d;
+            border-radius: 50%;
+            animation: bootSpin 0.75s linear infinite;
+        }
+        @keyframes bootPulse {
+            0%, 100% { transform: scale(1); opacity: 0.95; }
+            50% { transform: scale(1.03); opacity: 1; filter: drop-shadow(0 8px 24px rgba(239, 43, 157, 0.22)); }
+        }
+        @keyframes bootSpin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body>
+    <!-- Màn hình nạp ứng dụng tức thời êm ái, xóa bỏ màn đen và giật form -->
+    <div id="app-boot-splash">
+        <img src="/pastie-chat-biz-compact.png" alt="Pastie Chat" class="boot-splash-logo" fetchpriority="high">
+        <div class="boot-splash-spinner"></div>
+    </div>
+
     <!-- Gradient background decor -->
     <div class="bg-glow bg-glow-1"></div>
     <div class="bg-glow bg-glow-2"></div>
