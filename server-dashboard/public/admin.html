@@ -629,10 +629,12 @@
                                     <input type="radio" name="showcase_mode" value="menu" id="showcase-mode-menu" checked style="accent-color:var(--accent-color);">
                                     <span><i class="ri-shopping-bag-3-line" style="color:var(--accent-color);"></i> Hiển thị Sản phẩm</span>
                                 </label>
+                                <!-- Tạm ẩn UI Banner & Bài viết khi phát hành production.
                                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:rgba(255,255,255,0.04);padding:8px 14px;border-radius:8px;border:1px solid var(--panel-border);font-size:13px;font-weight:600;">
                                     <input type="radio" name="showcase_mode" value="banner" id="showcase-mode-banner" style="accent-color:#f59e0b;">
                                     <span><i class="ri-slideshow-3-line" style="color:#f59e0b;"></i> Hiển thị Banner &amp; Bài viết</span>
                                 </label>
+                                -->
                             </div>
                         </div>
 
@@ -675,7 +677,8 @@
                     </div>
 
                     <!-- Khung Quản lý Banner & Bài viết (Hiện khi chọn chế độ Banner) -->
-                    <div id="agent-banner-settings-card" class="glass-panel hide" style="margin-bottom:14px;padding:14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);">
+                    <!-- Tạm ẩn UI Banner & Bài viết khi phát hành production. -->
+                    <div id="agent-banner-settings-card" class="glass-panel hide" hidden style="margin-bottom:14px;padding:14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;">
                             <div>
                                 <div style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px;">
@@ -2128,7 +2131,8 @@
     </div>
 
     <!-- Modal Thêm/Sửa bài viết và banner quảng bá -->
-    <div id="agent-post-modal" class="modal-overlay hide" style="z-index: 10050; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px);">
+    <!-- Tạm ẩn UI Banner & Bài viết khi phát hành production. -->
+    <div id="agent-post-modal" class="modal-overlay hide" hidden style="z-index: 10050; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px);">
         <div class="login-box glass-panel admin-dialog-box" style="max-width: 720px; width: 95%; max-height: min(92vh, 800px); display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 20px; background: #ffffff !important; box-shadow: 0 24px 64px -8px rgba(239, 43, 157, 0.25), 0 12px 32px -4px rgba(35, 16, 30, 0.2) !important; border: 1px solid rgba(239, 43, 157, 0.22) !important;">
             <div style="padding: 16px 22px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; background: #ffffff;">
                 <div style="display: flex; align-items: center; gap: 10px;">

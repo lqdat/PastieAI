@@ -1730,6 +1730,7 @@ document.getElementById('self-avatar-file-input')?.addEventListener('change', as
         if (!res.ok || !data.success) throw new Error(data.error || 'Không tải được ảnh lên.');
 
         if (CURRENT_ADMIN) CURRENT_ADMIN.avatar_url = data.avatarUrl;
+        (window.CURRENT_QR_ACCOUNTS || []).forEach((account) => { account.agent_avatar_url = data.avatarUrl; });
         const preview = document.getElementById('self-avatar-preview');
         if (preview && data.avatarUrl) {
             preview.innerHTML = `<img src="${escapeHtml(data.avatarUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;">`;

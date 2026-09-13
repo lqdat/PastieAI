@@ -984,6 +984,7 @@ app.get('/qr/:code', (req, res) => res.redirect(302, `/customer-chat/${encodeURI
 // Public metadata used by the standalone customer portal. It intentionally
 // exposes only the support agent's display name for a valid opaque QR code.
 app.get('/api/qr-chat/:code', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const account = await resolveQrChatAccount('qr-concierge', String(req.params.code || ''));
     if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
