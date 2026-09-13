@@ -1371,17 +1371,22 @@
                         <div class="self-devices-list" id="self-devices-list"></div>
                     </section>
                     <!-- Tải ảnh đại diện cá nhân -->
-                    <div class="self-avatar-section" style="display:flex;align-items:center;gap:14px;margin:14px 0;padding:12px 14px;border:1px solid var(--panel-border);border-radius:12px;background:rgba(255,255,255,0.03);">
-                        <div id="self-avatar-preview" style="width:52px;height:52px;border-radius:50%;overflow:hidden;border:2px solid var(--accent-color);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;background:var(--panel-bg);flex-shrink:0;">
-                            <span id="self-avatar-initial">P</span>
-                        </div>
-                        <div style="display:flex;flex-direction:column;gap:4px;">
-                            <span style="font-size:12px;font-weight:600;color:var(--text-primary);">Ảnh đại diện</span>
-                            <div style="display:flex;gap:8px;align-items:center;">
-                                <input type="file" id="self-avatar-file-input" accept="image/*" style="display:none;">
-                                <button type="button" id="self-avatar-pick-btn" class="secondary-btn" style="width:auto;padding:5px 12px;font-size:12px;"><i class="ri-image-edit-line"></i> Đổi ảnh đại diện</button>
+                    <div class="self-avatar-section" style="margin:14px 0;padding:12px 14px;border:1px solid var(--panel-border);border-radius:12px;background:rgba(255,255,255,0.03);">
+                        <div style="display:flex;align-items:center;gap:14px;">
+                            <div id="self-avatar-preview" style="width:52px;height:52px;border-radius:50%;overflow:hidden;border:2px solid var(--accent-color);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;background:var(--panel-bg);flex-shrink:0;">
+                                <span id="self-avatar-initial">P</span>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <span style="font-size:12px;font-weight:600;color:var(--text-primary);">Ảnh đại diện &amp; Logo thương hiệu</span>
+                                <div style="display:flex;gap:8px;align-items:center;">
+                                    <input type="file" id="self-avatar-file-input" accept="image/*" style="display:none;">
+                                    <button type="button" id="self-avatar-pick-btn" class="secondary-btn" style="width:auto;padding:5px 12px;font-size:12px;"><i class="ri-image-edit-line"></i> Đổi ảnh</button>
+                                </div>
                             </div>
                         </div>
+                        <p style="font-size:11px;color:var(--text-muted);margin:8px 0 0 0;line-height:1.45;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.08);">
+                            <i class="ri-information-line" style="color:var(--accent-color);"></i> Ảnh đại diện đồng thời được dùng làm <strong>logo hiển thị mã QR (kiểu Đồng thương hiệu)</strong>. Khuyên dùng ảnh <strong>PNG tách nền (trong suốt)</strong>, gợi ý kích thước: cao 100–300px, ngang 200–600px (dung lượng dưới 10MB).
+                        </p>
                     </div>
 
                     <form id="self-profile-form" class="self-profile-form">
@@ -1500,12 +1505,12 @@
                 </div>
 
                 <div class="form-group" id="admin-create-avatar-group" style="margin: 0;">
-                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Ảnh đại diện</label>
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Ảnh đại diện &amp; Logo thương hiệu</label>
                     <div class="avatar-upload-row">
                         <div class="avatar-upload-preview" id="admin-create-avatar-preview"></div>
                         <div class="avatar-upload-actions">
                             <button type="button" class="avatar-upload-btn" id="admin-create-avatar-pick"><i class="ri-image-add-line"></i> Chọn ảnh</button>
-                            <small id="admin-create-avatar-hint">PNG hoặc JPG, tối đa 10MB.</small>
+                            <small id="admin-create-avatar-hint" style="font-size:11px;line-height:1.4;color:var(--text-muted);display:block;margin-top:4px;">Dùng làm ảnh đại diện và <strong>logo hiển thị QR (kiểu Đồng thương hiệu)</strong>. Khuyên dùng ảnh <strong>PNG tách nền (trong suốt)</strong>, gợi ý kích thước: cao 100–300px, ngang 200–600px (tối đa 10MB).</small>
                         </div>
                     </div>
                     <input type="file" id="admin-create-avatar-file" accept="image/*" hidden>
@@ -1615,12 +1620,12 @@
                 </div>
 
                 <div class="form-group" id="admin-edit-avatar-group" style="margin: 0;">
-                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Ảnh đại diện</label>
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Ảnh đại diện &amp; Logo thương hiệu</label>
                     <div class="avatar-upload-row">
                         <div class="avatar-upload-preview" id="admin-edit-avatar-preview"></div>
                         <div class="avatar-upload-actions">
                             <button type="button" class="avatar-upload-btn" id="admin-edit-avatar-pick"><i class="ri-image-add-line"></i> Chọn ảnh mới</button>
-                            <small id="admin-edit-avatar-hint">PNG hoặc JPG, tối đa 10MB.</small>
+                            <small id="admin-edit-avatar-hint" style="font-size:11px;line-height:1.4;color:var(--text-muted);display:block;margin-top:4px;">Dùng làm ảnh đại diện và <strong>logo hiển thị QR (kiểu Đồng thương hiệu)</strong>. Khuyên dùng ảnh <strong>PNG tách nền (trong suốt)</strong>, gợi ý kích thước: cao 100–300px, ngang 200–600px (tối đa 10MB).</small>
                         </div>
                     </div>
                     <input type="file" id="admin-edit-avatar-file" accept="image/*" hidden>
