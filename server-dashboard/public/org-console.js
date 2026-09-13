@@ -255,7 +255,8 @@ function add300DpiToPngBlob(blob) {
 }
 
 
-function getBilingualQrLabel(label) {
+function getBilingualQrLabel(label, explicitEn = '') {
+    if (explicitEn && explicitEn.trim()) return { vi: label, en: explicitEn.trim() };
     if (!label) return { vi: '', en: '' };
     const raw = String(label).trim();
     if (!raw) return { vi: '', en: '' };
@@ -267,20 +268,27 @@ function getBilingualQrLabel(label) {
     const patterns = [
         { regex: /^(?:bàn|ban)\s*([0-9a-zA-Z\-_]+)$/i, en: (m) => `Table ${m[1]}` },
         { regex: /^(?:phòng|phong)\s*([0-9a-zA-Z\-_]+)$/i, en: (m) => `Room ${m[1]}` },
+        { regex: /^(?:phòng|phong)\s*vip$/i, en: () => 'VIP Room' },
+        { regex: /^(?:phòng|phong)\s*họp$/i, en: () => 'Meeting Room' },
         { regex: /^(?:lầu|tầng|tang|lau)\s*([0-9a-zA-Z\-_]+)$/i, en: (m) => `Floor ${m[1]}` },
         { regex: /^(?:khu|khu\s*vực)\s*([0-9a-zA-Z\-_]+)$/i, en: (m) => `Area ${m[1]}` },
+        { regex: /^khu\s*vip$/i, en: () => 'VIP Area' },
         { regex: /^(?:ghế|ghe)\s*([0-9a-zA-Z\-_]+)$/i, en: (m) => `Seat ${m[1]}` },
         { regex: /^(?:ô|o|chòi|choi)\s*([0-9a-zA-Z\-_]+)$/i, en: (m) => `Booth ${m[1]}` },
         { regex: /^(?:quầy\s*)?lễ\s*tân$/i, en: () => 'Reception Desk' },
         { regex: /^nhà\s*hàng$/i, en: () => 'Restaurant' },
         { regex: /^(?:quán\s*)?bar$/i, en: () => 'Bar' },
+        { regex: /^(?:quầy\s*)?pha\s*chế$/i, en: () => 'Bar Counter' },
         { regex: /^(?:quầy\s*)?thu\s*ngân$/i, en: () => 'Cashier Counter' },
         { regex: /^hồ\s*bơi$/i, en: () => 'Swimming Pool' },
         { regex: /^bãi\s*biển$/i, en: () => 'Beach' },
         { regex: /^sân\s*thượng$/i, en: () => 'Rooftop' },
+        { regex: /^sân\s*vườn$/i, en: () => 'Garden' },
+        { regex: /^ban\s*công$/i, en: () => 'Balcony' },
         { regex: /^sảnh(?:\s*chính)?$/i, en: () => 'Main Lobby' },
-        { regex: /^khu\s*vip$/i, en: () => 'VIP Lounge' },
-        { regex: /^mang\s*về$/i, en: () => 'Takeaway / To-go' },
+        { regex: /^(?:lối\s*vào|cổng\s*chính|cửa\s*vào)$/i, en: () => 'Main Entrance' },
+        { regex: /^(?:thực\s*đơn|menu)$/i, en: () => 'Menu' },
+        { regex: /^mang\s*về$/i, en: () => 'Takeaway' },
         { regex: /^giao\s*hàng$/i, en: () => 'Delivery' },
     ];
 
@@ -299,21 +307,30 @@ function getBilingualAgentName(name, explicitEn = '') {
     const raw = String(name || '').trim();
     if (!raw) return { vi: 'Pastie Chat Partner', en: 'Pastie Chat Partner' };
 
-    let en = raw
-        .replace(/^Hộ kinh doanh\s+/i, 'Store ')
-        .replace(/^Nhà hàng\s+/i, 'Restaurant ')
-        .replace(/^Khách sạn\s+/i, 'Hotel ')
-        .replace(/^Khu nghỉ dưỡng\s+/i, 'Resort ')
-        .replace(/^Quán cà phê\s+/i, 'Café ')
-        .replace(/^Cà phê\s+/i, 'Coffee ')
-        .replace(/^Tiệm bánh\s+/i, 'Bakery ')
-        .replace(/^Spa\s+/i, 'Spa ');
-
     const removeTone = (str) => str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
 
-    if (en !== raw) {
-        en = en.split(' ').map((w, idx) => (idx <= 0 ? w : removeTone(w))).join(' ');
-        return { vi: raw, en };
+    const businessTypes = [
+        { regex: /^(?:hộ\s*kinh\s*doanh|hkd)\s+(.+)$/i, suffix: 'Business' },
+        { regex: /^nhà\s*hàng\s+(.+)$/i, suffix: 'Restaurant' },
+        { regex: /^khách\s*sạn\s+(.+)$/i, suffix: 'Hotel' },
+        { regex: /^khu\s*nghỉ\s*dưỡng\s+(.+)$/i, suffix: 'Resort' },
+        { regex: /^(?:quán\s*cà\s*phê|cà\s*phê|cafe|coffee)\s+(.+)$/i, suffix: 'Coffee' },
+        { regex: /^tiệm\s*bánh\s+(.+)$/i, suffix: 'Bakery' },
+        { regex: /^tiệm\s*kem\s+(.+)$/i, suffix: 'Ice Cream' },
+        { regex: /^quán\s*ăn\s+(.+)$/i, suffix: 'Eatery' },
+        { regex: /^quán\s*bar\s+(.+)$/i, suffix: 'Bar & Lounge' },
+        { regex: /^spa\s+(.+)$/i, suffix: 'Spa' },
+        { regex: /^(?:cửa\s*hàng|tiệm)\s+(.+)$/i, suffix: 'Store' },
+        { regex: /^công\s*ty\s+(.+)$/i, suffix: 'Company' },
+        { regex: /^siêu\s*thị\s+(.+)$/i, suffix: 'Supermarket' },
+    ];
+
+    for (const bt of businessTypes) {
+        const m = raw.match(bt.regex);
+        if (m) {
+            const properName = removeTone(m[1].trim());
+            return { vi: raw, en: `${properName} ${bt.suffix}` };
+        }
     }
 
     const hasDiacritics = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(raw);
@@ -321,7 +338,7 @@ function getBilingualAgentName(name, explicitEn = '') {
         return { vi: raw, en: removeTone(raw) };
     }
 
-    return { vi: raw, en: '' };
+    return { vi: raw, en: raw };
 }
 
 async function createBrandedQrPoster(imageUrl, options = {}) {
@@ -433,12 +450,12 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
         const pY = logoY + (logoH - pHeight) / 2;
         ctx.drawImage(logoImage, pX, pY, pWidth, pHeight);
 
-        // Logo Agent (BÊN PHẢI, chỉ hiển thị đúng ảnh logo, không viền, không background)
+        // Logo Agent (BÊN PHẢI - SIZE BẰNG NHAU VỚI LOGO TRÁI, không viền, không background)
         if (hasAgentLogo) {
             const aNaturalW = agentLogoImage.naturalWidth || 100;
             const aNaturalH = agentLogoImage.naturalHeight || 100;
             const aRatio = aNaturalW / aNaturalH;
-            const aHeight = 70;
+            const aHeight = 70; // Bằng chiều cao logo Pastie bên trái
             const aWidth = aHeight * aRatio;
             const maxAWidth = 340;
             const finalAWidth = Math.min(aWidth, maxAWidth);
@@ -448,12 +465,13 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
 
             ctx.drawImage(agentLogoImage, aX, aY, finalAWidth, finalAHeight);
         } else {
-            // Khi chưa có logo tải lên: hiển thị chữ LOGO phong cách editorial cao cấp
+            // Khi chưa có logo tải lên: hiển thị chữ LOGO kích thước BẰNG NHAU với logo bên trái (~70px)
             ctx.save();
             ctx.textAlign = 'right';
-            ctx.fillStyle = '#b09cb3';
-            ctx.font = `700 24px ${posterFont}`;
-            ctx.fillText('LOGO', frameX + frameW - 40, logoY + 46);
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#b62b70';
+            ctx.font = `800 58px ${posterFont}`;
+            ctx.fillText('LOGO', frameX + frameW - 40, logoY + logoH / 2);
             ctx.restore();
         }
     } else {
@@ -467,7 +485,7 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     // - Size 2: 18px (Slogan, Lời kêu gọi, Hướng dẫn camera)
     // - Size 3: 13px (Chân trang bản quyền)
     const agentBilingual = getBilingualAgentName(businessName, businessNameEn);
-    const qrBilingual = getBilingualQrLabel(qrLabel);
+    const qrBilingual = getBilingualQrLabel(qrLabel, qrLabelEn);
 
     const hasAgentEn = Boolean(agentBilingual.en && agentBilingual.en.trim() && agentBilingual.en.toLowerCase() !== agentBilingual.vi.toLowerCase());
     const hasCustomLabel = Boolean(qrLabel && qrLabel.trim() && qrLabel.trim() !== businessName.trim());
@@ -554,7 +572,7 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
         ctx.fillText(qrDisplayText, baseW / 2, pillY + 39);
     }
 
-    // Khối 2: Slogan nhận diện song ngữ (Size 2: 18px)
+    // 4. Khối 2: Slogan nhận diện song ngữ (SIZE BẰNG VỚI KHỐI QUÉT MÃ: 18px / 18px)
     ctx.fillStyle = '#c90c6c';
     ctx.font = `700 18px ${posterFont}`;
     ctx.fillText('Không rào cản ngôn ngữ, thấu hiểu mọi khách hàng', baseW / 2, y2 + 16);
@@ -563,51 +581,75 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     ctx.font = `600 18px ${posterFont}`;
     ctx.fillText('No language barriers • Understand every customer', baseW / 2, y2 + 42);
 
-    // Khối 3: Thẻ QR — THIẾT KẾ ĐẲNG CẤP, VIỀN SÁT MÃ, KHÔNG GÓC CAMERA RỐI MẮT
+    // 5. Khối 3: Thẻ QR — UI/UX PRO MAX: DIMENSIONAL LAYERING & BENTO LUXURY FRAMING
     const cardX = (baseW - cardSize) / 2;
     const cardY = y3;
 
-    // Đổ bóng kép sang trọng (Shadow layer)
+    // Layer 1: Ambient diffusion glow (Ánh sáng tỏa dịu đa tầng)
     ctx.save();
-    ctx.shadowColor = 'rgba(201, 12, 108, 0.08)';
-    ctx.shadowBlur = 28;
-    ctx.shadowOffsetY = 10;
-    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 22);
+    ctx.shadowColor = 'rgba(201, 12, 108, 0.10)';
+    ctx.shadowBlur = 32;
+    ctx.shadowOffsetY = 12;
+    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 24);
     ctx.fillStyle = '#ffffff';
     ctx.fill();
     ctx.restore();
 
-    // Viền khung thẻ QR mỏng nhẹ tinh tế
-    ctx.strokeStyle = '#ebd9e5';
+    // Layer 2: Contact shadow (Đổ bóng tiếp xúc thực tế tạo chiều sâu)
+    ctx.save();
+    ctx.shadowColor = 'rgba(32, 16, 36, 0.06)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 3;
+    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 24);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.restore();
+
+    // Layer 3: Luxury Gradient Frame Border (Viền chuyển sắc hoa anh đào cao cấp)
+    const cardBorderGrad = ctx.createLinearGradient(cardX, cardY, cardX + cardSize, cardY + cardSize);
+    cardBorderGrad.addColorStop(0, '#f2d5e7');
+    cardBorderGrad.addColorStop(0.5, '#ebd0e3');
+    cardBorderGrad.addColorStop(1, '#fdeff7');
+    ctx.strokeStyle = cardBorderGrad;
     ctx.lineWidth = 1.5;
-    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 22);
+    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 24);
     ctx.stroke();
 
-    // Vẽ mã QR đã cắt bỏ viền thừa, viền sát rạt
+    // Layer 4: Frosted Bevel Highlight (Viền sáng phản chiếu bên trong phong cách Apple)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.lineWidth = 1;
+    drawPosterRoundedRect(ctx, cardX + 2.5, cardY + 2.5, cardSize - 5, cardSize - 5, 22);
+    ctx.stroke();
+
+    // Layer 5: Mã QR đã cắt sạch viền trắng thừa, căn giữa tuyệt đối sát viền
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(trimmedQr, cardX + qrPadding, cardY + qrPadding, qrSize, qrSize);
     ctx.imageSmoothingEnabled = true;
 
-    // Khối 4: Lời kêu gọi quét mã song ngữ (Size 2: 18px)
+    // 6. Khối 4: Lời kêu gọi quét mã song ngữ (SIZE BẰNG HOÀN TOÀN VỚI SLOGAN: 18px / 18px)
     ctx.fillStyle = '#201424';
-    ctx.font = `800 18px ${posterFont}`;
-    ctx.fillText('QUÉT MÃ ĐỂ BẮT ĐẦU TRÒ CHUYỆN', baseW / 2, y4 + 16);
-
-    ctx.fillStyle = '#7a6679';
     ctx.font = `700 18px ${posterFont}`;
-    ctx.fillText('SCAN TO START A CHAT', baseW / 2, y4 + 42);
+    ctx.fillText('Quét mã để bắt đầu trò chuyện', baseW / 2, y4 + 16);
 
-    // Khối 5: Thanh hướng dẫn thao tác camera song ngữ (Size 2: 18px)
+    ctx.fillStyle = '#6b5667';
+    ctx.font = `600 18px ${posterFont}`;
+    ctx.fillText('Scan to start a chat', baseW / 2, y4 + 42);
+
+    // 7. Khối 5: Thanh hướng dẫn thao tác camera song ngữ (Size 2: 18px)
     const pillH2 = 42;
     const pillW2 = 680;
     const pillX2 = (baseW - pillW2) / 2;
     const pillY2 = y5;
 
-    ctx.fillStyle = '#fff4f9';
+    // Gradient nền cho pill hướng dẫn
+    const pillGrad = ctx.createLinearGradient(pillX2, pillY2, pillX2 + pillW2, pillY2);
+    pillGrad.addColorStop(0, '#fff2f8');
+    pillGrad.addColorStop(1, '#fff7fc');
+    ctx.fillStyle = pillGrad;
     drawPosterRoundedRect(ctx, pillX2, pillY2, pillW2, pillH2, 21);
     ctx.fill();
 
-    ctx.strokeStyle = '#f3cfdf';
+    ctx.strokeStyle = '#f2cadf';
     ctx.lineWidth = 1.5;
     drawPosterRoundedRect(ctx, pillX2, pillY2, pillW2, pillH2, 21);
     ctx.stroke();
@@ -616,7 +658,7 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     ctx.font = `700 18px ${posterFont}`;
     ctx.fillText('Mở Camera / Open Camera  •  Hướng vào QR / Point at QR', baseW / 2, pillY2 + 27);
 
-    // Khối 6: Chân trang bản quyền (Size 3: 13px - LUÔN HIỂN THỊ RÕ NÉT)
+    // 8. Khối 6: Chân trang bản quyền (Size 3: 13px - LUÔN HIỂN THỊ RÕ NÉT)
     ctx.fillStyle = '#8f7d91';
     ctx.font = `500 13px ${posterFont}`;
     ctx.fillText('Vận hành bởi Pastie  •  Powered by Pastie', baseW / 2, footerY);

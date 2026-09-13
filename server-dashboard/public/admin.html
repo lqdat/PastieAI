@@ -33,6 +33,14 @@
     <script>
         (function() {
             try {
+                // Khởi tạo giải mã logo trước vào bộ nhớ GPU để hiển thị tức thì 0ms khi mở dashboard
+                var _logoWarmup = new Image();
+                _logoWarmup.src = '/pastie-chat-biz-compact.png';
+                if (_logoWarmup.decode) {
+                    _logoWarmup.decode().catch(function() {});
+                }
+            } catch(e) {}
+            try {
                 var token = localStorage.getItem('pastie_admin_token');
                 if (token && token.trim()) {
                     document.documentElement.classList.add('has-auth-token');
@@ -97,7 +105,7 @@
 <body>
     <!-- Màn hình nạp ứng dụng tức thời êm ái, xóa bỏ màn đen và giật form -->
     <div id="app-boot-splash">
-        <img src="/pastie-chat-biz-compact.png" alt="Pastie Chat" class="boot-splash-logo" fetchpriority="high">
+        <img src="/pastie-chat-biz-compact.png" alt="Pastie Chat" class="boot-splash-logo" fetchpriority="high" loading="eager" decoding="async">
         <div class="boot-splash-spinner"></div>
     </div>
 
@@ -110,7 +118,7 @@
         <div class="dpq-login-card">
             <!-- Brand Logo -->
             <div class="dpq-brand-header">
-                <img src="/pastie-chat-biz-compact.png?v=2" alt="Pastie Chat" class="dpq-brand-logo">
+                <img src="/pastie-chat-biz-compact.png" alt="Pastie Chat" class="dpq-brand-logo" fetchpriority="high" loading="eager" decoding="async">
                 <h2 id="dpq-login-title" class="dpq-title" data-i18n="loginTitle">Không rào cản ngôn ngữ<br>Thấu hiểu mọi khách hàng</h2>
                 <p id="dpq-login-subtitle" class="dpq-subtitle" data-i18n="loginSubtitle">Hệ thống quản trị & CSKH đa kênh AI</p>
             </div>
@@ -210,7 +218,7 @@
         <header class="dashboard-header glass-panel">
             <div class="header-left">
                 <div class="logo">
-                    <img src="/pastie-chat-biz-compact.png?v=2" alt="Pastie Chat" class="logo-img">
+                    <img src="/pastie-chat-biz-compact.png" alt="Pastie Chat" class="logo-img" fetchpriority="high" loading="eager" decoding="async">
                     <span id="console-brand-name" class="hide"></span>
                 </div>
                 <!-- Tên hiển thị của Agent / Sale -->
@@ -404,7 +412,7 @@
             </div>
             <!-- Wordmark chỉ hiện ở header Agent/Sale, cùng vị trí góc phải
                  phía dưới như header cổng khách. -->
-            <img class="staff-header-wordmark" src="/pastie-chat-biz-compact.png?v=2" alt="Pastie Chat">
+            <img class="staff-header-wordmark" src="/pastie-chat-biz-compact.png" alt="Pastie Chat" loading="eager" decoding="async">
         </header>
 
 
