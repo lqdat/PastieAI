@@ -2798,11 +2798,18 @@ button:focus-visible {
   display: block;
 }
 
+/* Slogan màn đăng nhập. Nét 800 đọc ra như một tiêu đề hệ thống, trong khi đây
+   là một câu nói — hạ xuống nét 400 và giãn dòng rộng hơn cho mềm.
+   Bộ số này dùng CHUNG với slogan bên cổng khách (.login-tagline trong
+   qr-chat-portal/app/globals.css): cùng font, cùng 17px, cùng nét 400. Đổi ở
+   đây thì phải đổi luôn bên kia, nếu không hai màn lại lệch nhau. */
 .dpq-title {
-  font-size: 20px;
-  font-weight: 800;
-  color: #111827;
-  line-height: 1.35;
+  font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: .008em;
+  color: #374151;
+  line-height: 1.5;
   margin: 0 0 6px;
   white-space: pre-line;
 }
@@ -2811,13 +2818,10 @@ button:focus-visible {
    Nét mảnh (300) + giãn dòng rộng + hơi giãn chữ — cùng bộ số này được dùng lại
    cho slogan bên cổng khách (.login-tagline) để hai màn đọc ra như một. */
 .dpq-subtitle {
-  font-family: 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 13px;
-  font-weight: 300;
-  letter-spacing: .012em;
   color: #6b7280;
   margin: 0;
-  line-height: 1.55;
+  line-height: 1.4;
 }
 
 /* Inputs */

@@ -130,9 +130,9 @@
             <!-- Direct Auth: Google OAuth & Email OTP -->
             <div id="auth-panel-direct">
                 <!-- Step 1: Input Email -->
-                <form id="otp-step-email" class="dpq-form-step" onsubmit="handleSendAdminOtp(event); return false;">
+                <form id="otp-step-email" class="dpq-form-step" novalidate onsubmit="handleSendAdminOtp(event); return false;">
                     <div class="dpq-input-wrap">
-                        <input type="email" id="admin-otp-email-input" class="dpq-input" placeholder="Nhập email để kết nối Pastie Chat" autocomplete="email" required>
+                        <input type="email" id="admin-otp-email-input" class="dpq-input" placeholder="Email nhân viên / quản trị..." autocomplete="email" required>
                     </div>
                     <p class="dpq-helper-text">Chúng tôi sẽ gửi mã xác thực 6 số đến email của bạn.</p>
                     <button type="submit" id="send-admin-otp-btn" class="dpq-primary-btn">
@@ -141,7 +141,7 @@
                 </form>
 
                 <!-- Step 2: Input 6-Digit OTP (Initially Hidden) -->
-                <form id="otp-step-verify" class="dpq-form-step hide" onsubmit="handleVerifyAdminOtp(event); return false;">
+                <form id="otp-step-verify" class="dpq-form-step hide" novalidate onsubmit="handleVerifyAdminOtp(event); return false;">
                     <div class="dpq-otp-panel">
                         <span class="dpq-otp-panel-mark"></span>
                         <p class="dpq-otp-eyebrow">XÁC THỰC · OTP</p>
