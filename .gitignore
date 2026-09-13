@@ -22,7 +22,9 @@ _to_delete/
 .continue/
 .cursor/
 .gemini/
-.github/
+.github/*
+!.github/workflows/
+!.github/workflows/*.yml
 .kiro/
 .opencode/
 .qoder/
@@ -33,6 +35,10 @@ _to_delete/
 # System files
 .DS_Store
 Thumbs.db
+scratch/
+
+# Local development scripts
+scripts/
 
 #md file
 *.md

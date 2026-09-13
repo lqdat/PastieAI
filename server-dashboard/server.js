@@ -56,6 +56,14 @@ for (const verb of ['get', 'post', 'put', 'patch', 'delete']) {
   };
 }
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), payment=(), usb=()');
+  if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+  next();
+});
 const PORT = process.env.PORT || 3000;
 
 // ── Đo lưu lượng cho trang theo dõi ──────────────────────────────────────────
@@ -515,7 +523,11 @@ const swaggerOptions = {
 };
 
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+if (process.env.NODE_ENV === 'production' && process.env.ENABLE_API_DOCS !== 'true') {
+  app.use('/docs', (_req, res) => res.status(404).json({ error: 'Not found' }));
+} else {
+  app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
 
 
 // Catch uncaught exceptions and unhandled rejections to prevent server from crashing
@@ -571,6 +583,28 @@ app.use(express.json({
     req.rawBody = buf;
   }
 }));
+
+// Phiên QR đã xác thực có một identity token riêng. Kiểm tra ở một cổng chung
+// để không route chat/order/bill/history nào vô tình chỉ dựa vào sessionId.
+// Widget ẩn danh không có token trong DB nên vẫn hoạt động như trước.
+app.use('/api/chats/:sessionId', async (req, res, next) => {
+  try {
+    // Đây là route thao tác của nhân viên và có checkAdminAuth riêng ở phía sau.
+    if (req.method === 'POST' && /\/transfer\/?$/.test(req.originalUrl.split('?')[0])) return next();
+    const result = await db.query(
+      'SELECT active_identity_token FROM sessions WHERE id = $1',
+      [req.params.sessionId]
+    );
+    if (!result.rows[0]) return next();
+    const access = await validateVisitorDeviceToken(req, result.rows[0]);
+    if (!access.valid) {
+      return res.status(access.status).json({ error: access.error, code: access.code });
+    }
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+});
 
 const fs = require('fs');
 
@@ -756,18 +790,34 @@ const limitChatMessageIp = rateLimit('chat-message-ip', 600, 60 * 1000);
 
 
 // Cryptographically secure password hashing using Node's native PBKDF2
-function hashPassword(password) {
+const PASSWORD_ITERATIONS = 310000;
+const pbkdf2 = (password, salt, iterations) => new Promise((resolve, reject) => {
+  crypto.pbkdf2(password, salt, iterations, 64, 'sha512', (error, key) => {
+    if (error) reject(error);
+    else resolve(key);
+  });
+});
+
+async function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return `${salt}:${hash}`;
+  const hash = await pbkdf2(password, salt, PASSWORD_ITERATIONS);
+  return `pbkdf2_sha512$${PASSWORD_ITERATIONS}$${salt}$${hash.toString('hex')}`;
 }
 
-function verifyPassword(password, storedPassword) {
-  if (!storedPassword || !storedPassword.includes(':')) return false;
-  const [salt, originalHash] = storedPassword.split(':');
-  if (!salt || !originalHash) return false;
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return hash === originalHash;
+async function verifyPassword(password, storedPassword) {
+  if (!storedPassword) return false;
+  const modern = storedPassword.split('$');
+  const legacy = storedPassword.split(':');
+  const iterations = modern.length === 4 && modern[0] === 'pbkdf2_sha512'
+    ? Number(modern[1])
+    : 1000;
+  const salt = modern.length === 4 ? modern[2] : legacy[0];
+  const originalHex = modern.length === 4 ? modern[3] : legacy[1];
+  if (!salt || !originalHex || !Number.isSafeInteger(iterations) || iterations < 1000) return false;
+  const original = Buffer.from(originalHex, 'hex');
+  if (original.length !== 64) return false;
+  const calculated = await pbkdf2(password, salt, iterations);
+  return crypto.timingSafeEqual(calculated, original);
 }
 
 // Automatically seed a default Super-Admin account if none exist
@@ -787,7 +837,7 @@ async function seedSuperAdmin() {
         console.error('[Seed] Đặt biến môi trường ADMIN_PASSWORD rồi khởi động lại để tạo tài khoản quản trị đầu tiên.');
         return;
       }
-      const hashedPassword = hashPassword(adminPassword);
+      const hashedPassword = await hashPassword(adminPassword);
       await db.query(
         "INSERT INTO admins (username, password_hash, full_name, role, avatar_url) VALUES ($1, $2, $3, $4, $5)",
         ['admin', hashedPassword, 'Admin Tổng', 'superadmin', 'gradient-1']
@@ -871,7 +921,18 @@ app.get('/agent_guide/:file', async (req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: true,
+  setHeaders: (res, filePath) => {
+    if (/\.html$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    } else if (/\.(png|jpe?g|webp|svg|ico|gif|woff2?|ttf|eot)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+    } else if (/\.(css|js)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+    }
+  }
+}));
 app.get('/privacy-policy', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
 app.get('/terms', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-policy.html')));
 app.get('/guide', (_req, res) => res.redirect('/admin?guide=video'));
@@ -923,6 +984,7 @@ app.get('/qr/:code', (req, res) => res.redirect(302, `/customer-chat/${encodeURI
 // Public metadata used by the standalone customer portal. It intentionally
 // exposes only the support agent's display name for a valid opaque QR code.
 app.get('/api/qr-chat/:code', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const account = await resolveQrChatAccount('qr-concierge', String(req.params.code || ''));
     if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
@@ -939,17 +1001,109 @@ app.get('/api/qr-chat/:code', async (req, res) => {
       localizeQrText(account.label || '', lang, account.owner_admin_id),
       rawMenuLabel ? localizeQrText(rawMenuLabel, lang, account.owner_admin_id) : Promise.resolve(null),
     ]);
+    const showcaseMode = account.showcase_mode || 'menu';
+    let banners = [];
+    if (showcaseMode === 'banner') {
+      const postsRes = await db.query(
+        `SELECT id, title_vi, title_en, category, cover_url, excerpt_vi, excerpt_en, sort_order, is_featured
+           FROM agent_posts
+          WHERE agent_id = $1 AND is_active = TRUE
+          ORDER BY sort_order ASC, created_at DESC`,
+        [account.owner_admin_id]
+      ).catch(() => ({ rows: [] }));
+      banners = postsRes.rows.map(p => ({
+        id: p.id,
+        title: lang === 'en' && p.title_en ? p.title_en : p.title_vi,
+        titleVi: p.title_vi,
+        titleEn: p.title_en || '',
+        category: p.category || 'ƯU ĐÃI',
+        coverUrl: p.cover_url || null,
+        excerpt: lang === 'en' && p.excerpt_en ? p.excerpt_en : (p.excerpt_vi || ''),
+        isFeatured: Boolean(p.is_featured)
+      }));
+    }
+
     res.json({
       agentName,
       locationLogoUrl: /^https?:\/\//i.test(String(account.owner_avatar_url || '')) ? account.owner_avatar_url : null,
       groupName,
       label,
       menuEnabled: isMenuEnabled,
-      menuLabel: customMenuLabel || (rawMenuLabel || null)
+      menuLabel: customMenuLabel || (rawMenuLabel || null),
+      showcaseMode,
+      banners
     });
   } catch (error) {
     console.error('[QR Concierge] Cannot read public QR metadata:', error.message);
     res.status(500).json({ error: 'Không thể tải thông tin hỗ trợ.' });
+  }
+});
+
+// Chi tiết bài viết công khai qua mã QR
+app.get('/api/qr-chat/:code/posts/:postId', async (req, res) => {
+  try {
+    const account = await resolveQrChatAccount('qr-concierge', String(req.params.code || ''));
+    if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ.' });
+    const postId = Number(req.params.postId);
+    const postRes = await db.query(
+      `SELECT * FROM agent_posts WHERE id = $1 AND agent_id = $2 AND is_active = TRUE`,
+      [postId, account.owner_admin_id]
+    );
+    if (postRes.rows.length === 0) return res.status(404).json({ error: 'Bài viết không tồn tại hoặc đã bị ẩn.' });
+    const p = postRes.rows[0];
+    const lang = String(req.query.lang || '').toLowerCase().slice(0, 2);
+    res.json({
+      id: p.id,
+      title: lang === 'en' && p.title_en ? p.title_en : p.title_vi,
+      titleVi: p.title_vi,
+      titleEn: p.title_en || '',
+      category: p.category || 'ƯU ĐÃI',
+      coverUrl: p.cover_url,
+      excerpt: lang === 'en' && p.excerpt_en ? p.excerpt_en : p.excerpt_vi,
+      content: lang === 'en' && p.content_en ? p.content_en : p.content_vi,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at
+    });
+  } catch (error) {
+    console.error('Get public post detail error:', error.message);
+    res.status(500).json({ error: 'Không thể tải chi tiết bài viết.' });
+  }
+});
+
+// Chi tiết bài viết công khai qua sessionId
+app.get('/api/chats/:sessionId/posts/:postId', async (req, res) => {
+  try {
+    const sessionRes = await db.query(
+      `SELECT q.owner_admin_id FROM sessions s
+       JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+       WHERE s.id = $1`,
+      [req.params.sessionId]
+    );
+    if (sessionRes.rows.length === 0) return res.status(404).json({ error: 'Phiên chat không tồn tại.' });
+    const agentId = sessionRes.rows[0].owner_admin_id;
+    const postId = Number(req.params.postId);
+    const postRes = await db.query(
+      `SELECT * FROM agent_posts WHERE id = $1 AND agent_id = $2 AND is_active = TRUE`,
+      [postId, agentId]
+    );
+    if (postRes.rows.length === 0) return res.status(404).json({ error: 'Bài viết không tồn tại hoặc đã bị ẩn.' });
+    const p = postRes.rows[0];
+    const lang = String(req.query.lang || '').toLowerCase().slice(0, 2);
+    res.json({
+      id: p.id,
+      title: lang === 'en' && p.title_en ? p.title_en : p.title_vi,
+      titleVi: p.title_vi,
+      titleEn: p.title_en || '',
+      category: p.category || 'ƯU ĐÃI',
+      coverUrl: p.cover_url,
+      excerpt: lang === 'en' && p.excerpt_en ? p.excerpt_en : p.excerpt_vi,
+      content: lang === 'en' && p.content_en ? p.content_en : p.content_vi,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at
+    });
+  } catch (error) {
+    console.error('Get session post detail error:', error.message);
+    res.status(500).json({ error: 'Không thể tải chi tiết bài viết.' });
   }
 });
 
@@ -1538,7 +1692,7 @@ async function checkAdminAuth(req, res, next) {
   try {
     // 1. Check if token exists in admin_sessions and joins admins
     const sessionRes = await db.query(
-      `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.role, a.avatar_url, a.is_active, a.project_id, a.sale_limit,
+      `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.full_name_en, a.role, a.avatar_url, a.is_active, a.project_id, a.sale_limit,
               a.managed_by_admin_id,
               m.full_name AS manager_name, m.username AS manager_username,
               m.avatar_url AS manager_avatar_url
@@ -2045,27 +2199,27 @@ function buildQrGreeting({ lang, guestName, venueName, placeLabel }) {
     vi: {
       hi: name ? `Xin chào ${name}!` : 'Xin chào!',
       at: place ? ` tại ${place}` : '',
-      body: (v, at) => `${v ? v + ' r' : 'R'}ất vui được đón bạn${at}. Chúng tôi có thể giúp gì cho bạn ? Nhắn tin cho chúng tôi ngay nhé !`,
+      body: (v, at) => `${v ? v + ' r' : 'R'}ất vui được đón bạn${at}. Chúng tôi có thể giúp gì được cho bạn? Chat ngay nhé! :)))`,
     },
     en: {
       hi: name ? `Hi ${name}!` : 'Hello!',
       at: place ? ` You're at ${place}.` : '',
-      body: (v, at) => `Welcome to ${v || 'our place'}.${at} Message us right here whenever you need anything.`,
+      body: (v, at) => `Welcome to ${v || 'our place'}.${at} How can we help you? Chat with us right here! :)))`,
     },
     ru: {
       hi: name ? `Здравствуйте, ${name}!` : 'Здравствуйте!',
       at: place ? ` Вы за столиком ${place}.` : '',
-      body: (v, at) => `Добро пожаловать в ${v || 'наше заведение'}.${at} Пишите нам прямо здесь, если что-то понадобится.`,
+      body: (v, at) => `Добро пожаловать в ${v || 'наше заведение'}.${at} Чем мы можем помочь? Напишите нам прямо здесь! :)))`,
     },
     zh: {
       hi: name ? `${name}，您好！` : '您好！',
       at: place ? `您在${place}。` : '',
-      body: (v, at) => `欢迎光临${v || '本店'}。${at}有任何需要，随时在这里留言。`,
+      body: (v, at) => `欢迎光临${v || '本店'}。${at}有什么可以帮您的吗？现在就在这里聊聊吧！:)))`,
     },
     ko: {
       hi: name ? `${name}님, 안녕하세요!` : '안녕하세요!',
       at: place ? ` ${place} 좌석입니다.` : '',
-      body: (v, at) => `${v || '저희 매장'}에 오신 것을 환영합니다.${at} 필요하신 것이 있으면 여기로 메시지를 남겨 주세요.`,
+      body: (v, at) => `${v || '저희 매장'}에 오신 것을 환영합니다.${at} 무엇을 도와드릴까요? 지금 바로 여기서 채팅해 보세요! :)))`,
     },
   };
   const t = T[String(lang || 'vi').toLowerCase()] || T.vi;
@@ -2094,13 +2248,70 @@ async function sendQrWelcome({ sessionId, lang, guestName, venueName, placeLabel
     // không cần dịch lại và cũng không nên tốn một lượt gọi AI cho nó.
     await db.query(
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language, system_kind)
-       VALUES ($1, 'system', $2, $2, $3, 'guest_only')`,
+       VALUES ($1, 'system', $2, $2, $3, 'guest_welcome')`,
       [sessionId, text, language]
     );
     return text;
   } catch (error) {
     // Không chào được thì thôi, không được làm hỏng việc đăng nhập của khách.
     console.error('[QR] Không gửi được lời chào:', error.message);
+    return null;
+  }
+}
+
+// ── Lời chào phải được DỰNG LẠI, không được DỊCH LẠI ────────────────────────
+//
+// Lỗi đã xảy ra trên thật: câu chào được ghép MỘT LẦN theo ngôn ngữ lúc khách
+// tạo phiên, và tên cơ sở được chèn vào lúc đó là bản ĐÃ DỊCH
+// ("Hộ Kinh Doanh" -> "Household Business"). Khách đổi sang tiếng Việt thì cả
+// câu đi qua máy dịch như mọi tin nhắn khác, nên "Household Business" bị dịch
+// ngược thành "Cửa hàng gia dụng" — sai hẳn tên quán, ngay dòng đầu tiên khách
+// đọc. Chặn tên riêng không cứu được: protectedNamesForSession cố ý thả LOẠI
+// HÌNH cơ sở cho máy dịch, và thứ bị hỏng chính là loại hình.
+//
+// Cách chữa: câu chào không bao giờ đi qua máy dịch nữa. Mỗi lần khách đọc,
+// nó được ghép lại từ TÊN GỐC trong cơ sở dữ liệu theo đúng ngôn ngữ đang xem.
+// Vi -> ngôn ngữ đích, một chặng duy nhất, không còn đường dịch vòng.
+const qrGreetingCache = new Map();
+const QR_GREETING_CACHE_MS = 5 * 60 * 1000;
+
+async function renderQrGreeting(sessionId, lang) {
+  if (!sessionId) return null;
+  const language = String(lang || 'vi').toLowerCase().slice(0, 2) || 'vi';
+  const key = `${sessionId}|${language}`;
+  const hit = qrGreetingCache.get(key);
+  if (hit && hit.expiresAt > Date.now()) return hit.text;
+
+  try {
+    const result = await db.query(
+      `SELECT s.visitor_name, s.visitor_email,
+              owner.full_name AS venue_name,
+              owner.id AS agent_id,
+              COALESCE(q.label, g.name) AS place_label
+         FROM sessions s
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN admins owner ON owner.id = COALESCE(q.owner_admin_id, g.agent_id)
+        WHERE s.id = $1`,
+      [sessionId]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+
+    // Localize từ TÊN GỐC, không phải từ bản đã dịch trong tin nhắn cũ.
+    const [venue, place] = await Promise.all([
+      localizeVenueName(row.venue_name || '', language, row.agent_id),
+      localizeQrText(row.place_label || '', language, row.agent_id),
+    ]);
+    const rawName = String(row.visitor_name || '').trim();
+    const guestName = rawName && rawName !== 'Khách hàng' ? rawName : nameFromEmail(row.visitor_email || '');
+    const text = buildQrGreeting({ lang: language, guestName, venueName: venue, placeLabel: place });
+    qrGreetingCache.set(key, { text, expiresAt: Date.now() + QR_GREETING_CACHE_MS });
+    return text;
+  } catch (error) {
+    // Dựng lại hỏng thì trả null để nơi gọi dùng nguyên văn đã lưu. Thà câu chào
+    // cũ còn hơn khung chat trống.
+    console.error('[QR] Không dựng lại được lời chào:', error.message);
     return null;
   }
 }
@@ -2115,6 +2326,7 @@ async function resolveQrChatAccount(projectId, qrCode, queryRunner = db) {
             a.avatar_url AS owner_avatar_url,
             COALESCE(a.agent_menu_enabled, TRUE) AS agent_menu_enabled,
             COALESCE(a.superadmin_menu_disabled, FALSE) AS superadmin_menu_disabled,
+            COALESCE(a.showcase_mode, 'menu') AS showcase_mode,
             a.menu_custom_label,
             g.name AS group_name
        FROM qr_chat_accounts q
@@ -2306,7 +2518,8 @@ async function getAdminFromToken(req) {
   const result = await db.query(
     `SELECT a.id, a.username, a.full_name, a.role, a.project_id, a.is_active, a.sale_limit, a.avatar_url, s.expires_at
      FROM admin_sessions s JOIN admins a ON a.id = s.admin_id
-     WHERE s.token = $1 AND (s.expires_at IS NULL OR s.expires_at > NOW())`,
+     WHERE s.token = $1 AND a.is_active = TRUE
+       AND (s.expires_at IS NULL OR s.expires_at > NOW())`,
     [token]
   );
   if (!result.rows[0]) return null;
@@ -4147,6 +4360,15 @@ async function preloadTranslations(messages, targetLang) {
  *   Có nó thì bỏ hẳn được câu SELECT riêng cho từng tin.
  */
 async function getOrTranslateMessage(msg, targetLang, preloaded, protect) {
+  // Lời chào KHÔNG đi qua máy dịch. Nó được ghép lại từ tên gốc theo ngôn ngữ
+  // đang xem — xem renderQrGreeting để biết vì sao dịch nó là sai.
+  //
+  // Đặt TRƯỚC mọi đường tắt bên dưới: đường tắt "msgLang === targetLang" sẽ trả
+  // về nguyên văn đã lưu, mà nguyên văn đó chính là bản mang tên quán đã dịch.
+  if (msg.system_kind === 'guest_welcome') {
+    const rebuilt = await renderQrGreeting(msg.session_id, targetLang || msg.language);
+    return rebuilt || msg.original_text;
+  }
   // Attachment messages carry a fixed placeholder caption ("[Đính kèm] ...") —
   // translating it every time would just waste Gemini calls for no benefit.
   if (msg.attachment_key) return msg.translated_text || msg.original_text;
@@ -4571,8 +4793,7 @@ app.get('/api/chats/:sessionId/events', async (req, res) => {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
     'Connection': 'keep-alive',
-    'X-Accel-Buffering': 'no',
-    'Access-Control-Allow-Origin': '*'
+    'X-Accel-Buffering': 'no'
   });
   res.write(':connected\n\n');
   if (typeof res.flush === 'function') res.flush();
@@ -5916,6 +6137,12 @@ app.post('/api/admin/login', limitLoginIp, limitLoginEmail, async (req, res) => 
       return res.status(401).json({ error: 'Tên đăng nhập hoặc mật khẩu không chính xác.' });
     }
 
+    // Nâng cấp hash 1.000 vòng cũ ngay sau lần đăng nhập hợp lệ, không cần bắt
+    // người dùng đổi mật khẩu và không cần migration hàng loạt.
+    if (!String(admin.password_hash || '').startsWith('pbkdf2_sha512$')) {
+      await db.query('UPDATE admins SET password_hash = $1 WHERE id = $2', [await hashPassword(password), admin.id]);
+    }
+
     const hoursError = await checkWorkingHours(admin);
     if (hoursError) return res.status(403).json({ error: hoursError, code: 'OUT_OF_HOURS' });
 
@@ -6031,7 +6258,7 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null, 
       } else {
         // Không tìm thấy trên DealPhuQuoc
         if (!isSuperAdminUser && !localAdmin) {
-          const err = new Error('Tài khoản này chưa được đăng ký trên DealPhuQuoc hoặc hệ thống Pastie AI.');
+          const err = new Error('Tài khoản email không chính xác hoặc chưa được cấp quyền truy cập.');
           err.status = 403;
           throw err;
         }
@@ -6044,8 +6271,8 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null, 
       if (err.status) throw err;
       console.warn('[DirectAuth] Không thể kết nối DealPhuQuoc DB, dùng thông tin local:', err.message);
       if (!localAdmin) {
-        const fallbackErr = new Error('Không thể kết nối cơ sở dữ liệu DealPhuQuoc để xác thực tài khoản.');
-        fallbackErr.status = 500;
+        const fallbackErr = new Error('Tài khoản email không chính xác hoặc chưa được cấp quyền truy cập.');
+        fallbackErr.status = 403;
         throw fallbackErr;
       }
       determinedRole = localAdmin.role;
@@ -6054,6 +6281,10 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null, 
   } else if (localAdmin) {
     determinedRole = localAdmin.role;
     determinedProjectId = localAdmin.project_id;
+  } else if (!isSuperAdminUser) {
+    const err = new Error('Tài khoản email không chính xác hoặc chưa được cấp quyền truy cập.');
+    err.status = 403;
+    throw err;
   }
 
   // 3. Upsert vào bảng `admins`
@@ -6195,13 +6426,18 @@ app.post('/api/admin/auth/otp/send', limitOtpSendIp, limitOtpSendEmail, async (r
         } else {
           // Check local admins
           if (!localCheck) {
-            return res.status(403).json({ error: 'Tài khoản email này chưa được cấp quyền trên DealPhuQuoc hoặc Pastie AI.' });
+            return res.status(403).json({ error: 'Tài khoản email không chính xác hoặc chưa được cấp quyền truy cập.' });
           }
           if (localCheck.full_name) userName = localCheck.full_name;
         }
       } catch (checkErr) {
         console.warn('[AdminOTP] Pre-check failed:', checkErr.message);
+        if (!localCheck) {
+          return res.status(403).json({ error: 'Tài khoản email không chính xác hoặc chưa được cấp quyền truy cập.' });
+        }
       }
+    } else if (!localCheck) {
+      return res.status(403).json({ error: 'Tài khoản email không chính xác hoặc chưa được cấp quyền truy cập.' });
     }
 
     // Generate 6-digit OTP
@@ -6210,13 +6446,17 @@ app.post('/api/admin/auth/otp/send', limitOtpSendIp, limitOtpSendEmail, async (r
 
     // Upsert into admin_otps table
     await db.query(`
-      INSERT INTO admin_otps (email, code, expires_at)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (email) DO UPDATE SET code = $2, expires_at = $3, created_at = CURRENT_TIMESTAMP
+      INSERT INTO admin_otps (email, code, expires_at, attempts)
+      VALUES ($1, $2, $3, 0)
+      ON CONFLICT (email) DO UPDATE SET code = $2, expires_at = $3, created_at = CURRENT_TIMESTAMP, attempts = 0
     `, [cleanEmail, otpCode, expiresAt]);
 
     // Send email via Resend
-    const sendResult = await resend.sendAdminOTPEmail(cleanEmail, otpCode, userName);
+    const role = localCheck?.role;
+    const targetLoginUrl = role === 'sale'
+      ? (process.env.SALE_PUBLIC_URL || 'https://sale.pastiechat.com')
+      : (process.env.AGENT_PUBLIC_URL || 'https://agent.pastiechat.com');
+    const sendResult = await resend.sendAdminOTPEmail(cleanEmail, otpCode, userName, { loginUrl: targetLoginUrl, role });
     if (!sendResult.ok) {
       return res.status(500).json({ error: 'Không thể gửi email OTP: ' + (sendResult.reason || 'Lỗi dịch vụ email') });
     }
@@ -6250,7 +6490,7 @@ app.post('/api/admin/auth/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, as
       [cleanEmail]
     );
     if (pending.rows.length === 0) {
-      return res.status(400).json({ error: 'Mã xác thực OTP không chính xác hoặc đã hết hạn.' });
+      return res.status(400).json({ error: 'Mã xác thực OTP đã hết hạn hoặc không tồn tại. Vui lòng yêu cầu mã mới.' });
     }
     if (pending.rows[0].attempts >= OTP_MAX_ATTEMPTS) {
       await db.query('DELETE FROM admin_otps WHERE email = $1', [cleanEmail]);
@@ -6266,10 +6506,13 @@ app.post('/api/admin/auth/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, as
       // Sai thì tăng bộ đếm; đủ 5 lần là mã bị huỷ, phải xin mã mới.
       await db.query('UPDATE admin_otps SET attempts = attempts + 1 WHERE email = $1', [cleanEmail]);
       const left = OTP_MAX_ATTEMPTS - pending.rows[0].attempts - 1;
+      if (left <= 0) {
+        await db.query('DELETE FROM admin_otps WHERE email = $1', [cleanEmail]);
+      }
       return res.status(400).json({
         error: left > 0
           ? `Mã xác thực không chính xác. Còn ${left} lần thử.`
-          : 'Mã xác thực không chính xác. Vui lòng yêu cầu mã mới.',
+          : 'Mã xác thực không chính xác. Bạn đã hết số lần thử, vui lòng yêu cầu mã mới.',
       });
     }
 
@@ -6878,7 +7121,7 @@ app.get('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
   }
 
   const result = await db.query(
-    `SELECT q.id, q.code, q.label, q.is_active, q.created_at, a.id AS owner_admin_id, a.full_name AS owner_name
+    `SELECT q.id, q.code, q.label, q.is_active, q.created_at, a.id AS owner_admin_id, a.full_name AS owner_name, a.full_name AS agent_name, a.full_name_en AS agent_name_en, a.avatar_url AS agent_avatar_url
        FROM qr_chat_accounts q JOIN admins a ON a.id = q.owner_admin_id
       WHERE q.project_id = $1 AND q.is_active = TRUE ${scopeSql}
       ORDER BY q.created_at DESC`,
@@ -7167,11 +7410,16 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
       if (prefix) void pretranslateVenuePrefix(prefix);
     }
 
+    const activationLoginUrl = effectiveRole === 'sale'
+      ? (process.env.SALE_PUBLIC_URL || 'https://sale.pastiechat.com')
+      : (process.env.AGENT_PUBLIC_URL || 'https://agent.pastiechat.com');
+
     void resend.sendAccountActivationEmail({
       toEmail: username,
       fullName: full_name.trim(),
       role: effectiveRole,
       createdByName: req.admin.full_name || req.admin.username,
+      loginUrl: activationLoginUrl,
     }).catch((err) => console.error('[ActivationEmail] Error sending to admin user:', err.message));
 
     res.status(201).json({
@@ -7653,7 +7901,7 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
       LEFT JOIN LATERAL (
         SELECT original_text, sender FROM messages
          WHERE session_id = s.id
-           AND COALESCE(system_kind, '') <> 'guest_only'
+           AND COALESCE(system_kind, '') NOT IN ('guest_only', 'guest_welcome')
          ORDER BY created_at DESC LIMIT 1
       ) mlast ON TRUE
       LEFT JOIN LATERAL (
@@ -7857,7 +8105,7 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
        WHERE m.session_id = $1
          -- Lời chào và lời cảm ơn là câu nói VỚI KHÁCH. Sale mở khung chat ra
          -- là để làm việc, không phải đọc lại phép lịch sự của hệ thống.
-         AND COALESCE(m.system_kind, '') <> 'guest_only'
+         AND COALESCE(m.system_kind, '') NOT IN ('guest_only', 'guest_welcome')
        ORDER BY m.created_at DESC LIMIT $2 OFFSET $3`,
       [sessionId, limit, offset]
     );
@@ -8638,7 +8886,8 @@ app.use(['/api/debug', '/api/test-ai', '/api/test-gemini', '/api/test-resend'], 
   try {
     const result = await db.query(
       `SELECT a.role FROM admin_sessions s JOIN admins a ON a.id = s.admin_id
-        WHERE s.token = $1 AND s.expires_at > NOW()`,
+        WHERE s.token = $1 AND a.is_active = TRUE
+          AND (s.expires_at IS NULL OR s.expires_at > NOW())`,
       [header.substring(7)]
     );
     if (result.rows[0]?.role !== 'superadmin') return res.status(404).json({ error: 'Not found' });
@@ -9953,11 +10202,14 @@ app.post('/api/superadmin/agents', checkAdminAuth, async (req, res) => {
     const adoptedGroupId = await db.adoptOrphanQrDataForProject(projectId, created.rows[0].id)
       .catch((error) => { console.error('Adopt orphan QR data failed:', error.message); return null; });
 
+    const agentLoginUrl = process.env.AGENT_PUBLIC_URL || 'https://agent.pastiechat.com';
+
     void resend.sendAccountActivationEmail({
       toEmail: username,
       fullName: String(fullName).trim(),
       role: 'agent',
       createdByName: req.admin.full_name || req.admin.username,
+      loginUrl: agentLoginUrl,
     }).catch((err) => console.error('[ActivationEmail] Error sending to agent:', err.message));
 
     res.status(201).json({ success: true, agent: created.rows[0], adoptedGroupId });
@@ -10103,11 +10355,14 @@ app.post('/api/agent/sales', checkAdminAuth, async (req, res) => {
       );
     }
 
+    const saleLoginUrl = process.env.SALE_PUBLIC_URL || 'https://sale.pastiechat.com';
+
     void resend.sendAccountActivationEmail({
       toEmail: username,
       fullName: String(fullName).trim(),
       role: 'sale',
       createdByName: req.admin.full_name || req.admin.username,
+      loginUrl: saleLoginUrl,
     }).catch((err) => console.error('[ActivationEmail] Error sending to sale:', err.message));
 
     res.status(201).json({ success: true, sale: { ...created.rows[0], access_hours: hours } });
@@ -10257,7 +10512,7 @@ app.post('/api/agent/sales/:saleId/avatar', checkAdminAuth, uploadAttachmentMidd
   }
 });
 
-// Agent xem và chỉnh sửa cấu hình Menu cho khách (Bật/Tắt & Custom tên nút)
+// Agent xem và chỉnh sửa cấu hình Menu cho khách (Bật/Tắt & Custom tên nút & Chế độ Banner/Thực đơn)
 app.get('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
   try {
     let agentId = req.admin.role === 'sale' ? req.admin.managed_by_admin_id : req.admin.id;
@@ -10268,7 +10523,7 @@ app.get('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
     if (!agentId) return res.status(400).json({ error: 'Không xác định được cơ sở quản lý.' });
 
     const row = (await db.query(
-      'SELECT agent_menu_enabled, superadmin_menu_disabled, menu_custom_label, COALESCE(service_fee_rate, 0) AS service_fee_rate FROM admins WHERE id = $1',
+      'SELECT agent_menu_enabled, superadmin_menu_disabled, menu_custom_label, COALESCE(service_fee_rate, 0) AS service_fee_rate, COALESCE(showcase_mode, \'menu\') AS showcase_mode FROM admins WHERE id = $1',
       [agentId]
     )).rows[0];
     if (!row) return res.status(404).json({ error: 'Không tìm thấy thông tin cơ sở.' });
@@ -10279,6 +10534,7 @@ app.get('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
       menu_custom_label: row.menu_custom_label || '',
       // % phí dịch vụ cộng trên hóa đơn. 0 = không thu.
       service_fee_rate: Number(row.service_fee_rate || 0),
+      showcase_mode: row.showcase_mode || 'menu',
       is_active: (row.superadmin_menu_disabled !== true) && (row.agent_menu_enabled !== false)
     });
   } catch (error) {
@@ -10296,7 +10552,7 @@ app.put('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
     const agent = (await db.query('SELECT superadmin_menu_disabled FROM admins WHERE id = $1', [agentId])).rows[0];
     if (!agent) return res.status(404).json({ error: 'Không tìm thấy Agent.' });
 
-    const { agentMenuEnabled, menuCustomLabel, serviceFeeRate } = req.body || {};
+    const { agentMenuEnabled, menuCustomLabel, serviceFeeRate, showcaseMode } = req.body || {};
     // Phí dịch vụ: % trên tổng tiền hàng, chấp nhận số lẻ (5.5%), chặn trong
     // khoảng 0–100 để một cú gõ nhầm không thành hóa đơn gấp mấy lần.
     const feeRate = serviceFeeRate !== undefined && serviceFeeRate !== null && !isNaN(Number(serviceFeeRate))
@@ -10304,6 +10560,7 @@ app.put('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
       : undefined;
     const label = menuCustomLabel !== undefined ? String(menuCustomLabel || '').trim().slice(0, 100) : undefined;
     const enabled = typeof agentMenuEnabled === 'boolean' ? agentMenuEnabled : undefined;
+    const mode = (showcaseMode === 'banner' || showcaseMode === 'menu') ? showcaseMode : undefined;
 
     if (agent.superadmin_menu_disabled && enabled === true) {
       return res.status(403).json({ error: 'Quản trị viên cấp cao (Superadmin) đã tắt tính năng thực đơn cho cơ sở của bạn.' });
@@ -10313,12 +10570,33 @@ app.put('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
       `UPDATE admins 
           SET agent_menu_enabled = COALESCE($2, agent_menu_enabled),
               menu_custom_label = CASE WHEN $4::boolean THEN $3::varchar ELSE menu_custom_label END,
-              service_fee_rate = COALESCE($5::numeric, service_fee_rate)
+              service_fee_rate = COALESCE($5::numeric, service_fee_rate),
+              showcase_mode = COALESCE($6, showcase_mode)
         WHERE id = $1
-        RETURNING agent_menu_enabled, superadmin_menu_disabled, menu_custom_label, COALESCE(service_fee_rate, 0) AS service_fee_rate`,
+        RETURNING agent_menu_enabled, superadmin_menu_disabled, menu_custom_label, COALESCE(service_fee_rate, 0) AS service_fee_rate, COALESCE(showcase_mode, 'menu') AS showcase_mode`,
       [agentId, enabled !== undefined ? enabled : null, label !== undefined ? label : null, label !== undefined,
-       feeRate !== undefined ? feeRate : null]
+       feeRate !== undefined ? feeRate : null, mode !== undefined ? mode : null]
     );
+
+    const newMenuEnabled = (updated.rows[0].superadmin_menu_disabled !== true) && (updated.rows[0].agent_menu_enabled !== false);
+    const newShowcaseMode = updated.rows[0].showcase_mode || 'menu';
+
+    // Bắn thông báo SSE tới các phiên chat đang hoạt động của Agent để client phản ứng lập tức
+    db.query(
+      `SELECT s.id FROM sessions s
+       JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+       WHERE q.owner_admin_id = $1 AND s.status = 'active'`,
+      [agentId]
+    ).then(sessionsRes => {
+      for (const s of sessionsRes.rows) {
+        notifyVisitorRealtime(s.id, 'menu_status_changed', {
+          menuEnabled: newMenuEnabled,
+          showcaseMode: newShowcaseMode,
+          menuLabel: updated.rows[0].menu_custom_label || null
+        });
+      }
+    }).catch(err => console.warn('[SSE] Không thể gửi menu_status_changed:', err.message));
+
     res.json({
       success: true,
       settings: {
@@ -10326,12 +10604,177 @@ app.put('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
         superadmin_menu_disabled: updated.rows[0].superadmin_menu_disabled === true,
         menu_custom_label: updated.rows[0].menu_custom_label || '',
         service_fee_rate: Number(updated.rows[0].service_fee_rate || 0),
-        is_active: (updated.rows[0].superadmin_menu_disabled !== true) && (updated.rows[0].agent_menu_enabled !== false)
+        showcase_mode: newShowcaseMode,
+        is_active: newMenuEnabled
       }
     });
   } catch (error) {
     console.error('Update menu settings error:', error);
     res.status(500).json({ error: 'Không cập nhật được cấu hình thực đơn.' });
+  }
+});
+
+// --- Quản lý bài viết / Banner quảng bá cho Agent -----------------------------
+
+app.get('/api/agent/posts', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'agent' && !isSuperAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Chỉ Agent mới có quyền quản lý bài viết.' });
+  }
+  const agentId = req.admin.id;
+  try {
+    const result = await db.query(
+      `SELECT * FROM agent_posts WHERE agent_id = $1 ORDER BY sort_order ASC, created_at DESC`,
+      [agentId]
+    );
+    res.json({ posts: result.rows });
+  } catch (error) {
+    console.error('Get agent posts error:', error);
+    res.status(500).json({ error: 'Không thể tải danh sách bài viết.' });
+  }
+});
+
+app.post('/api/agent/posts', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'agent' && !isSuperAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Chỉ Agent mới có quyền thêm bài viết.' });
+  }
+  const agentId = req.admin.id;
+  const { titleVi, titleEn, category, coverUrl, excerptVi, excerptEn, contentVi, contentEn, sortOrder, isFeatured, isActive } = req.body || {};
+  if (!titleVi || !String(titleVi).trim()) {
+    return res.status(400).json({ error: 'Vui lòng nhập tiêu đề bài viết (tiếng Việt).' });
+  }
+  try {
+    const result = await db.query(
+      `INSERT INTO agent_posts (agent_id, title_vi, title_en, category, cover_url, excerpt_vi, excerpt_en, content_vi, content_en, sort_order, is_featured, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING *`,
+      [
+        agentId,
+        String(titleVi).trim(),
+        titleEn ? String(titleEn).trim() : null,
+        category ? String(category).trim() : 'ƯU ĐÃI',
+        coverUrl || null,
+        excerptVi ? String(excerptVi).trim() : null,
+        excerptEn ? String(excerptEn).trim() : null,
+        contentVi || '',
+        contentEn || '',
+        Number.isInteger(Number(sortOrder)) ? Number(sortOrder) : 0,
+        Boolean(isFeatured),
+        isActive !== false
+      ]
+    );
+    res.status(201).json({ success: true, post: result.rows[0] });
+  } catch (error) {
+    console.error('Create agent post error:', error);
+    res.status(500).json({ error: 'Không thể tạo bài viết.' });
+  }
+});
+
+app.put('/api/agent/posts/:id', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'agent' && !isSuperAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Chỉ Agent mới có quyền chỉnh sửa bài viết.' });
+  }
+  const agentId = req.admin.id;
+  const postId = Number(req.params.id);
+  const { titleVi, titleEn, category, coverUrl, excerptVi, excerptEn, contentVi, contentEn, sortOrder, isFeatured, isActive } = req.body || {};
+  if (titleVi !== undefined && !String(titleVi).trim()) {
+    return res.status(400).json({ error: 'Tiêu đề bài viết không được để trống.' });
+  }
+  try {
+    const existing = await db.query('SELECT * FROM agent_posts WHERE id = $1 AND agent_id = $2', [postId, agentId]);
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Bài viết không tồn tại.' });
+
+    const result = await db.query(
+      `UPDATE agent_posts
+          SET title_vi = COALESCE($3, title_vi),
+              title_en = COALESCE($4, title_en),
+              category = COALESCE($5, category),
+              cover_url = COALESCE($6, cover_url),
+              excerpt_vi = COALESCE($7, excerpt_vi),
+              excerpt_en = COALESCE($8, excerpt_en),
+              content_vi = COALESCE($9, content_vi),
+              content_en = COALESCE($10, content_en),
+              sort_order = COALESCE($11, sort_order),
+              is_featured = COALESCE($12, is_featured),
+              is_active = COALESCE($13, is_active),
+              updated_at = NOW()
+        WHERE id = $1 AND agent_id = $2
+        RETURNING *`,
+      [
+        postId, agentId,
+        titleVi !== undefined ? String(titleVi).trim() : null,
+        titleEn !== undefined ? String(titleEn).trim() : null,
+        category !== undefined ? String(category).trim() : null,
+        coverUrl !== undefined ? coverUrl : null,
+        excerptVi !== undefined ? String(excerptVi).trim() : null,
+        excerptEn !== undefined ? String(excerptEn).trim() : null,
+        contentVi !== undefined ? contentVi : null,
+        contentEn !== undefined ? contentEn : null,
+        sortOrder !== undefined ? Number(sortOrder) : null,
+        isFeatured !== undefined ? Boolean(isFeatured) : null,
+        isActive !== undefined ? Boolean(isActive) : null
+      ]
+    );
+    res.json({ success: true, post: result.rows[0] });
+  } catch (error) {
+    console.error('Update agent post error:', error);
+    res.status(500).json({ error: 'Không thể cập nhật bài viết.' });
+  }
+});
+
+app.delete('/api/agent/posts/:id', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'agent' && !isSuperAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Chỉ Agent mới có quyền xóa bài viết.' });
+  }
+  const agentId = req.admin.id;
+  const postId = Number(req.params.id);
+  try {
+    const delRes = await db.query('DELETE FROM agent_posts WHERE id = $1 AND agent_id = $2 RETURNING id', [postId, agentId]);
+    if (delRes.rows.length === 0) return res.status(404).json({ error: 'Bài viết không tồn tại.' });
+    res.json({ success: true, id: postId });
+  } catch (error) {
+    console.error('Delete agent post error:', error);
+    res.status(500).json({ error: 'Không thể xóa bài viết.' });
+  }
+});
+
+app.post('/api/agent/posts/upload-media', checkAdminAuth, uploadAttachmentMiddleware, async (req, res) => {
+  if (req.admin.role !== 'agent' && !isSuperAdmin(req.admin)) {
+    return res.status(403).json({ error: 'Chỉ Agent mới có quyền tải tệp lên bài viết.' });
+  }
+  if (!req.file) return res.status(400).json({ error: 'Chưa chọn tệp ảnh hoặc video.' });
+  const mime = String(req.file.mimetype || '').toLowerCase();
+  const isImage = mime.startsWith('image/');
+  const isVideo = mime.startsWith('video/');
+  if (!isImage && !isVideo) {
+    return res.status(400).json({ error: 'Chỉ hỗ trợ tệp định dạng hình ảnh hoặc video.' });
+  }
+  try {
+    let fileUrl = null;
+    if (s3.isConfigured) {
+      const key = `posts/${req.admin.id}/${Date.now()}-${s3.sanitizeFileName(req.file.originalname)}`;
+      await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
+      fileUrl = await s3.getMenuImageUrl(key);
+    }
+    if (!fileUrl) {
+      const uploadsDir = path.join(__dirname, 'public', 'uploads', 'posts');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      const safeName = s3.sanitizeFileName(req.file.originalname);
+      const fileName = `${Date.now()}-${safeName}`;
+      const filePath = path.join(uploadsDir, fileName);
+      fs.writeFileSync(filePath, req.file.buffer);
+      fileUrl = `/uploads/posts/${fileName}`;
+    }
+    res.json({
+      success: true,
+      url: fileUrl,
+      type: isVideo ? 'video' : 'image',
+      originalName: req.file.originalname
+    });
+  } catch (err) {
+    console.error('Upload post media error:', err);
+    res.status(500).json({ error: 'Không thể tải tệp lên: ' + err.message });
   }
 });
 
@@ -10523,9 +10966,11 @@ app.get('/api/agent/qr-accounts', checkAdminAuth, async (req, res) => {
   try {
     const result = await db.query(
       `SELECT q.id, q.code, q.label, q.display_label, q.is_active, q.created_at,
-              g.id AS group_id, g.name AS group_name
+              g.id AS group_id, g.name AS group_name,
+              a.full_name AS agent_name, a.full_name_en AS agent_name_en, a.avatar_url AS agent_avatar_url
          FROM qr_chat_accounts q
          JOIN agent_groups g ON g.id = q.group_id
+         JOIN admins a ON a.id = g.agent_id
         WHERE q.is_active = TRUE AND g.agent_id = $1
         ORDER BY g.name, q.created_at DESC`,
       [req.admin.id]

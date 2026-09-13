@@ -13,12 +13,14 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=2">
     <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png?v=2">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
-    <!-- Be Vietnam Pro — hỗ trợ tiếng Việt đầy đủ -->
-    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Be Vietnam Pro, Lobster & Nunito — hỗ trợ tiếng Việt đầy đủ -->
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&family=Nunito:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600;1,700;1,800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r128">
-    <link rel="stylesheet" href="menu-console.css?v=r128">
+    <link rel="stylesheet" href="admin.css?v=r130">
+    <link rel="stylesheet" href="menu-console.css?v=r130">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -26,9 +28,89 @@
     <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="Pastie Console">
+    <!-- Preload critical brand logo -->
+    <link rel="preload" as="image" href="/pastie-chat-biz-compact.png" fetchpriority="high">
+
+    <!-- Zero-Flicker Instant Auth Gatekeeper: Ngăn 100% giật form đăng nhập và màn đen khi mở/tải lại -->
+    <script>
+        (function() {
+            try {
+                // Khởi tạo giải mã logo trước vào bộ nhớ GPU để hiển thị tức thì 0ms khi mở dashboard
+                var _logoWarmup = new Image();
+                _logoWarmup.src = '/pastie-chat-biz-compact.png';
+                if (_logoWarmup.decode) {
+                    _logoWarmup.decode().catch(function() {});
+                }
+            } catch(e) {}
+            try {
+                var token = localStorage.getItem('pastie_admin_token');
+                if (token && token.trim()) {
+                    document.documentElement.classList.add('has-auth-token');
+                    window.__authPreflight = fetch('/api/admin/me', {
+                        headers: { 'Authorization': 'Bearer ' + token.trim() }
+                    }).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; });
+                }
+            } catch(e) {}
+        })();
+    </script>
+    <style>
+        /* Ẩn tức thời form đăng nhập khi máy đã lưu phiên, không bị chớp form 1 frame nào */
+        html.has-auth-token:not(.auth-ready) #login-modal {
+            display: none !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+        /* Màn hình nạp app êm ái chống giật/màn đen trong chớp mắt khi vào trang */
+        #app-boot-splash {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(145deg, #ffffff 0%, #fff7fb 52%, #fff0f8 100%);
+            transition: opacity 0.26s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.26s;
+            visibility: hidden;
+            opacity: 0;
+            pointer-events: none;
+        }
+        html.has-auth-token:not(.auth-ready) #app-boot-splash {
+            visibility: visible;
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .boot-splash-logo {
+            width: 190px;
+            height: auto;
+            max-width: 65vw;
+            margin-bottom: 20px;
+            animation: bootPulse 1.8s ease-in-out infinite;
+        }
+        .boot-splash-spinner {
+            width: 26px;
+            height: 26px;
+            border: 2.5px solid rgba(239, 43, 157, 0.18);
+            border-top-color: #ef2b9d;
+            border-radius: 50%;
+            animation: bootSpin 0.75s linear infinite;
+        }
+        @keyframes bootPulse {
+            0%, 100% { transform: scale(1); opacity: 0.95; }
+            50% { transform: scale(1.03); opacity: 1; filter: drop-shadow(0 8px 24px rgba(239, 43, 157, 0.22)); }
+        }
+        @keyframes bootSpin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body>
+    <!-- Màn hình nạp ứng dụng tức thời êm ái, xóa bỏ màn đen và giật form -->
+    <div id="app-boot-splash">
+        <img src="/pastie-chat-biz-compact.png" alt="Pastie Chat" class="boot-splash-logo" fetchpriority="high" loading="eager" decoding="async">
+        <div class="boot-splash-spinner"></div>
+    </div>
+
     <!-- Gradient background decor -->
     <div class="bg-glow bg-glow-1"></div>
     <div class="bg-glow bg-glow-2"></div>
@@ -38,9 +120,9 @@
         <div class="dpq-login-card">
             <!-- Brand Logo -->
             <div class="dpq-brand-header">
-                <img src="/pastie-chat-biz-compact.png?v=2" alt="Pastie Chat" class="dpq-brand-logo">
+                <img src="/pastie-chat-biz-compact.png" alt="Pastie Chat" class="dpq-brand-logo" fetchpriority="high" loading="eager" decoding="async">
                 <h2 id="dpq-login-title" class="dpq-title" data-i18n="loginTitle">Không rào cản ngôn ngữ<br>Thấu hiểu mọi khách hàng</h2>
-                <p id="dpq-login-subtitle" class="dpq-subtitle" data-i18n="loginSubtitle">Hệ thống quản trị & CSKH đa kênh AI</p>
+                <p id="dpq-login-subtitle" class="dpq-subtitle" data-i18n="loginSubtitle">Nhập email để đăng nhập Pastie Chat</p>
             </div>
 
             <!-- Feedback / Error Message Box -->
@@ -50,7 +132,7 @@
             <!-- Direct Auth: Google OAuth & Email OTP -->
             <div id="auth-panel-direct">
                 <!-- Step 1: Input Email -->
-                <form id="otp-step-email" class="dpq-form-step" onsubmit="handleSendAdminOtp(event); return false;">
+                <form id="otp-step-email" class="dpq-form-step" novalidate onsubmit="handleSendAdminOtp(event); return false;">
                     <div class="dpq-input-wrap">
                         <input type="email" id="admin-otp-email-input" class="dpq-input" placeholder="Email nhân viên / quản trị..." autocomplete="email" required>
                     </div>
@@ -61,7 +143,7 @@
                 </form>
 
                 <!-- Step 2: Input 6-Digit OTP (Initially Hidden) -->
-                <form id="otp-step-verify" class="dpq-form-step hide" onsubmit="handleVerifyAdminOtp(event); return false;">
+                <form id="otp-step-verify" class="dpq-form-step hide" novalidate onsubmit="handleVerifyAdminOtp(event); return false;">
                     <div class="dpq-otp-panel">
                         <span class="dpq-otp-panel-mark"></span>
                         <p class="dpq-otp-eyebrow">XÁC THỰC · OTP</p>
@@ -138,7 +220,7 @@
         <header class="dashboard-header glass-panel">
             <div class="header-left">
                 <div class="logo">
-                    <img src="/pastie-chat-biz-compact.png?v=2" alt="Pastie Chat" class="logo-img">
+                    <img src="/pastie-chat-biz-compact.png" alt="Pastie Chat" class="logo-img" fetchpriority="high" loading="eager" decoding="async">
                     <span id="console-brand-name" class="hide"></span>
                 </div>
                 <!-- Tên hiển thị của Agent / Sale -->
@@ -169,9 +251,9 @@
                 </div>
             </div>
             <div class="header-right">
-                <!-- Nút riêng cho Agent / Sale: Quản lý Sale & Nhóm, Bill, Thực đơn, Báo cáo, Tài khoản, Thông báo
+                <!-- Nút riêng cho Agent / Sale: Quản lý Sale & Nhóm, Bill, Sản phẩm, Báo cáo, Tài khoản, Thông báo
                      (Khi Agent/Sale đăng nhập, layoutHeaderQuickMenu gom gọn toàn bộ vào nút "Công cụ") -->
-                <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, Nhóm tiếp nhận, Mã QR và Thực đơn">
+                <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, Nhóm tiếp nhận, Mã QR và Sản phẩm">
                     <i class="ri-organization-chart"></i><span>Quản trị</span>
                 </button>
                 <!-- Ticket có MÀN RIÊNG, không gộp vào Quản trị: đây là việc theo
@@ -187,8 +269,8 @@
                 <button id="order-cart-btn" class="header-quick-btn hide" type="button" title="Quản lý hóa đơn: đơn của khách theo từng cuộc trò chuyện">
                     <i class="ri-bill-line"></i><span>Quản lý hóa đơn</span>
                 </button>
-                <button id="sale-menu-btn" class="header-quick-btn hide" type="button" title="Xem thực đơn của cơ sở">
-                    <i class="ri-restaurant-line"></i><span>Thực đơn</span>
+                <button id="sale-menu-btn" class="header-quick-btn hide" type="button" title="Xem danh sách sản phẩm của cơ sở">
+                    <i class="ri-shopping-bag-3-line"></i><span>Sản phẩm</span>
                 </button>
                 <button id="report-modal-btn" class="header-quick-btn hide" type="button" title="Báo cáo hiệu suất tư vấn &amp; Xuất Excel">
                     <i class="ri-file-chart-line"></i><span>Báo cáo</span>
@@ -332,7 +414,7 @@
             </div>
             <!-- Wordmark chỉ hiện ở header Agent/Sale, cùng vị trí góc phải
                  phía dưới như header cổng khách. -->
-            <img class="staff-header-wordmark" src="/pastie-chat-biz-compact.png?v=2" alt="Pastie Chat">
+            <img class="staff-header-wordmark" src="/pastie-chat-biz-compact.png" alt="Pastie Chat" loading="eager" decoding="async">
         </header>
 
 
@@ -354,7 +436,7 @@
             </div>
             <div class="org-card">
                 <header class="org-head">
-                    <h2 id="org-title"><i class="ri-team-line" style="color:var(--accent-color);margin-right:6px;"></i>Quản lý Sale, nhóm, QR và thực đơn</h2>
+                    <h2 id="org-title"><i class="ri-team-line" style="color:var(--accent-color);margin-right:6px;"></i>Quản lý Sale, nhóm, QR và sản phẩm</h2>
                     <div style="display:flex;align-items:center;gap:8px;">
                         <button type="button" class="icon-btn" id="org-guide-btn" title="Xem sổ tay hướng dẫn sử dụng" aria-label="Hướng dẫn sử dụng">
                             <i class="ri-question-line"></i>
@@ -368,7 +450,7 @@
                     <button type="button" class="org-tab is-active" data-org-tab="groups"><i class="ri-team-line"></i> <span>Nhóm</span></button>
                     <button type="button" class="org-tab" data-org-tab="sales"><i class="ri-user-shared-line"></i> <span>Sale</span></button>
                     <button type="button" class="org-tab" data-org-tab="qr"><i class="ri-qr-code-line"></i> <span>Mã QR</span></button>
-                    <button type="button" class="org-tab" data-org-tab="menu"><i class="ri-restaurant-2-line"></i> <span>Thực đơn</span></button>
+                    <button type="button" class="org-tab" data-org-tab="menu"><i class="ri-shopping-bag-3-line"></i> <span>Sản phẩm</span></button>
                 </nav>
 
                 <p class="org-status hide" id="org-status"></p>
@@ -531,54 +613,95 @@
                 <!-- Thực đơn: chỉ Agent quản lý dự án QR -->
                 <section class="org-pane hide" data-org-pane="menu">
                     <!-- Cấu hình hiển thị và tên nút Thực đơn phía Khách -->
-                    <div id="agent-menu-settings-card" class="glass-panel" style="margin-bottom:14px;padding:12px 14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);">
+                    <div id="agent-menu-settings-card" class="glass-panel" style="margin-bottom:14px;padding:14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);">
                         <div id="agent-menu-superadmin-warning" class="hide" style="margin-bottom:10px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#ef4444;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">
                             <i class="ri-error-warning-line"></i>
                             <span>Tính năng thực đơn đã bị Hỗ trợ kỹ thuật tắt cho cơ sở của bạn.</span>
                         </div>
-                        <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;">
-                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;">
-                                <input type="checkbox" id="agent-menu-toggle-checkbox" style="width:16px;height:16px;accent-color:var(--accent-color);">
-                                <span>Hiển thị Thực đơn cho khách quét QR</span>
-                            </label>
-                            <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:360px;">
-                                <input type="text" id="agent-menu-label-input" maxlength="100" placeholder="Chữ hiển thị (VD: Thực đơn, Menu, Gọi món...)" style="font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);flex:1;">
+
+                        <!-- 2 LỰA CHỌN: THỰC ĐƠN HOẶC BANNER -->
+                        <div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--panel-border);">
+                            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                                <i class="ri-dashboard-line"></i> Chế độ hiển thị cho khách quét QR
+                            </div>
+                            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:rgba(255,255,255,0.04);padding:8px 14px;border-radius:8px;border:1px solid var(--panel-border);font-size:13px;font-weight:600;">
+                                    <input type="radio" name="showcase_mode" value="menu" id="showcase-mode-menu" checked style="accent-color:var(--accent-color);">
+                                    <span><i class="ri-shopping-bag-3-line" style="color:var(--accent-color);"></i> Hiển thị Sản phẩm</span>
+                                </label>
+                                <!-- Tạm ẩn UI Banner & Bài viết khi phát hành production.
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:rgba(255,255,255,0.04);padding:8px 14px;border-radius:8px;border:1px solid var(--panel-border);font-size:13px;font-weight:600;">
+                                    <input type="radio" name="showcase_mode" value="banner" id="showcase-mode-banner" style="accent-color:#f59e0b;">
+                                    <span><i class="ri-slideshow-3-line" style="color:#f59e0b;"></i> Hiển thị Banner &amp; Bài viết</span>
+                                </label>
+                                -->
                             </div>
                         </div>
 
-                        <!-- PHÍ DỊCH VỤ: KHỐI RIÊNG, KHÔNG ĐỨNG CHUNG HÀNG VỚI TÊN NÚT.
-                             Hai thứ này khác hẳn nhau về hậu quả: đổi tên nút chỉ là chữ
-                             hiển thị, còn đổi % phí dịch vụ là đổi số tiền trên mọi hóa
-                             đơn từ lúc đó trở đi. Đứng chung một hàng thì rất dễ gõ nhầm
-                             ô này tưởng ô kia. -->
-                        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--panel-border);">
+                        <!-- Chi tiết cấu hình Sản phẩm -->
+                        <div id="menu-mode-fields">
                             <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;">
-                                <div>
-                                    <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;">
-                                        <i class="ri-service-line" style="color:var(--accent-color);"></i> Phí dịch vụ trên hóa đơn
-                                    </div>
-                                    <p style="margin:4px 0 0;font-size:11.5px;color:var(--text-muted,#94a3b8);line-height:1.5;max-width:560px;">
-                                        Giá món nhập vào là <b>giá khách trả, đã bao gồm VAT</b>. Hóa đơn sẽ cộng thêm
-                                        đúng % này. Để <b>0</b> nếu quán không thu phí dịch vụ.
-                                    </p>
-                                </div>
-                                <div style="display:flex;align-items:center;gap:8px;">
-                                    <div class="menu-input-suffix" style="display:flex;align-items:center;gap:4px;">
-                                        <input type="number" id="agent-service-fee-input" min="0" max="100" step="0.5" placeholder="0" inputmode="decimal" style="width:86px;font-size:13px;font-weight:700;text-align:right;padding:7px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);">
-                                        <span style="font-size:13px;font-weight:700;color:var(--text-secondary);">%</span>
-                                    </div>
-                                    <button type="button" id="agent-menu-save-btn" class="primary-btn" style="width:auto;padding:7px 14px;font-size:12px;white-space:nowrap;"><i class="ri-save-line"></i> Lưu cấu hình</button>
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;">
+                                    <input type="checkbox" id="agent-menu-toggle-checkbox" style="width:16px;height:16px;accent-color:var(--accent-color);">
+                                    <span>Bật nút Sản phẩm trong phiên chat</span>
+                                </label>
+                                <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:360px;">
+                                    <input type="text" id="agent-menu-label-input" maxlength="100" placeholder="Chữ hiển thị (VD: Sản phẩm, Đặt hàng, Menu...)" style="font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);flex:1;">
                                 </div>
                             </div>
+
+                            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--panel-border);">
+                                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;">
+                                    <div>
+                                        <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;">
+                                            <i class="ri-service-line" style="color:var(--accent-color);"></i> Phí dịch vụ trên hóa đơn
+                                        </div>
+                                        <p style="margin:4px 0 0;font-size:11.5px;color:var(--text-muted,#94a3b8);line-height:1.5;max-width:560px;">
+                                            Giá sản phẩm nhập vào là <b>giá khách trả, đã bao gồm VAT</b>. Hóa đơn sẽ cộng thêm đúng % này. Để <b>0</b> nếu quán không thu phí dịch vụ.
+                                        </p>
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:8px;">
+                                        <div class="menu-input-suffix" style="display:flex;align-items:center;gap:4px;">
+                                            <input type="number" id="agent-service-fee-input" min="0" max="100" step="0.5" placeholder="0" inputmode="decimal" style="width:86px;font-size:13px;font-weight:700;text-align:right;padding:7px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);">
+                                            <span style="font-size:13px;font-weight:700;color:var(--text-secondary);">%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Nút lưu cài đặt chung -->
+                        <div style="margin-top:12px;display:flex;justify-content:flex-end;">
+                            <button type="button" id="agent-menu-save-btn" class="primary-btn" style="width:auto;padding:7px 18px;font-size:12px;white-space:nowrap;"><i class="ri-save-line"></i> Lưu cấu hình</button>
                         </div>
                     </div>
 
+                    <!-- Khung Quản lý Banner & Bài viết (Hiện khi chọn chế độ Banner) -->
+                    <!-- Tạm ẩn UI Banner & Bài viết khi phát hành production. -->
+                    <div id="agent-banner-settings-card" class="glass-panel hide" hidden style="margin-bottom:14px;padding:14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;">
+                            <div>
+                                <div style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px;">
+                                    <i class="ri-slideshow-3-line" style="color:#f59e0b;"></i> Banner &amp; Bài viết giới thiệu
+                                </div>
+                            </div>
+                            <button type="button" id="agent-post-add-btn" class="primary-btn" style="width:auto;padding:7px 14px;font-size:12px;white-space:nowrap;">
+                                <i class="ri-add-line"></i> Thêm bài viết mới
+                            </button>
+                        </div>
+                        <div id="agent-posts-container" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:12px;">
+                            <!-- Danh sách bài viết render bằng JS -->
+                        </div>
+                    </div>
+
+                    <!-- Khung Quản lý Sản phẩm (Ẩn khi chọn chế độ Banner) -->
+                    <div id="agent-menu-items-section">
                     <div class="org-list-header">
-                        <h4>Các món trong thực đơn</h4>
-                        <span id="menu-count-badge" class="org-count-badge">0 món</span>
+                        <h4>Danh sách sản phẩm</h4>
+                        <span id="menu-count-badge" class="org-count-badge">0 sản phẩm</span>
                     
                         <button type="button" class="pane-add is-quiet" data-addbox-toggle="menu-cat"><i class="ri-price-tag-3-line"></i> <span>Danh mục</span></button>
-                        <button type="button" class="pane-add" data-addbox-toggle="menu-item"><i class="ri-add-circle-line"></i> <span>Thêm món</span></button>
+                        <button type="button" class="pane-add" data-addbox-toggle="menu-item"><i class="ri-add-circle-line"></i> <span>Thêm sản phẩm</span></button>
                     </div>
                     <div class="addbox hide" data-addbox="menu-cat">
                     <form class="menu-form" id="menu-category-form">
@@ -594,7 +717,7 @@
                         </div>
                         <p class="menu-form-note">
                             <i class="ri-information-line"></i>
-                            <span>Chia nhóm cho khách dễ xem. Không bắt buộc — món chưa phân loại vẫn hiển thị.</span>
+                            <span>Chia nhóm cho khách dễ xem. Không bắt buộc — sản phẩm chưa phân loại vẫn hiển thị.</span>
                         </p>
                     </form>
                     </div>
@@ -603,7 +726,7 @@
                     <form class="menu-form" id="menu-item-form">
                         <div class="menu-form-grid">
                             <label class="menu-field menu-field-name">
-                                <span>Tên món <b>*</b></span>
+                                <span>Tên sản phẩm <b>*</b></span>
                                 <input type="text" id="menu-item-name" required placeholder="Gỏi cá trích" maxlength="255" autocomplete="off">
                             </label>
 
@@ -629,7 +752,7 @@
                             <label class="menu-field menu-field-hide" id="menu-item-hide-field">
                                 <span>Khi hết hàng</span>
                                 <select id="menu-item-hide">
-                                    <option value="true">Ẩn khỏi thực đơn</option>
+                                    <option value="true">Ẩn khỏi danh sách</option>
                                     <option value="false">Vẫn hiện, ghi "hết"</option>
                                 </select>
                             </label>
@@ -644,7 +767,7 @@
                                 <label class="menu-photo-pick" id="menu-item-photo-pick">
                                     <input type="file" id="menu-item-photo" accept="image/*" hidden>
                                     <span class="menu-photo-thumb" id="menu-item-photo-thumb"><i class="ri-image-add-line"></i></span>
-                                    <span class="menu-photo-text" id="menu-item-photo-text">Chọn ảnh món — bấm để tải lên</span>
+                                    <span class="menu-photo-text" id="menu-item-photo-text">Chọn ảnh sản phẩm — bấm để tải lên</span>
                                     <button type="button" class="menu-photo-clear hide" id="menu-item-photo-clear" title="Bỏ ảnh đã chọn"><i class="ri-close-line"></i></button>
                                 </label>
                             </div>
@@ -658,7 +781,7 @@
 
                         <div class="menu-form-actions">
                             <button type="button" class="menu-btn-ghost hide" id="menu-item-cancel">Huỷ sửa</button>
-                            <button type="submit" class="menu-btn-primary" id="menu-item-submit"><i class="ri-add-circle-line"></i> Thêm món</button>
+                            <button type="submit" class="menu-btn-primary" id="menu-item-submit"><i class="ri-add-circle-line"></i> Thêm sản phẩm</button>
                         </div>
                     </form>
                     </div>
@@ -669,6 +792,7 @@
 
                     
                     <div class="org-list" id="menu-item-list"></div>
+                    </div>
 
                     <!-- TẠM TẮT: Kết nối phần mềm tính tiền.
                          Chưa mở cho người dùng nên ẩn hẳn khỏi màn hình, không để
@@ -752,7 +876,7 @@
                 </div>
                 <div class="session-status-filter" id="session-status-filter" role="tablist">
                     <button type="button" class="ssf-btn is-active" data-status="all" role="tab"><span class="ssf-label">Tất cả</span><span class="ssf-count" id="ssf-count-all">0</span></button>
-                    <button type="button" class="ssf-btn" data-status="active" role="tab"><span class="ssf-label">Đang mở</span><span class="ssf-count" id="ssf-count-active">0</span></button>
+                    <button type="button" class="ssf-btn" data-status="active" role="tab"><span class="ssf-label">Đang chat</span><span class="ssf-count" id="ssf-count-active">0</span></button>
                     <button type="button" class="ssf-btn" data-status="closed" role="tab"><span class="ssf-label">Đã đóng</span><span class="ssf-count" id="ssf-count-closed">0</span></button>
                 </div>
                 <div class="sessions-list" id="sessions-list-container">
@@ -1186,17 +1310,32 @@
         <div class="login-box glass-panel qr-preview-box">
             <div class="brand-header qr-preview-header">
                 <div class="qr-preview-heading">
-                    <h2 id="qr-preview-title">Mã QR tiếp nhận chat</h2>
+                    <h2 id="qr-preview-title">Poster QR dành cho khách hàng / Customer QR Poster</h2>
                     <p id="qr-preview-agent"></p>
                 </div>
-                <button id="qr-preview-close-btn" class="icon-btn" type="button" title="Đóng"><i class="ri-close-line"></i></button>
+                <button id="qr-preview-close-btn" class="icon-btn" type="button" title="Đóng / Close"><i class="ri-close-line"></i></button>
+            </div>
+            <!-- Segmented 2-tab switch: Co-branded & Standard -->
+            <div class="qr-poster-tabs" role="tablist" aria-label="Kiểu poster / Poster style">
+                <button type="button" class="qr-poster-tab-btn is-active" id="qr-tab-cobranded" data-poster-style="cobranded" role="tab" aria-selected="true">
+                    <i class="ri-store-2-line"></i> <span>Co-branded</span>
+                </button>
+                <button type="button" class="qr-poster-tab-btn" id="qr-tab-standard" data-poster-style="standard" role="tab" aria-selected="false">
+                    <i class="ri-qr-code-line"></i> <span>Standard</span>
+                </button>
             </div>
             <div class="qr-preview-body">
-                <img id="qr-preview-image" alt="Mã QR tiếp nhận chat">
+                <div class="qr-poster-frame">
+                    <div id="qr-poster-loader" class="qr-poster-loader">
+                        <div class="qr-poster-spinner"></div>
+                        <p class="qr-poster-loader-text">Đang tạo poster độ nét cao… / Generating poster…</p>
+                    </div>
+                    <img id="qr-preview-image" alt="Poster QR dành cho khách hàng / Customer QR Poster" class="qr-preview-poster-img is-hidden">
+                </div>
                 <p class="qr-preview-link" id="qr-preview-link"></p>
                 <div class="qr-preview-actions">
-                    <button id="qr-preview-copy-btn" type="button" class="secondary-btn"><i class="ri-file-copy-line"></i> Sao chép link</button>
-                    <button id="qr-preview-download-btn" type="button" class="primary-btn"><i class="ri-download-2-line"></i> Tải poster QR</button>
+                    <button id="qr-preview-copy-btn" type="button" class="secondary-btn"><i class="ri-file-copy-line"></i> Sao chép link / Copy Link</button>
+                    <button id="qr-preview-download-btn" type="button" class="primary-btn"><i class="ri-download-2-line"></i> Tải poster QR / Download Poster</button>
                 </div>
             </div>
         </div>
@@ -1317,17 +1456,22 @@
                         <div class="self-devices-list" id="self-devices-list"></div>
                     </section>
                     <!-- Tải ảnh đại diện cá nhân -->
-                    <div class="self-avatar-section" style="display:flex;align-items:center;gap:14px;margin:14px 0;padding:12px 14px;border:1px solid var(--panel-border);border-radius:12px;background:rgba(255,255,255,0.03);">
-                        <div id="self-avatar-preview" style="width:52px;height:52px;border-radius:50%;overflow:hidden;border:2px solid var(--accent-color);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;background:var(--panel-bg);flex-shrink:0;">
-                            <span id="self-avatar-initial">P</span>
-                        </div>
-                        <div style="display:flex;flex-direction:column;gap:4px;">
-                            <span style="font-size:12px;font-weight:600;color:var(--text-primary);">Ảnh đại diện</span>
-                            <div style="display:flex;gap:8px;align-items:center;">
-                                <input type="file" id="self-avatar-file-input" accept="image/*" style="display:none;">
-                                <button type="button" id="self-avatar-pick-btn" class="secondary-btn" style="width:auto;padding:5px 12px;font-size:12px;"><i class="ri-image-edit-line"></i> Đổi ảnh đại diện</button>
+                    <div class="self-avatar-section" style="margin:14px 0;padding:12px 14px;border:1px solid var(--panel-border);border-radius:12px;background:rgba(255,255,255,0.03);">
+                        <div style="display:flex;align-items:center;gap:14px;">
+                            <div id="self-avatar-preview" style="width:52px;height:52px;border-radius:50%;overflow:hidden;border:2px solid var(--accent-color);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;background:var(--panel-bg);flex-shrink:0;">
+                                <span id="self-avatar-initial">P</span>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <span style="font-size:12px;font-weight:600;color:var(--text-primary);">Ảnh đại diện &amp; Logo thương hiệu</span>
+                                <div style="display:flex;gap:8px;align-items:center;">
+                                    <input type="file" id="self-avatar-file-input" accept="image/*" style="display:none;">
+                                    <button type="button" id="self-avatar-pick-btn" class="secondary-btn" style="width:auto;padding:5px 12px;font-size:12px;"><i class="ri-image-edit-line"></i> Đổi ảnh</button>
+                                </div>
                             </div>
                         </div>
+                        <p style="font-size:11px;color:var(--text-muted);margin:8px 0 0 0;line-height:1.45;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.08);">
+                            <i class="ri-information-line" style="color:var(--accent-color);"></i> Ảnh đại diện đồng thời được dùng làm <strong>logo hiển thị mã QR (kiểu Đồng thương hiệu)</strong>. Khuyên dùng ảnh <strong>PNG tách nền (trong suốt)</strong>, gợi ý kích thước: cao 100–300px, ngang 200–600px (dung lượng dưới 10MB).
+                        </p>
                     </div>
 
                     <form id="self-profile-form" class="self-profile-form">
@@ -1446,12 +1590,12 @@
                 </div>
 
                 <div class="form-group" id="admin-create-avatar-group" style="margin: 0;">
-                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Ảnh đại diện</label>
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Ảnh đại diện &amp; Logo thương hiệu</label>
                     <div class="avatar-upload-row">
                         <div class="avatar-upload-preview" id="admin-create-avatar-preview"></div>
                         <div class="avatar-upload-actions">
                             <button type="button" class="avatar-upload-btn" id="admin-create-avatar-pick"><i class="ri-image-add-line"></i> Chọn ảnh</button>
-                            <small id="admin-create-avatar-hint">PNG hoặc JPG, tối đa 10MB.</small>
+                            <small id="admin-create-avatar-hint" style="font-size:11px;line-height:1.4;color:var(--text-muted);display:block;margin-top:4px;">Dùng làm ảnh đại diện và <strong>logo hiển thị QR (kiểu Đồng thương hiệu)</strong>. Khuyên dùng ảnh <strong>PNG tách nền (trong suốt)</strong>, gợi ý kích thước: cao 100–300px, ngang 200–600px (tối đa 10MB).</small>
                         </div>
                     </div>
                     <input type="file" id="admin-create-avatar-file" accept="image/*" hidden>
@@ -1561,12 +1705,12 @@
                 </div>
 
                 <div class="form-group" id="admin-edit-avatar-group" style="margin: 0;">
-                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Ảnh đại diện</label>
+                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Ảnh đại diện &amp; Logo thương hiệu</label>
                     <div class="avatar-upload-row">
                         <div class="avatar-upload-preview" id="admin-edit-avatar-preview"></div>
                         <div class="avatar-upload-actions">
                             <button type="button" class="avatar-upload-btn" id="admin-edit-avatar-pick"><i class="ri-image-add-line"></i> Chọn ảnh mới</button>
-                            <small id="admin-edit-avatar-hint">PNG hoặc JPG, tối đa 10MB.</small>
+                            <small id="admin-edit-avatar-hint" style="font-size:11px;line-height:1.4;color:var(--text-muted);display:block;margin-top:4px;">Dùng làm ảnh đại diện và <strong>logo hiển thị QR (kiểu Đồng thương hiệu)</strong>. Khuyên dùng ảnh <strong>PNG tách nền (trong suốt)</strong>, gợi ý kích thước: cao 100–300px, ngang 200–600px (tối đa 10MB).</small>
                         </div>
                     </div>
                     <input type="file" id="admin-edit-avatar-file" accept="image/*" hidden>
@@ -1986,20 +2130,173 @@
         </div>
     </div>
 
+    <!-- Modal Thêm/Sửa bài viết và banner quảng bá -->
+    <!-- Tạm ẩn UI Banner & Bài viết khi phát hành production. -->
+    <div id="agent-post-modal" class="modal-overlay hide" hidden style="z-index: 10050; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px);">
+        <div class="login-box glass-panel admin-dialog-box" style="max-width: 720px; width: 95%; max-height: min(92vh, 800px); display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 20px; background: #ffffff !important; box-shadow: 0 24px 64px -8px rgba(239, 43, 157, 0.25), 0 12px 32px -4px rgba(35, 16, 30, 0.2) !important; border: 1px solid rgba(239, 43, 157, 0.22) !important;">
+            <div style="padding: 16px 22px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; background: #ffffff;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(239, 43, 157, 0.1); color: #ef2b9d; display: flex; align-items: center; justify-content: center; font-size: 18px;">
+                        <i class="ri-article-line"></i>
+                    </div>
+                    <div>
+                        <h3 id="agent-post-modal-title" style="margin: 0; font-size: 15.5px; font-weight: 800; color: #0f172a;">Thêm bài viết &amp; Banner</h3>
+                        <p style="margin: 2px 0 0; font-size: 11.5px; color: #64748b;">Soạn thảo trực quan, tải ảnh &amp; video trực tiếp từ thiết bị</p>
+                    </div>
+                </div>
+                <button type="button" id="agent-post-modal-close-btn" style="background: #f1f5f9; border: none; color: #64748b; width: 32px; height: 32px; border-radius: 8px; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
+            <form id="agent-post-form" style="padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px; background: #ffffff;">
+                <input type="hidden" id="post-form-id" value="">
+                
+                <div class="post-form-grid-2col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Tiêu đề (Tiếng Việt) *</label>
+                        <input type="text" id="post-form-title-vi" required placeholder="VD: Combo Sáng Tỉnh Táo..." style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
+                    </div>
+                    <div>
+                        <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Tiêu đề (Tiếng Anh)</label>
+                        <input type="text" id="post-form-title-en" placeholder="VD: Breakfast Combo..." style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
+                    </div>
+                </div>
+
+                <div class="post-form-grid-2col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Danh mục / Thẻ nổi bật</label>
+                        <input type="text" id="post-form-category" placeholder="ƯU ĐÃI, COMBO, CẨM NANG..." value="ƯU ĐÃI" style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
+                    </div>
+                    <div>
+                        <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Thứ tự hiển thị (nhỏ đứng trước)</label>
+                        <input type="number" id="post-form-sort-order" value="0" style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
+                    </div>
+                </div>
+
+                <!-- Tải ảnh bìa Banner trực tiếp từ máy -->
+                <div>
+                    <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">
+                        Ảnh bìa Banner (Hiển thị đầu bài viết &amp; trên slide) *
+                    </label>
+                    <input type="hidden" id="post-form-cover-url" required>
+                    
+                    <div id="post-cover-preview-box" class="hide" style="position: relative; width: 100%; height: 160px; border-radius: 10px; overflow: hidden; background: #000; margin-bottom: 8px; border: 1.5px solid #e2e8f0;">
+                        <img id="post-cover-preview-img" src="" alt="Ảnh bìa" style="width: 100%; height: 100%; object-fit: cover;">
+                        <button type="button" id="post-cover-remove-btn" style="position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.7); color: #fff; border: none; padding: 5px 12px; border-radius: 6px; font-size: 11.5px; font-weight: 700; cursor: pointer; backdrop-filter: blur(4px); display: flex; align-items: center; gap: 4px;">
+                            <i class="ri-delete-bin-line"></i> Đổi ảnh khác
+                        </button>
+                    </div>
+
+                    <div id="post-cover-upload-box" style="border: 2px dashed #cbd5e1; border-radius: 10px; padding: 18px; text-align: center; background: #f8fafc; cursor: pointer;">
+                        <input type="file" id="post-cover-file-input" accept="image/*" style="display: none;">
+                        <i class="ri-image-add-line" style="font-size: 28px; color: #ef2b9d; display: block; margin-bottom: 4px;"></i>
+                        <div style="font-size: 13px; font-weight: 700; color: #0f172a;">Bấm để tải ảnh bìa từ máy / điện thoại</div>
+                        <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;">Nhận tệp JPG, PNG, WebP (Tỉ lệ 16:9 hoặc 2:1)</div>
+                    </div>
+                    <div id="post-cover-upload-status" style="font-size: 12px; color: #ef2b9d; margin-top: 4px; font-weight: 700; display: none;">
+                        <i class="ri-loader-4-line ri-spin"></i> Đang tải ảnh bìa lên hệ thống...
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Tóm tắt ngắn (Sa-pô mở đầu)</label>
+                    <textarea id="post-form-excerpt-vi" rows="2" placeholder="Đoạn văn ngắn giới thiệu dưới tiêu đề hoặc mở đầu bài viết..." style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; resize: vertical; outline: none; font-family: inherit;"></textarea>
+                </div>
+
+                <!-- Soạn thảo nội dung bài viết trực quan & chèn ảnh / video từ máy -->
+                <div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                        <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin: 0;">
+                            Nội dung chi tiết bài viết
+                        </label>
+                        <div style="display: flex; gap: 4px; background: #f1f5f9; padding: 2px; border-radius: 6px;">
+                            <button type="button" id="post-tab-edit-btn" style="padding: 3px 10px; border-radius: 5px; font-size: 11.5px; font-weight: 700; border: none; cursor: pointer; background: #ffffff; color: #0f172a; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+                                ✏️ Soạn thảo
+                            </button>
+                            <button type="button" id="post-tab-preview-btn" style="padding: 3px 10px; border-radius: 5px; font-size: 11.5px; font-weight: 700; border: none; cursor: pointer; background: transparent; color: #64748b;">
+                                👁️ Xem trước
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Thanh công cụ soạn thảo trực quan -->
+                    <div id="post-editor-toolbar" style="display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; background: #f1f5f9; border: 1.5px solid #e2e8f0; border-bottom: none; border-radius: 9px 9px 0 0; align-items: center;">
+                        <button type="button" class="post-tool-btn" data-tool="bold" title="In đậm" style="padding: 4px 8px; font-size: 12px; font-weight: 700; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 5px; cursor: pointer; color: #334155;">
+                            <b>B</b>
+                        </button>
+                        <button type="button" class="post-tool-btn" data-tool="italic" title="In nghiêng" style="padding: 4px 8px; font-size: 12px; font-style: italic; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 5px; cursor: pointer; color: #334155;">
+                            <i>I</i>
+                        </button>
+                        <button type="button" class="post-tool-btn" data-tool="h3" title="Tiêu đề đoạn" style="padding: 4px 8px; font-size: 12px; font-weight: 700; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 5px; cursor: pointer; color: #334155;">
+                            H Tiêu đề
+                        </button>
+                        <button type="button" class="post-tool-btn" data-tool="list" title="Danh sách" style="padding: 4px 8px; font-size: 12px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 5px; cursor: pointer; color: #334155;">
+                            • Danh sách
+                        </button>
+                        <button type="button" class="post-tool-btn" data-tool="quote" title="Hộp ghi chú" style="padding: 4px 8px; font-size: 12px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 5px; cursor: pointer; color: #334155;">
+                            💡 Ghi chú
+                        </button>
+
+                        <span style="height: 18px; width: 1px; background: #cbd5e1; margin: 0 4px;"></span>
+
+                        <input type="file" id="post-content-image-input" accept="image/*" style="display: none;">
+                        <input type="file" id="post-content-video-input" accept="video/*" style="display: none;">
+
+                        <button type="button" id="post-tool-upload-image" title="Tải ảnh từ máy và chèn vào bài viết" style="padding: 4px 10px; font-size: 12px; font-weight: 700; background: #e0f2fe; border: 1px solid #7dd3fc; border-radius: 5px; cursor: pointer; color: #0284c7; display: flex; align-items: center; gap: 4px;">
+                            <i class="ri-image-add-line"></i> + Chèn ảnh
+                        </button>
+                        <button type="button" id="post-tool-upload-video" title="Tải video từ máy và chèn vào bài viết" style="padding: 4px 10px; font-size: 12px; font-weight: 700; background: #fdf2f8; border: 1px solid #f472b6; border-radius: 5px; cursor: pointer; color: #db2777; display: flex; align-items: center; gap: 4px;">
+                            <i class="ri-video-add-line"></i> + Chèn video
+                        </button>
+                        
+                        <span id="post-content-upload-status" style="font-size: 11.5px; color: #ef2b9d; font-weight: 700; margin-left: 8px; display: none;">
+                            <i class="ri-loader-4-line ri-spin"></i> Đang tải lên...
+                        </span>
+                    </div>
+
+                    <textarea id="post-form-content-vi" rows="8" placeholder="Nhập nội dung bài viết tự nhiên như Word...&#10;• Xuống 2 dòng để tách đoạn văn mới.&#10;• Dùng các nút '+ Chèn ảnh' hoặc '+ Chèn video' ở trên để đính kèm hình ảnh và video từ máy vào bài viết." style="width: 100%; font-size: 13.5px; padding: 12px; border-radius: 0 0 9px 9px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; resize: vertical; box-sizing: border-box; font-family: inherit; line-height: 1.6; outline: none;"></textarea>
+
+                    <div id="post-content-preview-container" class="hide" style="border: 1.5px solid #e2e8f0; border-radius: 9px; padding: 16px; background: #ffffff; max-height: 320px; overflow-y: auto;">
+                        <div id="post-content-preview-body" class="article-rich-body" style="font-size: 14px; line-height: 1.6; color: #334155;"></div>
+                    </div>
+
+                    <p style="margin: 4px 0 0; font-size: 11.5px; color: #64748b;">
+                        <i class="ri-information-line"></i> Người dùng chỉ cần gõ văn bản thông thường. Khi tải ảnh hoặc video lên, hệ thống sẽ tự động hiển thị mượt mà trên điện thoại của khách.
+                    </p>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding-top: 4px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; cursor: pointer;">
+                        <input type="checkbox" id="post-form-is-featured" style="width: 17px; height: 17px; accent-color: #f59e0b;">
+                        <span style="color: #d97706;">⭐ Bài viết nổi bật (Nhóm nổi bật)</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; cursor: pointer;">
+                        <input type="checkbox" id="post-form-is-active" checked style="width: 17px; height: 17px; accent-color: var(--accent-color, #ef2b9d);">
+                        <span style="color: #0f172a;">Hiển thị bài viết này</span>
+                    </label>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; padding-top: 14px; border-top: 1px solid #f1f5f9;">
+                    <button type="button" id="agent-post-modal-cancel-btn" class="secondary-btn" style="padding: 9px 18px; font-size: 13px; font-weight: 700; border-radius: 8px;">Hủy</button>
+                    <button type="submit" id="agent-post-modal-save-btn" class="primary-btn" style="padding: 9px 24px; font-size: 13px; font-weight: 700; border-radius: 8px;">Lưu bài viết</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Thứ tự nạp là hợp đồng: bốn module chỉ chứa khai báo, admin.js chứa
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r128"></script>
-    <script src="core.js?v=r128"></script>
-    <script src="chat.js?v=r128"></script>
-    <script src="org-console.js?v=r128"></script>
-    <script src="project-admin.js?v=r128"></script>
-    <script src="menu-console.js?v=r128"></script>
-    <script src="order-console.js?v=r128"></script>
-    <script src="monitor-console.js?v=r128"></script>
-    <script src="cart-console.js?v=r128"></script>
-    <script src="ticket-console.js?v=r128"></script>
-    <script src="admin.js?v=r128"></script>
+    <script src="config.js?v=r130"></script>
+    <script src="core.js?v=r130"></script>
+    <script src="chat.js?v=r130"></script>
+    <script src="org-console.js?v=r130"></script>
+    <script src="project-admin.js?v=r130"></script>
+    <script src="menu-console.js?v=r130"></script>
+    <script src="order-console.js?v=r130"></script>
+    <script src="cart-console.js?v=r130"></script>
+    <script src="ticket-console.js?v=r130"></script>
+    <script src="admin.js?v=r130"></script>
 </body>
 </html>

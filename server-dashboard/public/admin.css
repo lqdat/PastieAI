@@ -2790,23 +2790,34 @@ button:focus-visible {
 }
 
 .dpq-brand-logo {
-  height: 52px;
+  height: 64px;
   width: auto;
-  max-width: 220px;
+  max-width: 270px;
   object-fit: contain;
-  margin: 0 auto 14px;
+  margin: 0 auto 6px;
   display: block;
 }
 
+/* Slogan màn đăng nhập. Nét 800 đọc ra như một tiêu đề hệ thống, trong khi đây
+   là một câu nói — hạ xuống nét 400 và giãn dòng rộng hơn cho mềm.
+   Bộ số này dùng CHUNG với slogan bên cổng khách (.login-tagline trong
+   qr-chat-portal/app/globals.css): cùng font, cùng 17px, cùng nét 400. Đổi ở
+   đây thì phải đổi luôn bên kia, nếu không hai màn lại lệch nhau. */
 .dpq-title {
-  font-size: 20px;
-  font-weight: 800;
-  color: #111827;
-  line-height: 1.35;
+  font-family: 'Nunito', 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  font-style: italic;
+  letter-spacing: .008em;
+  color: #374151;
+  line-height: 1.5;
   margin: 0 0 6px;
   white-space: pre-line;
 }
 
+/* Slogan màn đăng nhập: chữ mềm, KHÔNG cạnh tranh với tên sản phẩm ngay trên nó.
+   Nét mảnh (300) + giãn dòng rộng + hơi giãn chữ — cùng bộ số này được dùng lại
+   cho slogan bên cổng khách (.login-tagline) để hai màn đọc ra như một. */
 .dpq-subtitle {
   font-size: 13px;
   color: #6b7280;
@@ -3309,22 +3320,114 @@ button:focus-visible {
    .modal-overlay (z-index: 2000); khi z-index bằng nhau thì thứ tự trong DOM
    quyết định, mà modal Quản lý nằm sau nên sẽ đè lên. Nâng lớp để QR luôn nổi trên. */
 #qr-preview-modal { z-index: 2100; }
-.qr-preview-box { width: min(92vw, 680px); max-width: 680px; max-height: 92vh; overflow-y: auto; padding: 30px 34px; text-align: center; }
+.qr-preview-box { width: min(94vw, 560px); max-width: 560px; max-height: 94vh; overflow-y: auto; padding: 22px 24px; text-align: center; }
 .qr-preview-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; text-align: left; }
-.qr-preview-heading h2 { margin: 0 0 4px; font-size: 21px; }
+.qr-preview-heading h2 { margin: 0 0 4px; font-size: 20px; }
 .qr-preview-heading p { margin: 0; color: var(--text-secondary); font-size: 13px; }
 .qr-preview-heading p:empty { display: none; }
-.qr-preview-body { display: flex; flex-direction: column; align-items: center; gap: 16px; padding-top: 10px; }
-.qr-preview-body img {
-    width: min(480px, 100%);
-    max-height: 62vh;
-    height: auto;
-    padding: 14px;
+.qr-preview-body { display: flex; flex-direction: column; align-items: center; gap: 14px; padding-top: 6px; }
+/* Segmented Tabs chuyển đổi kiểu poster QR (Co-branded & Standard) */
+.qr-poster-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px;
+    background: rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(244, 56, 161, 0.18);
+    border-radius: 999px;
+    margin: 6px auto 2px;
+    box-shadow: 0 2px 8px rgba(201, 12, 108, 0.04);
+}
+.qr-poster-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 16px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-secondary, #666);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+}
+.qr-poster-tab-btn:hover {
+    color: #c90c6c;
+}
+.qr-poster-tab-btn.is-active {
+    background: linear-gradient(110deg, #f438a1, #c90c6c);
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 4px 14px rgba(201, 12, 108, 0.28);
+}
+.qr-poster-tab-btn i {
+    font-size: 14px;
+}
+
+/* Khung poster vuông 1:1 vừa vặn canvas 1080x1080, loại bỏ dải trống */
+.qr-poster-frame {
+    position: relative;
+    width: 100%;
+    max-width: 512px;
+    aspect-ratio: 1 / 1;
+    border-radius: 18px;
+    overflow: hidden;
+    background: #fffafd;
+    border: 1px solid rgba(244, 56, 161, 0.22);
+    box-shadow: 0 14px 34px rgba(100, 48, 78, 0.14);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.qr-poster-loader {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: linear-gradient(135deg, #fff9fc 0%, #fff1f8 100%);
+    z-index: 2;
+    transition: opacity 0.25s ease, visibility 0.25s;
+}
+.qr-poster-loader.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+.qr-poster-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3.5px solid rgba(244, 56, 161, 0.18);
+    border-top-color: #c90c6c;
+    border-radius: 50%;
+    animation: qrPosterSpin 0.75s linear infinite;
+}
+@keyframes qrPosterSpin {
+    to { transform: rotate(360deg); }
+}
+.qr-poster-loader-text {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #b62b70;
+    margin: 0;
+}
+
+.qr-preview-poster-img {
+    width: 100%;
+    height: 100%;
     object-fit: contain;
-    border: 1px solid var(--panel-border);
-    border-radius: var(--radius-lg, 14px);
-    background: #fff;
-    box-shadow: var(--shadow-sm);
+    display: block;
+    border-radius: inherit;
+    transition: opacity 0.25s ease;
+    opacity: 1;
+}
+.qr-preview-poster-img.is-hidden {
+    opacity: 0;
 }
 .qr-preview-link {
     margin: 0;
@@ -3349,8 +3452,8 @@ button:focus-visible {
     text-decoration: none;
 }
 @media (max-width: 600px) {
-    .qr-preview-box { width: min(100%, 430px); max-height: 94dvh; padding: 22px 18px; }
-    .qr-preview-body img { width: min(360px, 100%); max-height: 58dvh; padding: 10px; }
+    .qr-preview-box { width: min(100%, 460px); max-height: 94dvh; padding: 18px 14px; }
+    .qr-preview-body .qr-preview-poster-img { width: 100%; max-height: none; padding: 0; }
     .qr-preview-heading h2 { font-size: 18px; }
     .qr-preview-link { font-size: 11.5px; }
 }
@@ -3582,15 +3685,20 @@ button:focus-visible {
     font-weight: 650;
     cursor: pointer;
     white-space: nowrap;
-    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.org-tab:active {
+    transform: scale(0.96);
 }
 .org-tab i { font-size: 13px; }
-.org-tab:hover:not(.is-active) { color: var(--text-primary); background: rgba(0, 0, 0, 0.03); }
+.org-tab:hover:not(.is-active) { color: var(--text-primary); background: rgba(0, 0, 0, 0.04); }
 .org-tab.is-active {
     background: #ffffff;
     color: var(--accent-color, #ef2b9d);
     font-weight: 750;
-    box-shadow: 0 3px 12px rgba(239, 43, 157, 0.12);
+    box-shadow: 0 2px 10px rgba(239, 43, 157, 0.14);
 }
 
 /* Status Banner */
@@ -3628,7 +3736,24 @@ button:focus-visible {
 .org-quota-info strong { font-size: 12.5px; font-weight: 750; }
 
 /* Panes & Forms */
-.org-pane { min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; padding-right: 2px; }
+.org-pane {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+    padding-right: 2px;
+    contain: layout style;
+    will-change: opacity, transform;
+    transform: translate3d(0, 0, 0);
+}
+.org-pane:not(.hide) {
+    animation: orgPaneFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes orgPaneFadeIn {
+    from { opacity: 0; transform: translate3d(0, 4px, 0); }
+    to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
 .org-form {
     display: grid;
     gap: 12px;
@@ -6589,6 +6714,39 @@ button:focus-visible {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
 }
+#agent-post-modal {
+    z-index: 10050 !important;
+}
+@media (max-width: 768px) {
+    #agent-post-modal.modal-overlay {
+        align-items: flex-end !important;
+        justify-content: center !important;
+        padding: 0 !important;
+    }
+    #agent-post-modal .admin-dialog-box {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 94dvh !important;
+        height: 94dvh !important;
+        border-radius: 22px 22px 0 0 !important;
+        border-bottom: none !important;
+        margin: 0 !important;
+    }
+    #agent-post-modal form#agent-post-form {
+        padding: 14px 16px calc(24px + env(safe-area-inset-bottom)) !important;
+        overflow-y: auto !important;
+        overscroll-behavior: contain !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    #agent-post-modal .post-form-grid-2col {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+    }
+    #agent-post-modal #post-editor-toolbar {
+        gap: 4px !important;
+        padding: 6px 8px !important;
+    }
+}
 
 @media (max-width: 760px) {
     #admin-management-modal { align-items: flex-end; padding: 0 0 max(10px, env(safe-area-inset-bottom)); }
@@ -8906,6 +9064,7 @@ button:focus-visible {
     gap: 4px !important;
     box-shadow: 0 1px 4px rgba(239, 43, 157, 0.08) !important;
 }
+
 
 
 

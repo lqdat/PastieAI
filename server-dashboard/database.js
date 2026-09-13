@@ -221,6 +221,7 @@ async function initializeDatabase() {
     // NULL = xem tất cả project (dùng cho superadmin hoặc subadmin toàn quyền).
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS project_id VARCHAR(100);`);
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS created_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS full_name_en VARCHAR(255);`);
 
     // Registry dự án (multi-project): mỗi dự án 1 dòng; KB + tài khoản gắn theo project_id này.
     await query(`
@@ -552,6 +553,45 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
       console.error('[Migration] Không đánh dấu được tin guest_only:', error.message);
     }
 
+    // Migration: tách LỜI CHÀO ra khỏi 'guest_only' thành 'guest_welcome'.
+    //
+    // Lời chào phải được DỰNG LẠI theo ngôn ngữ khách đang xem chứ không được
+    // dịch lại (xem renderQrGreeting trong server.js — dịch lại làm tên quán bị
+    // méo thành một cái tên khác hẳn). Máy chủ nhận ra nó bằng system_kind, nên
+    // tin cũ phải được đánh dấu lại, nếu không các phiên còn trong lịch sử vẫn
+    // hiện tên quán sai.
+    //
+    // Dấu hiệu: trong một phiên QR, lời chào LUÔN là tin đầu tiên — nó được ghi
+    // ngay lúc tạo phiên và chỉ ghi khi phiên chưa có tin nào. Lời cảm ơn sau
+    // thanh toán thì không bao giờ đứng đầu.
+    try {
+      const doi = await query(
+        `UPDATE messages m
+            SET system_kind = 'guest_welcome'
+          WHERE m.system_kind = 'guest_only'
+            AND m.sender = 'system'
+            AND EXISTS (SELECT 1 FROM sessions s
+                         WHERE s.id = m.session_id AND s.qr_account_id IS NOT NULL)
+            AND m.id = (SELECT MIN(x.id) FROM messages x WHERE x.session_id = m.session_id)`
+      );
+      if (doi.rowCount) console.log(`[Migration] Đã đánh dấu ${doi.rowCount} lời chào là guest_welcome.`);
+    } catch (error) {
+      // Không đánh dấu được thì tin cũ giữ nguyên hành vi cũ. Phiên QR chỉ sống
+      // 15 phút nên chuyện này tự hết, không đáng chặn khởi động.
+      console.error('[Migration] Không tách được lời chào:', error.message);
+    }
+
+    // Migration: bỏ trạng thái "Chờ Agent" khỏi ticket.
+    //
+    // TICKET_TRANG_THAI đã bỏ 'cho_agent', nên ticket cũ đang kẹt ở trạng thái
+    // đó sẽ không còn nhãn và không đổi trạng thái được nữa.
+    try {
+      await query(`UPDATE support_tickets SET status = 'dang_xu_ly', updated_at = NOW()
+                    WHERE status = 'cho_agent';`);
+    } catch (error) {
+      console.error('[Migration] Không dọn được ticket cho_agent:', error.message);
+    }
+
     // Migration: sửa lại chữ hoa của LOẠI HÌNH trong tên cơ sở đã lưu.
     //
     // Hàm viết hoa cũ dùng /\b\p{L}/gu, mà `\b` trong JavaScript vẫn dựa trên
@@ -870,6 +910,26 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
         last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (admin_id, device_id)
       );
+    `);
+    // CREATE TABLE IF NOT EXISTS không bổ sung UNIQUE cho bảng production đã
+    // tồn tại từ schema cũ. Giữ dòng dùng gần nhất, rồi tạo index để câu
+    // ON CONFLICT (admin_id, device_id) trong registerDevice có arbiter hợp lệ.
+    await query(`
+      WITH ranked AS (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY admin_id, device_id
+                 ORDER BY last_seen DESC NULLS LAST, id DESC
+               ) AS rn
+          FROM admin_devices
+      )
+      DELETE FROM admin_devices d
+       USING ranked r
+       WHERE d.id = r.id AND r.rn > 1;
+    `);
+    await query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_devices_admin_device
+        ON admin_devices(admin_id, device_id);
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_admin_devices_admin ON admin_devices(admin_id, status);`);
     // Một MÁY, nhiều trình duyệt: mỗi trình duyệt có mã riêng, gom hết vào
@@ -1449,6 +1509,29 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS agent_menu_enabled BOOLEAN NOT NULL DEFAULT TRUE;`);
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS superadmin_menu_disabled BOOLEAN NOT NULL DEFAULT FALSE;`);
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS menu_custom_label VARCHAR(100);`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS showcase_mode VARCHAR(20) NOT NULL DEFAULT 'menu';`);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS agent_posts (
+        id SERIAL PRIMARY KEY,
+        agent_id INTEGER NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        title_vi VARCHAR(255) NOT NULL,
+        title_en VARCHAR(255),
+        category VARCHAR(100) DEFAULT 'ƯU ĐÃI',
+        cover_url TEXT,
+        excerpt_vi TEXT,
+        excerpt_en TEXT,
+        content_vi TEXT,
+        content_en TEXT,
+        sort_order INTEGER DEFAULT 0,
+        is_featured BOOLEAN DEFAULT FALSE,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_posts_agent_id ON agent_posts(agent_id);
+      ALTER TABLE agent_posts ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE;
+    `);
 
     await migrateQrAgentsToSales();
 

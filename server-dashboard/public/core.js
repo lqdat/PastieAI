@@ -637,7 +637,7 @@ async function handleVerifyAdminOtp(e) {
                 initDashboard();
             }, 400);
         } else {
-            setLoginError(data.error || 'Mã OTP không hợp lệ hoặc đã hết hạn.');
+            setLoginError(data.error || 'Mã xác thực không chính xác.');
             clearAdminOtpDigits();
         }
     } catch (e) {
@@ -726,29 +726,59 @@ async function verifyAuthAndInit() {
 
     const token = getToken();
     if (!token) {
+        document.documentElement.classList.remove('has-auth-token');
+        document.documentElement.classList.add('auth-ready');
         showLogin();
         return;
     }
 
     try {
-        const response = await fetch(`${API_BASE}/api/admin/me`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (response.ok) {
+        // Tận dụng Promise xác thực ngầm đã gửi ngay từ lúc vừa mở trang trong <head>
+        let data = null;
+        if (window.__authPreflight) {
+            data = await window.__authPreflight;
+        }
+        if (!data) {
+            const response = await fetch(`${API_BASE}/api/admin/me`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                data = await response.json();
+            }
+        }
+
+        if (data && (data.admin || data.id || data.username)) {
+            const admin = data.admin || data;
+            if (!isConsoleRoleAllowed(admin.role)) {
+                localStorage.removeItem('pastie_admin_token');
+                document.documentElement.classList.remove('has-auth-token');
+                document.documentElement.classList.add('auth-ready');
+                showLogin();
+                setLoginError('Tài khoản này không được phép truy cập giao diện này.');
+                return;
+            }
+            window._CACHED_ADMIN_PROFILE = data;
             hideLogin();
+            document.documentElement.classList.add('auth-ready');
             initDashboard();
         } else {
             localStorage.removeItem('pastie_admin_token');
+            document.documentElement.classList.remove('has-auth-token');
+            document.documentElement.classList.add('auth-ready');
             showLogin();
         }
     } catch (e) {
         console.error('Connection error verifying authentication:', e);
+        document.documentElement.classList.remove('has-auth-token');
+        document.documentElement.classList.add('auth-ready');
         showLogin();
     }
 }
 
 
 function showLogin() {
+    document.documentElement.classList.remove('has-auth-token');
+    document.documentElement.classList.add('auth-ready');
     loginModal.classList.remove('hide');
     mainDashboard.classList.add('hide');
     // ĐƯA FORM VỀ BƯỚC ĐẦU.
@@ -775,6 +805,7 @@ function showLogin() {
 
 
 function hideLogin() {
+    document.documentElement.classList.add('auth-ready');
     loginModal.classList.add('hide');
     mainDashboard.classList.remove('hide');
     if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(() => {});
@@ -801,7 +832,7 @@ function willAutoRequestPermission() {
 }
 
 async function initDashboard() {
-    await loadAdminProfile();   // biết role + project_id trước khi dựng filter
+    if (!await loadAdminProfile()) return; // biết role + project_id trước khi dựng filter
     await loadProjects();        // tải registry dự án
     await setupPushNotifications();
     // Không await: hộp thoại quyền của trình duyệt không được chặn phần còn lại của dashboard khởi động.
@@ -837,12 +868,25 @@ async function initDashboard() {
 }
 
 
+const isConsoleRoleAllowed = (role) => !Array.isArray(window.PASTIE_CONSOLE_ROLES)
+    || window.PASTIE_CONSOLE_ROLES.includes(role);
+
 async function loadAdminProfile() {
     try {
-        const res = await authFetch(`${API_BASE}/api/admin/me`);
-        if (!res.ok) return;
-        const data = await res.json();
+        let data = window._CACHED_ADMIN_PROFILE;
+        if (!data) {
+            const res = await authFetch(`${API_BASE}/api/admin/me`);
+            if (!res.ok) return;
+            data = await res.json();
+        }
+        window._CACHED_ADMIN_PROFILE = null;
         const admin = data.admin || data; // /me trả { admin: {...} }
+        if (!isConsoleRoleAllowed(admin.role)) {
+            localStorage.removeItem('pastie_admin_token');
+            showLogin();
+            setLoginError('Tài khoản này không được phép truy cập giao diện này.');
+            return false;
+        }
         CURRENT_ADMIN = admin;
         const nameEl = document.getElementById('admin-profile-name');
         const badgeEl = document.getElementById('admin-profile-badge');
@@ -871,8 +915,10 @@ async function loadAdminProfile() {
         window.TicketConsole?.capNhatNut?.();
 
         updateAgentHeaderUI();
+        return true;
     } catch (e) {
         console.error('Failed to load admin profile:', e);
+        return false;
     }
 }
 

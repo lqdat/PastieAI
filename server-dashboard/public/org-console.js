@@ -40,11 +40,14 @@ async function refreshQrAccounts() {
         }
         qrAccountList.innerHTML = accounts.map(account => {
             const imageUrl = `https://quickchart.io/qr?size=360&text=${encodeURIComponent(account.chat_url)}`;
-            const eventValue = (value) => encodeURIComponent(value).replace(/'/g, '%27');
+            const eventValue = (value) => encodeURIComponent(value || '').replace(/'/g, '%27');
+            const agentName = account.agent_name || account.owner_name || '';
+            const agentNameEn = account.agent_name_en || '';
+            const agentLogoUrl = account.agent_avatar_url || '';
             return `<article class="qr-account-card">
                 <img src="${imageUrl}" alt="QR chat của ${escapeHtml(account.owner_name)}" loading="lazy">
                 <div class="qr-account-info"><strong>${escapeHtml(account.label)}</strong><span><i class="ri-user-3-line"></i> ${escapeHtml(account.owner_name)}</span><small>${escapeHtml(account.chat_url)}</small></div>
-                <div class="qr-account-actions"><button type="button" onclick="window.copyQrChatLink('${eventValue(account.chat_url)}', true)"><i class="ri-file-copy-line"></i> Sao chép</button><button type="button" onclick="window.openQrPreview('${eventValue(imageUrl)}', '${eventValue(account.label)}', '${eventValue(account.owner_name)}', '${eventValue(account.chat_url)}')"><i class="ri-zoom-in-line"></i> Mở QR</button></div>
+                <div class="qr-account-actions"><button type="button" onclick="window.copyQrChatLink('${eventValue(account.chat_url)}', true)"><i class="ri-file-copy-line"></i> Sao chép</button><button type="button" onclick="window.openQrPreview('${eventValue(imageUrl)}', '${eventValue(account.label)}', '${eventValue(account.owner_name)}', '${eventValue(account.chat_url)}', '${eventValue(agentName)}', '${eventValue(agentLogoUrl)}', { agentNameEn: '${eventValue(agentNameEn)}' })"><i class="ri-zoom-in-line"></i> Mở QR</button></div>
             </article>`;
         }).join('');
     } catch (error) {
@@ -53,20 +56,60 @@ async function refreshQrAccounts() {
 }
 
 
-function loadPosterImage(url) {
-    return fetch(url)
-        .then(response => {
-            if (!response.ok) throw new Error('Không tải được tài nguyên poster.');
-            return response.blob();
-        })
-        .then(blob => new Promise((resolve, reject) => {
-            const objectUrl = URL.createObjectURL(blob);
-            const image = new Image();
-            image.onload = () => { URL.revokeObjectURL(objectUrl); resolve(image); };
-            image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Không đọc được ảnh.')); };
-            image.src = objectUrl;
-        }));
+const posterImageCache = new Map();
+
+function isValidImageUrl(url) {
+    if (!url || typeof url !== 'string') return false;
+    const trimmed = url.trim();
+    if (!trimmed || trimmed.startsWith('gradient-') || trimmed.startsWith('default-')) return false;
+    return /^https?:\/\//i.test(trimmed) || trimmed.startsWith('/') || trimmed.startsWith('data:image/');
 }
+
+function loadPosterImage(url) {
+    if (!url) return Promise.reject(new Error('URL trống'));
+    if (posterImageCache.has(url)) {
+        const cached = posterImageCache.get(url);
+        if (cached && cached.complete && cached.naturalWidth > 0) {
+            return Promise.resolve(cached);
+        }
+    }
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            posterImageCache.set(url, img);
+            resolve(img);
+        };
+        img.onerror = () => {
+            fetch(url)
+                .then(res => {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.blob();
+                })
+                .then(blob => {
+                    const objectUrl = URL.createObjectURL(blob);
+                    const fallbackImg = new Image();
+                    fallbackImg.onload = () => {
+                        URL.revokeObjectURL(objectUrl);
+                        posterImageCache.set(url, fallbackImg);
+                        resolve(fallbackImg);
+                    };
+                    fallbackImg.onerror = () => {
+                        URL.revokeObjectURL(objectUrl);
+                        reject(new Error('Không đọc được ảnh poster.'));
+                    };
+                    fallbackImg.src = objectUrl;
+                })
+                .catch(err => reject(err));
+        };
+        img.src = url;
+    });
+}
+
+// Nạp trước logo Pastie vào bộ nhớ đệm ngay khi khởi tạo để mở Poster QR tức thì 0ms
+try {
+    loadPosterImage('/pastie-chat-biz-compact.png').catch(() => {});
+} catch(e) {}
 
 
 function drawPosterRoundedRect(ctx, x, y, width, height, radius) {
@@ -78,6 +121,49 @@ function drawPosterRoundedRect(ctx, x, y, width, height, radius) {
     ctx.arcTo(x, y + height, x, y, r);
     ctx.arcTo(x, y, x + width, y, r);
     ctx.closePath();
+}
+
+
+function drawCameraCorners(ctx, x, y, width, height, len = 38, radius = 10, strokeWidth = 4.5, strokeColor = '#ef2b9d') {
+    ctx.save();
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = strokeWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Góc trên trái
+    ctx.beginPath();
+    ctx.moveTo(x, y + len);
+    ctx.lineTo(x, y + radius);
+    ctx.arcTo(x, y, x + radius, y, radius);
+    ctx.lineTo(x + len, y);
+    ctx.stroke();
+
+    // Góc trên phải
+    ctx.beginPath();
+    ctx.moveTo(x + width - len, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.arcTo(x + width, y, x + width, y + radius, radius);
+    ctx.lineTo(x + width, y + len);
+    ctx.stroke();
+
+    // Góc dưới trái
+    ctx.beginPath();
+    ctx.moveTo(x, y + height - len);
+    ctx.lineTo(x, y + height - radius);
+    ctx.arcTo(x, y + height, x + radius, y + height, radius);
+    ctx.lineTo(x + len, y + height);
+    ctx.stroke();
+
+    // Góc dưới phải
+    ctx.beginPath();
+    ctx.moveTo(x + width - len, y + height);
+    ctx.lineTo(x + width - radius, y + height);
+    ctx.arcTo(x + width, y + height, x + width, y + height - radius, radius);
+    ctx.lineTo(x + width, y + height - len);
+    ctx.stroke();
+
+    ctx.restore();
 }
 
 
@@ -104,114 +190,505 @@ function drawPosterText(ctx, text, centerX, startY, maxWidth, lineHeight, maxLin
 }
 
 
-async function createBrandedQrPoster(imageUrl, businessName) {
-    // Canvas phải chờ webfont hoàn tất; nếu vẽ sớm trình duyệt có thể dùng font
-    // fallback thiếu glyph và làm lỗi dấu tiếng Việt trong ảnh PNG tải xuống.
-    if (document.fonts?.load) {
-        await Promise.allSettled([
-            document.fonts.load('400 25px "Be Vietnam Pro"'),
-            document.fonts.load('500 20px "Be Vietnam Pro"'),
-            document.fonts.load('700 32px "Be Vietnam Pro"'),
-            document.fonts.load('800 50px "Be Vietnam Pro"'),
-            document.fonts.load('400 66px "Lobster"'),
-        ]);
+function trimQrWhitespace(img) {
+    try {
+        const memCanvas = document.createElement('canvas');
+        const w = img.naturalWidth || img.width || 360;
+        const h = img.naturalHeight || img.height || 360;
+        memCanvas.width = w;
+        memCanvas.height = h;
+        const mCtx = memCanvas.getContext('2d');
+        if (!mCtx) return img;
+        mCtx.drawImage(img, 0, 0, w, h);
+        const imgData = mCtx.getImageData(0, 0, w, h);
+        const d = imgData.data;
+        let minX = w, minY = h, maxX = 0, maxY = 0;
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const idx = (y * w + x) * 4;
+                const r = d[idx], g = d[idx + 1], b = d[idx + 2], a = d[idx + 3];
+                // Điểm tối (module đen của QR code: r,g,b < 210 và a > 100)
+                if (a > 100 && (r < 210 || g < 210 || b < 210)) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+        if (maxX > minX && maxY > minY) {
+            const cropW = maxX - minX + 1;
+            const cropH = maxY - minY + 1;
+            const croppedCanvas = document.createElement('canvas');
+            croppedCanvas.width = cropW;
+            croppedCanvas.height = cropH;
+            const cCtx = croppedCanvas.getContext('2d');
+            cCtx.drawImage(memCanvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
+            return croppedCanvas;
+        }
+    } catch (e) {
+        console.warn('Không thể cắt viền trắng QR:', e);
     }
-    const [qrImage, logoImage] = await Promise.all([
-        loadPosterImage(imageUrl),
-        loadPosterImage('/pastie-chat-biz-compact.png'),
-    ]);
-    const canvas = document.createElement('canvas');
-    // Poster 4:5 nhỏ gọn để in bảng để bàn/giấy nhỏ, không dùng tỷ lệ A4.
-    canvas.width = 1080;
-    canvas.height = 1350;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Trình duyệt không hỗ trợ tạo ảnh QR.');
-    const posterFont = '"Be Vietnam Pro", "Segoe UI", Arial, sans-serif';
-
-    ctx.fillStyle = '#fffafd';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    const topGradient = ctx.createLinearGradient(0, 0, canvas.width, 350);
-    topGradient.addColorStop(0, '#fff0f7');
-    topGradient.addColorStop(.55, '#fff8ed');
-    topGradient.addColorStop(1, '#f2edff');
-    ctx.fillStyle = topGradient;
-    ctx.fillRect(0, 0, canvas.width, 390);
-    const accent = ctx.createLinearGradient(0, 0, canvas.width, 0);
-    accent.addColorStop(0, '#ef2d92');
-    accent.addColorStop(.62, '#d81379');
-    accent.addColorStop(1, '#f4a62a');
-    ctx.fillStyle = accent;
-    ctx.fillRect(0, 0, canvas.width, 22);
-
-    // Header chỉ có đúng một logo thương hiệu. Không ghép thêm logo nhỏ, không
-    // vẽ lại wordmark bằng font và không đặt slogan/câu chào gây trùng lặp.
-    const logoWidth = 590;
-    const logoHeight = logoWidth * (logoImage.naturalHeight / logoImage.naturalWidth);
-    ctx.drawImage(logoImage, (canvas.width - logoWidth) / 2, 64, logoWidth, logoHeight);
-
-    ctx.textAlign = 'center';
-    const cardY = 280;
-    const cardX = 190;
-    const cardSize = 700;
-    ctx.save();
-    ctx.shadowColor = 'rgba(100, 48, 78, .16)';
-    ctx.shadowBlur = 42;
-    ctx.shadowOffsetY = 18;
-    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 56);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
-    ctx.restore();
-    ctx.strokeStyle = '#f1cedf';
-    ctx.lineWidth = 3;
-    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 56);
-    ctx.stroke();
-
-    const qrPadding = 70;
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(qrImage, cardX + qrPadding, cardY + qrPadding, cardSize - qrPadding * 2, cardSize - qrPadding * 2);
-    ctx.imageSmoothingEnabled = true;
-
-    const copyY = cardY + cardSize + 50;
-    ctx.fillStyle = '#30233a';
-    ctx.font = `800 29px ${posterFont}`;
-    ctx.fillText('QUÉT MÃ ĐỂ BẮT ĐẦU TRÒ CHUYỆN', canvas.width / 2, copyY);
-    ctx.fillStyle = '#786b7b';
-    ctx.font = `700 23px ${posterFont}`;
-    ctx.fillText('SCAN TO START A CHAT', canvas.width / 2, copyY + 38);
-
-    // Tên cơ sở vẫn có trên poster theo yêu cầu nhận diện ban đầu, nhưng chuyển
-    // xuống phần nội dung; khu vực logo phía trên luôn sạch và chỉ có logo.
-    ctx.fillStyle = '#30233a';
-    ctx.font = `800 28px ${posterFont}`;
-    drawPosterText(ctx, businessName || 'Hộ kinh doanh', canvas.width / 2, copyY + 82, 820, 34, 1);
-
-    ctx.fillStyle = '#fff0f7';
-    drawPosterRoundedRect(ctx, 205, copyY + 112, 670, 54, 27);
-    ctx.fill();
-    ctx.fillStyle = '#b62b70';
-    ctx.font = `700 17px ${posterFont}`;
-    ctx.fillText('Mở Camera / Open Camera  •  Hướng vào QR / Point at QR', canvas.width / 2, copyY + 147);
-
-    ctx.fillStyle = '#9a8b99';
-    ctx.font = `500 16px ${posterFont}`;
-    ctx.fillText('Vận hành bởi Pastie  •  Powered by Pastie', canvas.width / 2, 1325);
-
-    return new Promise((resolve, reject) => canvas.toBlob(
-        blob => blob ? resolve(blob) : reject(new Error('Không thể xuất poster QR.')),
-        'image/png',
-    ));
+    return img;
 }
 
 
-function downloadPosterBlob(blob, label) {
+function add300DpiToPngBlob(blob) {
+    return blob.arrayBuffer().then((buffer) => {
+        const bytes = new Uint8Array(buffer);
+        if (bytes[0] !== 0x89 || bytes[1] !== 0x50) return blob;
+        const insertPos = 33;
+        // pHYs chunk: length (9), 'pHYs', x (11811 dpm), y (11811 dpm), unit (1: meter), CRC32
+        const physChunk = new Uint8Array([
+            0x00, 0x00, 0x00, 0x09,
+            0x70, 0x48, 0x59, 0x73,
+            0x00, 0x00, 0x2E, 0x23,
+            0x00, 0x00, 0x2E, 0x23,
+            0x01,
+            0x78, 0xA5, 0x3F, 0x76
+        ]);
+        const newBytes = new Uint8Array(bytes.length + physChunk.length);
+        newBytes.set(bytes.subarray(0, insertPos), 0);
+        newBytes.set(physChunk, insertPos);
+        newBytes.set(bytes.subarray(insertPos), insertPos + physChunk.length);
+        return new Blob([newBytes], { type: 'image/png' });
+    }).catch(() => blob);
+}
+
+
+function getBilingualQrLabel(label, explicitEn = '') {
+    if (explicitEn && explicitEn.trim()) return { vi: label, en: explicitEn.trim() };
+    if (!label) return { vi: '', en: '' };
+    const raw = String(label).trim();
+    if (!raw) return { vi: '', en: '' };
+
+    if (raw.includes('•') || raw.includes('/') || raw.includes(' - ')) {
+        return { vi: raw, en: '' };
+    }
+
+    const patterns = [
+        { regex: /^(?:bàn|ban)\s*([0-9a-zA-Z\-_]+)$/i, en: (m) => `Table ${m[1]}` },
+        { regex: /^(?:phòng|phong)\s*([0-9a-zA-Z\-_]+)$/i, en: (m) => `Room ${m[1]}` },
+        { regex: /^(?:phòng|phong)\s*vip$/i, en: () => 'VIP Room' },
+        { regex: /^(?:phòng|phong)\s*họp$/i, en: () => 'Meeting Room' },
+        { regex: /^(?:lầu|tầng|tang|lau)\s*([0-9a-zA-Z\-_]+)$/i, en: (m) => `Floor ${m[1]}` },
+        { regex: /^(?:khu|khu\s*vực)\s*([0-9a-zA-Z\-_]+)$/i, en: (m) => `Area ${m[1]}` },
+        { regex: /^khu\s*vip$/i, en: () => 'VIP Area' },
+        { regex: /^(?:ghế|ghe)\s*([0-9a-zA-Z\-_]+)$/i, en: (m) => `Seat ${m[1]}` },
+        { regex: /^(?:ô|o|chòi|choi)\s*([0-9a-zA-Z\-_]+)$/i, en: (m) => `Booth ${m[1]}` },
+        { regex: /^(?:quầy\s*)?lễ\s*tân$/i, en: () => 'Reception Desk' },
+        { regex: /^nhà\s*hàng$/i, en: () => 'Restaurant' },
+        { regex: /^(?:quán\s*)?bar$/i, en: () => 'Bar' },
+        { regex: /^(?:quầy\s*)?pha\s*chế$/i, en: () => 'Bar Counter' },
+        { regex: /^(?:quầy\s*)?thu\s*ngân$/i, en: () => 'Cashier Counter' },
+        { regex: /^hồ\s*bơi$/i, en: () => 'Swimming Pool' },
+        { regex: /^bãi\s*biển$/i, en: () => 'Beach' },
+        { regex: /^sân\s*thượng$/i, en: () => 'Rooftop' },
+        { regex: /^sân\s*vườn$/i, en: () => 'Garden' },
+        { regex: /^ban\s*công$/i, en: () => 'Balcony' },
+        { regex: /^sảnh(?:\s*chính)?$/i, en: () => 'Main Lobby' },
+        { regex: /^(?:lối\s*vào|cổng\s*chính|cửa\s*vào)$/i, en: () => 'Main Entrance' },
+        { regex: /^(?:thực\s*đơn|menu)$/i, en: () => 'Menu' },
+        { regex: /^mang\s*về$/i, en: () => 'Takeaway' },
+        { regex: /^giao\s*hàng$/i, en: () => 'Delivery' },
+    ];
+
+    for (const p of patterns) {
+        const m = raw.match(p.regex);
+        if (m) {
+            return { vi: raw, en: p.en(m) };
+        }
+    }
+
+    return { vi: raw, en: '' };
+}
+
+function getBilingualAgentName(name, explicitEn = '') {
+    if (explicitEn && explicitEn.trim()) return { vi: name, en: explicitEn.trim() };
+    const raw = String(name || '').trim();
+    if (!raw) return { vi: 'Pastie Chat Partner', en: 'Pastie Chat Partner' };
+
+    const removeTone = (str) => str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+
+    const businessTypes = [
+        { regex: /^(?:hộ\s*kinh\s*doanh|hkd)\s+(.+)$/i, suffix: 'Business' },
+        { regex: /^nhà\s*hàng\s+(.+)$/i, suffix: 'Restaurant' },
+        { regex: /^khách\s*sạn\s+(.+)$/i, suffix: 'Hotel' },
+        { regex: /^khu\s*nghỉ\s*dưỡng\s+(.+)$/i, suffix: 'Resort' },
+        { regex: /^(?:quán\s*cà\s*phê|cà\s*phê|cafe|coffee)\s+(.+)$/i, suffix: 'Coffee' },
+        { regex: /^tiệm\s*bánh\s+(.+)$/i, suffix: 'Bakery' },
+        { regex: /^tiệm\s*kem\s+(.+)$/i, suffix: 'Ice Cream' },
+        { regex: /^quán\s*ăn\s+(.+)$/i, suffix: 'Eatery' },
+        { regex: /^quán\s*bar\s+(.+)$/i, suffix: 'Bar & Lounge' },
+        { regex: /^spa\s+(.+)$/i, suffix: 'Spa' },
+        { regex: /^(?:cửa\s*hàng|tiệm)\s+(.+)$/i, suffix: 'Store' },
+        { regex: /^công\s*ty\s+(.+)$/i, suffix: 'Company' },
+        { regex: /^siêu\s*thị\s+(.+)$/i, suffix: 'Supermarket' },
+    ];
+
+    for (const bt of businessTypes) {
+        const m = raw.match(bt.regex);
+        if (m) {
+            const properName = removeTone(m[1].trim());
+            return { vi: raw, en: `${properName} ${bt.suffix}` };
+        }
+    }
+
+    const hasDiacritics = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(raw);
+    if (hasDiacritics) {
+        return { vi: raw, en: removeTone(raw) };
+    }
+
+    return { vi: raw, en: raw };
+}
+
+async function createBrandedQrPoster(imageUrl, options = {}) {
+    if (typeof options === 'string') {
+        options = { businessName: options };
+    }
+    const {
+        businessName = '',
+        businessNameEn = '',
+        qrLabel = '',
+        qrLabelEn = '',
+        agentLogoUrl = '',
+        style = 'cobranded',
+    } = options;
+
+    if (document.fonts?.load) {
+        await Promise.allSettled([
+            document.fonts.load('500 13px "Be Vietnam Pro"'),
+            document.fonts.load('600 16px "Be Vietnam Pro"'),
+            document.fonts.load('700 18px "Be Vietnam Pro"'),
+            document.fonts.load('800 18px "Be Vietnam Pro"'),
+            document.fonts.load('800 24px "Be Vietnam Pro"'),
+            document.fonts.load('800 36px "Be Vietnam Pro"'),
+            document.fonts.load('italic 600 18px "Nunito"'),
+            document.fonts.load('italic 700 18px "Nunito"'),
+        ]);
+    }
+
+    const hasLogoCandidate = (style === 'cobranded') && isValidImageUrl(agentLogoUrl);
+    const [qrImage, logoImage, agentLogoImage] = await Promise.all([
+        loadPosterImage(imageUrl),
+        loadPosterImage('/pastie-chat-biz-compact.png'),
+        hasLogoCandidate ? loadPosterImage(agentLogoUrl).catch(() => null) : Promise.resolve(null),
+    ]);
+
+    const hasAgentLogo = Boolean(style === 'cobranded' && agentLogoImage);
+    const trimmedQr = trimQrWhitespace(qrImage);
+
+    // Xuất ảnh độ nét cao 2160x2160 (scale 2x) chuẩn in ấn 300 DPI
+    const scale = 2;
+    const baseW = 1080;
+    const baseH = 1080;
+    const canvas = document.createElement('canvas');
+    canvas.width = baseW * scale;
+    canvas.height = baseH * scale;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Trình duyệt không hỗ trợ tạo ảnh QR.');
+    ctx.scale(scale, scale);
+    const posterFont = '"Be Vietnam Pro", "Segoe UI", Arial, sans-serif';
+    const sloganFont = '"Nunito", "Be Vietnam Pro", "Segoe UI", sans-serif';
+
+    // 1. Nền canvas tổng & Khung viền poster
+    ctx.fillStyle = '#f6f2f7';
+    ctx.fillRect(0, 0, baseW, baseH);
+
+    const frameMargin = 32;
+    const frameX = frameMargin;
+    const frameY = frameMargin;
+    const frameW = baseW - frameMargin * 2;   // 1016px
+    const frameH = baseH - frameMargin * 2;  // 1016px
+    const frameR = 26;
+
+    // Đổ bóng mềm tạo độ sâu không gian
+    ctx.save();
+    ctx.shadowColor = 'rgba(201, 12, 108, 0.08)';
+    ctx.shadowBlur = 30;
+    ctx.shadowOffsetY = 10;
+    drawPosterRoundedRect(ctx, frameX, frameY, frameW, frameH, frameR);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.restore();
+
+    // Nền trắng và gradient chuyển sắc tinh tế
+    ctx.save();
+    drawPosterRoundedRect(ctx, frameX, frameY, frameW, frameH, frameR);
+    ctx.clip();
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+
+    const topGradient = ctx.createLinearGradient(frameX, frameY, frameX, frameY + 300);
+    topGradient.addColorStop(0, '#fff3f8');
+    topGradient.addColorStop(0.6, '#fffcf7');
+    topGradient.addColorStop(1, '#ffffff');
+    ctx.fillStyle = topGradient;
+    ctx.fillRect(frameX, frameY, frameW, 300);
+
+    // Dải viền chuyển màu accent trên đỉnh
+    const accent = ctx.createLinearGradient(frameX, frameY, frameX + frameW, frameY);
+    accent.addColorStop(0, '#ef2b9d');
+    accent.addColorStop(0.5, '#c90c6c');
+    accent.addColorStop(1, '#f59e0b');
+    ctx.fillStyle = accent;
+    ctx.fillRect(frameX, frameY, frameW, 8);
+    ctx.restore();
+
+    // Viền khung poster
+    ctx.strokeStyle = '#f0d9e7';
+    ctx.lineWidth = 1.5;
+    drawPosterRoundedRect(ctx, frameX, frameY, frameW, frameH, frameR);
+    ctx.stroke();
+
+    // 2. Header thương hiệu (Logo Pastie bên trái, Logo Agent/chữ LOGO bên phải - TĂNG SIZE RÕ RÀNG)
+    const logoY = frameY + 28;
+    const logoH = 96;
+    const logoBottom = logoY + logoH;
+
+    if (style === 'cobranded') {
+        // Logo Pastie Chat Biz (BÊN TRÁI, hoàn toàn không nền, kích thước lớn nổi bật)
+        const pHeight = 90;
+        const pWidth = pHeight * (logoImage.naturalWidth / logoImage.naturalHeight);
+        const pX = frameX + 40;
+        const pY = logoY + (logoH - pHeight) / 2;
+        ctx.drawImage(logoImage, pX, pY, pWidth, pHeight);
+
+        // Logo Agent (BÊN PHẢI - SIZE BẰNG NHAU VỚI LOGO TRÁI: 90px, không viền, không background)
+        if (hasAgentLogo) {
+            const aNaturalW = agentLogoImage.naturalWidth || 100;
+            const aNaturalH = agentLogoImage.naturalHeight || 100;
+            const aRatio = aNaturalW / aNaturalH;
+            const aHeight = 90; // Bằng chiều cao logo Pastie bên trái
+            const aWidth = aHeight * aRatio;
+            const maxAWidth = 360;
+            const finalAWidth = Math.min(aWidth, maxAWidth);
+            const finalAHeight = finalAWidth / aRatio;
+            const aX = frameX + frameW - 40 - finalAWidth;
+            const aY = logoY + (logoH - finalAHeight) / 2;
+
+            ctx.drawImage(agentLogoImage, aX, aY, finalAWidth, finalAHeight);
+        } else {
+            // Khi chưa có logo tải lên: hiển thị chữ LOGO kích thước BẰNG NHAU với logo bên trái (~90px)
+            ctx.save();
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#b62b70';
+            ctx.font = `800 74px ${posterFont}`;
+            ctx.fillText('LOGO', frameX + frameW - 40, logoY + logoH / 2);
+            ctx.restore();
+        }
+    } else {
+        const pHeight = 96;
+        const pWidth = pHeight * (logoImage.naturalWidth / logoImage.naturalHeight);
+        ctx.drawImage(logoImage, (baseW - pWidth) / 2, frameY + 24, pWidth, pHeight);
+    }
+
+    // 3. Quy chuẩn 3 size chữ:
+    // - Size 1: 36px (Tên Agent và Tên QR ở trên cùng)
+    // - Size 2: 18px (Slogan, Lời kêu gọi, Hướng dẫn camera)
+    // - Size 3: 13px (Chân trang bản quyền)
+    const agentBilingual = getBilingualAgentName(businessName, businessNameEn);
+    const qrBilingual = getBilingualQrLabel(qrLabel, qrLabelEn);
+
+    const hasAgentEn = Boolean(agentBilingual.en && agentBilingual.en.trim() && agentBilingual.en.toLowerCase() !== agentBilingual.vi.toLowerCase());
+    const hasCustomLabel = Boolean(qrLabel && qrLabel.trim() && qrLabel.trim() !== businessName.trim());
+
+    // Chiều cao từng khối:
+    // Khối 1: Tên Agent & Tên QR
+    let h1 = 44;
+    if (hasAgentEn) h1 += 44;
+    if (hasCustomLabel) h1 += 54;
+
+    // Khối 2: Slogan song ngữ (2 dòng 18px)
+    const h2 = 48;
+
+    // Khối 3: Thẻ QR (Mã QR 390px + padding 14px = 418px)
+    const qrSize = 390;
+    const qrPadding = 14;
+    const cardSize = qrSize + qrPadding * 2; // 418px
+    const h3 = cardSize;
+
+    // Khối 4: Lời kêu gọi quét mã song ngữ (2 dòng 18px)
+    const h4 = 48;
+
+    // Khối 5: Thanh hướng dẫn camera (Pill 42px)
+    const h5 = 42;
+
+    // Chân trang bản quyền (Size 3: 13px)
+    const footerY = frameY + frameH - 24;
+    const footerTop = footerY - 20;
+
+    // Phân bổ 6 khoảng cách bằng nhau giữa các khối
+    const availableSpace = footerTop - logoBottom;
+    const totalContentH = h1 + h2 + h3 + h4 + h5;
+    const equalGap = Math.max(12, (availableSpace - totalContentH) / 6);
+
+    const y1 = logoBottom + equalGap;
+    const y2 = y1 + h1 + equalGap;
+    const y3 = y2 + h2 + equalGap;
+    const y4 = y3 + h3 + equalGap;
+    const y5 = y4 + h4 + equalGap;
+
+    ctx.textAlign = 'center';
+
+    // Khối 1: TÊN AGENT VÀ TÊN QR (SIZE 1: 36px - TO NHẤT, NỔI BẬT)
+    let curY1 = y1 + 32;
+
+    // Tên Agent Tiếng Việt (Size 1: 36px)
+    ctx.fillStyle = '#201424';
+    ctx.font = `800 36px ${posterFont}`;
+    drawPosterText(ctx, agentBilingual.vi, baseW / 2, curY1, 880, 42, 1);
+
+    // Dịch tiếng Anh Tên Agent (SIZE 1: 36px - BẰNG CHÍNH XÁC VỚI TIẾNG VIỆT)
+    if (hasAgentEn) {
+        curY1 += 44;
+        ctx.fillStyle = '#4a384b';
+        ctx.font = `700 36px ${posterFont}`;
+        drawPosterText(ctx, agentBilingual.en, baseW / 2, curY1, 880, 42, 1);
+    }
+
+    // Tên QR song ngữ (Size 1: 36px trong Pill tinh tế)
+    if (hasCustomLabel) {
+        curY1 += 48;
+        const qrDisplayText = qrBilingual.en
+            ? `${qrBilingual.vi} • ${qrBilingual.en}`
+            : qrBilingual.vi;
+
+        ctx.font = `800 36px ${posterFont}`;
+        const textW = ctx.measureText(qrDisplayText).width;
+        const pillW = Math.min(Math.max(textW + 56, 240), 860);
+        const pillH = 54;
+        const pillX = (baseW - pillW) / 2;
+        const pillY = curY1 - 38;
+
+        // Nền pill hồng phấn cao cấp
+        ctx.fillStyle = '#fff2f7';
+        drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 27);
+        ctx.fill();
+
+        ctx.strokeStyle = '#f3c4db';
+        ctx.lineWidth = 1.5;
+        drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 27);
+        ctx.stroke();
+
+        ctx.fillStyle = '#c90c6c';
+        ctx.fillText(qrDisplayText, baseW / 2, pillY + 39);
+    }
+
+    // 4. Khối 2: Slogan nhận diện song ngữ (SIZE BẰNG VỚI KHỐI QUÉT MÃ: 18px / 18px - FONT NUNITO ITALIC)
+    ctx.fillStyle = '#c90c6c';
+    ctx.font = `italic 700 18px ${sloganFont}`;
+    ctx.fillText('Không rào cản ngôn ngữ, thấu hiểu mọi khách hàng', baseW / 2, y2 + 16);
+
+    ctx.fillStyle = '#6b5667';
+    ctx.font = `italic 600 18px ${sloganFont}`;
+    ctx.fillText('No language barriers • Understand every customer', baseW / 2, y2 + 42);
+
+    // 5. Khối 3: Thẻ QR — UI/UX PRO MAX: DIMENSIONAL LAYERING & BENTO LUXURY FRAMING
+    const cardX = (baseW - cardSize) / 2;
+    const cardY = y3;
+
+    // Layer 1: Ambient diffusion glow (Ánh sáng tỏa dịu đa tầng)
+    ctx.save();
+    ctx.shadowColor = 'rgba(201, 12, 108, 0.10)';
+    ctx.shadowBlur = 32;
+    ctx.shadowOffsetY = 12;
+    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 24);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.restore();
+
+    // Layer 2: Contact shadow (Đổ bóng tiếp xúc thực tế tạo chiều sâu)
+    ctx.save();
+    ctx.shadowColor = 'rgba(32, 16, 36, 0.06)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 3;
+    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 24);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.restore();
+
+    // Layer 3: Luxury Gradient Frame Border (Viền chuyển sắc hoa anh đào cao cấp)
+    const cardBorderGrad = ctx.createLinearGradient(cardX, cardY, cardX + cardSize, cardY + cardSize);
+    cardBorderGrad.addColorStop(0, '#f2d5e7');
+    cardBorderGrad.addColorStop(0.5, '#ebd0e3');
+    cardBorderGrad.addColorStop(1, '#fdeff7');
+    ctx.strokeStyle = cardBorderGrad;
+    ctx.lineWidth = 1.5;
+    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 24);
+    ctx.stroke();
+
+    // Layer 4: Frosted Bevel Highlight (Viền sáng phản chiếu bên trong phong cách Apple)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.lineWidth = 1;
+    drawPosterRoundedRect(ctx, cardX + 2.5, cardY + 2.5, cardSize - 5, cardSize - 5, 22);
+    ctx.stroke();
+
+    // Layer 5: Mã QR đã cắt sạch viền trắng thừa, căn giữa tuyệt đối sát viền
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(trimmedQr, cardX + qrPadding, cardY + qrPadding, qrSize, qrSize);
+    ctx.imageSmoothingEnabled = true;
+
+    // 6. Khối 4: Lời kêu gọi quét mã song ngữ (SIZE BẰNG HOÀN TOÀN VỚI SLOGAN: 18px / 18px)
+    ctx.fillStyle = '#201424';
+    ctx.font = `700 18px ${posterFont}`;
+    ctx.fillText('Quét mã để bắt đầu trò chuyện', baseW / 2, y4 + 16);
+
+    ctx.fillStyle = '#6b5667';
+    ctx.font = `600 18px ${posterFont}`;
+    ctx.fillText('Scan to start a chat', baseW / 2, y4 + 42);
+
+    // 7. Khối 5: Thanh hướng dẫn thao tác camera song ngữ (Size 2: 18px)
+    const pillH2 = 42;
+    const pillW2 = 680;
+    const pillX2 = (baseW - pillW2) / 2;
+    const pillY2 = y5;
+
+    // Gradient nền cho pill hướng dẫn
+    const pillGrad = ctx.createLinearGradient(pillX2, pillY2, pillX2 + pillW2, pillY2);
+    pillGrad.addColorStop(0, '#fff2f8');
+    pillGrad.addColorStop(1, '#fff7fc');
+    ctx.fillStyle = pillGrad;
+    drawPosterRoundedRect(ctx, pillX2, pillY2, pillW2, pillH2, 21);
+    ctx.fill();
+
+    ctx.strokeStyle = '#f2cadf';
+    ctx.lineWidth = 1.5;
+    drawPosterRoundedRect(ctx, pillX2, pillY2, pillW2, pillH2, 21);
+    ctx.stroke();
+
+    ctx.fillStyle = '#b62b70';
+    ctx.font = `700 18px ${posterFont}`;
+    ctx.fillText('Mở Camera / Open Camera  •  Hướng vào QR / Point at QR', baseW / 2, pillY2 + 27);
+
+    // 8. Khối 6: Chân trang bản quyền (Size 3: 13px - LUÔN HIỂN THỊ RÕ NÉT)
+    ctx.fillStyle = '#8f7d91';
+    ctx.font = `500 13px ${posterFont}`;
+    ctx.fillText('Vận hành bởi Pastie  •  Powered by Pastie', baseW / 2, footerY);
+
+    return new Promise((resolve, reject) => {
+        canvas.toBlob(async (blob) => {
+            if (!blob) return reject(new Error('Không thể xuất poster QR.'));
+            try {
+                const highDpiBlob = await add300DpiToPngBlob(blob);
+                resolve(highDpiBlob);
+            } catch {
+                resolve(blob);
+            }
+        }, 'image/png', 1.0);
+    });
+}
+
+
+function downloadPosterBlob(blob, label, style = 'poster') {
     const safeName = String(label || 'pastie-qr')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'pastie-qr';
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = objectUrl;
-    link.download = `${safeName}-poster.png`;
+    link.download = `${safeName}-${style}.png`;
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
@@ -222,7 +699,13 @@ function downloadPosterBlob(blob, label) {
 
 function closeQrPreview() {
     qrPreviewModal?.classList.add('hide');
-    if (qrPreviewImage) qrPreviewImage.removeAttribute('src');
+    if (typeof activeQrPreviewState !== 'undefined') activeQrPreviewState = null;
+    if (qrPreviewImage) {
+        qrPreviewImage.removeAttribute('src');
+        qrPreviewImage.classList.add('is-hidden');
+    }
+    const loader = document.getElementById('qr-poster-loader');
+    if (loader) loader.classList.remove('is-hidden');
     if (qrPreviewPosterUrl) {
         URL.revokeObjectURL(qrPreviewPosterUrl);
         qrPreviewPosterUrl = '';
@@ -267,6 +750,24 @@ function formatHourWindows(windows) {
 }
 
 
+window._ORG_TAB_LOADED = window._ORG_TAB_LOADED || {};
+window._ORG_CACHE_TIMESTAMP = window._ORG_CACHE_TIMESTAMP || {};
+const ORG_TAB_CACHE_TTL = 45000; // 45 giây cache đệm cho các tab quản trị
+
+function isOrgTabFresh(name) {
+    const ts = window._ORG_CACHE_TIMESTAMP[name];
+    return Boolean(ts && (Date.now() - ts < ORG_TAB_CACHE_TTL));
+}
+
+function invalidateOrgTabCache(name) {
+    if (name) {
+        delete window._ORG_CACHE_TIMESTAMP[name];
+    } else {
+        window._ORG_CACHE_TIMESTAMP = {};
+    }
+}
+window.invalidateOrgTabCache = invalidateOrgTabCache;
+
 function switchOrgTab(name) {
     window.closeAddBoxModal?.();
     document.querySelectorAll('[data-org-tab]').forEach((tab) => {
@@ -276,13 +777,24 @@ function switchOrgTab(name) {
         pane.classList.toggle('hide', pane.dataset.orgPane !== name);
     });
     setOrgStatus('');
-    if (name === 'agents') void loadOrgAgents();
-    if (name === 'sales') void loadOrgSales();
-    if (name === 'groups') void loadOrgGroups();
-    if (name === 'qr') void loadOrgQr();
-    // Thực đơn nằm ở menu-console.js — mảnh đầu tiên của QR Console tách riêng.
+
+    const isFresh = isOrgTabFresh(name);
+    const hasLoadedBefore = Boolean(window._ORG_TAB_LOADED[name]);
+    window._ORG_TAB_LOADED[name] = true;
+
+    // Chuyển tab tức thì 0ms, không bắn request mạng lặp lại nếu dữ liệu còn hạn cache
+    if (isFresh && hasLoadedBefore) return;
+
+    // Nếu dữ liệu đã nạp nhưng quá hạn, chạy ngầm revalidate mà không hiện spinner
+    const isSilent = hasLoadedBefore;
+
+    if (name === 'agents') void loadOrgAgents(isSilent);
+    if (name === 'sales') void loadOrgSales(isSilent);
+    if (name === 'groups') void loadOrgGroups(false, isSilent);
+    if (name === 'qr') void loadOrgQr(isSilent);
+    // Sản phẩm nằm ở menu-console.js — mảnh đầu tiên của QR Console tách riêng.
     if (name === 'menu') {
-        void window.MenuConsole?.load();
+        void window.MenuConsole?.load(isSilent);
         void loadAgentMenuSettings();
     }
 }
@@ -301,7 +813,7 @@ function openOrgModal() {
         document.querySelector(`[data-org-tab="${name}"]`)?.classList.toggle('hide', isSuper);
     });
     const title = document.getElementById('org-title');
-    if (title) title.textContent = isSuper ? 'Quản lý Agent' : 'Quản lý Sale, nhóm, QR và thực đơn';
+    if (title) title.textContent = isSuper ? 'Quản lý Agent' : 'Quản lý Sale, nhóm, QR và sản phẩm';
     const kicker = document.getElementById('org-kicker');
     if (kicker) kicker.textContent = 'PHÂN CẤP TỔ CHỨC';
 
@@ -319,9 +831,23 @@ function openOrgModal() {
     }
 
     document.getElementById('org-modal')?.classList.remove('hide');
-    switchOrgTab(isSuper ? 'agents' : 'sales');
-    // Nhóm được tải sẵn vì hai form Sale và QR đều cần danh sách nhóm.
-    if (!isSuper) void loadOrgGroups(true);
+    const defaultTab = isSuper ? 'agents' : 'sales';
+    switchOrgTab(defaultTab);
+
+    // PREFETCH TOÀN BỘ CÁC TAB CÒN LẠI TRONG NỀN (ZERO-LATENCY COLD SWITCH)
+    // Tải song song ngầm để khi người dùng click sang Nhóm, Mã QR hay Sản phẩm thì dữ liệu đã có sẵn 0ms
+    if (!isSuper) {
+        if (!isOrgTabFresh('groups')) {
+            void loadOrgGroups(false, true).catch(() => {});
+        }
+        if (!isOrgTabFresh('qr')) {
+            void loadOrgQr(true).catch(() => {});
+        }
+        if (!isOrgTabFresh('menu')) {
+            void window.MenuConsole?.load(true).catch(() => {});
+            void loadAgentMenuSettings().catch(() => {});
+        }
+    }
 }
 
 
@@ -333,14 +859,27 @@ function closeOrgModal() {
 
 // --- Agent -------------------------------------------------------------------
 
-async function loadOrgAgents() {
+async function loadOrgAgents(isSilent = false) {
     const box = document.getElementById('org-agent-list');
     const badge = document.getElementById('org-agent-count-badge');
     if (!box) return;
-    box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách Agent…</p>';
+    if (!isSilent && (!window.ORG_AGENTS_CACHE || window.ORG_AGENTS_CACHE.length === 0)) {
+        box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách Agent…</p>';
+    }
     try {
         const agents = await orgFetch('/api/superadmin/agents');
+        window.ORG_AGENTS_CACHE = agents;
+        window._ORG_CACHE_TIMESTAMP['agents'] = Date.now();
+        window._ORG_TAB_LOADED['agents'] = true;
         if (badge) badge.textContent = `${agents.length} Agent`;
+
+        // Render Guard: tránh vẽ lại DOM nếu danh sách Agent không đổi
+        const agentsHash = JSON.stringify(agents.map(a => [a.id, a.full_name, a.sale_count, a.sale_limit, a.group_count, a.deferred_payment_mode, a.superadmin_menu_disabled, a.is_active]));
+        if (box.dataset.renderedHash === agentsHash && box.children.length > 0) {
+            return;
+        }
+        box.dataset.renderedHash = agentsHash;
+
         box.innerHTML = agents.length ? agents.map((agent) => `
             <article class="org-item">
                 <div class="org-item-main">
@@ -528,12 +1067,14 @@ function resetOrgSaleForm() {
 }
 
 
-async function loadOrgSales() {
+async function loadOrgSales(isSilent = false) {
     const box = document.getElementById('org-sale-list');
     const badge = document.getElementById('org-sale-count-badge');
     const quotaCount = document.getElementById('org-quota-count');
     if (!box) return;
-    box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+    if (!isSilent && (!window.ORG_SALES || window.ORG_SALES.length === 0)) {
+        box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+    }
     try {
         // Cập nhật lại thông tin CURRENT_ADMIN để lấy sale_limit mới nhất từ server
         try {
@@ -545,6 +1086,9 @@ async function loadOrgSales() {
         } catch (e) {}
 
         window.ORG_SALES = await orgFetch('/api/agent/sales');
+        window._ORG_CACHE_TIMESTAMP['sales'] = Date.now();
+        window._ORG_TAB_LOADED['sales'] = true;
+
         const count = window.ORG_SALES.length;
         if (badge) badge.textContent = `${count} Sale`;
         if (quotaCount) {
@@ -567,6 +1111,13 @@ async function loadOrgSales() {
 
         // Cập nhật select Sale trong Form Tạo Nhóm
         renderSalePicker(window.ORG_SALES);
+
+        // Render Guard: tránh hủy và dựng lại toàn bộ DOM thẻ Sale nếu dữ liệu không đổi
+        const salesHash = JSON.stringify(window.ORG_SALES.map(s => [s.id, s.full_name, s.username, s.avatar_url, s.group_id, s.on_shift, s.work_shift, s.is_active]));
+        if (box.dataset.renderedHash === salesHash && box.children.length > 0) {
+            return;
+        }
+        box.dataset.renderedHash = salesHash;
 
         box.innerHTML = window.ORG_SALES.length ? window.ORG_SALES.map((sale) => `
             <article class="org-item sale-card">
@@ -609,66 +1160,77 @@ async function loadOrgSales() {
 
 // --- Nhóm --------------------------------------------------------------------
 
-async function loadOrgGroups(quiet) {
+async function loadOrgGroups(quiet, isSilent = false) {
     const box = document.getElementById('org-group-list');
     const badge = document.getElementById('org-group-count-badge');
-    if (!quiet && box) box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+    if (!quiet && !isSilent && box && (!window.ORG_GROUPS || window.ORG_GROUPS.length === 0)) {
+        box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+    }
     try {
         if ((window.ORG_SALES || []).length === 0) {
             try { window.ORG_SALES = await orgFetch('/api/agent/sales'); } catch(e) {}
         }
         window.ORG_GROUPS = await orgFetch('/api/agent/groups');
+        window._ORG_CACHE_TIMESTAMP['groups'] = Date.now();
+        window._ORG_TAB_LOADED['groups'] = true;
         if (badge) badge.textContent = `${window.ORG_GROUPS.length} Nhóm`;
 
         // Cập nhật select Sale trong Form Tạo Nhóm
         renderSalePicker(window.ORG_SALES || []);
 
         if (box && !quiet) {
-            box.innerHTML = window.ORG_GROUPS.length ? window.ORG_GROUPS.map((group) => {
-                const groupSales = group.sales || [];
-                const groupSaleIds = new Set(groupSales.map(s => Number(s.sale_id)));
-                const notInGroupSales = (window.ORG_SALES || []).filter(s => !groupSaleIds.has(Number(s.id)));
+            // Render Guard: tránh dựng lại DOM nhóm nếu dữ liệu không đổi
+            const groupsHash = JSON.stringify(window.ORG_GROUPS.map(g => [g.id, g.name, g.description, (g.sales || []).map(s => s.sale_id)]));
+            if (box.dataset.renderedHash === groupsHash && box.children.length > 0) {
+                // Giữ nguyên DOM
+            } else {
+                box.dataset.renderedHash = groupsHash;
+                box.innerHTML = window.ORG_GROUPS.length ? window.ORG_GROUPS.map((group) => {
+                    const groupSales = group.sales || [];
+                    const groupSaleIds = new Set(groupSales.map(s => Number(s.sale_id)));
+                    const notInGroupSales = (window.ORG_SALES || []).filter(s => !groupSaleIds.has(Number(s.id)));
 
-                const chipsHtml = groupSales.length ? groupSales.map(s => `
-                    <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;color:var(--text-primary);">
-                        <span>${escapeHtml(s.full_name || 'Sale')}</span>
-                        <button type="button" data-remove-sale-group="${group.id}" data-sale-id="${s.sale_id}" style="border:none;background:none;cursor:pointer;color:#ef4444;font-size:13px;padding:0 2px;display:flex;align-items:center;" title="Xóa Sale khỏi nhóm">&times;</button>
-                    </span>
-                `).join('') : '<span style="font-size:11.5px;color:var(--text-secondary);font-style:italic;">Chưa có Sale trong nhóm này</span>';
+                    const chipsHtml = groupSales.length ? groupSales.map(s => `
+                        <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;color:var(--text-primary);">
+                            <i class="ri-user-line" style="color:#6366f1;"></i> ${escapeHtml(s.sale_name || s.sale_username)}
+                            <button type="button" data-remove-sale="${s.sale_id}" data-from-group="${group.id}" title="Gỡ Sale khỏi nhóm" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:0;display:flex;align-items:center;font-size:13px;line-height:1;"><i class="ri-close-circle-fill"></i></button>
+                        </span>
+                    `).join('') : '<span style="font-size:11px;color:var(--text-secondary);font-style:italic;">Chưa có Sale nào trong nhóm</span>';
 
-                const addSaleOptions = notInGroupSales.map(s => `<option value="${s.id}">+ ${escapeHtml(s.full_name || s.username)}</option>`).join('');
+                    const addSaleOptions = notInGroupSales.map(s => `<option value="${s.id}">${escapeHtml(s.full_name || s.username)}</option>`).join('');
 
-                return `
-                <article class="org-item" style="flex-direction:column;align-items:stretch;gap:8px;padding:12px 14px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <div>
-                            <strong style="font-size:13.5px;"><i class="ri-team-line" style="color:var(--accent-color);margin-right:4px;"></i>${escapeHtml(group.name)}</strong>
-                            <small style="margin-left:8px;color:var(--text-secondary);">${group.waiting_count} chờ / ${group.active_count} đang chat</small>
-                            ${group.description ? `<p style="margin:2px 0 0 0;font-size:11.5px;color:var(--text-secondary);">${escapeHtml(group.description)}</p>` : ''}
+                    return `
+                    <article class="org-item" style="flex-direction:column;align-items:stretch;gap:8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                            <div>
+                                <strong style="font-size:13.5px;"><i class="ri-team-line" style="color:var(--accent-color);margin-right:4px;"></i>${escapeHtml(group.name)}</strong>
+                                <small style="margin-left:8px;color:var(--text-secondary);">${group.waiting_count} chờ / ${group.active_count} đang chat</small>
+                                ${group.description ? `<p style="margin:2px 0 0 0;font-size:11.5px;color:var(--text-secondary);">${escapeHtml(group.description)}</p>` : ''}
+                            </div>
+                            <div style="display:flex;gap:6px;align-items:center;">
+                                <button type="button" class="org-btn-edit" data-group-edit="${group.id}" title="Sửa tên nhóm" style="background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:4px 8px;font-size:11.5px;cursor:pointer;font-weight:600;"><i class="ri-edit-line"></i> Sửa</button>
+                                <button type="button" class="org-remove" data-group-delete="${group.id}" title="Xóa nhóm"><i class="ri-delete-bin-line"></i></button>
+                            </div>
                         </div>
-                        <div style="display:flex;gap:6px;align-items:center;">
-                            <button type="button" class="org-btn-edit" data-group-edit="${group.id}" title="Sửa tên nhóm" style="background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:4px 8px;font-size:11.5px;cursor:pointer;font-weight:600;"><i class="ri-edit-line"></i> Sửa</button>
-                            <button type="button" class="org-remove" data-group-delete="${group.id}" title="Xóa nhóm"><i class="ri-delete-bin-line"></i></button>
-                        </div>
-                    </div>
 
-                    <!-- Quản lý thành viên Sale trong nhóm -->
-                    <div style="background:rgba(0,0,0,0.025);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                            <span style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;">Thành viên (${groupSales.length})</span>
-                            ${notInGroupSales.length ? `
-                                <select class="org-add-sale-to-group-select" data-group-id="${group.id}" style="font-size:11px;padding:2px 6px;border-radius:5px;background:var(--panel-bg);border:1px solid var(--panel-border);color:var(--text-primary);cursor:pointer;">
-                                    <option value="">+ Thêm Sale vào nhóm...</option>
-                                    ${addSaleOptions}
-                                </select>
-                            ` : '<span style="font-size:10.5px;color:var(--text-secondary);">(Đã đủ tất cả Sale)</span>'}
+                        <!-- Quản lý thành viên Sale trong nhóm -->
+                        <div style="background:rgba(0,0,0,0.025);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                                <span style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;">Thành viên (${groupSales.length})</span>
+                                ${notInGroupSales.length ? `
+                                    <select class="org-add-sale-to-group-select" data-group-id="${group.id}" style="font-size:11px;padding:2px 6px;border-radius:5px;background:var(--panel-bg);border:1px solid var(--panel-border);color:var(--text-primary);cursor:pointer;">
+                                        <option value="">+ Thêm Sale vào nhóm...</option>
+                                        ${addSaleOptions}
+                                    </select>
+                                ` : '<span style="font-size:10.5px;color:var(--text-secondary);">(Đã đủ tất cả Sale)</span>'}
+                            </div>
+                            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                                ${chipsHtml}
+                            </div>
                         </div>
-                        <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                            ${chipsHtml}
-                        </div>
-                    </div>
-                </article>`;
-            }).join('') : '<p class="org-empty">Chưa có nhóm nào.</p>';
+                    </article>`;
+                }).join('') : '<p class="org-empty">Chưa có nhóm nào.</p>';
+            }
         }
 
         const groupOptions = (window.ORG_GROUPS || []).map((group) => `<option value="${group.id}">${escapeHtml(group.name)}</option>`).join('');
@@ -695,14 +1257,18 @@ async function loadOrgGroups(quiet) {
 }
 
 
-async function loadOrgQr() {
+async function loadOrgQr(isSilent = false) {
     const box = document.getElementById('org-qr-list');
     const badge = document.getElementById('org-qr-count-badge');
     if (!box) return;
-    box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+    if (!isSilent && (!window.CURRENT_QR_ACCOUNTS || window.CURRENT_QR_ACCOUNTS.length === 0)) {
+        box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+    }
     try {
-        if ((window.ORG_SALES || []).length === 0) await loadOrgSales();
+        if ((window.ORG_SALES || []).length === 0) await loadOrgSales(true);
         window.CURRENT_QR_ACCOUNTS = await orgFetch('/api/agent/qr-accounts');
+        window._ORG_CACHE_TIMESTAMP['qr'] = Date.now();
+        window._ORG_TAB_LOADED['qr'] = true;
         renderOrgQrList();
     } catch (error) {
         if (badge) badge.textContent = '0 QR';
@@ -724,6 +1290,14 @@ function renderOrgQrList() {
         : allQr;
 
     if (badge) badge.textContent = `${filtered.length} QR`;
+
+    // Render Guard: tránh tải lại hàng loạt ảnh QR quickchart nếu dữ liệu không đổi
+    const qrHash = `${selectedGroupId}_${JSON.stringify(filtered.map(a => [a.id, a.label, a.group_id, a.chat_url]))}`;
+    if (box.dataset.renderedHash === qrHash && box.children.length > 0) {
+        return;
+    }
+    box.dataset.renderedHash = qrHash;
+
     const eventValue = (value) => encodeURIComponent(value ?? '').replace(/'/g, '%27');
     box.innerHTML = filtered.length ? filtered.map((account) => {
         const qrThumb = `https://quickchart.io/qr?size=160&text=${encodeURIComponent(account.chat_url)}`;
@@ -881,10 +1455,12 @@ function clearSalePicker() {
 async function loadAgentMenuSettings() {
     const card = document.getElementById('agent-menu-settings-card');
     if (!card) return;
+    if (isOrgTabFresh('menu_settings')) return;
     try {
         const res = await authFetch(`${API_BASE}/api/agent/menu-settings`);
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Không tải được cài đặt menu.');
+        window._ORG_CACHE_TIMESTAMP['menu_settings'] = Date.now();
 
         const checkbox = document.getElementById('agent-menu-toggle-checkbox');
         const labelInput = document.getElementById('agent-menu-label-input');
@@ -904,11 +1480,11 @@ async function loadAgentMenuSettings() {
 
         const customName = data.menu_custom_label || '';
         const tabSpan = document.querySelector('[data-org-tab="menu"] span');
-        if (tabSpan) tabSpan.textContent = customName || 'Thực đơn';
+        if (tabSpan) tabSpan.textContent = customName || 'Sản phẩm';
         const paneHeader = document.querySelector('[data-org-pane="menu"] .org-list-header h4');
-        if (paneHeader) paneHeader.textContent = customName ? `Các món trong ${customName.toLowerCase()}` : 'Các món trong thực đơn';
+        if (paneHeader) paneHeader.textContent = customName ? `Các sản phẩm trong ${customName.toLowerCase()}` : 'Danh sách sản phẩm';
         const saleBtnText = document.querySelector('#sale-menu-btn span');
-        if (saleBtnText) saleBtnText.textContent = customName || 'Thực đơn';
+        if (saleBtnText) saleBtnText.textContent = customName || 'Sản phẩm';
     } catch (err) {
         console.error('loadAgentMenuSettings error:', err.message);
     }
@@ -935,7 +1511,8 @@ async function saveAgentMenuSettings() {
         });
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data?.error || 'Không thể lưu cài đặt.');
-        showToast('Đã lưu cấu hình thực đơn.', 'success');
+        showToast('Đã lưu cấu hình sản phẩm.', 'success');
+        delete window._ORG_CACHE_TIMESTAMP?.['menu_settings'];
         await loadAgentMenuSettings();
     } catch (err) {
         showToast(err.message, 'error');

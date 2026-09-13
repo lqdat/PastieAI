@@ -40,11 +40,12 @@
     }
 
     // --- Tải dữ liệu ---------------------------------------------------------
+    let lastRenderHash = '';
 
     async function load(quiet) {
         const list = $('menu-item-list');
-        if (!quiet && list) {
-            list.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải thực đơn…</p>';
+        if (!quiet && list && (!ITEMS || ITEMS.length === 0)) {
+            list.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách sản phẩm…</p>';
         }
         // Hai nguồn dữ liệu ĐỘC LẬP nhau. Dùng Promise.all thì một bên hỏng là
         // cả hai cùng không hiện — thêm danh mục thành công mà màn hình trống
@@ -57,7 +58,12 @@
             CATEGORIES = catResult.status === 'fulfilled' && Array.isArray(catResult.value) ? catResult.value : [];
             ITEMS = itemResult.status === 'fulfilled' && Array.isArray(itemResult.value) ? itemResult.value : [];
 
-            // Món nào đã có đủ bản dịch cả 4 ngôn ngữ (en, ru, zh, ko) thì thôi chờ.
+            window._ORG_CACHE_TIMESTAMP = window._ORG_CACHE_TIMESTAMP || {};
+            window._ORG_CACHE_TIMESTAMP['menu'] = Date.now();
+            window._ORG_TAB_LOADED = window._ORG_TAB_LOADED || {};
+            window._ORG_TAB_LOADED['menu'] = true;
+
+            // Sản phẩm nào đã có đủ bản dịch cả 4 ngôn ngữ (en, ru, zh, ko) thì thôi chờ.
             for (const item of ITEMS) {
                 if (pendingTranslation.has(item.id) && translatedCount(item) >= 4) {
                     pendingTranslation.delete(item.id);
@@ -77,7 +83,7 @@
                 showToast(catResult.reason?.message || 'Không tải được danh mục.', 'error');
             }
             if (itemResult.status === 'rejected' && list) {
-                list.innerHTML = `<p class="org-empty is-error"><i class="ri-error-warning-line"></i> ${escapeHtml(itemResult.reason?.message || 'Không tải được danh sách món.')}</p>`;
+                list.innerHTML = `<p class="org-empty is-error"><i class="ri-error-warning-line"></i> ${escapeHtml(itemResult.reason?.message || 'Không tải được danh sách sản phẩm.')}</p>`;
             }
         } catch (error) {
             // Tải hỏng thì VẪN dựng lại ô chọn danh mục. Bỏ qua bước này thì ô
@@ -114,24 +120,32 @@
 
     // --- Dựng giao diện ------------------------------------------------------
 
-    function render() {
+    function render(force = false) {
+        const currentHash = JSON.stringify([
+            CATEGORIES.map(c => [c.id, c.name, c.item_count, c.is_active, c.is_promo]),
+            ITEMS.map(i => [i.id, i.name, i.price, i.category_id, i.is_active, i.image_url, i.stock_quantity])
+        ]);
+        if (!force && currentHash === lastRenderHash && $('menu-item-list')?.children.length > 0) {
+            return;
+        }
+        lastRenderHash = currentHash;
         renderCategories();
         renderCategorySelect();
         renderItems();
         const badge = $('menu-count-badge');
-        if (badge) badge.textContent = `${ITEMS.length} món`;
+        if (badge) badge.textContent = `${ITEMS.length} sản phẩm`;
     }
 
     function renderCategories() {
         const box = $('menu-category-list');
         if (!box) return;
         if (CATEGORIES.length === 0) {
-            box.innerHTML = '<p class="menu-hint-empty">Chưa có danh mục nào. Món không thuộc danh mục vẫn hiện với khách, nhưng chia nhóm sẽ dễ xem hơn.</p>';
+            box.innerHTML = '<p class="menu-hint-empty">Chưa có danh mục nào. Sản phẩm không thuộc danh mục vẫn hiện với khách, nhưng chia nhóm sẽ dễ xem hơn.</p>';
             return;
         }
         box.innerHTML = CATEGORIES.map((category) => `
             <span class="menu-cat-chip${category.is_active ? '' : ' is-off'}${category.is_promo ? ' is-promo' : ''}" data-category-chip="${category.id}">
-                ${category.is_promo ? '<i class="ri-flashlight-fill" title="Nhóm ưu đãi — món trong đây chạy lên đầu thực đơn của khách"></i>' : ''}
+                ${category.is_promo ? '<i class="ri-flashlight-fill" title="Nhóm ưu đãi — sản phẩm trong đây chạy lên đầu danh sách của khách"></i>' : ''}
                 <button type="button" class="menu-cat-name" data-category-rename="${category.id}" title="Đổi tên">${escapeHtml(category.name)}</button>
                 <small>${category.item_count}</small>
                 <button type="button" class="menu-cat-toggle" data-category-toggle="${category.id}"
@@ -158,9 +172,9 @@
         if (ITEMS.length === 0) {
             box.innerHTML = `
                 <div class="menu-empty">
-                    <i class="ri-restaurant-2-line"></i>
-                    <strong>Thực đơn còn trống</strong>
-                    <p>Thêm món đầu tiên ở form bên trên. Tên và mô tả sẽ được dịch tự động sang tiếng Anh, Nga, Trung và Hàn ngay khi lưu.</p>
+                    <i class="ri-shopping-bag-3-line"></i>
+                    <strong>Danh sách sản phẩm còn trống</strong>
+                    <p>Thêm sản phẩm đầu tiên ở form bên trên. Tên và mô tả sẽ được dịch tự động sang tiếng Anh, Nga, Trung và Hàn ngay khi lưu.</p>
                 </div>`;
             return;
         }
@@ -175,7 +189,7 @@
 
         box.innerHTML = [...groups.values()].map((group) => `
             <div class="menu-group">
-                <h5 class="menu-group-title">${escapeHtml(group.name)} <small>${group.items.length} món</small></h5>
+                <h5 class="menu-group-title">${escapeHtml(group.name)} <small>${group.items.length} sản phẩm</small></h5>
                 ${group.items.map(itemCard).join('')}
             </div>
         `).join('');
@@ -206,7 +220,7 @@
 
         return `
         <article class="menu-item${item.is_available ? '' : ' is-off'}" data-item="${item.id}">
-            <label class="menu-thumb" title="Đổi ảnh món">
+            <label class="menu-thumb" title="Đổi ảnh sản phẩm">
                 ${item.image_url
                     ? `<img src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.name)}" loading="lazy">`
                     : '<i class="ri-image-add-line"></i>'}
@@ -232,8 +246,8 @@
                         title="${item.is_available ? 'Còn bán — bấm để tạm hết' : 'Đang tạm hết — bấm để bán lại'}">
                     <i class="ri-${item.is_available ? 'checkbox-circle-line' : 'indeterminate-circle-line'}"></i>
                 </button>
-                <button type="button" class="menu-act" data-item-edit="${item.id}" title="Sửa món"><i class="ri-pencil-line"></i></button>
-                <button type="button" class="menu-act is-danger" data-item-delete="${item.id}" title="Xoá món"><i class="ri-delete-bin-line"></i></button>
+                <button type="button" class="menu-act" data-item-edit="${item.id}" title="Sửa sản phẩm"><i class="ri-pencil-line"></i></button>
+                <button type="button" class="menu-act is-danger" data-item-delete="${item.id}" title="Xoá sản phẩm"><i class="ri-delete-bin-line"></i></button>
             </div>
         </article>`;
     }
@@ -299,10 +313,10 @@
         if (category.is_promo) {
             return showToast('Không xoá được nhóm Ưu đãi. Bạn có thể ẩn nhóm này nếu chưa dùng tới.', 'error');
         }
-        // Nói rõ món KHÔNG mất theo — backend để ON DELETE SET NULL.
+        // Nói rõ sản phẩm KHÔNG mất theo — backend để ON DELETE SET NULL.
         const ok = await pastieConfirm(
             category.item_count > 0
-                ? `Xoá danh mục "${category.name}"? ${category.item_count} món trong đó vẫn còn, chỉ chuyển sang "Chưa phân loại".`
+                ? `Xoá danh mục "${category.name}"? ${category.item_count} sản phẩm trong đó vẫn còn, chỉ chuyển sang "Chưa phân loại".`
                 : `Xoá danh mục "${category.name}"?`,
             { confirmText: 'Xoá danh mục', danger: true }
         );
@@ -316,7 +330,7 @@
         }
     }
 
-    // --- Thao tác món --------------------------------------------------------
+    // --- Thao tác sản phẩm ---------------------------------------------------
 
     // Hiện ảnh đã chọn, hoặc ảnh hiện có của món đang sửa, hoặc trạng thái trống.
     function showPhotoPreview(url, caption) {
@@ -336,7 +350,7 @@
         const input = $('menu-item-photo');
         if (input) input.value = '';
         if (item?.image_url) showPhotoPreview(item.image_url, 'Ảnh hiện tại — bấm để đổi');
-        else showPhotoPreview('', 'Chọn ảnh món — bấm để tải lên');
+        else showPhotoPreview('', 'Chọn ảnh sản phẩm — bấm để tải lên');
     }
 
     function fillItemForm(item) {
@@ -357,7 +371,7 @@
         if (submit) {
             submit.innerHTML = item
                 ? '<i class="ri-save-line"></i> Lưu thay đổi'
-                : '<i class="ri-add-circle-line"></i> Thêm món';
+                : '<i class="ri-add-circle-line"></i> Thêm sản phẩm';
         }
         $('menu-item-cancel')?.classList.toggle('hide', !item);
         resetPhotoField(item);
@@ -371,7 +385,7 @@
         const description = $('menu-item-desc').value.trim();
         const categoryId = $('menu-item-category').value;
 
-        if (!name) return showToast('Cần tên món.', 'error');
+        if (!name) return showToast('Cần tên sản phẩm.', 'error');
         if (!Number.isFinite(price) || price < 0) return showToast('Giá không hợp lệ.', 'error');
 
         const rawStock = $('menu-item-stock').value.trim();
@@ -404,15 +418,15 @@
             if (result?.item?.id) pendingTranslation.add(result.item.id);
             else if (editing) pendingTranslation.add(editing);
 
-            // Ảnh phải gửi SAU khi có id món. Người dùng chỉ thấy một thao tác,
-            // bên dưới là hai bước — nhưng nếu bước ảnh hỏng thì món vẫn đã lưu,
-            // nên báo riêng thay vì để tưởng cả việc thêm món thất bại.
+            // Ảnh phải gửi SAU khi có id sản phẩm. Người dùng chỉ thấy một thao tác,
+            // bên dưới là hai bước — nhưng nếu bước ảnh hỏng thì sản phẩm vẫn đã lưu,
+            // nên báo riêng thay vì để tưởng cả việc thêm sản phẩm thất bại.
             const savedId = result?.item?.id || editing;
             if (pendingPhoto && savedId) {
                 try {
                     await uploadImage(savedId, pendingPhoto, { silent: true });
                 } catch (photoError) {
-                    showToast(`Đã lưu món, nhưng chưa tải được ảnh: ${photoError.message}`, 'error', 6000);
+                    showToast(`Đã lưu sản phẩm, nhưng chưa tải được ảnh: ${photoError.message}`, 'error', 6000);
                 }
             }
 
@@ -442,13 +456,13 @@
     async function deleteItem(id) {
         const item = ITEMS.find((i) => i.id === Number(id));
         if (!item) return;
-        const ok = await pastieConfirm(`Xoá món "${item.name}" khỏi thực đơn?`, {
-            confirmText: 'Xoá món', danger: true,
+        const ok = await pastieConfirm(`Xoá sản phẩm "${item.name}"?`, {
+            confirmText: 'Xoá sản phẩm', danger: true,
         });
         if (!ok) return;
         try {
             await fetchMenu(`/items/${id}`, { method: 'DELETE' });
-            showToast('Đã xoá món.', 'success');
+            showToast('Đã xoá sản phẩm.', 'success');
             await load(true);
         } catch (error) {
             showToast(error.message, 'error');
@@ -473,7 +487,7 @@
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data.error || 'Không tải được ảnh lên.');
             if (!silent) {
-                showToast('Đã cập nhật ảnh món.', 'success');
+                showToast('Đã cập nhật ảnh sản phẩm.', 'success');
                 await load(true);
             }
         } catch (error) {
@@ -492,7 +506,7 @@
         const current = (item.translations || []).find((t) => t && t.lang === langCode);
 
         const value = await pastiePrompt(
-            `${lang.label} — tên món`,
+            `${lang.label} — tên sản phẩm`,
             current?.name || '',
             { hint: `Bản gốc: ${item.name}. Để trống rồi lưu sẽ xoá bản dịch tay và giữ bản AI.` }
         );
@@ -645,6 +659,23 @@
     // vào: bấm Lưu không xảy ra chuyện gì. Nay nối lại, đồng thời thêm ô phí
     // dịch vụ — khoản duy nhất còn được cộng thêm trên hóa đơn sau khi bỏ VAT
     // theo món (giá nhập vào đã là giá khách trả).
+    // --- Cấu hình thực đơn của quán: nhãn nút, bật/tắt, PHÍ DỊCH VỤ & CHẾ ĐỘ BANNER --------
+    let AGENT_POSTS = [];
+
+    function updateShowcaseModeUi() {
+        const selectedMode = document.querySelector('input[name="showcase_mode"]:checked')?.value || 'menu';
+        const isBanner = selectedMode === 'banner';
+        const bannerCard = $('agent-banner-settings-card');
+        const menuFields = $('menu-mode-fields');
+        const menuItemsSection = $('agent-menu-items-section');
+        if (bannerCard) bannerCard.classList.toggle('hide', !isBanner);
+        if (menuFields) menuFields.classList.toggle('hide', isBanner);
+        if (menuItemsSection) menuItemsSection.classList.toggle('hide', isBanner);
+        if (isBanner) {
+            loadAgentPosts();
+        }
+    }
+
     async function loadMenuSettings() {
         const nutLuu = $('agent-menu-save-btn');
         if (!nutLuu) return;
@@ -656,12 +687,31 @@
             if (nhan) nhan.value = data.menu_custom_label || '';
             const phi = $('agent-service-fee-input');
             if (phi) phi.value = Number(data.service_fee_rate || 0) || '';
+
+            const mode = data.showcase_mode || 'menu';
+            if (mode === 'banner') {
+                const rBanner = $('showcase-mode-banner');
+                if (rBanner) rBanner.checked = true;
+            } else {
+                const rMenu = $('showcase-mode-menu');
+                if (rMenu) rMenu.checked = true;
+            }
+            updateShowcaseModeUi();
+
             // Superadmin tắt tính năng thì nói rõ lý do, đừng để người dùng bấm
             // Lưu rồi nhận lỗi mà không hiểu vì sao.
             $('agent-menu-superadmin-warning')?.classList.toggle('hide', data.superadmin_menu_disabled !== true);
         } catch (error) {
             console.error('[Thực đơn] Không tải được cấu hình:', error.message);
         }
+
+        // Lắng nghe đổi chế độ radio
+        document.querySelectorAll('input[name="showcase_mode"]').forEach(r => {
+            if (r.dataset.wired !== '1') {
+                r.dataset.wired = '1';
+                r.addEventListener('change', updateShowcaseModeUi);
+            }
+        });
 
         if (nutLuu.dataset.wired === '1') return;
         nutLuu.dataset.wired = '1';
@@ -672,11 +722,11 @@
         const nutLuu = $('agent-menu-save-btn');
         const rawPhi = ($('agent-service-fee-input')?.value || '').trim();
         const phi = rawPhi === '' ? 0 : Number(rawPhi);
-        // Chặn ngay tại chỗ: một cú gõ nhầm "50" thay vì "5" là hóa đơn của cả
-        // quán đội lên 50% cho tới khi có người phát hiện.
         if (!Number.isFinite(phi) || phi < 0 || phi > 100) {
             return showToast('Phí dịch vụ phải là số từ 0 đến 100.', 'error');
         }
+        const selectedMode = document.querySelector('input[name="showcase_mode"]:checked')?.value || 'menu';
+
         nutLuu.disabled = true;
         try {
             const data = await orgFetch('/api/agent/menu-settings', {
@@ -686,16 +736,387 @@
                     agentMenuEnabled: $('agent-menu-toggle-checkbox')?.checked !== false,
                     menuCustomLabel: $('agent-menu-label-input')?.value.trim() || '',
                     serviceFeeRate: phi,
+                    showcaseMode: selectedMode
                 }),
             });
-            const luu = Number(data?.settings?.service_fee_rate || 0);
-            showToast(luu > 0
-                ? `Đã lưu. Hóa đơn sẽ cộng phí dịch vụ ${luu}%.`
-                : 'Đã lưu. Hóa đơn không cộng phí dịch vụ.', 'success');
+            showToast(selectedMode === 'banner'
+                ? 'Đã lưu cấu hình. Quán đang hiển thị chế độ Banner & Bài viết.'
+                : 'Đã lưu cấu hình. Quán đang hiển thị chế độ Sản phẩm đặt hàng.', 'success');
+            updateShowcaseModeUi();
         } catch (error) {
-            showToast(error.message || 'Không lưu được cấu hình thực đơn.', 'error');
+            showToast(error.message || 'Không lưu được cấu hình sản phẩm.', 'error');
         } finally {
             nutLuu.disabled = false;
+        }
+    }
+
+    // --- Quản lý Bài viết & Banner quảng bá (Slide kiểu Grab) -------------------
+
+    async function loadAgentPosts() {
+        const container = $('agent-posts-container');
+        if (!container) return;
+        try {
+            const res = await orgFetch('/api/agent/posts');
+            AGENT_POSTS = res.posts || [];
+            renderAgentPosts();
+        } catch (e) {
+            console.error('[Banner] Không tải được bài viết:', e.message);
+            container.innerHTML = `<div style="grid-column:1/-1;color:#ef4444;font-size:13px;">Không thể tải bài viết: ${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    function renderAgentPosts() {
+        const container = $('agent-posts-container');
+        if (!container) return;
+        if (AGENT_POSTS.length === 0) {
+            container.innerHTML = `
+                <div style="grid-column:1/-1;padding:24px;text-align:center;color:var(--text-muted);font-size:13px;border:1px dashed var(--panel-border);border-radius:8px;">
+                    <i class="ri-slideshow-line" style="font-size:32px;display:block;margin-bottom:8px;opacity:0.6;"></i>
+                    Chưa có bài viết hoặc banner nào. Bấm <b>"Thêm bài viết mới"</b> để tạo slide quảng bá cho quán!
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = AGENT_POSTS.map(p => {
+            const cover = p.cover_url || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&q=80';
+            const statusBadge = p.is_active
+                ? `<span style="background:rgba(16,185,129,0.15);color:#10b981;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">Đang hiện</span>`
+                : `<span style="background:rgba(239,68,68,0.15);color:#ef4444;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">Đang ẩn</span>`;
+            const featuredBadge = p.is_featured
+                ? `<span style="background:rgba(245,158,11,0.2);color:#f59e0b;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">⭐ Nổi bật</span>`
+                : '';
+            return `
+                <div class="glass-panel" style="border-radius:10px;overflow:hidden;border:1px solid var(--panel-border);background:rgba(255,255,255,0.02);display:flex;flex-direction:column;">
+                    <div style="position:relative;height:120px;background:#000;">
+                        <img src="${escapeHtml(cover)}" alt="" style="width:100%;height:100%;object-fit:cover;">
+                        <span style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:0.5px;">
+                            ${escapeHtml(p.category || 'ƯU ĐÃI')}
+                        </span>
+                        <div style="position:absolute;top:8px;right:8px;display:flex;gap:4px;">${featuredBadge}${statusBadge}</div>
+                    </div>
+                    <div style="padding:12px;flex:1;display:flex;flex-direction:column;justify-content:space-between;">
+                        <div>
+                            <h5 style="margin:0 0 6px;font-size:13.5px;font-weight:700;color:var(--text-primary);line-height:1.4;">${escapeHtml(p.title_vi)}</h5>
+                            ${p.title_en ? `<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px;">EN: ${escapeHtml(p.title_en)}</div>` : ''}
+                            <p style="margin:0;font-size:12px;color:var(--text-secondary);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+                                ${escapeHtml(p.excerpt_vi || p.content_vi || 'Chưa có tóm tắt...')}
+                            </p>
+                        </div>
+                        <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--panel-border);padding-top:8px;">
+                            <span style="font-size:11px;color:var(--text-muted);">Thứ tự: ${p.sort_order || 0}</span>
+                            <div style="display:flex;gap:6px;">
+                                <button type="button" class="icon-btn" data-post-edit="${p.id}" style="padding:4px 8px;border-radius:4px;border:1px solid var(--panel-border);background:transparent;cursor:pointer;color:var(--text-primary);" title="Sửa bài viết">
+                                    <i class="ri-edit-line"></i> Sửa
+                                </button>
+                                <button type="button" class="icon-btn" data-post-delete="${p.id}" style="padding:4px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.25);background:transparent;cursor:pointer;color:#ef4444;" title="Xóa bài viết">
+                                    <i class="ri-delete-bin-line"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function uploadPostMediaFile(file) {
+        if (!file) throw new Error('Chưa chọn tệp.');
+        const mime = String(file.type || '').toLowerCase();
+        const isImage = mime.startsWith('image/');
+        const isVideo = mime.startsWith('video/');
+        if (!isImage && !isVideo) {
+            throw new Error('Chỉ hỗ trợ tệp hình ảnh (JPG, PNG, WebP) hoặc video (MP4, WebM).');
+        }
+        if (isImage && file.size > 10 * 1024 * 1024) {
+            throw new Error('Ảnh quá lớn (tối đa 10MB). Vui lòng nén hoặc chọn ảnh khác.');
+        }
+        if (isVideo && file.size > 30 * 1024 * 1024) {
+            throw new Error('Video quá lớn (tối đa 30MB). Vui lòng chọn video ngắn hơn.');
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        const data = await orgFetch('/api/agent/posts/upload-media', {
+            method: 'POST',
+            body: formData
+        });
+        return data; // { success: true, url, type, originalName }
+    }
+
+    function insertTextAtCursor(textarea, before, after = '') {
+        if (!textarea) return;
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        const currentText = textarea.value;
+        const selectedText = currentText.substring(start, end);
+        const replacement = before + (selectedText || '') + after;
+        textarea.value = currentText.substring(0, start) + replacement + currentText.substring(end);
+        const newCursor = selectedText ? start + replacement.length : start + before.length;
+        textarea.focus();
+        textarea.setSelectionRange(newCursor, newCursor);
+    }
+
+    function formatArticlePreviewHtml(raw) {
+        if (!raw || !raw.trim()) {
+            return '<p style="color:#94a3b8; font-style:italic;">Chưa có nội dung để xem trước...</p>';
+        }
+        if (/<(p|h[1-6]|img|video|blockquote|ul|ol|div|span|strong|em|br)\b[^>]*>/i.test(raw)) {
+            return raw;
+        }
+        let html = raw.replace(/\[(?:ảnh|photo|image|anh)\s*:\s*([^\]]+)\]/gi, (match, url) => {
+            const cleanUrl = url.trim();
+            return `<figure class="article-embed-media" style="margin: 14px 0; text-align: center;"><img src="${escapeHtml(cleanUrl)}" alt="Hình ảnh bài viết" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);" loading="lazy" /><figcaption style="font-size: 11.5px; color: #64748b; margin-top: 4px;">Hình ảnh đính kèm</figcaption></figure>`;
+        });
+        html = html.replace(/\[(?:video|clip|phim)\s*:\s*([^\]]+)\]/gi, (match, url) => {
+            const cleanUrl = url.trim();
+            return `<figure class="article-embed-media" style="margin: 14px 0; text-align: center;"><video src="${escapeHtml(cleanUrl)}" controls playsinline preload="metadata" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"></video><figcaption style="font-size: 11.5px; color: #64748b; margin-top: 4px;">Video đính kèm</figcaption></figure>`;
+        });
+        html = html.replace(/^###\s*(.+)$/gm, '<h3 style="font-size: 16px; font-weight: 800; color: #0f172a; margin: 16px 0 8px;">$1</h3>');
+        html = html.replace(/^>\s*(.+)$/gm, '<blockquote style="border-left: 3px solid #ef2b9d; padding: 6px 12px; margin: 10px 0; background: #fdf2f8; color: #831843; border-radius: 0 6px 6px 0;">$1</blockquote>');
+        html = html.replace(/^[*-]\s*(.+)$/gm, '<li>$1</li>');
+        html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul style="margin: 8px 0; padding-left: 20px;">$1</ul>');
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        const paragraphs = html.split(/\n\s*\n/);
+        return paragraphs.map(p => {
+            const trimmed = p.trim();
+            if (!trimmed) return '';
+            if (/^(<h3|<blockquote|<ul|<figure)/.test(trimmed)) return trimmed;
+            return `<p style="margin: 8px 0;">${trimmed.replace(/\n/g, '<br/>')}</p>`;
+        }).join('');
+    }
+
+    function updatePostCoverPreview(url) {
+        if ($('post-form-cover-url')) $('post-form-cover-url').value = url || '';
+        const previewBox = $('post-cover-preview-box');
+        const uploadBox = $('post-cover-upload-box');
+        const img = $('post-cover-preview-img');
+        if (url) {
+            if (img) img.src = url;
+            previewBox?.classList.remove('hide');
+            uploadBox?.classList.add('hide');
+        } else {
+            if (img) img.src = '';
+            previewBox?.classList.add('hide');
+            uploadBox?.classList.remove('hide');
+        }
+    }
+
+    function switchPostContentTab(tab) {
+        const editBtn = $('post-tab-edit-btn');
+        const prevBtn = $('post-tab-preview-btn');
+        const toolbar = $('post-editor-toolbar');
+        const textarea = $('post-form-content-vi');
+        const previewContainer = $('post-content-preview-container');
+        const previewBody = $('post-content-preview-body');
+
+        if (tab === 'preview') {
+            if (editBtn) {
+                editBtn.style.background = 'transparent';
+                editBtn.style.color = '#64748b';
+                editBtn.style.boxShadow = 'none';
+            }
+            if (prevBtn) {
+                prevBtn.style.background = '#ffffff';
+                prevBtn.style.color = '#0f172a';
+                prevBtn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)';
+            }
+            if (toolbar) toolbar.style.display = 'none';
+            if (textarea) textarea.style.display = 'none';
+            if (previewContainer) previewContainer.classList.remove('hide');
+            if (previewBody && textarea) {
+                previewBody.innerHTML = formatArticlePreviewHtml(textarea.value);
+            }
+        } else {
+            if (editBtn) {
+                editBtn.style.background = '#ffffff';
+                editBtn.style.color = '#0f172a';
+                editBtn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)';
+            }
+            if (prevBtn) {
+                prevBtn.style.background = 'transparent';
+                prevBtn.style.color = '#64748b';
+                prevBtn.style.boxShadow = 'none';
+            }
+            if (toolbar) toolbar.style.display = 'flex';
+            if (textarea) {
+                textarea.style.display = 'block';
+                textarea.focus();
+            }
+            if (previewContainer) previewContainer.classList.add('hide');
+        }
+    }
+
+    function setupPostModalEvents() {
+        $('post-cover-upload-box')?.addEventListener('click', () => {
+            $('post-cover-file-input')?.click();
+        });
+        $('post-cover-file-input')?.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const statusEl = $('post-cover-upload-status');
+            if (statusEl) statusEl.style.display = 'block';
+            try {
+                const data = await uploadPostMediaFile(file);
+                updatePostCoverPreview(data.url);
+                showToast('Đã tải ảnh bìa thành công!', 'success');
+            } catch (err) {
+                showToast(err.message || 'Không thể tải ảnh bìa.', 'error');
+            } finally {
+                if (statusEl) statusEl.style.display = 'none';
+                e.target.value = '';
+            }
+        });
+        $('post-cover-remove-btn')?.addEventListener('click', () => {
+            updatePostCoverPreview('');
+        });
+
+        document.querySelectorAll('.post-tool-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tool = btn.dataset.tool;
+                const textarea = $('post-form-content-vi');
+                if (tool === 'bold') insertTextAtCursor(textarea, '**', '**');
+                else if (tool === 'italic') insertTextAtCursor(textarea, '*', '*');
+                else if (tool === 'h3') insertTextAtCursor(textarea, '\n### Tiêu đề đoạn\n');
+                else if (tool === 'list') insertTextAtCursor(textarea, '\n- Mục danh sách 1\n- Mục danh sách 2\n');
+                else if (tool === 'quote') insertTextAtCursor(textarea, '\n> Hộp ghi chú / lưu ý nổi bật...\n');
+            });
+        });
+
+        $('post-tool-upload-image')?.addEventListener('click', () => {
+            $('post-content-image-input')?.click();
+        });
+        $('post-content-image-input')?.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const statusEl = $('post-content-upload-status');
+            if (statusEl) {
+                statusEl.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang tải ảnh...';
+                statusEl.style.display = 'inline-flex';
+            }
+            try {
+                const data = await uploadPostMediaFile(file);
+                const textarea = $('post-form-content-vi');
+                insertTextAtCursor(textarea, `\n[ảnh: ${data.url}]\n`);
+                showToast('Đã chèn ảnh vào bài viết!', 'success');
+            } catch (err) {
+                showToast(err.message || 'Không thể tải ảnh lên.', 'error');
+            } finally {
+                if (statusEl) statusEl.style.display = 'none';
+                e.target.value = '';
+            }
+        });
+
+        $('post-tool-upload-video')?.addEventListener('click', () => {
+            $('post-content-video-input')?.click();
+        });
+        $('post-content-video-input')?.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const statusEl = $('post-content-upload-status');
+            if (statusEl) {
+                statusEl.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang tải video...';
+                statusEl.style.display = 'inline-flex';
+            }
+            try {
+                const data = await uploadPostMediaFile(file);
+                const textarea = $('post-form-content-vi');
+                insertTextAtCursor(textarea, `\n[video: ${data.url}]\n`);
+                showToast('Đã chèn video vào bài viết!', 'success');
+            } catch (err) {
+                showToast(err.message || 'Không thể tải video lên.', 'error');
+            } finally {
+                if (statusEl) statusEl.style.display = 'none';
+                e.target.value = '';
+            }
+        });
+
+        $('post-tab-edit-btn')?.addEventListener('click', () => switchPostContentTab('edit'));
+        $('post-tab-preview-btn')?.addEventListener('click', () => switchPostContentTab('preview'));
+    }
+
+    function openPostModal(post = null) {
+        const modal = $('agent-post-modal');
+        if (!modal) return;
+        const titleEl = $('agent-post-modal-title');
+        $('post-form-id').value = post ? post.id : '';
+        $('post-form-title-vi').value = post ? (post.title_vi || '') : '';
+        $('post-form-title-en').value = post ? (post.title_en || '') : '';
+        $('post-form-category').value = post ? (post.category || 'ƯU ĐÃI') : 'ƯU ĐÃI';
+        $('post-form-sort-order').value = post ? (post.sort_order || 0) : 0;
+        $('post-form-excerpt-vi').value = post ? (post.excerpt_vi || '') : '';
+        $('post-form-content-vi').value = post ? (post.content_vi || '') : '';
+        $('post-form-is-featured').checked = post ? Boolean(post.is_featured) : false;
+        $('post-form-is-active').checked = post ? (post.is_active !== false) : true;
+
+        updatePostCoverPreview(post ? (post.cover_url || '') : '');
+        switchPostContentTab('edit');
+
+        if (titleEl) {
+            titleEl.innerHTML = `<i class="ri-article-line" style="color:#f59e0b;"></i> <span>${post ? 'Chỉnh sửa bài viết' : 'Thêm bài viết & Banner mới'}</span>`;
+        }
+        modal.classList.remove('hide');
+    }
+
+    function closePostModal() {
+        $('agent-post-modal')?.classList.add('hide');
+    }
+
+    async function handlePostFormSubmit(e) {
+        e.preventDefault();
+        const id = $('post-form-id').value;
+        const payload = {
+            titleVi: $('post-form-title-vi').value.trim(),
+            titleEn: $('post-form-title-en').value.trim() || null,
+            category: $('post-form-category').value.trim() || 'ƯU ĐÃI',
+            sortOrder: Number($('post-form-sort-order').value) || 0,
+            coverUrl: $('post-form-cover-url').value.trim(),
+            excerptVi: $('post-form-excerpt-vi').value.trim() || null,
+            contentVi: $('post-form-content-vi').value.trim() || null,
+            isFeatured: $('post-form-is-featured').checked,
+            isActive: $('post-form-is-active').checked
+        };
+
+        if (!payload.titleVi) return showToast('Vui lòng nhập tiêu đề tiếng Việt.', 'error');
+        if (!payload.coverUrl) return showToast('Vui lòng tải ảnh bìa banner cho bài viết.', 'error');
+
+        const btn = $('agent-post-modal-save-btn');
+        if (btn) btn.disabled = true;
+
+        try {
+            if (id) {
+                await orgFetch(`/api/agent/posts/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                showToast('Đã cập nhật bài viết thành công!', 'success');
+            } else {
+                await orgFetch('/api/agent/posts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                showToast('Đã thêm bài viết mới thành công!', 'success');
+            }
+            closePostModal();
+            loadAgentPosts();
+        } catch (err) {
+            showToast(err.message || 'Lỗi khi lưu bài viết.', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function deleteAgentPost(postId) {
+        if (!confirm('Bạn có chắc chắn muốn xóa bài viết/banner này?')) return;
+        try {
+            await orgFetch(`/api/agent/posts/${postId}`, { method: 'DELETE' });
+            showToast('Đã xóa bài viết.', 'success');
+            loadAgentPosts();
+        } catch (e) {
+            showToast(e.message || 'Không thể xóa bài viết.', 'error');
         }
     }
 
@@ -785,11 +1206,44 @@
             const picker = event.target.closest('[data-image-for]');
             if (picker) void uploadImage(picker.dataset.imageFor, picker.files?.[0]);
         });
+
+        $('agent-post-add-btn')?.addEventListener('click', () => openPostModal(null));
+        $('agent-post-modal-close-btn')?.addEventListener('click', closePostModal);
+        $('agent-post-modal-cancel-btn')?.addEventListener('click', closePostModal);
+        $('agent-post-form')?.addEventListener('submit', handlePostFormSubmit);
+        setupPostModalEvents();
+
+        $('agent-posts-container')?.addEventListener('click', (event) => {
+            const edit = event.target.closest('[data-post-edit]');
+            if (edit) {
+                const p = AGENT_POSTS.find(x => x.id === Number(edit.dataset.postEdit));
+                if (p) openPostModal(p);
+                return;
+            }
+            const del = event.target.closest('[data-post-delete]');
+            if (del) {
+                deleteAgentPost(del.dataset.postDelete);
+                return;
+            }
+        });
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
     else bind();
 
-    // admin.js gọi vào đây khi người dùng mở thẻ "Thực đơn".
-    window.MenuConsole = { load, reset: () => { CATEGORIES = []; ITEMS = []; pendingTranslation.clear(); } };
+    // admin.js gọi vào đây khi người dùng mở thẻ "Thực đơn / Sản phẩm".
+    window.MenuConsole = {
+        load,
+        invalidate: () => {
+            lastRenderHash = '';
+            if (window._ORG_CACHE_TIMESTAMP) delete window._ORG_CACHE_TIMESTAMP['menu'];
+        },
+        reset: () => {
+            CATEGORIES = [];
+            ITEMS = [];
+            lastRenderHash = '';
+            pendingTranslation.clear();
+            if (window._ORG_CACHE_TIMESTAMP) delete window._ORG_CACHE_TIMESTAMP['menu'];
+        }
+    };
 })();
