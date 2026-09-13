@@ -1069,16 +1069,16 @@
         menuOverlay.innerHTML = `
             <div class="staff-menu-sheet">
                 <header class="staff-menu-hero">
-                    <div class="staff-menu-mark"><i class="ri-restaurant-2-line"></i></div>
+                    <div class="staff-menu-mark"><i class="ri-shopping-bag-3-line"></i></div>
                     <div class="staff-menu-title">
-                        <h3>Thực đơn</h3>
+                        <h3>Sản phẩm</h3>
                         <span>Chỉ xem — dùng để tư vấn khách</span>
                     </div>
                     <button type="button" class="icon-btn cart-close" title="Đóng"><i class="ri-close-line"></i></button>
                 </header>
                 <div class="staff-menu-search">
                     <i class="ri-search-line"></i>
-                    <input type="search" placeholder="Tìm món…" aria-label="Tìm món">
+                    <input type="search" placeholder="Tìm sản phẩm…" aria-label="Tìm sản phẩm">
                 </div>
                 <nav class="staff-menu-tabs"></nav>
                 <div class="staff-menu-list"><p class="cart-loading"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p></div>
@@ -1099,7 +1099,7 @@
         try {
             const res = await authFetch(`${API_BASE}/api/admin/menu/view`);
             const data = await res.json();
-            if (!res.ok) throw new Error(data?.error || 'Không tải được thực đơn.');
+            if (!res.ok) throw new Error(data?.error || 'Không tải được danh sách sản phẩm.');
             const customName = data.menuCustomLabel || '';
             if (customName) {
                 const titleEl = menuOverlay?.querySelector('.staff-menu-title h3');
@@ -1118,7 +1118,7 @@
                 if (used.has(String(category.id))) menuState.categories.set(category.id, category.name);
             }
             if (menuState.items.length === 0) {
-                list.innerHTML = `<p class="cart-empty">Cơ sở chưa có món nào trong ${customName ? customName.toLowerCase() : 'thực đơn'}.</p>`;
+                list.innerHTML = `<p class="cart-empty">Cơ sở chưa có sản phẩm nào trong ${customName ? customName.toLowerCase() : 'danh sách'}.</p>`;
                 return;
             }
             paintMenuView();

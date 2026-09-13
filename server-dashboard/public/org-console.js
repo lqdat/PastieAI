@@ -280,47 +280,48 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
 
     ctx.textAlign = 'center';
 
-    // 3. Slogan nhận diện song ngữ — cùng kích cỡ chữ VN và EN
+    // 3. Slogan nhận diện song ngữ
     ctx.fillStyle = '#c90c6c';
-    ctx.font = `800 28px ${posterFont}`;
-    ctx.fillText('Không rào cản ngôn ngữ, thấu hiểu mọi khách hàng', canvas.width / 2, 146);
+    ctx.font = `800 24px ${posterFont}`;
+    ctx.fillText('Không rào cản ngôn ngữ, thấu hiểu mọi khách hàng', canvas.width / 2, 116);
 
     ctx.fillStyle = '#755a68';
-    ctx.font = `600 28px ${posterFont}`;
-    ctx.fillText('No language barriers • Understand every customer', canvas.width / 2, 180);
+    ctx.font = `600 20px ${posterFont}`;
+    ctx.fillText('No language barriers • Understand every customer', canvas.width / 2, 144);
 
     // 4. Tên Agent và Tên QR
     const nameText = businessName || 'Pastie Chat Partner';
     ctx.fillStyle = '#30233a';
-    ctx.font = `800 36px ${posterFont}`;
-    drawPosterText(ctx, nameText, canvas.width / 2, 224, 900, 40, 1);
+    ctx.font = `800 30px ${posterFont}`;
+    drawPosterText(ctx, nameText, canvas.width / 2, 184, 900, 36, 1);
 
-    if (qrLabel && qrLabel.trim() && qrLabel.trim() !== nameText.trim()) {
+    const hasCustomLabel = qrLabel && qrLabel.trim() && qrLabel.trim() !== nameText.trim();
+    if (hasCustomLabel) {
         const labelText = String(qrLabel).trim();
-        ctx.font = `700 22px ${posterFont}`;
+        ctx.font = `700 20px ${posterFont}`;
         const textW = ctx.measureText(labelText).width;
-        const pillW = Math.min(Math.max(textW + 48, 150), 520);
-        const pillH = 40;
+        const pillW = Math.min(Math.max(textW + 40, 140), 520);
+        const pillH = 34;
         const pillX = (canvas.width - pillW) / 2;
-        const pillY = 242;
+        const pillY = 200;
 
         ctx.fillStyle = '#fff0f7';
-        drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 20);
+        drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 17);
         ctx.fill();
 
         ctx.strokeStyle = '#f6d3e6';
         ctx.lineWidth = 1.5;
-        drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 20);
+        drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 17);
         ctx.stroke();
 
         ctx.fillStyle = '#c90c6c';
-        ctx.fillText(labelText, canvas.width / 2, pillY + 27);
+        ctx.fillText(labelText, canvas.width / 2, pillY + 24);
     }
 
-    // 5. Khung thẻ QR
-    const cardSize = 560;
+    // 5. Khung thẻ QR — Tăng kích thước từ 560 lên 670 để giảm khoảng trống thừa, bố cục hài hòa
+    const cardSize = 670;
     const cardX = (canvas.width - cardSize) / 2;
-    const cardY = 296;
+    const cardY = hasCustomLabel ? 248 : 234;
 
     // Lớp hào quang vo-qr ngoài
     const voPadding = 12;
@@ -330,9 +331,9 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     const voRadius = 32;
 
     ctx.save();
-    ctx.shadowColor = 'rgba(201, 12, 108, 0.24)';
-    ctx.shadowBlur = 40;
-    ctx.shadowOffsetY = 16;
+    ctx.shadowColor = 'rgba(201, 12, 108, 0.22)';
+    ctx.shadowBlur = 36;
+    ctx.shadowOffsetY = 14;
     const auraGrad = ctx.createLinearGradient(voX, voY, voX + voSize, voY + voSize);
     auraGrad.addColorStop(0, 'rgba(239, 43, 157, 0.35)');
     auraGrad.addColorStop(1, 'rgba(255, 190, 120, 0.35)');
@@ -351,10 +352,10 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     ctx.stroke();
 
     // 4 góc ngắm camera
-    drawCameraCorners(ctx, cardX + 14, cardY + 14, cardSize - 28, cardSize - 28, 36, 9, 4.5, '#ef2b9d');
+    drawCameraCorners(ctx, cardX + 14, cardY + 14, cardSize - 28, cardSize - 28, 42, 10, 5, '#ef2b9d');
 
-    // Vẽ mã QR
-    const qrPadding = 42;
+    // Vẽ mã QR — Tăng diện tích QR từ 476 lên 618px, giảm padding từ 42 xuống 26px
+    const qrPadding = 26;
     const qrSize = cardSize - qrPadding * 2;
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(qrImage, cardX + qrPadding, cardY + qrPadding, qrSize, qrSize);
@@ -364,7 +365,7 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     if (hasAgentLogo) {
         const cX = canvas.width / 2;
         const cY = cardY + cardSize / 2;
-        const badgeQrSize = 127;  // 98 * 1.3
+        const badgeQrSize = 136;
         const bX = cX - badgeQrSize / 2;
         const bY = cY - badgeQrSize / 2;
 
@@ -389,40 +390,41 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
         ctx.restore();
     }
 
-    // 6. Khu vực chỉ dẫn quét mã song ngữ — cùng kích cỡ chữ
+    // 6. Khu vực chỉ dẫn quét mã song ngữ — Cân đối và liền lạc với khung QR
+    const calloutY = cardY + cardSize + 36;
     ctx.fillStyle = '#30233a';
-    ctx.font = `800 32px ${posterFont}`;
-    ctx.fillText('QUÉT MÃ ĐỂ BẮT ĐẦU TRÒ CHUYỆN', canvas.width / 2, 900);
+    ctx.font = `800 27px ${posterFont}`;
+    ctx.fillText('QUÉT MÃ ĐỂ BẮT ĐẦU TRÒ CHUYỆN', canvas.width / 2, calloutY);
 
     ctx.fillStyle = '#786b7b';
-    ctx.font = `700 32px ${posterFont}`;
-    ctx.fillText('SCAN TO START A CHAT', canvas.width / 2, 940);
+    ctx.font = `700 21px ${posterFont}`;
+    ctx.fillText('SCAN TO START A CHAT', canvas.width / 2, calloutY + 28);
 
     // Thanh hướng dẫn camera song ngữ
     {
-        const pillY2 = 966;
-        const pillH2 = 52;
-        const pillW2 = 780;
+        const pillY2 = calloutY + 44;
+        const pillH2 = 42;
+        const pillW2 = 720;
         const pillX2 = (canvas.width - pillW2) / 2;
 
         ctx.fillStyle = '#fff0f7';
-        drawPosterRoundedRect(ctx, pillX2, pillY2, pillW2, pillH2, 26);
+        drawPosterRoundedRect(ctx, pillX2, pillY2, pillW2, pillH2, 21);
         ctx.fill();
 
         ctx.strokeStyle = '#f6d3e6';
         ctx.lineWidth = 1.5;
-        drawPosterRoundedRect(ctx, pillX2, pillY2, pillW2, pillH2, 26);
+        drawPosterRoundedRect(ctx, pillX2, pillY2, pillW2, pillH2, 21);
         ctx.stroke();
 
         ctx.fillStyle = '#b62b70';
-        ctx.font = `700 20px ${posterFont}`;
-        ctx.fillText('Mở Camera / Open Camera  •  Hướng vào QR / Point at QR', canvas.width / 2, pillY2 + 33);
+        ctx.font = `700 18px ${posterFont}`;
+        ctx.fillText('Mở Camera / Open Camera  •  Hướng vào QR / Point at QR', canvas.width / 2, pillY2 + 27);
     }
 
     // Chân trang song ngữ
     ctx.fillStyle = '#9a8b99';
-    ctx.font = `500 18px ${posterFont}`;
-    ctx.fillText('Vận hành bởi Pastie  •  Powered by Pastie', canvas.width / 2, 1054);
+    ctx.font = `500 16px ${posterFont}`;
+    ctx.fillText('Vận hành bởi Pastie  •  Powered by Pastie', canvas.width / 2, 1056);
 
     return new Promise((resolve, reject) => canvas.toBlob(
         blob => blob ? resolve(blob) : reject(new Error('Không thể xuất poster QR.')),
@@ -500,6 +502,24 @@ function formatHourWindows(windows) {
 }
 
 
+window._ORG_TAB_LOADED = window._ORG_TAB_LOADED || {};
+window._ORG_CACHE_TIMESTAMP = window._ORG_CACHE_TIMESTAMP || {};
+const ORG_TAB_CACHE_TTL = 45000; // 45 giây cache đệm cho các tab quản trị
+
+function isOrgTabFresh(name) {
+    const ts = window._ORG_CACHE_TIMESTAMP[name];
+    return Boolean(ts && (Date.now() - ts < ORG_TAB_CACHE_TTL));
+}
+
+function invalidateOrgTabCache(name) {
+    if (name) {
+        delete window._ORG_CACHE_TIMESTAMP[name];
+    } else {
+        window._ORG_CACHE_TIMESTAMP = {};
+    }
+}
+window.invalidateOrgTabCache = invalidateOrgTabCache;
+
 function switchOrgTab(name) {
     window.closeAddBoxModal?.();
     document.querySelectorAll('[data-org-tab]').forEach((tab) => {
@@ -509,13 +529,24 @@ function switchOrgTab(name) {
         pane.classList.toggle('hide', pane.dataset.orgPane !== name);
     });
     setOrgStatus('');
-    if (name === 'agents') void loadOrgAgents();
-    if (name === 'sales') void loadOrgSales();
-    if (name === 'groups') void loadOrgGroups();
-    if (name === 'qr') void loadOrgQr();
-    // Thực đơn nằm ở menu-console.js — mảnh đầu tiên của QR Console tách riêng.
+
+    const isFresh = isOrgTabFresh(name);
+    const hasLoadedBefore = Boolean(window._ORG_TAB_LOADED[name]);
+    window._ORG_TAB_LOADED[name] = true;
+
+    // Chuyển tab tức thì 0ms, không bắn request mạng lặp lại nếu dữ liệu còn hạn cache
+    if (isFresh && hasLoadedBefore) return;
+
+    // Nếu dữ liệu đã nạp nhưng quá hạn, chạy ngầm revalidate mà không hiện spinner
+    const isSilent = hasLoadedBefore;
+
+    if (name === 'agents') void loadOrgAgents(isSilent);
+    if (name === 'sales') void loadOrgSales(isSilent);
+    if (name === 'groups') void loadOrgGroups(false, isSilent);
+    if (name === 'qr') void loadOrgQr(isSilent);
+    // Sản phẩm nằm ở menu-console.js — mảnh đầu tiên của QR Console tách riêng.
     if (name === 'menu') {
-        void window.MenuConsole?.load();
+        void window.MenuConsole?.load(isSilent);
         void loadAgentMenuSettings();
     }
 }
@@ -534,7 +565,7 @@ function openOrgModal() {
         document.querySelector(`[data-org-tab="${name}"]`)?.classList.toggle('hide', isSuper);
     });
     const title = document.getElementById('org-title');
-    if (title) title.textContent = isSuper ? 'Quản lý Agent' : 'Quản lý Sale, nhóm, QR và thực đơn';
+    if (title) title.textContent = isSuper ? 'Quản lý Agent' : 'Quản lý Sale, nhóm, QR và sản phẩm';
     const kicker = document.getElementById('org-kicker');
     if (kicker) kicker.textContent = 'PHÂN CẤP TỔ CHỨC';
 
@@ -552,9 +583,23 @@ function openOrgModal() {
     }
 
     document.getElementById('org-modal')?.classList.remove('hide');
-    switchOrgTab(isSuper ? 'agents' : 'sales');
-    // Nhóm được tải sẵn vì hai form Sale và QR đều cần danh sách nhóm.
-    if (!isSuper) void loadOrgGroups(true);
+    const defaultTab = isSuper ? 'agents' : 'sales';
+    switchOrgTab(defaultTab);
+
+    // PREFETCH TOÀN BỘ CÁC TAB CÒN LẠI TRONG NỀN (ZERO-LATENCY COLD SWITCH)
+    // Tải song song ngầm để khi người dùng click sang Nhóm, Mã QR hay Sản phẩm thì dữ liệu đã có sẵn 0ms
+    if (!isSuper) {
+        if (!isOrgTabFresh('groups')) {
+            void loadOrgGroups(false, true).catch(() => {});
+        }
+        if (!isOrgTabFresh('qr')) {
+            void loadOrgQr(true).catch(() => {});
+        }
+        if (!isOrgTabFresh('menu')) {
+            void window.MenuConsole?.load(true).catch(() => {});
+            void loadAgentMenuSettings().catch(() => {});
+        }
+    }
 }
 
 
@@ -566,14 +611,27 @@ function closeOrgModal() {
 
 // --- Agent -------------------------------------------------------------------
 
-async function loadOrgAgents() {
+async function loadOrgAgents(isSilent = false) {
     const box = document.getElementById('org-agent-list');
     const badge = document.getElementById('org-agent-count-badge');
     if (!box) return;
-    box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách Agent…</p>';
+    if (!isSilent && (!window.ORG_AGENTS_CACHE || window.ORG_AGENTS_CACHE.length === 0)) {
+        box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách Agent…</p>';
+    }
     try {
         const agents = await orgFetch('/api/superadmin/agents');
+        window.ORG_AGENTS_CACHE = agents;
+        window._ORG_CACHE_TIMESTAMP['agents'] = Date.now();
+        window._ORG_TAB_LOADED['agents'] = true;
         if (badge) badge.textContent = `${agents.length} Agent`;
+
+        // Render Guard: tránh vẽ lại DOM nếu danh sách Agent không đổi
+        const agentsHash = JSON.stringify(agents.map(a => [a.id, a.full_name, a.sale_count, a.sale_limit, a.group_count, a.deferred_payment_mode, a.superadmin_menu_disabled, a.is_active]));
+        if (box.dataset.renderedHash === agentsHash && box.children.length > 0) {
+            return;
+        }
+        box.dataset.renderedHash = agentsHash;
+
         box.innerHTML = agents.length ? agents.map((agent) => `
             <article class="org-item">
                 <div class="org-item-main">
@@ -761,12 +819,14 @@ function resetOrgSaleForm() {
 }
 
 
-async function loadOrgSales() {
+async function loadOrgSales(isSilent = false) {
     const box = document.getElementById('org-sale-list');
     const badge = document.getElementById('org-sale-count-badge');
     const quotaCount = document.getElementById('org-quota-count');
     if (!box) return;
-    box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+    if (!isSilent && (!window.ORG_SALES || window.ORG_SALES.length === 0)) {
+        box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+    }
     try {
         // Cập nhật lại thông tin CURRENT_ADMIN để lấy sale_limit mới nhất từ server
         try {
@@ -778,6 +838,9 @@ async function loadOrgSales() {
         } catch (e) {}
 
         window.ORG_SALES = await orgFetch('/api/agent/sales');
+        window._ORG_CACHE_TIMESTAMP['sales'] = Date.now();
+        window._ORG_TAB_LOADED['sales'] = true;
+
         const count = window.ORG_SALES.length;
         if (badge) badge.textContent = `${count} Sale`;
         if (quotaCount) {
@@ -800,6 +863,13 @@ async function loadOrgSales() {
 
         // Cập nhật select Sale trong Form Tạo Nhóm
         renderSalePicker(window.ORG_SALES);
+
+        // Render Guard: tránh hủy và dựng lại toàn bộ DOM thẻ Sale nếu dữ liệu không đổi
+        const salesHash = JSON.stringify(window.ORG_SALES.map(s => [s.id, s.full_name, s.username, s.avatar_url, s.group_id, s.on_shift, s.work_shift, s.is_active]));
+        if (box.dataset.renderedHash === salesHash && box.children.length > 0) {
+            return;
+        }
+        box.dataset.renderedHash = salesHash;
 
         box.innerHTML = window.ORG_SALES.length ? window.ORG_SALES.map((sale) => `
             <article class="org-item sale-card">
@@ -842,66 +912,77 @@ async function loadOrgSales() {
 
 // --- Nhóm --------------------------------------------------------------------
 
-async function loadOrgGroups(quiet) {
+async function loadOrgGroups(quiet, isSilent = false) {
     const box = document.getElementById('org-group-list');
     const badge = document.getElementById('org-group-count-badge');
-    if (!quiet && box) box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+    if (!quiet && !isSilent && box && (!window.ORG_GROUPS || window.ORG_GROUPS.length === 0)) {
+        box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+    }
     try {
         if ((window.ORG_SALES || []).length === 0) {
             try { window.ORG_SALES = await orgFetch('/api/agent/sales'); } catch(e) {}
         }
         window.ORG_GROUPS = await orgFetch('/api/agent/groups');
+        window._ORG_CACHE_TIMESTAMP['groups'] = Date.now();
+        window._ORG_TAB_LOADED['groups'] = true;
         if (badge) badge.textContent = `${window.ORG_GROUPS.length} Nhóm`;
 
         // Cập nhật select Sale trong Form Tạo Nhóm
         renderSalePicker(window.ORG_SALES || []);
 
         if (box && !quiet) {
-            box.innerHTML = window.ORG_GROUPS.length ? window.ORG_GROUPS.map((group) => {
-                const groupSales = group.sales || [];
-                const groupSaleIds = new Set(groupSales.map(s => Number(s.sale_id)));
-                const notInGroupSales = (window.ORG_SALES || []).filter(s => !groupSaleIds.has(Number(s.id)));
+            // Render Guard: tránh dựng lại DOM nhóm nếu dữ liệu không đổi
+            const groupsHash = JSON.stringify(window.ORG_GROUPS.map(g => [g.id, g.name, g.description, (g.sales || []).map(s => s.sale_id)]));
+            if (box.dataset.renderedHash === groupsHash && box.children.length > 0) {
+                // Giữ nguyên DOM
+            } else {
+                box.dataset.renderedHash = groupsHash;
+                box.innerHTML = window.ORG_GROUPS.length ? window.ORG_GROUPS.map((group) => {
+                    const groupSales = group.sales || [];
+                    const groupSaleIds = new Set(groupSales.map(s => Number(s.sale_id)));
+                    const notInGroupSales = (window.ORG_SALES || []).filter(s => !groupSaleIds.has(Number(s.id)));
 
-                const chipsHtml = groupSales.length ? groupSales.map(s => `
-                    <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;color:var(--text-primary);">
-                        <span>${escapeHtml(s.full_name || 'Sale')}</span>
-                        <button type="button" data-remove-sale-group="${group.id}" data-sale-id="${s.sale_id}" style="border:none;background:none;cursor:pointer;color:#ef4444;font-size:13px;padding:0 2px;display:flex;align-items:center;" title="Xóa Sale khỏi nhóm">&times;</button>
-                    </span>
-                `).join('') : '<span style="font-size:11.5px;color:var(--text-secondary);font-style:italic;">Chưa có Sale trong nhóm này</span>';
+                    const chipsHtml = groupSales.length ? groupSales.map(s => `
+                        <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;color:var(--text-primary);">
+                            <i class="ri-user-line" style="color:#6366f1;"></i> ${escapeHtml(s.sale_name || s.sale_username)}
+                            <button type="button" data-remove-sale="${s.sale_id}" data-from-group="${group.id}" title="Gỡ Sale khỏi nhóm" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:0;display:flex;align-items:center;font-size:13px;line-height:1;"><i class="ri-close-circle-fill"></i></button>
+                        </span>
+                    `).join('') : '<span style="font-size:11px;color:var(--text-secondary);font-style:italic;">Chưa có Sale nào trong nhóm</span>';
 
-                const addSaleOptions = notInGroupSales.map(s => `<option value="${s.id}">+ ${escapeHtml(s.full_name || s.username)}</option>`).join('');
+                    const addSaleOptions = notInGroupSales.map(s => `<option value="${s.id}">${escapeHtml(s.full_name || s.username)}</option>`).join('');
 
-                return `
-                <article class="org-item" style="flex-direction:column;align-items:stretch;gap:8px;padding:12px 14px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <div>
-                            <strong style="font-size:13.5px;"><i class="ri-team-line" style="color:var(--accent-color);margin-right:4px;"></i>${escapeHtml(group.name)}</strong>
-                            <small style="margin-left:8px;color:var(--text-secondary);">${group.waiting_count} chờ / ${group.active_count} đang chat</small>
-                            ${group.description ? `<p style="margin:2px 0 0 0;font-size:11.5px;color:var(--text-secondary);">${escapeHtml(group.description)}</p>` : ''}
+                    return `
+                    <article class="org-item" style="flex-direction:column;align-items:stretch;gap:8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                            <div>
+                                <strong style="font-size:13.5px;"><i class="ri-team-line" style="color:var(--accent-color);margin-right:4px;"></i>${escapeHtml(group.name)}</strong>
+                                <small style="margin-left:8px;color:var(--text-secondary);">${group.waiting_count} chờ / ${group.active_count} đang chat</small>
+                                ${group.description ? `<p style="margin:2px 0 0 0;font-size:11.5px;color:var(--text-secondary);">${escapeHtml(group.description)}</p>` : ''}
+                            </div>
+                            <div style="display:flex;gap:6px;align-items:center;">
+                                <button type="button" class="org-btn-edit" data-group-edit="${group.id}" title="Sửa tên nhóm" style="background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:4px 8px;font-size:11.5px;cursor:pointer;font-weight:600;"><i class="ri-edit-line"></i> Sửa</button>
+                                <button type="button" class="org-remove" data-group-delete="${group.id}" title="Xóa nhóm"><i class="ri-delete-bin-line"></i></button>
+                            </div>
                         </div>
-                        <div style="display:flex;gap:6px;align-items:center;">
-                            <button type="button" class="org-btn-edit" data-group-edit="${group.id}" title="Sửa tên nhóm" style="background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:4px 8px;font-size:11.5px;cursor:pointer;font-weight:600;"><i class="ri-edit-line"></i> Sửa</button>
-                            <button type="button" class="org-remove" data-group-delete="${group.id}" title="Xóa nhóm"><i class="ri-delete-bin-line"></i></button>
-                        </div>
-                    </div>
 
-                    <!-- Quản lý thành viên Sale trong nhóm -->
-                    <div style="background:rgba(0,0,0,0.025);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                            <span style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;">Thành viên (${groupSales.length})</span>
-                            ${notInGroupSales.length ? `
-                                <select class="org-add-sale-to-group-select" data-group-id="${group.id}" style="font-size:11px;padding:2px 6px;border-radius:5px;background:var(--panel-bg);border:1px solid var(--panel-border);color:var(--text-primary);cursor:pointer;">
-                                    <option value="">+ Thêm Sale vào nhóm...</option>
-                                    ${addSaleOptions}
-                                </select>
-                            ` : '<span style="font-size:10.5px;color:var(--text-secondary);">(Đã đủ tất cả Sale)</span>'}
+                        <!-- Quản lý thành viên Sale trong nhóm -->
+                        <div style="background:rgba(0,0,0,0.025);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                                <span style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;">Thành viên (${groupSales.length})</span>
+                                ${notInGroupSales.length ? `
+                                    <select class="org-add-sale-to-group-select" data-group-id="${group.id}" style="font-size:11px;padding:2px 6px;border-radius:5px;background:var(--panel-bg);border:1px solid var(--panel-border);color:var(--text-primary);cursor:pointer;">
+                                        <option value="">+ Thêm Sale vào nhóm...</option>
+                                        ${addSaleOptions}
+                                    </select>
+                                ` : '<span style="font-size:10.5px;color:var(--text-secondary);">(Đã đủ tất cả Sale)</span>'}
+                            </div>
+                            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                                ${chipsHtml}
+                            </div>
                         </div>
-                        <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                            ${chipsHtml}
-                        </div>
-                    </div>
-                </article>`;
-            }).join('') : '<p class="org-empty">Chưa có nhóm nào.</p>';
+                    </article>`;
+                }).join('') : '<p class="org-empty">Chưa có nhóm nào.</p>';
+            }
         }
 
         const groupOptions = (window.ORG_GROUPS || []).map((group) => `<option value="${group.id}">${escapeHtml(group.name)}</option>`).join('');
@@ -928,14 +1009,18 @@ async function loadOrgGroups(quiet) {
 }
 
 
-async function loadOrgQr() {
+async function loadOrgQr(isSilent = false) {
     const box = document.getElementById('org-qr-list');
     const badge = document.getElementById('org-qr-count-badge');
     if (!box) return;
-    box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+    if (!isSilent && (!window.CURRENT_QR_ACCOUNTS || window.CURRENT_QR_ACCOUNTS.length === 0)) {
+        box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
+    }
     try {
-        if ((window.ORG_SALES || []).length === 0) await loadOrgSales();
+        if ((window.ORG_SALES || []).length === 0) await loadOrgSales(true);
         window.CURRENT_QR_ACCOUNTS = await orgFetch('/api/agent/qr-accounts');
+        window._ORG_CACHE_TIMESTAMP['qr'] = Date.now();
+        window._ORG_TAB_LOADED['qr'] = true;
         renderOrgQrList();
     } catch (error) {
         if (badge) badge.textContent = '0 QR';
@@ -957,6 +1042,14 @@ function renderOrgQrList() {
         : allQr;
 
     if (badge) badge.textContent = `${filtered.length} QR`;
+
+    // Render Guard: tránh tải lại hàng loạt ảnh QR quickchart nếu dữ liệu không đổi
+    const qrHash = `${selectedGroupId}_${JSON.stringify(filtered.map(a => [a.id, a.label, a.group_id, a.chat_url]))}`;
+    if (box.dataset.renderedHash === qrHash && box.children.length > 0) {
+        return;
+    }
+    box.dataset.renderedHash = qrHash;
+
     const eventValue = (value) => encodeURIComponent(value ?? '').replace(/'/g, '%27');
     box.innerHTML = filtered.length ? filtered.map((account) => {
         const qrThumb = `https://quickchart.io/qr?size=160&text=${encodeURIComponent(account.chat_url)}`;
@@ -1114,10 +1207,12 @@ function clearSalePicker() {
 async function loadAgentMenuSettings() {
     const card = document.getElementById('agent-menu-settings-card');
     if (!card) return;
+    if (isOrgTabFresh('menu_settings')) return;
     try {
         const res = await authFetch(`${API_BASE}/api/agent/menu-settings`);
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Không tải được cài đặt menu.');
+        window._ORG_CACHE_TIMESTAMP['menu_settings'] = Date.now();
 
         const checkbox = document.getElementById('agent-menu-toggle-checkbox');
         const labelInput = document.getElementById('agent-menu-label-input');
@@ -1137,11 +1232,11 @@ async function loadAgentMenuSettings() {
 
         const customName = data.menu_custom_label || '';
         const tabSpan = document.querySelector('[data-org-tab="menu"] span');
-        if (tabSpan) tabSpan.textContent = customName || 'Thực đơn';
+        if (tabSpan) tabSpan.textContent = customName || 'Sản phẩm';
         const paneHeader = document.querySelector('[data-org-pane="menu"] .org-list-header h4');
-        if (paneHeader) paneHeader.textContent = customName ? `Các món trong ${customName.toLowerCase()}` : 'Các món trong thực đơn';
+        if (paneHeader) paneHeader.textContent = customName ? `Các sản phẩm trong ${customName.toLowerCase()}` : 'Danh sách sản phẩm';
         const saleBtnText = document.querySelector('#sale-menu-btn span');
-        if (saleBtnText) saleBtnText.textContent = customName || 'Thực đơn';
+        if (saleBtnText) saleBtnText.textContent = customName || 'Sản phẩm';
     } catch (err) {
         console.error('loadAgentMenuSettings error:', err.message);
     }
@@ -1168,7 +1263,8 @@ async function saveAgentMenuSettings() {
         });
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data?.error || 'Không thể lưu cài đặt.');
-        showToast('Đã lưu cấu hình thực đơn.', 'success');
+        showToast('Đã lưu cấu hình sản phẩm.', 'success');
+        delete window._ORG_CACHE_TIMESTAMP?.['menu_settings'];
         await loadAgentMenuSettings();
     } catch (err) {
         showToast(err.message, 'error');

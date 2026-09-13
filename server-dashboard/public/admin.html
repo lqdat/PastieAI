@@ -169,9 +169,9 @@
                 </div>
             </div>
             <div class="header-right">
-                <!-- Nút riêng cho Agent / Sale: Quản lý Sale & Nhóm, Bill, Thực đơn, Báo cáo, Tài khoản, Thông báo
+                <!-- Nút riêng cho Agent / Sale: Quản lý Sale & Nhóm, Bill, Sản phẩm, Báo cáo, Tài khoản, Thông báo
                      (Khi Agent/Sale đăng nhập, layoutHeaderQuickMenu gom gọn toàn bộ vào nút "Công cụ") -->
-                <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, Nhóm tiếp nhận, Mã QR và Thực đơn">
+                <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, Nhóm tiếp nhận, Mã QR và Sản phẩm">
                     <i class="ri-organization-chart"></i><span>Quản trị</span>
                 </button>
                 <!-- Ticket có MÀN RIÊNG, không gộp vào Quản trị: đây là việc theo
@@ -187,8 +187,8 @@
                 <button id="order-cart-btn" class="header-quick-btn hide" type="button" title="Quản lý hóa đơn: đơn của khách theo từng cuộc trò chuyện">
                     <i class="ri-bill-line"></i><span>Quản lý hóa đơn</span>
                 </button>
-                <button id="sale-menu-btn" class="header-quick-btn hide" type="button" title="Xem thực đơn của cơ sở">
-                    <i class="ri-restaurant-line"></i><span>Thực đơn</span>
+                <button id="sale-menu-btn" class="header-quick-btn hide" type="button" title="Xem danh sách sản phẩm của cơ sở">
+                    <i class="ri-shopping-bag-3-line"></i><span>Sản phẩm</span>
                 </button>
                 <button id="report-modal-btn" class="header-quick-btn hide" type="button" title="Báo cáo hiệu suất tư vấn &amp; Xuất Excel">
                     <i class="ri-file-chart-line"></i><span>Báo cáo</span>
@@ -354,7 +354,7 @@
             </div>
             <div class="org-card">
                 <header class="org-head">
-                    <h2 id="org-title"><i class="ri-team-line" style="color:var(--accent-color);margin-right:6px;"></i>Quản lý Sale, nhóm, QR và thực đơn</h2>
+                    <h2 id="org-title"><i class="ri-team-line" style="color:var(--accent-color);margin-right:6px;"></i>Quản lý Sale, nhóm, QR và sản phẩm</h2>
                     <div style="display:flex;align-items:center;gap:8px;">
                         <button type="button" class="icon-btn" id="org-guide-btn" title="Xem sổ tay hướng dẫn sử dụng" aria-label="Hướng dẫn sử dụng">
                             <i class="ri-question-line"></i>
@@ -368,7 +368,7 @@
                     <button type="button" class="org-tab is-active" data-org-tab="groups"><i class="ri-team-line"></i> <span>Nhóm</span></button>
                     <button type="button" class="org-tab" data-org-tab="sales"><i class="ri-user-shared-line"></i> <span>Sale</span></button>
                     <button type="button" class="org-tab" data-org-tab="qr"><i class="ri-qr-code-line"></i> <span>Mã QR</span></button>
-                    <button type="button" class="org-tab" data-org-tab="menu"><i class="ri-restaurant-2-line"></i> <span>Menu &amp; Banner</span></button>
+                    <button type="button" class="org-tab" data-org-tab="menu"><i class="ri-shopping-bag-3-line"></i> <span>Sản phẩm</span></button>
                 </nav>
 
                 <p class="org-status hide" id="org-status"></p>
@@ -544,25 +544,25 @@
                             </div>
                             <div style="display:flex;gap:12px;flex-wrap:wrap;">
                                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:rgba(255,255,255,0.04);padding:8px 14px;border-radius:8px;border:1px solid var(--panel-border);font-size:13px;font-weight:600;">
-                                     <input type="radio" name="showcase_mode" value="menu" id="showcase-mode-menu" checked style="accent-color:var(--accent-color);">
-                                     <span><i class="ri-restaurant-2-line" style="color:var(--accent-color);"></i> Hiển thị Thực đơn / Sản phẩm</span>
-                                 </label>
-                                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:rgba(255,255,255,0.04);padding:8px 14px;border-radius:8px;border:1px solid var(--panel-border);font-size:13px;font-weight:600;">
-                                     <input type="radio" name="showcase_mode" value="banner" id="showcase-mode-banner" style="accent-color:#f59e0b;">
-                                     <span><i class="ri-slideshow-3-line" style="color:#f59e0b;"></i> Hiển thị Banner &amp; Bài viết</span>
-                                 </label>
+                                    <input type="radio" name="showcase_mode" value="menu" id="showcase-mode-menu" checked style="accent-color:var(--accent-color);">
+                                    <span><i class="ri-shopping-bag-3-line" style="color:var(--accent-color);"></i> Hiển thị Sản phẩm</span>
+                                </label>
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:rgba(255,255,255,0.04);padding:8px 14px;border-radius:8px;border:1px solid var(--panel-border);font-size:13px;font-weight:600;">
+                                    <input type="radio" name="showcase_mode" value="banner" id="showcase-mode-banner" style="accent-color:#f59e0b;">
+                                    <span><i class="ri-slideshow-3-line" style="color:#f59e0b;"></i> Hiển thị Banner &amp; Bài viết</span>
+                                </label>
                             </div>
                         </div>
 
-                        <!-- Chi tiết cấu hình Thực đơn -->
+                        <!-- Chi tiết cấu hình Sản phẩm -->
                         <div id="menu-mode-fields">
                             <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;">
                                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;">
                                     <input type="checkbox" id="agent-menu-toggle-checkbox" style="width:16px;height:16px;accent-color:var(--accent-color);">
-                                    <span>Bật nút Thực đơn trong phiên chat</span>
+                                    <span>Bật nút Sản phẩm trong phiên chat</span>
                                 </label>
                                 <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:360px;">
-                                    <input type="text" id="agent-menu-label-input" maxlength="100" placeholder="Chữ hiển thị (VD: Thực đơn, Menu, Gọi món...)" style="font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);flex:1;">
+                                    <input type="text" id="agent-menu-label-input" maxlength="100" placeholder="Chữ hiển thị (VD: Sản phẩm, Đặt hàng, Menu...)" style="font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);flex:1;">
                                 </div>
                             </div>
 
@@ -609,14 +609,14 @@
                         </div>
                     </div>
 
-                    <!-- Khung Quản lý Sản phẩm / Thực đơn (Ẩn khi chọn chế độ Banner) -->
+                    <!-- Khung Quản lý Sản phẩm (Ẩn khi chọn chế độ Banner) -->
                     <div id="agent-menu-items-section">
                     <div class="org-list-header">
                         <h4>Danh sách sản phẩm</h4>
-                        <span id="menu-count-badge" class="org-count-badge">0 món</span>
+                        <span id="menu-count-badge" class="org-count-badge">0 sản phẩm</span>
                     
                         <button type="button" class="pane-add is-quiet" data-addbox-toggle="menu-cat"><i class="ri-price-tag-3-line"></i> <span>Danh mục</span></button>
-                        <button type="button" class="pane-add" data-addbox-toggle="menu-item"><i class="ri-add-circle-line"></i> <span>Thêm món</span></button>
+                        <button type="button" class="pane-add" data-addbox-toggle="menu-item"><i class="ri-add-circle-line"></i> <span>Thêm sản phẩm</span></button>
                     </div>
                     <div class="addbox hide" data-addbox="menu-cat">
                     <form class="menu-form" id="menu-category-form">
@@ -632,7 +632,7 @@
                         </div>
                         <p class="menu-form-note">
                             <i class="ri-information-line"></i>
-                            <span>Chia nhóm cho khách dễ xem. Không bắt buộc — món chưa phân loại vẫn hiển thị.</span>
+                            <span>Chia nhóm cho khách dễ xem. Không bắt buộc — sản phẩm chưa phân loại vẫn hiển thị.</span>
                         </p>
                     </form>
                     </div>
@@ -667,7 +667,7 @@
                             <label class="menu-field menu-field-hide" id="menu-item-hide-field">
                                 <span>Khi hết hàng</span>
                                 <select id="menu-item-hide">
-                                    <option value="true">Ẩn khỏi thực đơn</option>
+                                    <option value="true">Ẩn khỏi danh sách</option>
                                     <option value="false">Vẫn hiện, ghi "hết"</option>
                                 </select>
                             </label>
@@ -696,7 +696,7 @@
 
                         <div class="menu-form-actions">
                             <button type="button" class="menu-btn-ghost hide" id="menu-item-cancel">Huỷ sửa</button>
-                            <button type="submit" class="menu-btn-primary" id="menu-item-submit"><i class="ri-add-circle-line"></i> Thêm món</button>
+                            <button type="submit" class="menu-btn-primary" id="menu-item-submit"><i class="ri-add-circle-line"></i> Thêm sản phẩm</button>
                         </div>
                     </form>
                     </div>
@@ -2041,7 +2041,7 @@
     </div>
 
     <!-- Modal Thêm/Sửa bài viết và banner quảng bá -->
-    <div id="agent-post-modal" class="modal-overlay hide" style="z-index: 9999; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px);">
+    <div id="agent-post-modal" class="modal-overlay hide" style="z-index: 10050; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px);">
         <div class="login-box glass-panel admin-dialog-box" style="max-width: 720px; width: 95%; max-height: min(92vh, 800px); display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 20px; background: #ffffff !important; box-shadow: 0 24px 64px -8px rgba(239, 43, 157, 0.25), 0 12px 32px -4px rgba(35, 16, 30, 0.2) !important; border: 1px solid rgba(239, 43, 157, 0.22) !important;">
             <div style="padding: 16px 22px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; background: #ffffff;">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -2060,7 +2060,7 @@
             <form id="agent-post-form" style="padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px; background: #ffffff;">
                 <input type="hidden" id="post-form-id" value="">
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="post-form-grid-2col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <div>
                         <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Tiêu đề (Tiếng Việt) *</label>
                         <input type="text" id="post-form-title-vi" required placeholder="VD: Combo Sáng Tỉnh Táo..." style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
@@ -2071,7 +2071,7 @@
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="post-form-grid-2col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <div>
                         <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Danh mục / Thẻ nổi bật</label>
                         <input type="text" id="post-form-category" placeholder="ƯU ĐÃI, COMBO, CẨM NANG..." value="ƯU ĐÃI" style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
@@ -2200,13 +2200,12 @@
     <script src="config.js?v=r129"></script>
     <script src="core.js?v=r129"></script>
     <script src="chat.js?v=r128"></script>
-    <script src="org-console.js?v=r129"></script>
+    <script src="org-console.js?v=r128"></script>
     <script src="project-admin.js?v=r128"></script>
     <script src="menu-console.js?v=r128"></script>
     <script src="order-console.js?v=r128"></script>
-    <script src="monitor-console.js?v=r128"></script>
     <script src="cart-console.js?v=r128"></script>
     <script src="ticket-console.js?v=r128"></script>
-    <script src="admin.js?v=r129"></script>
+    <script src="admin.js?v=r128"></script>
 </body>
 </html>

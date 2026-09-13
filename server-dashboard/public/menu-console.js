@@ -40,11 +40,12 @@
     }
 
     // --- Tải dữ liệu ---------------------------------------------------------
+    let lastRenderHash = '';
 
     async function load(quiet) {
         const list = $('menu-item-list');
-        if (!quiet && list) {
-            list.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải thực đơn…</p>';
+        if (!quiet && list && (!ITEMS || ITEMS.length === 0)) {
+            list.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải danh sách sản phẩm…</p>';
         }
         // Hai nguồn dữ liệu ĐỘC LẬP nhau. Dùng Promise.all thì một bên hỏng là
         // cả hai cùng không hiện — thêm danh mục thành công mà màn hình trống
@@ -57,7 +58,12 @@
             CATEGORIES = catResult.status === 'fulfilled' && Array.isArray(catResult.value) ? catResult.value : [];
             ITEMS = itemResult.status === 'fulfilled' && Array.isArray(itemResult.value) ? itemResult.value : [];
 
-            // Món nào đã có đủ bản dịch cả 4 ngôn ngữ (en, ru, zh, ko) thì thôi chờ.
+            window._ORG_CACHE_TIMESTAMP = window._ORG_CACHE_TIMESTAMP || {};
+            window._ORG_CACHE_TIMESTAMP['menu'] = Date.now();
+            window._ORG_TAB_LOADED = window._ORG_TAB_LOADED || {};
+            window._ORG_TAB_LOADED['menu'] = true;
+
+            // Sản phẩm nào đã có đủ bản dịch cả 4 ngôn ngữ (en, ru, zh, ko) thì thôi chờ.
             for (const item of ITEMS) {
                 if (pendingTranslation.has(item.id) && translatedCount(item) >= 4) {
                     pendingTranslation.delete(item.id);
@@ -77,7 +83,7 @@
                 showToast(catResult.reason?.message || 'Không tải được danh mục.', 'error');
             }
             if (itemResult.status === 'rejected' && list) {
-                list.innerHTML = `<p class="org-empty is-error"><i class="ri-error-warning-line"></i> ${escapeHtml(itemResult.reason?.message || 'Không tải được danh sách món.')}</p>`;
+                list.innerHTML = `<p class="org-empty is-error"><i class="ri-error-warning-line"></i> ${escapeHtml(itemResult.reason?.message || 'Không tải được danh sách sản phẩm.')}</p>`;
             }
         } catch (error) {
             // Tải hỏng thì VẪN dựng lại ô chọn danh mục. Bỏ qua bước này thì ô
@@ -114,24 +120,32 @@
 
     // --- Dựng giao diện ------------------------------------------------------
 
-    function render() {
+    function render(force = false) {
+        const currentHash = JSON.stringify([
+            CATEGORIES.map(c => [c.id, c.name, c.item_count, c.is_active, c.is_promo]),
+            ITEMS.map(i => [i.id, i.name, i.price, i.category_id, i.is_active, i.image_url, i.stock_quantity])
+        ]);
+        if (!force && currentHash === lastRenderHash && $('menu-item-list')?.children.length > 0) {
+            return;
+        }
+        lastRenderHash = currentHash;
         renderCategories();
         renderCategorySelect();
         renderItems();
         const badge = $('menu-count-badge');
-        if (badge) badge.textContent = `${ITEMS.length} món`;
+        if (badge) badge.textContent = `${ITEMS.length} sản phẩm`;
     }
 
     function renderCategories() {
         const box = $('menu-category-list');
         if (!box) return;
         if (CATEGORIES.length === 0) {
-            box.innerHTML = '<p class="menu-hint-empty">Chưa có danh mục nào. Món không thuộc danh mục vẫn hiện với khách, nhưng chia nhóm sẽ dễ xem hơn.</p>';
+            box.innerHTML = '<p class="menu-hint-empty">Chưa có danh mục nào. Sản phẩm không thuộc danh mục vẫn hiện với khách, nhưng chia nhóm sẽ dễ xem hơn.</p>';
             return;
         }
         box.innerHTML = CATEGORIES.map((category) => `
             <span class="menu-cat-chip${category.is_active ? '' : ' is-off'}${category.is_promo ? ' is-promo' : ''}" data-category-chip="${category.id}">
-                ${category.is_promo ? '<i class="ri-flashlight-fill" title="Nhóm ưu đãi — món trong đây chạy lên đầu thực đơn của khách"></i>' : ''}
+                ${category.is_promo ? '<i class="ri-flashlight-fill" title="Nhóm ưu đãi — sản phẩm trong đây chạy lên đầu danh sách của khách"></i>' : ''}
                 <button type="button" class="menu-cat-name" data-category-rename="${category.id}" title="Đổi tên">${escapeHtml(category.name)}</button>
                 <small>${category.item_count}</small>
                 <button type="button" class="menu-cat-toggle" data-category-toggle="${category.id}"
@@ -158,9 +172,9 @@
         if (ITEMS.length === 0) {
             box.innerHTML = `
                 <div class="menu-empty">
-                    <i class="ri-restaurant-2-line"></i>
-                    <strong>Thực đơn còn trống</strong>
-                    <p>Thêm món đầu tiên ở form bên trên. Tên và mô tả sẽ được dịch tự động sang tiếng Anh, Nga, Trung và Hàn ngay khi lưu.</p>
+                    <i class="ri-shopping-bag-3-line"></i>
+                    <strong>Danh sách sản phẩm còn trống</strong>
+                    <p>Thêm sản phẩm đầu tiên ở form bên trên. Tên và mô tả sẽ được dịch tự động sang tiếng Anh, Nga, Trung và Hàn ngay khi lưu.</p>
                 </div>`;
             return;
         }
@@ -175,7 +189,7 @@
 
         box.innerHTML = [...groups.values()].map((group) => `
             <div class="menu-group">
-                <h5 class="menu-group-title">${escapeHtml(group.name)} <small>${group.items.length} món</small></h5>
+                <h5 class="menu-group-title">${escapeHtml(group.name)} <small>${group.items.length} sản phẩm</small></h5>
                 ${group.items.map(itemCard).join('')}
             </div>
         `).join('');
@@ -206,7 +220,7 @@
 
         return `
         <article class="menu-item${item.is_available ? '' : ' is-off'}" data-item="${item.id}">
-            <label class="menu-thumb" title="Đổi ảnh món">
+            <label class="menu-thumb" title="Đổi ảnh sản phẩm">
                 ${item.image_url
                     ? `<img src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.name)}" loading="lazy">`
                     : '<i class="ri-image-add-line"></i>'}
@@ -232,8 +246,8 @@
                         title="${item.is_available ? 'Còn bán — bấm để tạm hết' : 'Đang tạm hết — bấm để bán lại'}">
                     <i class="ri-${item.is_available ? 'checkbox-circle-line' : 'indeterminate-circle-line'}"></i>
                 </button>
-                <button type="button" class="menu-act" data-item-edit="${item.id}" title="Sửa món"><i class="ri-pencil-line"></i></button>
-                <button type="button" class="menu-act is-danger" data-item-delete="${item.id}" title="Xoá món"><i class="ri-delete-bin-line"></i></button>
+                <button type="button" class="menu-act" data-item-edit="${item.id}" title="Sửa sản phẩm"><i class="ri-pencil-line"></i></button>
+                <button type="button" class="menu-act is-danger" data-item-delete="${item.id}" title="Xoá sản phẩm"><i class="ri-delete-bin-line"></i></button>
             </div>
         </article>`;
     }
@@ -299,10 +313,10 @@
         if (category.is_promo) {
             return showToast('Không xoá được nhóm Ưu đãi. Bạn có thể ẩn nhóm này nếu chưa dùng tới.', 'error');
         }
-        // Nói rõ món KHÔNG mất theo — backend để ON DELETE SET NULL.
+        // Nói rõ sản phẩm KHÔNG mất theo — backend để ON DELETE SET NULL.
         const ok = await pastieConfirm(
             category.item_count > 0
-                ? `Xoá danh mục "${category.name}"? ${category.item_count} món trong đó vẫn còn, chỉ chuyển sang "Chưa phân loại".`
+                ? `Xoá danh mục "${category.name}"? ${category.item_count} sản phẩm trong đó vẫn còn, chỉ chuyển sang "Chưa phân loại".`
                 : `Xoá danh mục "${category.name}"?`,
             { confirmText: 'Xoá danh mục', danger: true }
         );
@@ -316,7 +330,7 @@
         }
     }
 
-    // --- Thao tác món --------------------------------------------------------
+    // --- Thao tác sản phẩm ---------------------------------------------------
 
     // Hiện ảnh đã chọn, hoặc ảnh hiện có của món đang sửa, hoặc trạng thái trống.
     function showPhotoPreview(url, caption) {
@@ -336,7 +350,7 @@
         const input = $('menu-item-photo');
         if (input) input.value = '';
         if (item?.image_url) showPhotoPreview(item.image_url, 'Ảnh hiện tại — bấm để đổi');
-        else showPhotoPreview('', 'Chọn ảnh món — bấm để tải lên');
+        else showPhotoPreview('', 'Chọn ảnh sản phẩm — bấm để tải lên');
     }
 
     function fillItemForm(item) {
@@ -357,7 +371,7 @@
         if (submit) {
             submit.innerHTML = item
                 ? '<i class="ri-save-line"></i> Lưu thay đổi'
-                : '<i class="ri-add-circle-line"></i> Thêm món';
+                : '<i class="ri-add-circle-line"></i> Thêm sản phẩm';
         }
         $('menu-item-cancel')?.classList.toggle('hide', !item);
         resetPhotoField(item);
@@ -371,7 +385,7 @@
         const description = $('menu-item-desc').value.trim();
         const categoryId = $('menu-item-category').value;
 
-        if (!name) return showToast('Cần tên món.', 'error');
+        if (!name) return showToast('Cần tên sản phẩm.', 'error');
         if (!Number.isFinite(price) || price < 0) return showToast('Giá không hợp lệ.', 'error');
 
         const rawStock = $('menu-item-stock').value.trim();
@@ -404,15 +418,15 @@
             if (result?.item?.id) pendingTranslation.add(result.item.id);
             else if (editing) pendingTranslation.add(editing);
 
-            // Ảnh phải gửi SAU khi có id món. Người dùng chỉ thấy một thao tác,
-            // bên dưới là hai bước — nhưng nếu bước ảnh hỏng thì món vẫn đã lưu,
-            // nên báo riêng thay vì để tưởng cả việc thêm món thất bại.
+            // Ảnh phải gửi SAU khi có id sản phẩm. Người dùng chỉ thấy một thao tác,
+            // bên dưới là hai bước — nhưng nếu bước ảnh hỏng thì sản phẩm vẫn đã lưu,
+            // nên báo riêng thay vì để tưởng cả việc thêm sản phẩm thất bại.
             const savedId = result?.item?.id || editing;
             if (pendingPhoto && savedId) {
                 try {
                     await uploadImage(savedId, pendingPhoto, { silent: true });
                 } catch (photoError) {
-                    showToast(`Đã lưu món, nhưng chưa tải được ảnh: ${photoError.message}`, 'error', 6000);
+                    showToast(`Đã lưu sản phẩm, nhưng chưa tải được ảnh: ${photoError.message}`, 'error', 6000);
                 }
             }
 
@@ -442,13 +456,13 @@
     async function deleteItem(id) {
         const item = ITEMS.find((i) => i.id === Number(id));
         if (!item) return;
-        const ok = await pastieConfirm(`Xoá món "${item.name}" khỏi thực đơn?`, {
-            confirmText: 'Xoá món', danger: true,
+        const ok = await pastieConfirm(`Xoá sản phẩm "${item.name}"?`, {
+            confirmText: 'Xoá sản phẩm', danger: true,
         });
         if (!ok) return;
         try {
             await fetchMenu(`/items/${id}`, { method: 'DELETE' });
-            showToast('Đã xoá món.', 'success');
+            showToast('Đã xoá sản phẩm.', 'success');
             await load(true);
         } catch (error) {
             showToast(error.message, 'error');
@@ -473,7 +487,7 @@
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data.error || 'Không tải được ảnh lên.');
             if (!silent) {
-                showToast('Đã cập nhật ảnh món.', 'success');
+                showToast('Đã cập nhật ảnh sản phẩm.', 'success');
                 await load(true);
             }
         } catch (error) {
@@ -492,7 +506,7 @@
         const current = (item.translations || []).find((t) => t && t.lang === langCode);
 
         const value = await pastiePrompt(
-            `${lang.label} — tên món`,
+            `${lang.label} — tên sản phẩm`,
             current?.name || '',
             { hint: `Bản gốc: ${item.name}. Để trống rồi lưu sẽ xoá bản dịch tay và giữ bản AI.` }
         );
@@ -727,10 +741,10 @@
             });
             showToast(selectedMode === 'banner'
                 ? 'Đã lưu cấu hình. Quán đang hiển thị chế độ Banner & Bài viết.'
-                : 'Đã lưu cấu hình. Quán đang hiển thị chế độ Thực đơn đặt món.', 'success');
+                : 'Đã lưu cấu hình. Quán đang hiển thị chế độ Sản phẩm đặt hàng.', 'success');
             updateShowcaseModeUi();
         } catch (error) {
-            showToast(error.message || 'Không lưu được cấu hình thực đơn.', 'error');
+            showToast(error.message || 'Không lưu được cấu hình sản phẩm.', 'error');
         } finally {
             nutLuu.disabled = false;
         }
@@ -1217,6 +1231,19 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
     else bind();
 
-    // admin.js gọi vào đây khi người dùng mở thẻ "Thực đơn".
-    window.MenuConsole = { load, reset: () => { CATEGORIES = []; ITEMS = []; pendingTranslation.clear(); } };
+    // admin.js gọi vào đây khi người dùng mở thẻ "Thực đơn / Sản phẩm".
+    window.MenuConsole = {
+        load,
+        invalidate: () => {
+            lastRenderHash = '';
+            if (window._ORG_CACHE_TIMESTAMP) delete window._ORG_CACHE_TIMESTAMP['menu'];
+        },
+        reset: () => {
+            CATEGORIES = [];
+            ITEMS = [];
+            lastRenderHash = '';
+            pendingTranslation.clear();
+            if (window._ORG_CACHE_TIMESTAMP) delete window._ORG_CACHE_TIMESTAMP['menu'];
+        }
+    };
 })();

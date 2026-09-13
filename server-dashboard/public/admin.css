@@ -3355,12 +3355,12 @@ button:focus-visible {
     font-size: 14px;
 }
 
-/* Khung poster tỷ lệ 4:5 vừa vặn và mở rộng theo chiều rộng của popup */
+/* Khung poster vuông 1:1 vừa vặn canvas 1080x1080, loại bỏ dải trống */
 .qr-poster-frame {
     position: relative;
     width: 100%;
     max-width: 512px;
-    aspect-ratio: 4 / 5;
+    aspect-ratio: 1 / 1;
     border-radius: 18px;
     overflow: hidden;
     background: #fffafd;
@@ -3674,15 +3674,20 @@ button:focus-visible {
     font-weight: 650;
     cursor: pointer;
     white-space: nowrap;
-    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.org-tab:active {
+    transform: scale(0.96);
 }
 .org-tab i { font-size: 13px; }
-.org-tab:hover:not(.is-active) { color: var(--text-primary); background: rgba(0, 0, 0, 0.03); }
+.org-tab:hover:not(.is-active) { color: var(--text-primary); background: rgba(0, 0, 0, 0.04); }
 .org-tab.is-active {
     background: #ffffff;
     color: var(--accent-color, #ef2b9d);
     font-weight: 750;
-    box-shadow: 0 3px 12px rgba(239, 43, 157, 0.12);
+    box-shadow: 0 2px 10px rgba(239, 43, 157, 0.14);
 }
 
 /* Status Banner */
@@ -3720,7 +3725,24 @@ button:focus-visible {
 .org-quota-info strong { font-size: 12.5px; font-weight: 750; }
 
 /* Panes & Forms */
-.org-pane { min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; padding-right: 2px; }
+.org-pane {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+    padding-right: 2px;
+    contain: layout style;
+    will-change: opacity, transform;
+    transform: translate3d(0, 0, 0);
+}
+.org-pane:not(.hide) {
+    animation: orgPaneFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes orgPaneFadeIn {
+    from { opacity: 0; transform: translate3d(0, 4px, 0); }
+    to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
 .org-form {
     display: grid;
     gap: 12px;
@@ -6680,6 +6702,39 @@ button:focus-visible {
     background: rgba(20, 12, 22, 0.52);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
+}
+#agent-post-modal {
+    z-index: 10050 !important;
+}
+@media (max-width: 768px) {
+    #agent-post-modal.modal-overlay {
+        align-items: flex-end !important;
+        justify-content: center !important;
+        padding: 0 !important;
+    }
+    #agent-post-modal .admin-dialog-box {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 94dvh !important;
+        height: 94dvh !important;
+        border-radius: 22px 22px 0 0 !important;
+        border-bottom: none !important;
+        margin: 0 !important;
+    }
+    #agent-post-modal form#agent-post-form {
+        padding: 14px 16px calc(24px + env(safe-area-inset-bottom)) !important;
+        overflow-y: auto !important;
+        overscroll-behavior: contain !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    #agent-post-modal .post-form-grid-2col {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+    }
+    #agent-post-modal #post-editor-toolbar {
+        gap: 4px !important;
+        padding: 6px 8px !important;
+    }
 }
 
 @media (max-width: 760px) {
