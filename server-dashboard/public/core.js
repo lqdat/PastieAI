@@ -361,7 +361,7 @@ async function initGoogleAuth() {
                 if (slot) {
                     slot.innerHTML = '';
                     try {
-                        const width = Math.min(400, Math.max(200, Math.round(slot.parentElement?.getBoundingClientRect().width || 340)));
+                        const width = Math.min(340, Math.max(200, Math.floor(slot.parentElement?.getBoundingClientRect().width || 340)));
                         window.google.accounts.id.renderButton(slot, {
                             type: 'standard',
                             theme: 'outline',
