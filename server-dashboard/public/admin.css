@@ -3070,11 +3070,10 @@ button:focus-visible {
 }
 
 .dpq-google-slot {
-  position: absolute;
-  inset: 0;
+  position: relative;
   width: 100%;
-  height: 100%;
-  opacity: 0.001;
+  min-height: 44px;
+  opacity: 1;
   z-index: 2;
   overflow: hidden;
   display: flex;
@@ -3082,11 +3081,13 @@ button:focus-visible {
   align-items: center;
 }
 
+.dpq-google-slot:empty {
+  display: none;
+}
+
 .dpq-google-slot iframe {
   width: 100% !important;
-  height: 100% !important;
-  transform: scale(1.15);
-  transform-origin: center center;
+  height: 44px !important;
   cursor: pointer !important;
 }
 

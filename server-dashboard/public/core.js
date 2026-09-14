@@ -339,6 +339,7 @@ function setLoginSuccess(msg) {
 
 
 // Khởi tạo Google Sign-in button (tham khảo DealPhuQuoc)
+let googleAuthInitialized = false;
 async function initGoogleAuth() {
     try {
         const configRes = await fetch(`${API_BASE}/api/admin/auth/config`);
@@ -349,16 +350,18 @@ async function initGoogleAuth() {
         const customBtn = document.getElementById('google-auth-trigger-btn');
 
         const renderGoogleBtn = () => {
-            if (googleClientId && window.google?.accounts?.id) {
+            if (!googleAuthInitialized && googleClientId && window.google?.accounts?.id) {
                 window.google.accounts.id.initialize({
                     client_id: googleClientId,
                     callback: window.handleGoogleCredentialResponse,
                     auto_select: false,
                     cancel_on_tap_outside: true
                 });
+                googleAuthInitialized = true;
                 if (slot) {
                     slot.innerHTML = '';
                     try {
+                        const width = Math.min(400, Math.max(200, Math.round(slot.parentElement?.getBoundingClientRect().width || 340)));
                         window.google.accounts.id.renderButton(slot, {
                             type: 'standard',
                             theme: 'outline',
@@ -366,8 +369,9 @@ async function initGoogleAuth() {
                             text: 'continue_with',
                             shape: 'pill',
                             logo_alignment: 'left',
-                            width: 340
+                            width
                         });
+                        if (customBtn) customBtn.style.display = 'none';
                     } catch(e) {}
                     // Giữ customBtn luôn hiển thị chữ "Đăng nhập bằng Gmail",
                     // slot Google iframe trong CSS được phủ lên trên để nhận click trực tiếp.
@@ -392,9 +396,10 @@ async function initGoogleAuth() {
 
 function handleGoogleAuthTrigger() {
     try {
-        if (window.google?.accounts?.id) {
+        if (googleAuthInitialized && window.google?.accounts?.id) {
             window.google.accounts.id.prompt();
         } else {
+            void initGoogleAuth();
             setLoginError('Đang tải mô-đun Google Sign-In, vui lòng thử lại sau giây lát hoặc sử dụng OTP Email.');
         }
     } catch(e) {
