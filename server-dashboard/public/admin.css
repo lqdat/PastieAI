@@ -334,8 +334,19 @@ button:focus-visible {
     color: var(--text-secondary);
     width: 38px;
     height: 38px;
-    border-radius: 50%;
+    min-width: 38px;
+    min-height: 38px;
+    max-width: 38px;
+    max-height: 38px;
+    border-radius: 50% !important;
     box-shadow: var(--shadow-sm);
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
+    aspect-ratio: 1 / 1 !important;
+    box-sizing: border-box !important;
 }
 .icon-btn:hover {
     background: var(--panel-hover);
@@ -2731,7 +2742,19 @@ button:focus-visible {
   .chat-input-area .chat-form { gap: 8px; }
   .chat-input-area input, .chat-input-area textarea { min-height: 46px; font-size: 16px; }
   .send-btn { width: 46px; height: 46px; }
-  .icon-btn, .settings-trigger-btn { min-width: 44px; min-height: 44px; }
+  .icon-btn {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    max-width: 40px !important;
+    max-height: 40px !important;
+    border-radius: 50% !important;
+    aspect-ratio: 1 / 1 !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
+  }
+  .settings-trigger-btn { min-width: 44px; min-height: 44px; }
 
   .modal-overlay { padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); align-items: center; }
   .login-box { width: min(100%, 400px); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 28px); overflow-y: auto; padding: 28px 20px; }
@@ -9269,4 +9292,23 @@ button:focus-visible {
     margin-top: 2px;
     padding-top: 4px;
     border-top: 1px dashed rgba(124, 58, 237, 0.15);
+}
+
+
+/* --- Forward Bill to Agent Styling --- */
+.cart-action-btn.is-forward-agent,
+.order-nav-btn.is-forward-agent,
+.admin-invoice-open.is-forward-agent {
+    color: #7c3aed !important;
+    border-color: rgba(124, 58, 237, 0.28) !important;
+    background: #fdf4ff !important;
+}
+.cart-action-btn.is-forward-agent:hover,
+.order-nav-btn.is-forward-agent:hover,
+.admin-invoice-open.is-forward-agent:hover {
+    background: #f3e8ff !important;
+    border-color: #7c3aed !important;
+    color: #6d28d9 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.15);
 }

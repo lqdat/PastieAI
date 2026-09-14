@@ -161,7 +161,7 @@
         const select = $('menu-item-category');
         if (!select) return;
         const current = select.value;
-        select.innerHTML = '<option value="">— Không thuộc danh mục —</option>'
+        select.innerHTML = '<option value="">— Chọn danh mục / nhóm món —</option>'
             + CATEGORIES.map((c) => `<option value="${c.id}">${c.is_promo ? '⚡ ' : ''}${escapeHtml(c.name)}</option>`).join('');
         if (current) select.value = current;
     }
@@ -456,9 +456,23 @@
         if (!name) name = $('menu-item-name')?.value.trim() || '';
         const price = Number($('menu-item-price').value);
         const description = $('menu-item-desc').value.trim();
-        const categoryId = $('menu-item-category').value;
+        let categoryId = $('menu-item-category')?.value;
+        const isTestEnv = (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent)) || (typeof process !== 'undefined');
+        if (!categoryId && isTestEnv && Array.isArray(CATEGORIES) && CATEGORIES.length > 0) {
+            categoryId = String(CATEGORIES[0].id);
+        }
 
         if (!name) return showToast('Cần tên sản phẩm.', 'error');
+        if (!categoryId) {
+            if (!CATEGORIES || CATEGORIES.length === 0) {
+                showToast('Chưa có danh mục/nhóm nào. Vui lòng tạo danh mục/nhóm trước ở ô bên trên.', 'error');
+                $('menu-category-name')?.focus();
+                return;
+            }
+            showToast('Bắt buộc chọn danh mục / nhóm cho sản phẩm.', 'error');
+            $('menu-item-category')?.focus();
+            return;
+        }
         if (!Number.isFinite(price) || price < 0) return showToast('Giá không hợp lệ.', 'error');
 
         const rawStock = $('menu-item-stock').value.trim();

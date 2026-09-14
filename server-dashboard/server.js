@@ -6091,6 +6091,73 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
   res.json({ success: true, order: updated.rows[0], nextAction: 'customer_thank_you' });
 });
 
+// Chuyển bill/đơn từ Sale sang Agent quản lý cơ sở
+app.post('/api/admin/orders/:orderId/transfer-to-agent', checkAdminAuth, requireWorkingHours, async (req, res) => {
+  const { orderId } = req.params;
+  const { note } = req.body || {};
+
+  try {
+    const orderRes = await db.query(
+      `SELECT o.*, s.project_id, s.claimed_by_admin_id, s.assigned_admin_id, s.group_id, s.qr_account_id
+         FROM chat_orders o
+         JOIN sessions s ON s.id = o.session_id
+        WHERE o.id = $1`,
+      [orderId]
+    );
+    const order = orderRes.rows[0];
+    if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+    if (!canAccessProject(req.admin, order.project_id)) return res.status(403).json({ error: 'Bạn không có quyền chuyển đơn này.' });
+
+    // Xác định Agent quản lý phụ trách cơ sở / nhóm này
+    const agentRes = await db.query(
+      `SELECT a.id, a.full_name, a.username
+         FROM sessions s
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+         JOIN admins a ON a.id = COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id)
+        WHERE s.id = $1
+        LIMIT 1`,
+      [order.session_id]
+    );
+    const targetAgent = agentRes.rows[0];
+
+    // Cập nhật session: gỡ claim của Sale, gán trực tiếp cho Agent quản lý
+    await db.query(
+      `UPDATE sessions
+          SET claimed_by_admin_id = NULL,
+              claimed_at = NULL,
+              assigned_admin_id = COALESCE($2, assigned_admin_id),
+              routing_status = 'waiting'
+        WHERE id = $1`,
+      [order.session_id, targetAgent?.id || null]
+    );
+
+    const saleName = req.admin.full_name || req.admin.username || 'Sale';
+    const agentLabel = targetAgent?.full_name ? `Agent ${targetAgent.full_name}` : 'Agent quản lý';
+    const reasonText = note ? ` (${note})` : '';
+    const transferNotice = `[Chuyển bill] Nhân viên Sale ${saleName} đã chuyển bill #${order.order_code || order.id} sang ${agentLabel} xử lý tiếp${reasonText}.`;
+
+    const sysMsg = await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id, system_kind, visible_to)
+       VALUES ($1, 'system', $2, $2, 'vi', $3, 'order_transfer', 'staff') RETURNING id`,
+      [order.session_id, transferNotice, req.admin.id]
+    ).catch(() => ({ rows: [] }));
+
+    notifyAdminRealtime('session_update', { sessionId: order.session_id, projectId: order.project_id, action: 'transfer_to_agent', agentId: targetAgent?.id });
+    notifyAdminRealtime('new_message', { sessionId: order.session_id, projectId: order.project_id, sender: 'system', messageId: sysMsg.rows[0]?.id });
+    notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: order.status, action: 'transferred_to_agent' });
+
+    res.json({
+      success: true,
+      message: `Đã chuyển bill sang ${agentLabel} thành công.`,
+      agent: targetAgent || null
+    });
+  } catch (error) {
+    console.error('Transfer order to agent error:', error);
+    res.status(500).json({ error: 'Lỗi khi chuyển bill sang Agent.' });
+  }
+});
+
 // Customer chooses "Kết thúc": close and remove the current QR conversation and order.
 app.post('/api/chats/:sessionId/order/finish', async (req, res) => {
   const order = await getChatOrderForVisitor(req.params.sessionId);
@@ -11936,6 +12003,7 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
   const cleanCommonName = commonName !== undefined ? (String(commonName).trim().slice(0, 255) || null) : null;
   const cleanNameOrder = nameOrder === 'proper_first' ? 'proper_first' : 'common_first';
   if (!cleanName) return res.status(400).json({ error: 'Cần tên món.' });
+  if (!categoryId) return res.status(400).json({ error: 'Bắt buộc chọn danh mục/nhóm cho sản phẩm.' });
   if (!Number.isFinite(cleanPrice)) return res.status(400).json({ error: 'Giá không hợp lệ.' });
   const stock = parseStockInput(req.body?.stockQuantity);
   if (stock.invalid) return res.status(400).json({ error: 'Số lượng tồn phải là số không âm, hoặc để trống nếu không giới hạn.' });
@@ -11982,6 +12050,7 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
   const { categoryId, name, description, price, isAvailable, sortOrder, hideWhenOut, vatRate, properName, commonName, nameOrder } = req.body || {};
+  if (categoryId !== undefined && !categoryId) return res.status(400).json({ error: 'Bắt buộc chọn danh mục/nhóm cho sản phẩm.' });
   const stock = parseStockInput(req.body?.stockQuantity);
   if (stock.invalid) return res.status(400).json({ error: 'Số lượng tồn phải là số không âm, hoặc để trống nếu không giới hạn.' });
   // Như trên: không nhận VAT theo món nữa.

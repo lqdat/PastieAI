@@ -535,6 +535,8 @@
                             <div class="order-action-nav-row">
                                 <button type="button" class="secondary-btn order-nav-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
                                 <button type="button" class="secondary-btn order-nav-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem hóa đơn</button>
+                                ${CURRENT_ADMIN?.role === 'sale' && order.status !== 'paid' ? `
+                                <button type="button" class="secondary-btn order-nav-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này sang Agent"><i class="ri-share-forward-fill"></i> Chuyển Agent</button>` : ''}
                             </div>
                         `}
                     </div>
@@ -564,6 +566,34 @@
                         if (!leave) return;
                     }
                     closeDetail();
+                    return;
+                }
+                const fwd = event.target.closest('[data-forward]');
+                if (fwd) {
+                    const orderId = fwd.dataset.forward;
+                    const ok = await pastieConfirm(`Chuyển bill #${order.order_code || orderId} sang cho Agent quản lý cơ sở xử lý tiếp?`, {
+                        title: 'Chuyển bill cho Agent',
+                        confirmText: 'Chuyển ngay',
+                        cancelText: 'Hủy'
+                    });
+                    if (!ok) return;
+                    fwd.disabled = true;
+                    try {
+                        const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/transfer-to-agent`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({})
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data?.error || 'Không thể chuyển bill.');
+                        showToast(data.message || 'Đã chuyển bill cho Agent thành công.', 'success');
+                        closeDetail();
+                        const listBody = overlay?.querySelector('.cart-body');
+                        if (listBody) await load(listBody);
+                    } catch (error) {
+                        showToast(error.message, 'error');
+                        fwd.disabled = false;
+                    }
                     return;
                 }
                 const direct = event.target.closest('[data-open]');
@@ -802,6 +832,10 @@
                             <button type="button" class="cart-action-btn" data-bill="${escapeHtml(order.id)}">
                                 <i class="ri-file-list-3-line"></i> Xem hóa đơn
                             </button>
+                            ${CURRENT_ADMIN?.role === 'sale' && order.status !== 'paid' ? `
+                            <button type="button" class="cart-action-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này sang cho Agent quản lý">
+                                <i class="ri-share-forward-fill"></i> Chuyển Agent
+                            </button>` : ''}
                             ${canEdit ? `
                             <button type="button" class="cart-action-btn is-edit-bill" data-details="${escapeHtml(order.id)}" data-mode="edit">
                                 <i class="ri-edit-line"></i> Sửa hóa đơn
@@ -866,6 +900,36 @@
                 } finally {
                     bill.disabled = false;
                     bill.innerHTML = origHtml;
+                }
+                return;
+            }
+
+            const fwd = event.target.closest('[data-forward]');
+            if (fwd) {
+                const orderId = fwd.dataset.forward;
+                const row = fwd.closest('.cart-row');
+                const visibleCode = row?.querySelector('.cart-code')?.textContent?.trim() || orderId;
+                const ok = await pastieConfirm(`Chuyển bill #${visibleCode} sang cho Agent quản lý cơ sở xử lý tiếp?`, {
+                    title: 'Chuyển bill cho Agent',
+                    confirmText: 'Chuyển ngay',
+                    cancelText: 'Hủy'
+                });
+                if (!ok) return;
+                fwd.disabled = true;
+                try {
+                    const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/transfer-to-agent`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({})
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data?.error || 'Không thể chuyển bill.');
+                    showToast(data.message || 'Đã chuyển bill cho Agent thành công.', 'success');
+                    if (detailOverlay) { detailOverlay.remove(); detailOverlay = null; }
+                    await load(body);
+                } catch (error) {
+                    showToast(error.message, 'error');
+                    fwd.disabled = false;
                 }
                 return;
             }

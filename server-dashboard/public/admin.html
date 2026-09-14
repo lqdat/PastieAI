@@ -714,7 +714,7 @@
                         </div>
                         <p class="menu-form-note">
                             <i class="ri-information-line"></i>
-                            <span>Chia nhóm cho khách dễ xem. Không bắt buộc — sản phẩm chưa phân loại vẫn hiển thị.</span>
+                            <span>Mỗi sản phẩm bắt buộc phải thuộc một danh mục / nhóm món để khách dễ xem và gọi món theo nhóm.</span>
                         </p>
                     </form>
                     </div>
@@ -733,7 +733,7 @@
                                 <div class="dual-name-inputs order-common-first" id="menu-item-name-inputs">
                                     <div class="dual-field-row field-row-proper">
                                         <label class="dual-field-label">
-                                            <span>Trường 01: Tên riêng của sản phẩm</span>
+                                            <span>Tên riêng của sản phẩm</span>
                                             <span class="dual-field-hint">(Không tự động dịch)</span>
                                         </label>
                                         <input type="text" id="menu-item-proper-name" placeholder="Ví dụ: Wagyu A5, Pastie Special, Coca-Cola, Matcha Uji..." autocomplete="off">
@@ -741,7 +741,7 @@
                                     </div>
                                     <div class="dual-field-row field-row-common">
                                         <label class="dual-field-label">
-                                            <span>Trường 02: Tên Còn lại <b style="color:#ef4444;">*</b></span>
+                                            <span>Tên Còn lại <b style="color:#ef4444;">*</b></span>
                                             <span class="dual-field-hint">(Tự động dịch sang ngôn ngữ khác)</span>
                                         </label>
                                         <input type="text" id="menu-item-common-name" placeholder="Ví dụ: Bò bít tết, Trà sữa trân châu, Cà phê muối, Pizza hải sản..." autocomplete="off">
@@ -774,8 +774,8 @@
 
 
                             <label class="menu-field menu-field-cat">
-                                <span>Danh mục</span>
-                                <select id="menu-item-category"><option value="">— Không thuộc danh mục —</option></select>
+                                <span>Danh mục / Nhóm món <b style="color:#ef4444;">*</b></span>
+                                <select id="menu-item-category" required><option value="">— Chọn danh mục / nhóm món —</option></select>
                             </label>
 
                             <label class="menu-field menu-field-stock">
@@ -1568,7 +1568,7 @@
                     <div class="dual-name-inputs order-common-first" id="admin-create-name-inputs">
                         <div class="dual-field-row field-row-proper">
                             <label class="dual-field-label">
-                                <span>Trường 01: Tên Riêng <b style="color:#ef4444;">*</b></span>
+                                <span>Tên Riêng <b style="color:#ef4444;">*</b></span>
                                 <span class="dual-field-hint">(Không tự động dịch)</span>
                             </label>
                             <input type="text" id="admin-create-proper-name" placeholder="Ví dụ: Pastie, Đan Trinh, An Nam..." autocomplete="off">
@@ -1576,7 +1576,7 @@
                         </div>
                         <div class="dual-field-row field-row-common">
                             <label class="dual-field-label">
-                                <span>Trường 02: Tên Còn lại</span>
+                                <span>Tên Còn lại</span>
                                 <span class="dual-field-hint">(Tự động dịch sang ngôn ngữ khác)</span>
                             </label>
                             <input type="text" id="admin-create-venue-type" list="admin-create-venue-type-list" placeholder="Ví dụ: Nhà hàng, Khách sạn, Hộ kinh doanh, Quán cà phê..." autocomplete="off">
@@ -1701,7 +1701,7 @@
                     <div class="dual-name-inputs order-common-first" id="admin-edit-name-inputs">
                         <div class="dual-field-row field-row-proper">
                             <label class="dual-field-label">
-                                <span>Trường 01: Tên Riêng <b style="color:#ef4444;">*</b></span>
+                                <span>Tên Riêng <b style="color:#ef4444;">*</b></span>
                                 <span class="dual-field-hint">(Không tự động dịch)</span>
                             </label>
                             <input type="text" id="admin-edit-proper-name" placeholder="Ví dụ: Pastie, Đan Trinh, An Nam..." autocomplete="off">
@@ -1709,7 +1709,7 @@
                         </div>
                         <div class="dual-field-row field-row-common">
                             <label class="dual-field-label">
-                                <span>Trường 02: Tên Còn lại</span>
+                                <span>Tên Còn lại</span>
                                 <span class="dual-field-hint">(Tự động dịch sang ngôn ngữ khác)</span>
                             </label>
                             <input type="text" id="admin-edit-venue-type" list="admin-edit-venue-type-list" placeholder="Ví dụ: Nhà hàng, Khách sạn, Hộ kinh doanh, Quán cà phê..." autocomplete="off">
