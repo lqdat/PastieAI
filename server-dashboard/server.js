@@ -984,7 +984,6 @@ app.get('/qr/:code', (req, res) => res.redirect(302, `/customer-chat/${encodeURI
 // Public metadata used by the standalone customer portal. It intentionally
 // exposes only the support agent's display name for a valid opaque QR code.
 app.get('/api/qr-chat/:code', async (req, res) => {
-  res.set('Cache-Control', 'no-store');
   try {
     const account = await resolveQrChatAccount('qr-concierge', String(req.params.code || ''));
     if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
@@ -5818,6 +5817,20 @@ app.get('/api/admin/menu/view', checkAdminAuth, async (req, res) => {
 
 app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
   try {
+    // PHÂN TRANG. Trước đây câu này cắt cứng ở LIMIT 100 và không nói gì thêm,
+    // nên quán bán qua đơn thứ 101 là đơn cũ rơi khỏi màn hình vĩnh viễn —
+    // không có nút nào bấm để xem tiếp, và giao diện cũng không biết là mình
+    // đang bị cắt. Nay trả kèm total/hasMore để bên kia còn vẽ được thanh trang.
+    //
+    // Mặc định để NGUYÊN 100 như cũ. Giao diện hiện tại chưa truyền limit/page,
+    // nên hạ mặc định xuống là màn hình của người đang dùng tự nhiên ngắn đi —
+    // một thay đổi họ không xin. Giao diện mới sẽ tự truyền cỡ trang nó muốn.
+    const soMoiTrang = Math.min(200, Math.max(10, Number(req.query.limit) || 100));
+    const trang = Math.max(1, Number(req.query.page) || 1);
+    const bo = (trang - 1) * soMoiTrang;
+    // Lọc theo mã QR (mã của bàn/phòng). 'all' hoặc để trống là không lọc.
+    const locQr = String(req.query.qr || '').trim();
+
     const where = ['o.status NOT IN ($1, $2)'];
     const params = ['rejected', 'superseded'];
     if (isSuperAdmin(req.admin)) {
@@ -5846,6 +5859,43 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
       where.push(`(s.claimed_by_admin_id = $${params.length} OR s.assigned_admin_id = $${params.length})`);
     }
 
+    // Phạm vi (chưa lọc QR) dùng cho hai việc: đếm tổng, và dựng danh sách mã QR
+    // để đổ vào ô lọc. Danh sách đó phải theo ĐÚNG phạm vi người đang xem —
+    // không thì Sale thấy tên bàn của cơ sở khác trong ô lọc.
+    const whereGoc = [...where];
+    const paramsGoc = [...params];
+
+    if (locQr && locQr !== 'all') {
+      params.push(locQr);
+      where.push(`q.code = $${params.length}`);
+    }
+
+    const [demRes, qrRes] = await Promise.all([
+      db.query(
+        `SELECT COUNT(*)::int AS n
+           FROM chat_orders o
+           JOIN sessions s ON s.id = o.session_id
+           LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+           LEFT JOIN agent_groups g ON g.id = s.group_id
+           LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
+          WHERE ${where.join(' AND ')}`,
+        params
+      ).catch(() => ({ rows: [{ n: 0 }] })),
+      db.query(
+        `SELECT DISTINCT q.code, q.label
+           FROM chat_orders o
+           JOIN sessions s ON s.id = o.session_id
+           JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+           LEFT JOIN agent_groups g ON g.id = s.group_id
+           LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
+          WHERE ${whereGoc.join(' AND ')}
+          ORDER BY q.label ASC`,
+        paramsGoc
+      ).catch(() => ({ rows: [] })),
+    ]);
+    const tong = demRes.rows[0]?.n || 0;
+
+    params.push(soMoiTrang, bo);
     const rows = await db.query(
       `SELECT o.id, o.order_code, o.session_id, o.status, o.total_amount, o.payment_method,
               o.payment_selected_at, o.paid_at, o.created_at, o.updated_at, o.version,
@@ -5874,13 +5924,21 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
          LEFT JOIN admins owner ON owner.id = COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id)
         WHERE ${where.join(' AND ')}
         ORDER BY o.updated_at DESC
-        LIMIT 100`,
+        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
     res.json({
       orders: rows.rows,
       // Sale không được xác nhận thu tiền. Chỉ Agent quản lý và Superadmin được xác nhận.
       canMarkPaid: isSuperAdmin(req.admin) || isAgentManager(req.admin),
+      total: tong,
+      page: trang,
+      pageSize: soMoiTrang,
+      totalPages: Math.max(1, Math.ceil(tong / soMoiTrang)),
+      hasMore: bo + rows.rows.length < tong,
+      qr: locQr && locQr !== 'all' ? locQr : '',
+      // Danh sách mã QR trong phạm vi người đang xem, để đổ vào ô lọc.
+      qrOptions: qrRes.rows.map((r) => ({ code: r.code, label: r.label || r.code })),
     });
   } catch (error) {
     console.error('Order cart error:', error);
@@ -6089,73 +6147,6 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
   notifyVisitorRealtime(order.session_id, 'order_update', { orderId: order.id, status: 'paid' });
   void deliverPosEvent(order.id, 'order.paid');
   res.json({ success: true, order: updated.rows[0], nextAction: 'customer_thank_you' });
-});
-
-// Chuyển bill/đơn từ Sale sang Agent quản lý cơ sở
-app.post('/api/admin/orders/:orderId/transfer-to-agent', checkAdminAuth, requireWorkingHours, async (req, res) => {
-  const { orderId } = req.params;
-  const { note } = req.body || {};
-
-  try {
-    const orderRes = await db.query(
-      `SELECT o.*, s.project_id, s.claimed_by_admin_id, s.assigned_admin_id, s.group_id, s.qr_account_id
-         FROM chat_orders o
-         JOIN sessions s ON s.id = o.session_id
-        WHERE o.id = $1`,
-      [orderId]
-    );
-    const order = orderRes.rows[0];
-    if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
-    if (!canAccessProject(req.admin, order.project_id)) return res.status(403).json({ error: 'Bạn không có quyền chuyển đơn này.' });
-
-    // Xác định Agent quản lý phụ trách cơ sở / nhóm này
-    const agentRes = await db.query(
-      `SELECT a.id, a.full_name, a.username
-         FROM sessions s
-         LEFT JOIN agent_groups g ON g.id = s.group_id
-         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
-         JOIN admins a ON a.id = COALESCE(g.agent_id, q.owner_admin_id, s.assigned_admin_id)
-        WHERE s.id = $1
-        LIMIT 1`,
-      [order.session_id]
-    );
-    const targetAgent = agentRes.rows[0];
-
-    // Cập nhật session: gỡ claim của Sale, gán trực tiếp cho Agent quản lý
-    await db.query(
-      `UPDATE sessions
-          SET claimed_by_admin_id = NULL,
-              claimed_at = NULL,
-              assigned_admin_id = COALESCE($2, assigned_admin_id),
-              routing_status = 'waiting'
-        WHERE id = $1`,
-      [order.session_id, targetAgent?.id || null]
-    );
-
-    const saleName = req.admin.full_name || req.admin.username || 'Sale';
-    const agentLabel = targetAgent?.full_name ? `Agent ${targetAgent.full_name}` : 'Agent quản lý';
-    const reasonText = note ? ` (${note})` : '';
-    const transferNotice = `[Chuyển bill] Nhân viên Sale ${saleName} đã chuyển bill #${order.order_code || order.id} sang ${agentLabel} xử lý tiếp${reasonText}.`;
-
-    const sysMsg = await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id, system_kind, visible_to)
-       VALUES ($1, 'system', $2, $2, 'vi', $3, 'order_transfer', 'staff') RETURNING id`,
-      [order.session_id, transferNotice, req.admin.id]
-    ).catch(() => ({ rows: [] }));
-
-    notifyAdminRealtime('session_update', { sessionId: order.session_id, projectId: order.project_id, action: 'transfer_to_agent', agentId: targetAgent?.id });
-    notifyAdminRealtime('new_message', { sessionId: order.session_id, projectId: order.project_id, sender: 'system', messageId: sysMsg.rows[0]?.id });
-    notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: order.status, action: 'transferred_to_agent' });
-
-    res.json({
-      success: true,
-      message: `Đã chuyển bill sang ${agentLabel} thành công.`,
-      agent: targetAgent || null
-    });
-  } catch (error) {
-    console.error('Transfer order to agent error:', error);
-    res.status(500).json({ error: 'Lỗi khi chuyển bill sang Agent.' });
-  }
 });
 
 // Customer chooses "Kết thúc": close and remove the current QR conversation and order.
@@ -11725,9 +11716,6 @@ async function localizeVenueName(name, lang, agentId) {
     ? translated
     : gemini.removeVietnameseTones(prefix);
 
-  if (order === 'propel_first') {
-    return [cleanPropel, cleanPrefix].filter(Boolean).join(' ');
-  }
   return [cleanPrefix, cleanPropel].filter(Boolean).join(' ');
 }
 
@@ -11762,11 +11750,9 @@ async function translateMenuCategoryToLanguage(categoryId, name, lang, protect) 
 //
 // Bản dịch Agent đã tự sửa (is_manual = TRUE) KHÔNG bị ghi đè — nếu không thì
 // mỗi lần sửa giá là xoá sạch công sức sửa tay.
-async function translateMenuItem(itemId, name, description, agentId, properName = '') {
+async function translateMenuItem(itemId, name, description, agentId) {
   const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
-  const venueProtects = await venueNamesForAgent(agentId);
-  const itemProtect = properName && String(properName).trim().length >= 2 ? [String(properName).trim()] : [];
-  const protect = [...venueProtects, ...itemProtect];
+  const protect = await venueNamesForAgent(agentId);
   await Promise.all(targets.map(async (lang) => {
     try {
       await translateMenuItemToLanguage(itemId, name, description, lang, protect);
@@ -11996,14 +11982,10 @@ app.get('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 
 app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
-  const { categoryId, name, description, price, hideWhenOut, vatRate, properName, commonName, nameOrder } = req.body || {};
+  const { categoryId, name, description, price, hideWhenOut, vatRate } = req.body || {};
   const cleanName = String(name || '').trim().slice(0, 255);
   const cleanPrice = Math.max(0, Math.round(Number(price)));
-  const cleanProperName = properName !== undefined ? (String(properName).trim().slice(0, 255) || null) : null;
-  const cleanCommonName = commonName !== undefined ? (String(commonName).trim().slice(0, 255) || null) : null;
-  const cleanNameOrder = nameOrder === 'proper_first' ? 'proper_first' : 'common_first';
   if (!cleanName) return res.status(400).json({ error: 'Cần tên món.' });
-  if (!categoryId) return res.status(400).json({ error: 'Bắt buộc chọn danh mục/nhóm cho sản phẩm.' });
   if (!Number.isFinite(cleanPrice)) return res.status(400).json({ error: 'Giá không hợp lệ.' });
   const stock = parseStockInput(req.body?.stockQuantity);
   if (stock.invalid) return res.status(400).json({ error: 'Số lượng tồn phải là số không âm, hoặc để trống nếu không giới hạn.' });
@@ -12032,13 +12014,12 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
        RETURNING *`,
       [categoryId ? Number(categoryId) : null, req.admin.id, req.admin.project_id,
        cleanName, String(description || '').trim() || null, cleanPrice,
-       stock.value, hideWhenOut === false ? false : true, cleanVat,
-       cleanProperName, cleanCommonName, cleanNameOrder]
+       stock.value, hideWhenOut === false ? false : true, cleanVat]
     );
     const item = created.rows[0];
 
     const cleanDesc = String(description || '').trim() || null;
-    void translateMenuItem(item.id, cleanName, cleanDesc, req.admin.id, item.proper_name || properName);
+    void translateMenuItem(item.id, cleanName, cleanDesc, req.admin.id);
 
     res.status(201).json({ success: true, item });
   } catch (error) {
@@ -12049,8 +12030,7 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 
 app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
-  const { categoryId, name, description, price, isAvailable, sortOrder, hideWhenOut, vatRate, properName, commonName, nameOrder } = req.body || {};
-  if (categoryId !== undefined && !categoryId) return res.status(400).json({ error: 'Bắt buộc chọn danh mục/nhóm cho sản phẩm.' });
+  const { categoryId, name, description, price, isAvailable, sortOrder, hideWhenOut, vatRate } = req.body || {};
   const stock = parseStockInput(req.body?.stockQuantity);
   if (stock.invalid) return res.status(400).json({ error: 'Số lượng tồn phải là số không âm, hoặc để trống nếu không giới hạn.' });
   // Như trên: không nhận VAT theo món nữa.
@@ -12096,10 +12076,7 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
        Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : null,
        stock.provided, stock.value,
        typeof hideWhenOut === 'boolean' ? hideWhenOut : null,
-       hasVat, cleanVat,
-        properName !== undefined, properName !== undefined ? (String(properName).trim().slice(0, 255) || null) : null,
-        commonName !== undefined, commonName !== undefined ? (String(commonName).trim().slice(0, 255) || null) : null,
-        nameOrder !== undefined, nameOrder === 'proper_first' ? 'proper_first' : 'common_first']
+       hasVat, cleanVat]
     );
     const item = updated.rows[0];
 
@@ -12108,7 +12085,7 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
     const textChanged = (cleanName && cleanName !== current.rows[0].name)
       || (description !== undefined && String(description || '') !== String(current.rows[0].description || ''));
     if (textChanged) {
-      void translateMenuItem(item.id, item.name, item.description, req.admin.id, item.proper_name || properName);
+      void translateMenuItem(item.id, item.name, item.description, req.admin.id);
     } else {
       void ensureMenuItemTranslations(item.id, item.name, item.description, req.admin.id);
     }
@@ -12891,23 +12868,30 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Không tìm thấy đơn đang chỉnh sửa.' });
     }
-    // KHÁCH BẤM SỬA THÌ CHO SỬA, KỂ CẢ ĐÃ CHỌN PHƯƠNG THỨC THANH TOÁN.
+    // CHỐT CÁCH TRẢ LÀ ĐƠN XONG — KHÔNG SỬA ĐÈ ĐƯỢC NỮA.
     //
-    // Trước đây chỗ này chặn 409 với lý do "bếp đã làm, tiền đã ghi nhận". Luật
-    // nghiệp vụ đã chốt lại: chọn phương thức thanh toán chỉ là tín hiệu cho bếp
-    // bắt đầu, chứ không khóa đơn — khách còn bấm được nút sửa thì đơn phải sửa
-    // được, và nó tụt về 'pending_confirm' để Sale xác nhận lại rồi phát hành
-    // hóa đơn bản mới (đúng nhánh "nếu khách có chỉnh sửa thì quay lại bước tạo
-    // order" của vòng đời).
+    // Luật nghiệp vụ: chọn xong phương thức thanh toán thì nút "Sửa" biến mất,
+    // và lượt đặt tiếp theo là một ĐƠN MỚI. Trước đây luật này chỉ được canh ở
+    // cổng khách, còn máy chủ vẫn nhận PUT và vẫn ghi đè. Chỉ cần MỘT client gửi
+    // PUT là đơn 1 bị nuốt: mất món cũ, mất luôn cách trả vừa chọn.
     //
-    // Hai thứ giữ cho việc này an toàn, đều nằm ngay bên dưới: bản đơn cũ được
-    // chốt vào chat_order_revisions trước khi ghi đè, và tồn kho đã trừ lúc xác
-    // nhận được hoàn lại trước khi kiểm đơn mới. Lần sửa cũng vào nhật ký
-    // 'customer_edited' nên Sale/Agent thấy rõ ai đổi gì, lúc nào.
+    // Ba lối đưa tới đúng chuyện đó, không lối nào là lỗi của khách:
+    //   · máy khách đang chạy bản cổng cũ chưa build lại
+    //   · hệ thống tự chọn cách trả sau 2 phút, màn hình khách chưa kịp biết
+    //   · khách mở hai tab, hoặc bấm gửi lại khi mạng chập chờn
     //
-    // Đơn ĐÃ THU TIỀN vẫn không vào được đây: câu SELECT ở trên chỉ lấy đơn ở
-    // 'pending_confirm'/'awaiting_payment', đơn 'paid' không nằm trong đó.
-    const hadPaymentMethod = Boolean(order.payment_method);
+    // Luật tiền bạc phải canh ở máy chủ. Cổng khách vẫn giữ phần của nó (ẩn nút
+    // Sửa, gửi POST) — đó là trải nghiệm; còn đây là chốt chặn.
+    //
+    // Đơn CHƯA chốt cách trả thì vẫn sửa được bình thường, không đụng gì.
+    if (order.payment_method) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'Đơn này đã chọn phương thức thanh toán nên không sửa được nữa. Bạn có thể đặt một đơn mới.',
+        code: 'ORDER_LOCKED',
+      });
+    }
+    const hadPaymentMethod = false;
 
     const wanted = new Map();
     const wantedNotes = new Map();
@@ -13740,6 +13724,11 @@ app.get('/api/admin/technical-agent-chats', checkAdminAuth, async (req, res) => 
           badgeLabel: tech.full_name || 'Kỹ thuật',
           lastMessage: lastMsg?.original_text || '',
           lastMessageTime: lastMsg?.created_at || null,
+          // CHỈ XEM. Admin tổng theo dõi được nhưng không gửi tin chen vào —
+          // máy chủ đã chặn ở POST /internal-chats/message. Nói ra ở đây để bên
+          // giao diện khỏi phải tự đoán: một màn hình mở ô soạn tin rồi để máy
+          // chủ trả 403 là hứa một đằng, trả lời một nẻo.
+          chiXem: true,
           unreadCount: 0,
         });
       }
@@ -14288,6 +14277,21 @@ async function logOrderEvent(order, eventType, { admin = null, actorRole = '', a
   );
 }
 
+// ─── VÒNG ĐỜI HOÁ ĐƠN ───────────────────────────────────────────────────────
+//
+// Luật nghiệp vụ đầy đủ nằm ở docs/VONG-DOI-BILL.md — chín bước B1..B9 và năm
+// luật bất biến. Đọc trước khi sửa bất cứ thứ gì trong vùng này.
+//
+// Năm luật, tóm tắt:
+//   1. Không xoá, không ẩn bill, ở MỌI bước.
+//   2. Chỉ bước xác nhận thanh toán được ghi đè. Không bước nào khác.
+//   3. Hoá đơn xếp theo thời điểm PHÁT HÀNH, không phải lúc ai đó mở chat.
+//   4. Phiên chat đóng rồi vẫn xem được hoá đơn.
+//   5. Mọi chỉnh sửa của khách / Sale / Agent đều vào lịch sử bill.
+//
+// Có bài kiểm dịch nguyên spec thành phép đo, chạy trên máy chủ thật:
+// vongdoibill.js. Sửa vùng này xong thì chạy lại nó.
+//
 // Lưu MỘT bản bill. Mỗi lần Sale xác nhận là một bản mới, không ghi đè.
 //
 // Nhờ vậy bill hiển thị lần lượt trong hội thoại đúng thứ tự thời gian, bill cũ
@@ -14438,13 +14442,35 @@ async function loadOrderRevisions(orderId, language) {
 
 async function loadSessionBills(sessionId, language) {
     // Đảm bảo không sót bất kỳ đơn nào đã có hóa đơn trong chat_orders của phiên này
+    // DỌN CHO ĐỦ những đơn đã phát hành hoá đơn mà chưa có dòng trong bảng bill.
+    //
+    // HAI CHỖ TỪNG SAI Ở ĐÂY, đều làm "bill xuất hiện lung tung":
+    //
+    // 1. KHÔNG ĐIỀN created_at. Cột này mặc định CURRENT_TIMESTAMP, nên bản bill
+    //    mang dấu thời gian của LÚC CÓ NGƯỜI MỞ ĐOẠN CHAT chứ không phải lúc
+    //    phát hành. Giao diện xếp hoá đơn vào hội thoại theo mốc đó, nên tờ bill
+    //    của ba tiếng trước nhảy xuống cuối đoạn chat — và mỗi người mở ra lại
+    //    thấy nó ở một chỗ khác. Lấy mốc từ chính đơn.
+    //
+    // 2. ĐIỀU KIỆN QUÁ RỘNG. Bản cũ chỉ cần status là 'awaiting_payment' hoặc
+    //    'paid'. Mà cột status mặc định là 'awaiting_payment', nên một đơn chưa
+    //    hề phát hành hoá đơn cũng bị đẻ ra một tờ bill RỖNG — vừa vô đoạn chat
+    //    đã thấy bill.
+    //
+    //    Dấu hiệu đúng để nói "hoá đơn đã phát hành" là bill_sent_at, hoặc có
+    //    một invoice thật sự khác rỗng. Trạng thái đơn không nói lên điều đó.
     await db.query(
-      `INSERT INTO chat_order_bills (order_id, session_id, version, invoice, items, total_amount, payment_method, confirmed_by_admin_id)
+      `INSERT INTO chat_order_bills (order_id, session_id, version, invoice, items, total_amount,
+                                     payment_method, confirmed_by_admin_id, created_at)
        SELECT o.id, o.session_id, COALESCE(o.version, 1), COALESCE(o.invoice, '{}'::jsonb), COALESCE(o.items, '[]'::jsonb),
-              o.total_amount, o.payment_method, o.confirmed_by_admin_id
+              o.total_amount, o.payment_method, o.confirmed_by_admin_id,
+              COALESCE(o.bill_sent_at, o.confirmed_at, o.updated_at, o.created_at, NOW())
          FROM chat_orders o
         WHERE o.session_id = $1
-          AND (o.status IN ('awaiting_payment', 'paid') OR (o.invoice IS NOT NULL AND jsonb_typeof(o.invoice) = 'object' AND o.invoice != '{}'::jsonb))
+          AND (
+            o.bill_sent_at IS NOT NULL
+            OR (o.invoice IS NOT NULL AND jsonb_typeof(o.invoice) = 'object' AND o.invoice != '{}'::jsonb)
+          )
           AND NOT EXISTS (
             SELECT 1 FROM chat_order_bills b WHERE b.order_id = o.id
           )
@@ -14650,7 +14676,31 @@ async function loadSessionBills(sessionId, language) {
     }
   }
 
-  return bills;
+  // MỘT ĐƠN CHỈ HIỆN MỘT TỜ HOÁ ĐƠN — bản mới nhất.
+  //
+  // Khách sửa đơn rồi Sale xác nhận lại là đơn có thêm một bản bill. Trả về cả
+  // hai thì khách và nhân viên nhìn thấy HAI hoá đơn nằm đè lên nhau cho cùng
+  // một lần gọi món, không biết tờ nào đang có hiệu lực. Spec cấm chuyện đó
+  // (docs/VONG-DOI-BILL.md, nhánh rẽ B4').
+  //
+  // Bản cũ KHÔNG bị xoá — luật 1 cấm xoá bill, và luật 2 chỉ cho ghi đè ở bước
+  // xác nhận thanh toán. Chúng vẫn nằm nguyên trong chat_order_bills, và vẫn
+  // đọc được qua bill.history: mỗi tờ bill mang đủ lịch sử các bản của chính
+  // đơn đó, ai sửa gì lúc nào. Ở đây chỉ chọn cái nào được VẼ RA.
+  const moiNhatTheoDon = new Map();
+  for (const bill of bills) {
+    const k = String(bill.orderId || bill.id);
+    const dangGiu = moiNhatTheoDon.get(k);
+    const moiHon = !dangGiu
+      || Number(bill.version || 0) > Number(dangGiu.version || 0)
+      || (Number(bill.version || 0) === Number(dangGiu.version || 0)
+          && new Date(bill.createdAt) > new Date(dangGiu.createdAt));
+    if (moiHon) moiNhatTheoDon.set(k, bill);
+  }
+
+  // Giữ nguyên thứ tự thời gian của danh sách gốc (luật 3): lọc theo danh sách
+  // đã sắp xếp chứ không lấy thứ tự của Map.
+  return bills.filter((bill) => moiNhatTheoDon.get(String(bill.orderId || bill.id)) === bill);
 }
 
 // So hai bản đơn, trả về danh sách chi tiết: món nào thêm, bớt, sửa SL, giá hay VAT.

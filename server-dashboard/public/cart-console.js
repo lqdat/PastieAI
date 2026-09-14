@@ -751,16 +751,52 @@
         }
     }
 
+    // Trang đang xem và bàn đang lọc. Để ngoài load() để bấm sang trang rồi vẽ
+    // lại không mất lựa chọn.
+    let trangHienTai = 1;
+    let locQr = '';
+    const MOI_TRANG = 50;
+
     async function load(body) {
         body.innerHTML = '<p class="cart-loading"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
         try {
-            const res = await authFetch(`${API_BASE}/api/admin/orders/cart`);
+            const tham = new URLSearchParams({ limit: String(MOI_TRANG), page: String(trangHienTai) });
+            if (locQr) tham.set('qr', locQr);
+            const res = await authFetch(`${API_BASE}/api/admin/orders/cart?${tham.toString()}`);
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || 'Không tải được danh sách hóa đơn.');
             canMarkPaid = !!data.canMarkPaid;
             const orders = Array.isArray(data.orders) ? data.orders : [];
+
+            // Thanh công cụ vẽ TRƯỚC khi xét danh sách rỗng: lọc ra không còn đơn
+            // nào mà thanh lọc biến mất luôn thì người dùng kẹt, không có đường
+            // quay về "Tất cả".
+            const dsQr = Array.isArray(data.qrOptions) ? data.qrOptions : [];
+            const tong = Number(data.total || 0);
+            const soTrang = Math.max(1, Number(data.totalPages || 1));
+            const thanhCongCu = `
+                <div class="cart-toolbar">
+                    <label class="cart-filter">
+                        <span>Mã QR</span>
+                        <select class="cart-qr-filter">
+                            <option value="">Tất cả</option>
+                            ${dsQr.map((q) => `<option value="${escapeHtml(q.code)}"${q.code === locQr ? ' selected' : ''}>${escapeHtml(q.label)}</option>`).join('')}
+                        </select>
+                    </label>
+                    <span class="cart-count">${tong} hóa đơn${locQr ? ' (đã lọc)' : ''}</span>
+                </div>`;
+            const thanhTrang = soTrang > 1 ? `
+                <div class="cart-pager">
+                    <button type="button" class="secondary-btn cart-prev"${trangHienTai <= 1 ? ' disabled' : ''}>
+                        <i class="ri-arrow-left-s-line"></i> Trước</button>
+                    <span class="cart-page-label">Trang ${trangHienTai}/${soTrang}</span>
+                    <button type="button" class="secondary-btn cart-next"${trangHienTai >= soTrang ? ' disabled' : ''}>
+                        Sau <i class="ri-arrow-right-s-line"></i></button>
+                </div>` : '';
+
             if (orders.length === 0) {
-                body.innerHTML = '<p class="cart-empty">Chưa có đơn hàng nào.</p>';
+                body.innerHTML = thanhCongCu
+                    + `<p class="cart-empty">${locQr ? 'Bàn này chưa có hóa đơn nào.' : 'Chưa có đơn hàng nào.'}</p>`;
                 return;
             }
             // Gom nhóm theo NGƯỜI ĐANG NHÌN, không theo một quy tắc cố định:
@@ -849,7 +885,7 @@
                     </div>
                 </article>`;
             };
-            body.innerHTML = [...groups].map(([venue, list]) => {
+            body.innerHTML = thanhCongCu + [...groups].map(([venue, list]) => {
                 const total = list.reduce((sum, order) => sum + Number(order.total_amount || 0), 0);
                 return `
                 <section class="cart-group">
@@ -860,6 +896,7 @@
                     ${list.map(renderOrder).join('')}
                 </section>`;
             }).join('');
+            body.insertAdjacentHTML('beforeend', thanhTrang);
         } catch (error) {
             body.innerHTML = `<p class="cart-error">${escapeHtml(error.message)}</p>`;
         }
@@ -880,8 +917,26 @@
             </div>`;
         document.body.appendChild(overlay);
         const body = overlay.querySelector('.cart-body');
+        // Đổi bàn -> luôn về trang 1. Giữ nguyên trang cũ là người dùng đang ở
+        // trang 3 của bàn A, lọc sang bàn B chỉ có 1 trang, rồi thấy màn trống.
+        overlay.addEventListener('change', async (event) => {
+            const chon = event.target.closest('.cart-qr-filter');
+            if (!chon) return;
+            locQr = chon.value || '';
+            trangHienTai = 1;
+            await load(body);
+        });
+
         overlay.addEventListener('click', async (event) => {
             if (event.target === overlay || event.target.closest('.cart-close')) return close();
+
+            const truoc = event.target.closest('.cart-prev');
+            if (truoc) {
+                if (trangHienTai > 1) { trangHienTai -= 1; await load(body); body.scrollTop = 0; }
+                return;
+            }
+            const sau = event.target.closest('.cart-next');
+            if (sau) { trangHienTai += 1; await load(body); body.scrollTop = 0; return; }
 
             const open = event.target.closest('[data-open]');
             if (open) {

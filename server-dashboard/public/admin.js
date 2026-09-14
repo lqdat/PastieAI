@@ -1520,6 +1520,7 @@ async function switchPosterStyle(style) {
             qrLabel: label,
             agentLogoUrl,
             style,
+            chatUrl: activeQrPreviewState?.chatUrl || chatUrl,
         });
         if (activeQrPreviewState && activeQrPreviewState.imageUrl === imageUrl) {
             activeQrPreviewState.blobs[style] = blob;
@@ -1598,6 +1599,7 @@ window.openQrPreview = async (encodedImageUrl, encodedLabel, encodedOwner, encod
         qrLabel: label,
         agentLogoUrl,
         style: 'standard',
+        chatUrl: activeQrPreviewState?.chatUrl || chatUrl,
     }).then(blob => {
         if (activeQrPreviewState && activeQrPreviewState.imageUrl === imageUrl) {
             activeQrPreviewState.blobs['standard'] = blob;

@@ -41,6 +41,7 @@
     "node-cron": "^4.2.1",
     "pdfkit": "^0.20.1",
     "pg": "^8.11.5",
+    "qrcode": "^1.5.4",
     "resend": "^3.2.0",
     "swagger-jsdoc": "^6.3.0",
     "swagger-ui-express": "^5.0.1",
