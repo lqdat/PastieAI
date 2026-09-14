@@ -222,6 +222,9 @@ async function initializeDatabase() {
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS project_id VARCHAR(100);`);
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS created_by_admin_id INT REFERENCES admins(id) ON DELETE SET NULL;`);
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS full_name_en VARCHAR(255);`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS proper_name VARCHAR(255);`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS common_name VARCHAR(255);`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS name_order VARCHAR(20) DEFAULT 'common_first';`);
 
     // Registry dự án (multi-project): mỗi dự án 1 dòng; KB + tài khoản gắn theo project_id này.
     await query(`
@@ -1074,6 +1077,9 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_menu_items_agent ON qr_menu_items(agent_id, is_available, sort_order);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_menu_items_category ON qr_menu_items(category_id, sort_order);`);
+    await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS proper_name VARCHAR(255);`);
+    await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS common_name VARCHAR(255);`);
+    await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS name_order VARCHAR(20) DEFAULT 'common_first';`);
 
     // Bản dịch tên/mô tả món. KHÁC với message_translations: tên món là nội dung
     // TĨNH, dùng lại hàng nghìn lần, nên lưu hẳn theo món thay vì cache theo tin.

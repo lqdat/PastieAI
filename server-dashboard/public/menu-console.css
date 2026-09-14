@@ -159,6 +159,7 @@
    - Hàng 3: Mô tả (12 cột).
    - Hàng 4: Hình ảnh (12 cột). */
 .menu-field-name  { grid-column: span 6; }
+.menu-field-name-group { grid-column: span 12; margin-bottom: 4px; }
 .menu-field-price { grid-column: span 3; }
 .menu-field-vat   { grid-column: span 3; }
 .menu-field-cat   { grid-column: span 4; }

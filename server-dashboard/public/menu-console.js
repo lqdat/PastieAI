@@ -353,12 +353,77 @@
         else showPhotoPreview('', 'Chọn ảnh sản phẩm — bấm để tải lên');
     }
 
+    function setItemNameOrder(order) {
+        const container = $('menu-item-name-inputs');
+        const badge = $('menu-item-order-badge');
+        const tag = $('menu-item-preview-order-tag');
+        const hiddenOrder = $('menu-item-name-order');
+        const isProperFirst = order === 'proper_first';
+
+        if (container) {
+            container.classList.toggle('order-proper-first', isProperFirst);
+            container.classList.toggle('order-common-first', !isProperFirst);
+        }
+        if (badge) badge.textContent = isProperFirst ? 'Tên riêng trước' : 'Tên Còn lại trước';
+        if (tag) tag.textContent = isProperFirst ? 'Thứ tự: Tên riêng + Tên Còn lại' : 'Thứ tự: Tên Còn lại + Tên riêng';
+        if (hiddenOrder) hiddenOrder.value = isProperFirst ? 'proper_first' : 'common_first';
+        updateItemNamePreview();
+    }
+
+    function updateItemNamePreview() {
+        const properEl = $('menu-item-proper-name');
+        const commonEl = $('menu-item-common-name');
+        const nameHidden = $('menu-item-name');
+        const previewEl = $('menu-item-name-preview');
+        const hintEl = $('menu-item-bilingual-hint');
+        const order = $('menu-item-name-order')?.value || 'common_first';
+
+        const proper = (properEl?.value || '').trim();
+        const common = (commonEl?.value || '').trim();
+
+        let combined = '';
+        if (order === 'proper_first') {
+            combined = [proper, common].filter(Boolean).join(' ');
+        } else {
+            combined = [common, proper].filter(Boolean).join(' ');
+        }
+
+        if (nameHidden) nameHidden.value = combined;
+        if (previewEl) previewEl.textContent = combined || 'Chưa nhập tên sản phẩm';
+
+        if (hintEl) {
+            if (!proper && !common) {
+                hintEl.textContent = 'Vui lòng nhập Tên riêng của sản phẩm (không dịch) và Tên Còn lại (tự động dịch).';
+            } else {
+                hintEl.innerHTML = `💡 <strong>Khách nước ngoài thấy:</strong> ${proper ? `Tên riêng "<strong>${escapeHtml(proper)}</strong>" (giữ nguyên không dịch)` : ''} ${proper && common ? '· ' : ''}${common ? `Phần "<strong>${escapeHtml(common)}</strong>" tự động dịch sang tiếng Anh, Nga, Trung, Hàn.` : ''}`;
+            }
+        }
+    }
+
     function fillItemForm(item) {
         // Form mặc định gập lại. Bấm "Sửa" mà form vẫn đóng thì người dùng không
         // thấy gì xảy ra; bấm "Huỷ sửa" thì thu lại cho gọn.
         window.toggleAddBox?.('menu-item', Boolean(item));
         editingItemId = item ? item.id : null;
-        $('menu-item-name').value = item ? item.name : '';
+        if (item) {
+            const hasSplit = item.proper_name || item.common_name;
+            if (hasSplit) {
+                if ($('menu-item-proper-name')) $('menu-item-proper-name').value = item.proper_name || '';
+                if ($('menu-item-common-name')) $('menu-item-common-name').value = item.common_name || '';
+                setItemNameOrder(item.name_order || 'common_first');
+            } else {
+                if ($('menu-item-proper-name')) $('menu-item-proper-name').value = '';
+                if ($('menu-item-common-name')) $('menu-item-common-name').value = item.name || '';
+                setItemNameOrder('common_first');
+            }
+            $('menu-item-name').value = item.name || '';
+        } else {
+            if ($('menu-item-proper-name')) $('menu-item-proper-name').value = '';
+            if ($('menu-item-common-name')) $('menu-item-common-name').value = '';
+            $('menu-item-name').value = '';
+            setItemNameOrder('common_first');
+        }
+        updateItemNamePreview();
         $('menu-item-price').value = item ? Number(item.price) : '';
         $('menu-item-desc').value = item ? (item.description || '') : '';
         $('menu-item-category').value = item && item.category_id ? String(item.category_id) : '';
@@ -380,7 +445,15 @@
 
     async function submitItem(event) {
         event.preventDefault();
-        const name = $('menu-item-name').value.trim();
+        const properName = ($('menu-item-proper-name')?.value || '').trim();
+        const commonName = ($('menu-item-common-name')?.value || '').trim();
+        const nameOrder = $('menu-item-name-order')?.value || 'common_first';
+
+        let name = nameOrder === 'proper_first'
+            ? [properName, commonName].filter(Boolean).join(' ')
+            : [commonName, properName].filter(Boolean).join(' ');
+
+        if (!name) name = $('menu-item-name')?.value.trim() || '';
         const price = Number($('menu-item-price').value);
         const description = $('menu-item-desc').value.trim();
         const categoryId = $('menu-item-category').value;
@@ -394,6 +467,9 @@
         }
         const payload = {
             name, price, description,
+            properName: properName || null,
+            commonName: commonName || null,
+            nameOrder,
             categoryId: categoryId ? Number(categoryId) : null,
             // Chuỗi rỗng gửi lên nguyên vẹn: backend hiểu đó là "bỏ trống" tức
             // không giới hạn, khác hẳn với việc không gửi trường này.
@@ -1176,8 +1252,23 @@
             resetPhotoField(ITEMS.find((i) => i.id === editingItemId));
         });
 
+        $('menu-item-proper-name')?.addEventListener('input', updateItemNamePreview);
+        $('menu-item-common-name')?.addEventListener('input', updateItemNamePreview);
+        $('menu-item-name')?.addEventListener('input', () => {
+            if (!$('menu-item-proper-name')?.value && !$('menu-item-common-name')?.value) {
+                if ($('menu-item-common-name')) $('menu-item-common-name').value = $('menu-item-name').value;
+            }
+            updateItemNamePreview();
+        });
+        $('menu-item-swap-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            const cur = $('menu-item-name-order')?.value || 'common_first';
+            setItemNameOrder(cur === 'common_first' ? 'proper_first' : 'common_first');
+        });
+
         $('menu-item-stock')?.addEventListener('input', syncHideField);
         syncHideField();
+        updateItemNamePreview();
         $('menu-category-form')?.addEventListener('submit', addCategory);
         $('menu-item-form')?.addEventListener('submit', submitItem);
         $('menu-item-cancel')?.addEventListener('click', () => fillItemForm(null));

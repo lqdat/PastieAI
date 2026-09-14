@@ -11658,6 +11658,9 @@ async function localizeVenueName(name, lang, agentId) {
     ? translated
     : gemini.removeVietnameseTones(prefix);
 
+  if (order === 'propel_first') {
+    return [cleanPropel, cleanPrefix].filter(Boolean).join(' ');
+  }
   return [cleanPrefix, cleanPropel].filter(Boolean).join(' ');
 }
 
@@ -11692,9 +11695,11 @@ async function translateMenuCategoryToLanguage(categoryId, name, lang, protect) 
 //
 // Bản dịch Agent đã tự sửa (is_manual = TRUE) KHÔNG bị ghi đè — nếu không thì
 // mỗi lần sửa giá là xoá sạch công sức sửa tay.
-async function translateMenuItem(itemId, name, description, agentId) {
+async function translateMenuItem(itemId, name, description, agentId, properName = '') {
   const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
-  const protect = await venueNamesForAgent(agentId);
+  const venueProtects = await venueNamesForAgent(agentId);
+  const itemProtect = properName && String(properName).trim().length >= 2 ? [String(properName).trim()] : [];
+  const protect = [...venueProtects, ...itemProtect];
   await Promise.all(targets.map(async (lang) => {
     try {
       await translateMenuItemToLanguage(itemId, name, description, lang, protect);
@@ -11924,9 +11929,12 @@ app.get('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 
 app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
-  const { categoryId, name, description, price, hideWhenOut, vatRate } = req.body || {};
+  const { categoryId, name, description, price, hideWhenOut, vatRate, properName, commonName, nameOrder } = req.body || {};
   const cleanName = String(name || '').trim().slice(0, 255);
   const cleanPrice = Math.max(0, Math.round(Number(price)));
+  const cleanProperName = properName !== undefined ? (String(properName).trim().slice(0, 255) || null) : null;
+  const cleanCommonName = commonName !== undefined ? (String(commonName).trim().slice(0, 255) || null) : null;
+  const cleanNameOrder = nameOrder === 'proper_first' ? 'proper_first' : 'common_first';
   if (!cleanName) return res.status(400).json({ error: 'Cần tên món.' });
   if (!Number.isFinite(cleanPrice)) return res.status(400).json({ error: 'Giá không hợp lệ.' });
   const stock = parseStockInput(req.body?.stockQuantity);
@@ -11956,12 +11964,13 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
        RETURNING *`,
       [categoryId ? Number(categoryId) : null, req.admin.id, req.admin.project_id,
        cleanName, String(description || '').trim() || null, cleanPrice,
-       stock.value, hideWhenOut === false ? false : true, cleanVat]
+       stock.value, hideWhenOut === false ? false : true, cleanVat,
+       cleanProperName, cleanCommonName, cleanNameOrder]
     );
     const item = created.rows[0];
 
     const cleanDesc = String(description || '').trim() || null;
-    void translateMenuItem(item.id, cleanName, cleanDesc, req.admin.id);
+    void translateMenuItem(item.id, cleanName, cleanDesc, req.admin.id, item.proper_name || properName);
 
     res.status(201).json({ success: true, item });
   } catch (error) {
@@ -11972,7 +11981,7 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 
 app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
-  const { categoryId, name, description, price, isAvailable, sortOrder, hideWhenOut, vatRate } = req.body || {};
+  const { categoryId, name, description, price, isAvailable, sortOrder, hideWhenOut, vatRate, properName, commonName, nameOrder } = req.body || {};
   const stock = parseStockInput(req.body?.stockQuantity);
   if (stock.invalid) return res.status(400).json({ error: 'Số lượng tồn phải là số không âm, hoặc để trống nếu không giới hạn.' });
   // Như trên: không nhận VAT theo món nữa.
@@ -12018,7 +12027,10 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
        Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : null,
        stock.provided, stock.value,
        typeof hideWhenOut === 'boolean' ? hideWhenOut : null,
-       hasVat, cleanVat]
+       hasVat, cleanVat,
+        properName !== undefined, properName !== undefined ? (String(properName).trim().slice(0, 255) || null) : null,
+        commonName !== undefined, commonName !== undefined ? (String(commonName).trim().slice(0, 255) || null) : null,
+        nameOrder !== undefined, nameOrder === 'proper_first' ? 'proper_first' : 'common_first']
     );
     const item = updated.rows[0];
 
@@ -12027,7 +12039,7 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
     const textChanged = (cleanName && cleanName !== current.rows[0].name)
       || (description !== undefined && String(description || '') !== String(current.rows[0].description || ''));
     if (textChanged) {
-      void translateMenuItem(item.id, item.name, item.description, req.admin.id);
+      void translateMenuItem(item.id, item.name, item.description, req.admin.id, item.proper_name || properName);
     } else {
       void ensureMenuItemTranslations(item.id, item.name, item.description, req.admin.id);
     }

@@ -463,10 +463,13 @@ function splitVenueName(fullName) {
     const lower = raw.toLowerCase();
     for (const prefix of [...VENUE_PREFIXES].sort((a, b) => b.length - a.length)) {
         if (lower.startsWith(prefix + ' ')) {
-            return { prefix: raw.slice(0, prefix.length), name: raw.slice(prefix.length).trim() };
+            return { prefix: raw.slice(0, prefix.length), name: raw.slice(prefix.length).trim(), order: 'common_first' };
+        }
+        if (lower.endsWith(' ' + prefix)) {
+            return { prefix: raw.slice(raw.length - prefix.length), name: raw.slice(0, raw.length - prefix.length).trim(), order: 'proper_first' };
         }
     }
-    return { prefix: '', name: raw };
+    return { prefix: '', name: raw, order: 'proper_first' };
 }
 
 function removeVietnameseTones(text) {
@@ -478,27 +481,115 @@ function removeVietnameseTones(text) {
         .normalize('NFC');
 }
 
-function updateCreateVenueNamePreview() {
-    const type = document.getElementById('admin-create-venue-type')?.value || '';
-    const name = (document.getElementById('admin-create-fullname')?.value || '').trim();
-    const preview = document.getElementById('admin-create-name-preview');
-    if (!preview) return;
-    preview.textContent = type && name
-        ? `Tên đầy đủ: ${titleCaseVi(type)} ${name} — khách nước ngoài thấy loại hình đã dịch (Anh/Nga/Trung/Hàn), tên riêng "${removeVietnameseTones(name)}" bỏ dấu.`
-        : '';
+function setCreateAgentNameOrder(order) {
+    const container = document.getElementById('admin-create-name-inputs');
+    const badge = document.getElementById('admin-create-order-badge');
+    const tag = document.getElementById('admin-create-preview-order-tag');
+    const hiddenOrder = document.getElementById('admin-create-name-order');
+    const isProperFirst = order === 'proper_first';
+
+    if (container) {
+        container.classList.toggle('order-proper-first', isProperFirst);
+        container.classList.toggle('order-common-first', !isProperFirst);
+    }
+    if (badge) badge.textContent = isProperFirst ? 'Tên Riêng trước' : 'Tên Còn lại trước';
+    if (tag) tag.textContent = isProperFirst ? 'Thứ tự: Tên Riêng + Tên Còn lại' : 'Thứ tự: Tên Còn lại + Tên Riêng';
+    if (hiddenOrder) hiddenOrder.value = isProperFirst ? 'proper_first' : 'common_first';
+    updateCreateVenueNamePreview();
 }
+
+function setEditAgentNameOrder(order) {
+    const container = document.getElementById('admin-edit-name-inputs');
+    const badge = document.getElementById('admin-edit-order-badge');
+    const tag = document.getElementById('admin-edit-preview-order-tag');
+    const hiddenOrder = document.getElementById('admin-edit-name-order');
+    const isProperFirst = order === 'proper_first';
+
+    if (container) {
+        container.classList.toggle('order-proper-first', isProperFirst);
+        container.classList.toggle('order-common-first', !isProperFirst);
+    }
+    if (badge) badge.textContent = isProperFirst ? 'Tên Riêng trước' : 'Tên Còn lại trước';
+    if (tag) tag.textContent = isProperFirst ? 'Thứ tự: Tên Riêng + Tên Còn lại' : 'Thứ tự: Tên Còn lại + Tên Riêng';
+    if (hiddenOrder) hiddenOrder.value = isProperFirst ? 'proper_first' : 'common_first';
+    updateEditVenueNamePreview();
+}
+
+document.getElementById('admin-create-swap-btn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    const cur = document.getElementById('admin-create-name-order')?.value || 'common_first';
+    setCreateAgentNameOrder(cur === 'common_first' ? 'proper_first' : 'common_first');
+});
+
+document.getElementById('admin-edit-swap-btn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    const cur = document.getElementById('admin-edit-name-order')?.value || 'common_first';
+    setEditAgentNameOrder(cur === 'common_first' ? 'proper_first' : 'common_first');
+});
+
+function updateCreateVenueNamePreview() {
+    const properName = (document.getElementById('admin-create-proper-name')?.value || '').trim();
+    const commonName = (document.getElementById('admin-create-venue-type')?.value || '').trim();
+    const order = document.getElementById('admin-create-name-order')?.value || 'common_first';
+    const previewEl = document.getElementById('admin-create-name-preview');
+    const hintEl = document.getElementById('admin-create-bilingual-hint');
+    const fullnameHidden = document.getElementById('admin-create-fullname');
+
+    const formattedCommon = commonName ? titleCaseVi(commonName) : '';
+    let combined = '';
+    if (order === 'proper_first') {
+        combined = [properName, formattedCommon].filter(Boolean).join(' ');
+    } else {
+        combined = [formattedCommon, properName].filter(Boolean).join(' ');
+    }
+    if (fullnameHidden) fullnameHidden.value = combined;
+
+    if (previewEl) {
+        previewEl.textContent = combined || 'Chưa nhập tên Agent / Cơ sở';
+    }
+    if (hintEl) {
+        if (!properName && !commonName) {
+            hintEl.textContent = 'Vui lòng nhập Tên Riêng (không dịch) và Tên Còn lại (tự dịch) của cơ sở.';
+        } else {
+            const properDisplay = properName ? removeVietnameseTones(properName) : '';
+            hintEl.innerHTML = `💡 <strong>Khách nước ngoài thấy:</strong> ${properName ? `Tên riêng "<strong>${escapeHtml(properDisplay)}</strong>" (giữ nguyên bỏ dấu)` : ''} ${properName && commonName ? '· ' : ''}${commonName ? `Phần "<strong>${escapeHtml(formattedCommon)}</strong>" tự động dịch sang tiếng Anh, Nga, Trung, Hàn.` : ''}`;
+        }
+    }
+}
+document.getElementById('admin-create-proper-name')?.addEventListener('input', updateCreateVenueNamePreview);
 document.getElementById('admin-create-venue-type')?.addEventListener('input', updateCreateVenueNamePreview);
 document.getElementById('admin-create-fullname')?.addEventListener('input', updateCreateVenueNamePreview);
 
 function updateEditVenueNamePreview() {
-    const type = document.getElementById('admin-edit-venue-type')?.value || '';
-    const name = (document.getElementById('admin-edit-fullname')?.value || '').trim();
-    const preview = document.getElementById('admin-edit-name-preview');
-    if (!preview) return;
-    preview.textContent = type && name
-        ? `Tên đầy đủ: ${titleCaseVi(type)} ${name} — khách nước ngoài thấy loại hình đã dịch (Anh/Nga/Trung/Hàn), tên riêng "${removeVietnameseTones(name)}" bỏ dấu.`
-        : '';
+    const properName = (document.getElementById('admin-edit-proper-name')?.value || '').trim();
+    const commonName = (document.getElementById('admin-edit-venue-type')?.value || '').trim();
+    const order = document.getElementById('admin-edit-name-order')?.value || 'common_first';
+    const previewEl = document.getElementById('admin-edit-name-preview');
+    const hintEl = document.getElementById('admin-edit-bilingual-hint');
+    const fullnameHidden = document.getElementById('admin-edit-fullname');
+
+    const formattedCommon = commonName ? titleCaseVi(commonName) : '';
+    let combined = '';
+    if (order === 'proper_first') {
+        combined = [properName, formattedCommon].filter(Boolean).join(' ');
+    } else {
+        combined = [formattedCommon, properName].filter(Boolean).join(' ');
+    }
+    if (fullnameHidden) fullnameHidden.value = combined;
+
+    if (previewEl) {
+        previewEl.textContent = combined || 'Chưa nhập tên Agent / Cơ sở';
+    }
+    if (hintEl) {
+        if (!properName && !commonName) {
+            hintEl.textContent = 'Vui lòng nhập Tên Riêng (không dịch) và Tên Còn lại (tự dịch) của cơ sở.';
+        } else {
+            const properDisplay = properName ? removeVietnameseTones(properName) : '';
+            hintEl.innerHTML = `💡 <strong>Khách nước ngoài thấy:</strong> ${properName ? `Tên riêng "<strong>${escapeHtml(properDisplay)}</strong>" (giữ nguyên bỏ dấu)` : ''} ${properName && commonName ? '· ' : ''}${commonName ? `Phần "<strong>${escapeHtml(formattedCommon)}</strong>" tự động dịch sang tiếng Anh, Nga, Trung, Hàn.` : ''}`;
+        }
+    }
 }
+document.getElementById('admin-edit-proper-name')?.addEventListener('input', updateEditVenueNamePreview);
 document.getElementById('admin-edit-venue-type')?.addEventListener('input', updateEditVenueNamePreview);
 document.getElementById('admin-edit-fullname')?.addEventListener('input', updateEditVenueNamePreview);
 
@@ -1001,6 +1092,9 @@ async function openCreateUserModal() {
 
     setCreateDeferredMode('none');
     updateCreateRoleVisibility();
+    const properInput = document.getElementById('admin-create-proper-name');
+    if (properInput) properInput.value = '';
+    setCreateAgentNameOrder('common_first');
     updateCreateVenueNamePreview();
     renderCreateAvatarPreview('gradient-1');
     await loadVenuePrefixes();
@@ -1046,11 +1140,14 @@ async function handleCreateUserSubmit(e) {
         payload.deferred_payment_mode = document.getElementById('admin-create-deferred')?.value || 'none';
     }
 
-    const type = (document.getElementById('admin-create-venue-type')?.value || '').trim();
-    const bare = (document.getElementById('admin-create-fullname')?.value || '').trim();
-    if (type && bare) {
-        payload.full_name = `${titleCaseVi(type)} ${bare}`;
-    }
+    const proper = (document.getElementById('admin-create-proper-name')?.value || '').trim();
+    const common = (document.getElementById('admin-create-venue-type')?.value || '').trim();
+    const order = document.getElementById('admin-create-name-order')?.value || 'common_first';
+    const formattedCommon = common ? titleCaseVi(common) : '';
+    const computed = order === 'proper_first'
+        ? [proper, formattedCommon].filter(Boolean).join(' ')
+        : [formattedCommon, proper].filter(Boolean).join(' ');
+    payload.full_name = computed || proper || common || document.getElementById('admin-create-fullname')?.value.trim();
 
     const submitBtn = document.getElementById('admin-create-submit-btn');
     if (submitBtn) {
@@ -1242,9 +1339,12 @@ async function editAdminUser(id) {
         await loadVenuePrefixes();
         const parts = splitVenueName(u.full_name || '');
         const venueType = document.getElementById('admin-edit-venue-type');
+        const properInput = document.getElementById('admin-edit-proper-name');
         const fullname = document.getElementById('admin-edit-fullname');
-        if (venueType) venueType.value = parts.prefix.toLowerCase();
-        if (fullname) fullname.value = parts.name;
+        if (venueType) venueType.value = parts.prefix ? titleCaseVi(parts.prefix) : '';
+        if (properInput) properInput.value = parts.name || '';
+        if (fullname) fullname.value = u.full_name || '';
+        setEditAgentNameOrder(parts.order || 'common_first');
         updateEditVenueNamePreview();
 
         // Avatar
@@ -1295,11 +1395,14 @@ async function handleEditUserSubmit(e) {
         payload.deferred_payment_mode = document.getElementById('admin-edit-deferred')?.value || 'none';
     }
 
-    const type = (document.getElementById('admin-edit-venue-type')?.value || '').trim();
-    const bare = (document.getElementById('admin-edit-fullname')?.value || '').trim();
-    if (type && bare) {
-        payload.full_name = `${titleCaseVi(type)} ${bare}`;
-    }
+    const proper = (document.getElementById('admin-edit-proper-name')?.value || '').trim();
+    const common = (document.getElementById('admin-edit-venue-type')?.value || '').trim();
+    const order = document.getElementById('admin-edit-name-order')?.value || 'common_first';
+    const formattedCommon = common ? titleCaseVi(common) : '';
+    const computed = order === 'proper_first'
+        ? [proper, formattedCommon].filter(Boolean).join(' ')
+        : [formattedCommon, proper].filter(Boolean).join(' ');
+    payload.full_name = computed || proper || common || document.getElementById('admin-edit-fullname')?.value.trim();
 
     // Đổi email đăng nhập là việc không quay lui được bằng một cú bấm: tài khoản
     // bị đăng xuất ngay, và từ đó chỉ hộp thư MỚI nhận được mã OTP. Gõ nhầm một
