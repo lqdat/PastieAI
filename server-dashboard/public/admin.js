@@ -907,6 +907,10 @@ chatMessagesContainer?.addEventListener('click', (event) => {
 });
 
 document.getElementById('media-preview-close-btn')?.addEventListener('click', closeMediaPreview);
+document.getElementById('media-preview-download-btn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (typeof downloadCurrentMediaPreview === 'function') downloadCurrentMediaPreview(e);
+});
 
 mediaPreviewModal?.addEventListener('click', (event) => { if (event.target === mediaPreviewModal) closeMediaPreview(); });
 

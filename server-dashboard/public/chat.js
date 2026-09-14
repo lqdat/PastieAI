@@ -3954,16 +3954,207 @@ function renderAttachmentHtml(msg) {
 }
 
 
+let activeMediaPreview = null;
+let currentMediaPreviewFrameBlobUrl = null;
+let isDownloadingMedia = false;
+
 function closeMediaPreview() {
     mediaPreviewModal?.classList.add('hide');
     if (mediaPreviewImage) mediaPreviewImage.removeAttribute('src');
     if (mediaPreviewVideo) { mediaPreviewVideo.pause(); mediaPreviewVideo.removeAttribute('src'); }
     if (mediaPreviewFrame) mediaPreviewFrame.removeAttribute('src');
+    if (currentMediaPreviewFrameBlobUrl) {
+        URL.revokeObjectURL(currentMediaPreviewFrameBlobUrl);
+        currentMediaPreviewFrameBlobUrl = null;
+    }
+    activeMediaPreview = null;
 }
 
+function svgBlobToPngBlob(svgBlob) {
+    return new Promise((resolve) => {
+        const url = URL.createObjectURL(svgBlob);
+        const img = new Image();
+        img.onload = () => {
+            try {
+                const canvas = document.createElement('canvas');
+                const scale = 2;
+                canvas.width = (img.naturalWidth || 800) * scale;
+                canvas.height = (img.naturalHeight || 1200) * scale;
+                const ctx = canvas.getContext('2d');
+                ctx.scale(scale, scale);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                URL.revokeObjectURL(url);
+                canvas.toBlob((pngBlob) => {
+                    resolve(pngBlob || svgBlob);
+                }, 'image/png');
+            } catch (err) {
+                URL.revokeObjectURL(url);
+                resolve(svgBlob);
+            }
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve(svgBlob);
+        };
+        img.src = url;
+    });
+}
+
+async function downloadCurrentMediaPreview(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    if (isDownloadingMedia || !activeMediaPreview) return;
+    const { downloadUrl, url, title, type } = activeMediaPreview;
+    const targetUrl = downloadUrl || url;
+    if (!targetUrl) return;
+
+    isDownloadingMedia = true;
+    const downloadBtn = document.getElementById('media-preview-download-btn');
+    const originalContent = downloadBtn ? downloadBtn.innerHTML : '';
+    if (downloadBtn) {
+        downloadBtn.disabled = true;
+        downloadBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i>';
+    }
+
+    try {
+        let blob = null;
+        let mime = '';
+
+        if (targetUrl.startsWith('data:')) {
+            const commaIdx = targetUrl.indexOf(',');
+            const header = targetUrl.substring(0, commaIdx);
+            const data = targetUrl.substring(commaIdx + 1);
+            const mimeMatch = header.match(/data:([^;]+)/);
+            mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+
+            if (header.includes(';base64')) {
+                const binaryStr = atob(data);
+                const bytes = new Uint8Array(binaryStr.length);
+                for (let i = 0; i < binaryStr.length; i++) {
+                    bytes[i] = binaryStr.charCodeAt(i);
+                }
+                blob = new Blob([bytes], { type: mime });
+            } else {
+                blob = new Blob([decodeURIComponent(data)], { type: mime });
+            }
+        } else if (targetUrl.startsWith('blob:')) {
+            const res = await fetch(targetUrl);
+            blob = await res.blob();
+            mime = blob.type || '';
+        } else {
+            const res = await fetch(targetUrl);
+            blob = await res.blob();
+            mime = blob.type || '';
+        }
+
+        let ext = 'pdf';
+        if (mime.includes('svg') || targetUrl.includes('.svg')) ext = 'svg';
+        else if (mime.includes('png') || targetUrl.includes('.png')) ext = 'png';
+        else if (mime.includes('jpeg') || mime.includes('jpg') || targetUrl.match(/\.jpe?g/i)) ext = 'jpg';
+        else if (mime.includes('webp') || targetUrl.includes('.webp')) ext = 'webp';
+        else if (mime.includes('pdf') || targetUrl.includes('.pdf')) ext = 'pdf';
+        else if (type === 'image') ext = 'png';
+
+        if (!mime) {
+            if (ext === 'pdf') mime = 'application/pdf';
+            else if (ext === 'svg') mime = 'image/svg+xml';
+            else if (ext === 'png') mime = 'image/png';
+        }
+
+        const safeTitle = String(title || 'hoa-don')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+            .replace(/[^a-zA-Z0-9_-]+/g, '_')
+            .replace(/^_+|_+$/g, '') || 'hoa-don';
+        let filename = safeTitle.toLowerCase().endsWith('.' + ext) ? safeTitle : `${safeTitle}.${ext}`;
+
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isStandalone = !!navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+        const isMobile = isIOS || /Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+        if ((isIOS || isStandalone || isMobile) && typeof navigator.share === 'function') {
+            try {
+                let shareBlob = blob;
+                let shareMime = blob.type || mime;
+                let shareFilename = filename;
+
+                let testFile = new File([shareBlob], shareFilename, { type: shareMime });
+                let canShare = false;
+                try {
+                    canShare = !!(navigator.canShare && navigator.canShare({ files: [testFile] }));
+                } catch (e) {
+                    canShare = false;
+                }
+
+                // If SVG cannot be shared directly via iOS Web Share, convert to PNG
+                if (!canShare && (ext === 'svg' || shareMime.includes('svg'))) {
+                    shareBlob = await svgBlobToPngBlob(blob);
+                    shareMime = 'image/png';
+                    shareFilename = safeTitle.replace(/\.svg$/i, '') + '.png';
+                    testFile = new File([shareBlob], shareFilename, { type: shareMime });
+                    try {
+                        canShare = !!(navigator.canShare && navigator.canShare({ files: [testFile] }));
+                    } catch (e) {
+                        canShare = false;
+                    }
+                }
+
+                if (canShare) {
+                    await navigator.share({
+                        files: [testFile],
+                        title: title || shareFilename
+                    });
+                    return;
+                }
+            } catch (shareErr) {
+                if (shareErr.name === 'AbortError') return;
+                console.warn('navigator.share failed, fallback to download link:', shareErr);
+            }
+        }
+
+        // Standard blob download for desktop browsers and fallbacks
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+    } catch (err) {
+        console.error('Lỗi khi tải hóa đơn/tệp đính kèm:', err);
+        if (!targetUrl.startsWith('data:')) {
+            window.open(targetUrl, '_blank', 'noopener,noreferrer');
+        } else {
+            if (typeof showToast === 'function') showToast('Không thể tải tệp về thiết bị.', 'error');
+            else alert('Không thể tải tệp về thiết bị.');
+        }
+    } finally {
+        isDownloadingMedia = false;
+        if (downloadBtn) {
+            downloadBtn.disabled = false;
+            downloadBtn.innerHTML = originalContent || '<i class="ri-download-2-line"></i>';
+        }
+    }
+}
 
 function openMediaPreview(url, type = 'document', title = 'Tệp đính kèm', downloadUrl = null) {
     if (!url || !mediaPreviewModal) return;
+    if (currentMediaPreviewFrameBlobUrl) {
+        URL.revokeObjectURL(currentMediaPreviewFrameBlobUrl);
+        currentMediaPreviewFrameBlobUrl = null;
+    }
+    activeMediaPreview = {
+        url,
+        type,
+        title,
+        downloadUrl: downloadUrl || url
+    };
     if (mediaPreviewTitle) mediaPreviewTitle.textContent = title;
     const isImg = type === 'image' || url.startsWith('data:image/') || !!url.match(/\.(png|jpe?g|webp|gif|svg)($|\?)/i);
     const isVid = type === 'video' || url.startsWith('data:video/') || !!url.match(/\.(mp4|webm|mov)($|\?)/i);
@@ -3985,7 +4176,8 @@ function openMediaPreview(url, type = 'document', title = 'Tệp đính kèm', d
                     bytes[i] = binaryStr.charCodeAt(i);
                 }
                 const blob = new Blob([bytes], { type: 'application/pdf' });
-                mediaPreviewFrame.src = URL.createObjectURL(blob);
+                currentMediaPreviewFrameBlobUrl = URL.createObjectURL(blob);
+                mediaPreviewFrame.src = currentMediaPreviewFrameBlobUrl;
             } catch (err) {
                 mediaPreviewFrame.src = url;
             }
@@ -3998,7 +4190,8 @@ function openMediaPreview(url, type = 'document', title = 'Tệp đính kèm', d
     if (downloadBtn) {
         const dl = downloadUrl || url;
         if (dl) {
-            downloadBtn.href = dl;
+            if (downloadBtn.tagName === 'A') downloadBtn.href = dl;
+            downloadBtn.dataset.downloadUrl = dl;
             downloadBtn.classList.remove('hide');
         } else {
             downloadBtn.classList.add('hide');
@@ -4007,6 +4200,9 @@ function openMediaPreview(url, type = 'document', title = 'Tệp đính kèm', d
 
     mediaPreviewModal.classList.remove('hide');
 }
+
+window.downloadCurrentMediaPreview = downloadCurrentMediaPreview;
+document.getElementById('media-preview-download-btn')?.addEventListener('click', downloadCurrentMediaPreview);
 
 function closePushPermissionModal() { pushPermissionModal?.classList.add('hide'); }
 

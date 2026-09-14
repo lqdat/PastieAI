@@ -963,11 +963,28 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
 function downloadPosterBlob(blob, label, style = 'poster') {
     const safeName = String(label || 'pastie-qr')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd').replace(/Đ/g, 'D')
         .replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'pastie-qr';
+    const filename = `${safeName}-${style}.png`;
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isStandalone = !!navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+    const isMobile = isIOS || /Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    if ((isIOS || isStandalone || isMobile) && typeof navigator.share === 'function') {
+        try {
+            const file = new File([blob], filename, { type: 'image/png' });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                navigator.share({ files: [file], title: filename }).catch(() => {});
+                return;
+            }
+        } catch (e) {}
+    }
+
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = objectUrl;
-    link.download = `${safeName}-${style}.png`;
+    link.download = filename;
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
