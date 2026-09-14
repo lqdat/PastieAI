@@ -13484,6 +13484,88 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
   }
 });
 
+// Sale chuyển một bill vào cuộc trò chuyện nội bộ với Agent quản lý.
+// Đây chỉ là một tin nhắn tham chiếu đến bill; không đổi trạng thái đơn hàng.
+app.post('/api/admin/orders/:orderId/transfer-to-agent', checkAdminAuth, async (req, res) => {
+  if (req.admin.role !== 'sale') {
+    return res.status(403).json({ error: 'Chỉ tài khoản Sale được chuyển bill cho Agent.' });
+  }
+
+  try {
+    const found = await db.query(
+      `SELECT o.id, o.order_code, o.total_amount, o.session_id,
+              s.project_id, s.group_id, s.claimed_by_admin_id,
+              q.label AS qr_label, g.name AS group_name,
+              COALESCE(manager.id, creator.id) AS agent_id,
+              COALESCE(manager.full_name, creator.full_name, manager.username, creator.username) AS agent_name
+         FROM chat_orders o
+         JOIN sessions s ON s.id = o.session_id
+         JOIN admins sale ON sale.id = $2
+         LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
+         LEFT JOIN agent_groups g ON g.id = s.group_id
+         LEFT JOIN admins manager ON manager.id = sale.managed_by_admin_id
+                                  AND manager.role IN ('agent', 'project_admin') AND manager.is_active = TRUE
+         LEFT JOIN admins creator ON creator.id = sale.created_by_admin_id
+                                  AND creator.role IN ('agent', 'project_admin') AND creator.is_active = TRUE
+        WHERE o.id = $1`,
+      [req.params.orderId, req.admin.id]
+    );
+    const order = found.rows[0];
+    if (!order) return res.status(404).json({ error: 'Không tìm thấy hóa đơn.' });
+
+    const saleGroups = await groupIdsOfSale(req.admin.id);
+    const inScope = Number(order.claimed_by_admin_id) === Number(req.admin.id)
+      || (order.group_id && saleGroups.map(Number).includes(Number(order.group_id)));
+    if (!inScope) return res.status(403).json({ error: 'Hóa đơn này không thuộc nhóm của bạn.' });
+    if (!order.agent_id) return res.status(409).json({ error: 'Tài khoản Sale chưa được gán Agent quản lý.' });
+
+    const sessionId = `internal_agent_${order.agent_id}_sale_${req.admin.id}`;
+    await ensureInternalSession(sessionId, `Agent Quản Lý (${order.agent_name || 'Agent'})`, order.project_id);
+
+    const text = `[[bill:${order.id}]]`;
+    const inserted = await db.query(
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id, system_kind)
+       VALUES ($1, 'sale', $2, $2, 'vi', $3, 'order_forward') RETURNING *`,
+      [sessionId, text, req.admin.id]
+    );
+    const msg = inserted.rows[0];
+
+    await db.query(
+      `INSERT INTO session_read_receipts (session_id, admin_id, last_seen_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (session_id, admin_id) DO UPDATE SET last_seen_at = NOW()`,
+      [sessionId, req.admin.id]
+    );
+
+    const message = {
+      ...msg,
+      sender_admin_name: req.admin.full_name || req.admin.username,
+      sender_admin_avatar: req.admin.avatar_url || null,
+      sender_admin_role: req.admin.role,
+      is_internal: true,
+    };
+    broadcastAdminEvent('internal_message', {
+      targetAdminIds: [Number(req.admin.id), Number(order.agent_id)],
+      sessionId,
+      message,
+    });
+    void notifyInternalMessage(order.agent_id, {
+      fromName: req.admin.full_name || req.admin.username,
+      text: `Đã chuyển hóa đơn ${order.order_code || order.id}`,
+      sessionId,
+    });
+
+    res.json({
+      success: true,
+      message: `Đã chuyển hóa đơn ${order.order_code || ''} vào chat nội bộ với ${order.agent_name || 'Agent'}.`,
+      internalSessionId: sessionId,
+    });
+  } catch (error) {
+    console.error('Transfer order to Agent chat error:', error);
+    res.status(500).json({ error: 'Không thể chuyển hóa đơn vào chat nội bộ: ' + error.message });
+  }
+});
+
 // --- Kênh chat nội bộ (Agent - Kỹ thuật & Agent - Sale) ---
 //
 // Trước đây kênh hỗ trợ là Agent ↔ Superadmin, mã phiên `..._superadmin`. Nay
@@ -13645,7 +13727,7 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
     // Nạp tin nhắn cuối và số tin chưa đọc cho từng chat
     for (const chat of chats) {
       const lastMsg = (await db.query(
-        `SELECT original_text, created_at, sender, sender_admin_id FROM messages WHERE session_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        `SELECT original_text, system_kind, created_at, sender, sender_admin_id FROM messages WHERE session_id = $1 ORDER BY created_at DESC LIMIT 1`,
         [chat.sessionId]
       )).rows[0];
 
@@ -13662,7 +13744,7 @@ app.get('/api/admin/internal-chats', checkAdminAuth, async (req, res) => {
         [chat.sessionId, current.id, readReceipt?.last_seen_at || null]
       )).rows[0]?.count || 0;
 
-      chat.lastMessage = lastMsg?.original_text || '';
+      chat.lastMessage = lastMsg?.system_kind === 'order_forward' ? 'Sale đã chuyển một hóa đơn' : (lastMsg?.original_text || '');
       chat.lastMessageTime = lastMsg?.created_at || null;
       chat.lastSender = lastMsg?.sender || null;
       chat.unreadCount = unreadCount;

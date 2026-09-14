@@ -3074,6 +3074,13 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
                 ? (Number(msg.sender_admin_id) === Number(CURRENT_ADMIN?.id))
                 : (msg.sender === CURRENT_ADMIN?.role);
             const attachmentHtml = renderAttachmentHtml(msg);
+            const billMatch = msg.system_kind === 'order_forward'
+                ? /^\[\[bill:([^\]\r\n]+)\]\]$/.exec(String(msg.original_text || ''))
+                : null;
+            const internalText = billMatch ? '' : msg.original_text;
+            const billHtml = billMatch
+                ? `<div class="internal-forwarded-bill" data-forwarded-bill="${escapeHtml(billMatch[1])}" aria-label="Hóa đơn"><i class="ri-loader-4-line ri-spin"></i></div>`
+                : '';
 
             if (isMe) {
                 wrapper.className = 'message-wrapper agent';
@@ -3081,7 +3088,8 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
                     <div class="msg-body-wrap">
                         <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
                             ${attachmentHtml}
-                            ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(msg.original_text)}</div>`}
+                            ${internalText ? `<div class="original-text">${escapeHtml(internalText)}</div>` : ''}
+                            ${billHtml}
                         </div>
                         <div class="message-time"><span>${timeStr}</span></div>
                     </div>
@@ -3103,7 +3111,8 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
                         <div style="font-size:11px;color:var(--text-secondary);margin-bottom:3px;font-weight:600;">${escapeHtml(peerName)}</div>
                         <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
                             ${attachmentHtml}
-                            ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(msg.original_text)}</div>`}
+                            ${internalText ? `<div class="original-text">${escapeHtml(internalText)}</div>` : ''}
+                            ${billHtml}
                         </div>
                         <div class="message-time">${timeStr}</div>
                     </div>
@@ -3177,6 +3186,34 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
     } else {
         if (forceScrollToLatest || isFirstLoad || isNearBottom || isInternal) {
             scrollChatToBottom(true);
+        }
+    }
+    hydrateForwardedBills();
+}
+
+const forwardedBillCache = new Map();
+async function hydrateForwardedBills() {
+    for (const node of chatMessagesContainer?.querySelectorAll('[data-forwarded-bill]') || []) {
+        const orderId = node.dataset.forwardedBill;
+        if (node.dataset.loaded === '1') continue;
+        node.dataset.loaded = '1';
+        try {
+            let pending = forwardedBillCache.get(orderId);
+            if (!pending) {
+                pending = authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/details?lang=vi&invoice=1`)
+                    .then(async (res) => {
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data?.error || 'Không tải được hóa đơn.');
+                        return data.order?.invoice?.svgDataUrl || data.order?.invoice?.imageUrl || data.order?.invoice?.imageDataUrl || '';
+                    });
+                forwardedBillCache.set(orderId, pending);
+            }
+            const preview = await pending;
+            if (!preview) throw new Error('Hóa đơn chưa được phát hành.');
+            node.innerHTML = `<img src="${escapeHtml(preview)}" alt="Hóa đơn" loading="lazy" style="display:block;width:min(360px,72vw);max-height:70vh;object-fit:contain;border-radius:10px;background:#fff;" onload="window.scrollChatToBottom?.(true)">`;
+        } catch (error) {
+            forwardedBillCache.delete(orderId);
+            node.textContent = error.message;
         }
     }
 }

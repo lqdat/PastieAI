@@ -535,8 +535,8 @@
                             <div class="order-action-nav-row">
                                 <button type="button" class="secondary-btn order-nav-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
                                 <button type="button" class="secondary-btn order-nav-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem hóa đơn</button>
-                                ${CURRENT_ADMIN?.role === 'sale' && order.status !== 'paid' ? `
-                                <button type="button" class="secondary-btn order-nav-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này sang Agent"><i class="ri-share-forward-fill"></i> Chuyển Agent</button>` : ''}
+                                ${CURRENT_ADMIN?.role === 'sale' ? `
+                                <button type="button" class="secondary-btn order-nav-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này vào chat nội bộ với Agent"><i class="ri-arrow-go-forward-line"></i> Chuyển Agent</button>` : ''}
                             </div>
                         `}
                     </div>
@@ -571,8 +571,8 @@
                 const fwd = event.target.closest('[data-forward]');
                 if (fwd) {
                     const orderId = fwd.dataset.forward;
-                    const ok = await pastieConfirm(`Chuyển bill #${order.order_code || orderId} sang cho Agent quản lý cơ sở xử lý tiếp?`, {
-                        title: 'Chuyển bill cho Agent',
+                    const ok = await pastieConfirm(`Gửi bill #${order.order_code || orderId} vào chat nội bộ với Agent?`, {
+                        title: 'Gửi bill vào chat nội bộ',
                         confirmText: 'Chuyển ngay',
                         cancelText: 'Hủy'
                     });
@@ -868,9 +868,9 @@
                             <button type="button" class="cart-action-btn" data-bill="${escapeHtml(order.id)}">
                                 <i class="ri-file-list-3-line"></i> Xem hóa đơn
                             </button>
-                            ${CURRENT_ADMIN?.role === 'sale' && order.status !== 'paid' ? `
-                            <button type="button" class="cart-action-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này sang cho Agent quản lý">
-                                <i class="ri-share-forward-fill"></i> Chuyển Agent
+                            ${CURRENT_ADMIN?.role === 'sale' ? `
+                            <button type="button" class="cart-action-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này vào chat nội bộ với Agent">
+                                <i class="ri-arrow-go-forward-line"></i> Chuyển Agent
                             </button>` : ''}
                             ${canEdit ? `
                             <button type="button" class="cart-action-btn is-edit-bill" data-details="${escapeHtml(order.id)}" data-mode="edit">
@@ -964,8 +964,8 @@
                 const orderId = fwd.dataset.forward;
                 const row = fwd.closest('.cart-row');
                 const visibleCode = row?.querySelector('.cart-code')?.textContent?.trim() || orderId;
-                const ok = await pastieConfirm(`Chuyển bill #${visibleCode} sang cho Agent quản lý cơ sở xử lý tiếp?`, {
-                    title: 'Chuyển bill cho Agent',
+                    const ok = await pastieConfirm(`Gửi bill #${visibleCode} vào chat nội bộ với Agent?`, {
+                    title: 'Gửi bill vào chat nội bộ',
                     confirmText: 'Chuyển ngay',
                     cancelText: 'Hủy'
                 });
