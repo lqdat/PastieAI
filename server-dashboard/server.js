@@ -6435,19 +6435,30 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null, 
 
 // 1. POST Google OAuth Sign-In
 app.post('/api/admin/auth/google', limitLoginIp, async (req, res) => {
-  const { credential } = req.body;
-  if (!credential) {
-    return res.status(400).json({ error: 'Thiếu Google credential token.' });
+  const { credential, accessToken } = req.body || {};
+  if (!credential && !accessToken) {
+    return res.status(400).json({ error: 'Thiếu Google credential token hoặc access token.' });
   }
 
   try {
-    // Verify token with Google TokenInfo API
-    const googleVerifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
-    if (!googleVerifyRes.ok) {
-      return res.status(401).json({ error: 'Token Google không hợp lệ hoặc đã hết hạn.' });
+    let payload = null;
+    if (credential) {
+      // Verify id_token with Google TokenInfo API
+      const googleVerifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+      if (!googleVerifyRes.ok) {
+        return res.status(401).json({ error: 'Token Google không hợp lệ hoặc đã hết hạn.' });
+      }
+      payload = await googleVerifyRes.json();
+    } else if (accessToken) {
+      // Verify access_token with Google UserInfo API
+      const googleUserRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (!googleUserRes.ok) {
+        return res.status(401).json({ error: 'Access token Google không hợp lệ hoặc đã hết hạn.' });
+      }
+      payload = await googleUserRes.json();
     }
-
-    const payload = await googleVerifyRes.json();
     if (!payload.email || (payload.email_verified !== 'true' && payload.email_verified !== true)) {
       return res.status(401).json({ error: 'Email Google chưa được xác thực.' });
     }
@@ -7083,13 +7094,22 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
 });
 
 app.post('/api/qr-chat/google', async (req, res) => {
-  const { credential, projectId = 'qr-concierge', qrCode } = req.body || {};
-  if (!credential || !qrCode) return res.status(400).json({ error: 'Thiếu thông tin đăng nhập Google hoặc mã QR.' });
+  const { credential, accessToken, projectId = 'qr-concierge', qrCode } = req.body || {};
+  if ((!credential && !accessToken) || !qrCode) return res.status(400).json({ error: 'Thiếu thông tin đăng nhập Google hoặc mã QR.' });
   try {
-    const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
-    if (!googleRes.ok) return res.status(401).json({ error: 'Google credential không hợp lệ hoặc đã hết hạn.' });
-    const profile = await googleRes.json();
-    if (!profile.email || (profile.email_verified !== 'true' && profile.email_verified !== true)) return res.status(401).json({ error: 'Email Google chưa được xác thực.' });
+    let profile = null;
+    if (credential) {
+      const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+      if (!googleRes.ok) return res.status(401).json({ error: 'Google credential không hợp lệ hoặc đã hết hạn.' });
+      profile = await googleRes.json();
+    } else if (accessToken) {
+      const googleUserRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (!googleUserRes.ok) return res.status(401).json({ error: 'Access token Google không hợp lệ hoặc đã hết hạn.' });
+      profile = await googleUserRes.json();
+    }
+    if (!profile || !profile.email || (profile.email_verified !== 'true' && profile.email_verified !== true)) return res.status(401).json({ error: 'Email Google chưa được xác thực.' });
     const account = await resolveQrChatAccount(projectId, qrCode);
     if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
     const { browser, device } = parseUserAgent(req.headers['user-agent'] || '');

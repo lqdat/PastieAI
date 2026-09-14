@@ -589,6 +589,38 @@ window.handleGoogleCredentialResponse = async function(response) {
     }
 };
 
+window.handleGoogleAccessTokenResponse = async function(accessToken) {
+    if (!accessToken) {
+        setLoginError('Không nhận được access token từ Google.');
+        return;
+    }
+
+    setLoginError('');
+    setLoginSuccess('Đang xác thực tài khoản Google với hệ thống...');
+
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/auth/google`, {
+            method: 'POST',
+            headers: deviceHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ accessToken })
+        });
+        const data = await res.json();
+        if (res.ok && data.token) {
+            beginNewAdminSession(data.token);
+            setLoginSuccess('Đăng nhập thành công! Đang vào Console...');
+            setTimeout(() => {
+                hideLogin();
+                initDashboard();
+            }, 400);
+        } else {
+            setLoginError(data.error || 'Đăng nhập bằng Google thất bại.');
+        }
+    } catch (e) {
+        console.error('Google sign-in error:', e);
+        setLoginError('Lỗi kết nối khi xác thực Google: ' + e.message);
+    }
+};
+
 
 // Expose handlers globally for inline HTML events
 window.handleSendAdminOtp = handleSendAdminOtp;

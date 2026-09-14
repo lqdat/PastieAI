@@ -340,19 +340,61 @@ function setLoginSuccess(msg) {
 }
 
 
-// Khởi tạo Google Sign-in button (tham khảo DealPhuQuoc)
+// Khởi tạo Google Sign-in button (hỗ trợ cả Token Client OAuth2 và ID One Tap)
 let googleAuthInitialized = false;
+let googleTokenClient = null;
+let currentGoogleClientId = '';
+
+function clearGoogleStateCookie() {
+    try {
+        const expires = 'expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        document.cookie = 'g_state=; ' + expires;
+        if (window.location.hostname) {
+            document.cookie = 'g_state=; domain=' + window.location.hostname + '; ' + expires;
+            const parts = window.location.hostname.split('.');
+            if (parts.length > 2) {
+                document.cookie = 'g_state=; domain=.' + parts.slice(-2).join('.') + '; ' + expires;
+            }
+        }
+    } catch (_) {}
+}
+
 async function initGoogleAuth() {
     try {
         const configRes = await fetch(`${API_BASE}/api/admin/auth/config`);
         const configData = await configRes.json().catch(() => ({}));
         const googleClientId = (configData.googleClientId || '').trim();
+        if (!googleClientId) return;
+        currentGoogleClientId = googleClientId;
 
         const slot = document.getElementById('google-signin-btn-container');
         const customBtn = document.getElementById('google-auth-trigger-btn');
 
-        const renderGoogleBtn = () => {
-            if (!googleAuthInitialized && googleClientId && window.google?.accounts?.id) {
+        const setupGoogle = () => {
+            // 1. Khởi tạo OAuth2 Token Client (dành cho bấm nút, không bị cooldown của One Tap)
+            if (window.google?.accounts?.oauth2 && !googleTokenClient) {
+                try {
+                    googleTokenClient = window.google.accounts.oauth2.initTokenClient({
+                        client_id: googleClientId,
+                        scope: 'email profile openid',
+                        callback: async (tokenResponse) => {
+                            if (tokenResponse?.access_token) {
+                                if (typeof window.handleGoogleAccessTokenResponse === 'function') {
+                                    await window.handleGoogleAccessTokenResponse(tokenResponse.access_token);
+                                }
+                            } else if (tokenResponse?.error && tokenResponse.error !== 'popup_closed_by_user') {
+                                setLoginError('Đăng nhập Google thất bại: ' + tokenResponse.error);
+                            }
+                        }
+                    });
+                } catch (err) {
+                    console.warn('[Google] initTokenClient error:', err);
+                }
+            }
+
+            // 2. Khởi tạo Google ID One Tap / Credential fallback
+            if (window.google?.accounts?.id && !googleAuthInitialized) {
+                clearGoogleStateCookie();
                 window.google.accounts.id.initialize({
                     client_id: googleClientId,
                     callback: window.handleGoogleCredentialResponse,
@@ -360,34 +402,38 @@ async function initGoogleAuth() {
                     cancel_on_tap_outside: true
                 });
                 googleAuthInitialized = true;
-                if (slot) {
+            }
+
+            // 3. Render nút Google chính thức vào slot nếu có
+            if (slot && window.google?.accounts?.id) {
+                try {
+                    const parentWidth = slot.parentElement?.getBoundingClientRect().width || 0;
+                    const width = Math.min(400, Math.max(220, Math.floor(parentWidth || 320)));
                     slot.innerHTML = '';
-                    try {
-                        const width = Math.min(400, Math.max(200, Math.floor(slot.parentElement?.getBoundingClientRect().width || 400)));
-                        window.google.accounts.id.renderButton(slot, {
-                            type: 'standard',
-                            theme: 'outline',
-                            size: 'large',
-                            text: 'continue_with',
-                            shape: 'pill',
-                            logo_alignment: 'left',
-                            width
-                        });
-                        if (customBtn) customBtn.style.display = 'none';
-                    } catch(e) {}
-                    // Giữ customBtn luôn hiển thị chữ "Đăng nhập bằng Gmail",
-                    // slot Google iframe trong CSS được phủ lên trên để nhận click trực tiếp.
+                    window.google.accounts.id.renderButton(slot, {
+                        type: 'standard',
+                        theme: 'outline',
+                        size: 'large',
+                        text: 'continue_with',
+                        shape: 'pill',
+                        logo_alignment: 'left',
+                        width
+                    });
+                    if (slot.children.length > 0 && customBtn) {
+                        customBtn.style.display = 'none';
+                    }
+                } catch (e) {
+                    console.warn('[Google] renderButton error:', e);
                 }
             }
         };
 
-        if (window.google?.accounts?.id) {
-            renderGoogleBtn();
+        if (window.google?.accounts?.id || window.google?.accounts?.oauth2) {
+            setupGoogle();
         } else {
-            // Wait for script to load if needed
             let gsiScript = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
             if (gsiScript) {
-                gsiScript.addEventListener('load', renderGoogleBtn, { once: true });
+                gsiScript.addEventListener('load', setupGoogle, { once: true });
             }
         }
     } catch (e) {
@@ -398,8 +444,53 @@ async function initGoogleAuth() {
 
 function handleGoogleAuthTrigger() {
     try {
-        if (googleAuthInitialized && window.google?.accounts?.id) {
-            window.google.accounts.id.prompt();
+        setLoginError('');
+        // Ưu tiên 1: Dùng Google OAuth2 Token Client (mở popup tài khoản trực tiếp, bấm lại được vô hạn lần kể cả khi tắt form)
+        if (googleTokenClient) {
+            googleTokenClient.requestAccessToken({ prompt: '' });
+            return;
+        }
+
+        // Khởi tạo nhanh Token Client nếu script đã sẵn sàng
+        if (currentGoogleClientId && window.google?.accounts?.oauth2) {
+            try {
+                googleTokenClient = window.google.accounts.oauth2.initTokenClient({
+                    client_id: currentGoogleClientId,
+                    scope: 'email profile openid',
+                    callback: async (tokenResponse) => {
+                        if (tokenResponse?.access_token) {
+                            if (typeof window.handleGoogleAccessTokenResponse === 'function') {
+                                await window.handleGoogleAccessTokenResponse(tokenResponse.access_token);
+                            }
+                        } else if (tokenResponse?.error && tokenResponse.error !== 'popup_closed_by_user') {
+                            setLoginError('Đăng nhập Google thất bại: ' + tokenResponse.error);
+                        }
+                    }
+                });
+                googleTokenClient.requestAccessToken({ prompt: '' });
+                return;
+            } catch (err) {
+                console.warn('[Google] Re-init TokenClient error:', err);
+            }
+        }
+
+        // Ưu tiên 2: Fallback Google One Tap (xóa cookie g_state và hủy moment cũ để không bị suppression chặn)
+        clearGoogleStateCookie();
+        if (window.google?.accounts?.id) {
+            try { window.google.accounts.id.cancel(); } catch (_) {}
+            if (currentGoogleClientId) {
+                window.google.accounts.id.initialize({
+                    client_id: currentGoogleClientId,
+                    callback: window.handleGoogleCredentialResponse,
+                    auto_select: false,
+                    cancel_on_tap_outside: true
+                });
+            }
+            window.google.accounts.id.prompt((notification) => {
+                if (notification && notification.isNotDisplayed()) {
+                    console.warn('[Google] Prompt not displayed:', notification.getNotDisplayedReason?.());
+                }
+            });
         } else {
             void initGoogleAuth();
             setLoginError('Đang tải mô-đun Google Sign-In, vui lòng thử lại sau giây lát hoặc sử dụng OTP Email.');
