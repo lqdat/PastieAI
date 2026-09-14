@@ -109,7 +109,8 @@
 .menu-field > span b { color: var(--danger-color, #ef4444); font-weight: 600; }
 
 .menu-field input,
-.menu-field select {
+.menu-field select,
+.menu-field textarea {
     width: 100%;
     padding: 9px 11px;
     border: 1px solid var(--panel-border, rgba(0, 0, 0, 0.12));
@@ -121,14 +122,22 @@
     /* 16px trên iOS để Safari không tự phóng to trang khi chạm vào ô nhập. */
 }
 
+.menu-field textarea {
+    min-height: 78px;
+    line-height: 1.5;
+    resize: vertical;
+}
+
 .menu-field input:focus,
-.menu-field select:focus {
+.menu-field select:focus,
+.menu-field textarea:focus {
     outline: none;
     border-color: var(--accent-color);
     box-shadow: 0 0 0 3px var(--accent-glow, rgba(99, 102, 241, 0.16));
 }
 
-.menu-field input::placeholder { color: var(--text-muted, var(--text-secondary)); opacity: 0.75; }
+.menu-field input::placeholder,
+.menu-field textarea::placeholder { color: var(--text-muted, var(--text-secondary)); opacity: 0.75; }
 
 /* Ô giá có đơn vị ₫ dính bên phải, không chiếm thêm một dòng nhãn. */
 .menu-input-suffix { position: relative; }
@@ -150,6 +159,7 @@
    - Hàng 3: Mô tả (12 cột).
    - Hàng 4: Hình ảnh (12 cột). */
 .menu-field-name  { grid-column: span 6; }
+.menu-field-name-group { grid-column: span 12; margin-bottom: 4px; }
 .menu-field-price { grid-column: span 3; }
 .menu-field-vat   { grid-column: span 3; }
 .menu-field-cat   { grid-column: span 4; }
@@ -334,6 +344,7 @@
     font-size: 11.5px;
     line-height: 1.5;
     color: var(--text-secondary);
+    white-space: pre-line;
 }
 
 /* --- Trạng thái bản dịch ------------------------------------------------- */
@@ -470,7 +481,8 @@
 
     /* 16px là ngưỡng Safari trên iOS ngừng tự phóng to trang khi chạm ô nhập. */
     .menu-field input,
-    .menu-field select { font-size: 16px; padding: 11px 12px; }
+    .menu-field select,
+    .menu-field textarea { font-size: 16px; padding: 11px 12px; }
     .menu-input-suffix input { padding-right: 28px; }
 
     .menu-form { padding: 12px; }

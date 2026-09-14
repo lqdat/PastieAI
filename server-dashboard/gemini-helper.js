@@ -184,17 +184,20 @@ const VENUE_PREFIXES = [
  */
 function splitVenueName(name) {
   const raw = String(name || '').trim();
-  if (!raw) return { prefix: '', propel: '' };
+  if (!raw) return { prefix: '', propel: '', order: 'prefix_first' };
   const lower = raw.toLowerCase();
   // Loại hình dài khớp trước: "công ty tnhh" phải thắng "công ty".
   for (const prefix of [...VENUE_PREFIXES].sort((a, b) => b.length - a.length)) {
     if (lower.startsWith(prefix + ' ')) {
-      return { prefix: raw.slice(0, prefix.length), propel: raw.slice(prefix.length).trim() };
+      return { prefix: raw.slice(0, prefix.length), propel: raw.slice(prefix.length).trim(), order: 'prefix_first' };
+    }
+    if (lower.endsWith(' ' + prefix)) {
+      return { prefix: raw.slice(raw.length - prefix.length), propel: raw.slice(0, raw.length - prefix.length).trim(), order: 'propel_first' };
     }
   }
   // Không nhận ra loại hình thì giữ nguyên CẢ tên — thà không dịch gì còn hơn
   // cắt nhầm một cái tên thành hai nửa vô nghĩa.
-  return { prefix: '', propel: raw };
+  return { prefix: '', propel: raw, order: 'propel_first' };
 }
 
 /**

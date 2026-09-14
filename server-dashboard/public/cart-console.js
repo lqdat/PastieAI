@@ -217,7 +217,7 @@
                         </label>
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Ghi chú thêm:</span>
-                            <input type="text" id="edit-item-note" placeholder="Ví dụ: Ít cay, không hành" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;" value="${escapeHtml(String(item.note || '').replace(/^\(|\)$/g, ''))}">
+                            <input type="text" id="edit-item-note" placeholder="Nhập ghi chú cho sản phẩm" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;" value="${escapeHtml(String(item.note || '').replace(/^\(|\)$/g, ''))}">
                         </label>
                     </div>
                     <div class="confirm-actions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -264,11 +264,11 @@
                     <div style="display:grid;gap:12px;margin-bottom:18px;text-align:left;">
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Tên món <b style="color:#ef4444;">*</b>:</span>
-                            <input type="text" id="add-item-name" required placeholder="Ví dụ: Cơm chiên hải sản" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
+                            <input type="text" id="add-item-name" required placeholder="Nhập tên sản phẩm" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
                         </label>
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Đơn giá (₫) <b style="color:#ef4444;">*</b>:</span>
-                            <input type="number" id="add-item-price" min="0" step="1000" placeholder="Ví dụ: 85000" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
+                            <input type="number" id="add-item-price" min="0" step="1000" placeholder="Nhập giá bán" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
                         </label>
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Số lượng <b style="color:#ef4444;">*</b>:</span>
@@ -288,7 +288,7 @@
                         </label>
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Ghi chú:</span>
-                            <input type="text" id="add-item-note" placeholder="Ví dụ: Ít cay, không tiêu" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
+                            <input type="text" id="add-item-note" placeholder="Nhập ghi chú cho sản phẩm" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
                         </label>
                     </div>
                     <div class="confirm-actions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -535,6 +535,8 @@
                             <div class="order-action-nav-row">
                                 <button type="button" class="secondary-btn order-nav-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
                                 <button type="button" class="secondary-btn order-nav-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem hóa đơn</button>
+                                ${CURRENT_ADMIN?.role === 'sale' && order.status !== 'paid' ? `
+                                <button type="button" class="secondary-btn order-nav-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này sang Agent"><i class="ri-share-forward-fill"></i> Chuyển Agent</button>` : ''}
                             </div>
                         `}
                     </div>
@@ -564,6 +566,34 @@
                         if (!leave) return;
                     }
                     closeDetail();
+                    return;
+                }
+                const fwd = event.target.closest('[data-forward]');
+                if (fwd) {
+                    const orderId = fwd.dataset.forward;
+                    const ok = await pastieConfirm(`Chuyển bill #${order.order_code || orderId} sang cho Agent quản lý cơ sở xử lý tiếp?`, {
+                        title: 'Chuyển bill cho Agent',
+                        confirmText: 'Chuyển ngay',
+                        cancelText: 'Hủy'
+                    });
+                    if (!ok) return;
+                    fwd.disabled = true;
+                    try {
+                        const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/transfer-to-agent`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({})
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data?.error || 'Không thể chuyển bill.');
+                        showToast(data.message || 'Đã chuyển bill cho Agent thành công.', 'success');
+                        closeDetail();
+                        const listBody = overlay?.querySelector('.cart-body');
+                        if (listBody) await load(listBody);
+                    } catch (error) {
+                        showToast(error.message, 'error');
+                        fwd.disabled = false;
+                    }
                     return;
                 }
                 const direct = event.target.closest('[data-open]');
@@ -802,6 +832,10 @@
                             <button type="button" class="cart-action-btn" data-bill="${escapeHtml(order.id)}">
                                 <i class="ri-file-list-3-line"></i> Xem hóa đơn
                             </button>
+                            ${CURRENT_ADMIN?.role === 'sale' && order.status !== 'paid' ? `
+                            <button type="button" class="cart-action-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này sang cho Agent quản lý">
+                                <i class="ri-share-forward-fill"></i> Chuyển Agent
+                            </button>` : ''}
                             ${canEdit ? `
                             <button type="button" class="cart-action-btn is-edit-bill" data-details="${escapeHtml(order.id)}" data-mode="edit">
                                 <i class="ri-edit-line"></i> Sửa hóa đơn
@@ -866,6 +900,36 @@
                 } finally {
                     bill.disabled = false;
                     bill.innerHTML = origHtml;
+                }
+                return;
+            }
+
+            const fwd = event.target.closest('[data-forward]');
+            if (fwd) {
+                const orderId = fwd.dataset.forward;
+                const row = fwd.closest('.cart-row');
+                const visibleCode = row?.querySelector('.cart-code')?.textContent?.trim() || orderId;
+                const ok = await pastieConfirm(`Chuyển bill #${visibleCode} sang cho Agent quản lý cơ sở xử lý tiếp?`, {
+                    title: 'Chuyển bill cho Agent',
+                    confirmText: 'Chuyển ngay',
+                    cancelText: 'Hủy'
+                });
+                if (!ok) return;
+                fwd.disabled = true;
+                try {
+                    const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/transfer-to-agent`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({})
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data?.error || 'Không thể chuyển bill.');
+                    showToast(data.message || 'Đã chuyển bill cho Agent thành công.', 'success');
+                    if (detailOverlay) { detailOverlay.remove(); detailOverlay = null; }
+                    await load(body);
+                } catch (error) {
+                    showToast(error.message, 'error');
+                    fwd.disabled = false;
                 }
                 return;
             }
@@ -1069,16 +1133,16 @@
         menuOverlay.innerHTML = `
             <div class="staff-menu-sheet">
                 <header class="staff-menu-hero">
-                    <div class="staff-menu-mark"><i class="ri-restaurant-2-line"></i></div>
+                    <div class="staff-menu-mark"><i class="ri-shopping-bag-3-line"></i></div>
                     <div class="staff-menu-title">
-                        <h3>Thực đơn</h3>
+                        <h3>Sản phẩm</h3>
                         <span>Chỉ xem — dùng để tư vấn khách</span>
                     </div>
                     <button type="button" class="icon-btn cart-close" title="Đóng"><i class="ri-close-line"></i></button>
                 </header>
                 <div class="staff-menu-search">
                     <i class="ri-search-line"></i>
-                    <input type="search" placeholder="Tìm món…" aria-label="Tìm món">
+                    <input type="search" placeholder="Tìm sản phẩm…" aria-label="Tìm sản phẩm">
                 </div>
                 <nav class="staff-menu-tabs"></nav>
                 <div class="staff-menu-list"><p class="cart-loading"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p></div>
@@ -1099,7 +1163,7 @@
         try {
             const res = await authFetch(`${API_BASE}/api/admin/menu/view`);
             const data = await res.json();
-            if (!res.ok) throw new Error(data?.error || 'Không tải được thực đơn.');
+            if (!res.ok) throw new Error(data?.error || 'Không tải được danh sách sản phẩm.');
             const customName = data.menuCustomLabel || '';
             if (customName) {
                 const titleEl = menuOverlay?.querySelector('.staff-menu-title h3');
@@ -1118,7 +1182,7 @@
                 if (used.has(String(category.id))) menuState.categories.set(category.id, category.name);
             }
             if (menuState.items.length === 0) {
-                list.innerHTML = `<p class="cart-empty">Cơ sở chưa có món nào trong ${customName ? customName.toLowerCase() : 'thực đơn'}.</p>`;
+                list.innerHTML = `<p class="cart-empty">Cơ sở chưa có sản phẩm nào trong ${customName ? customName.toLowerCase() : 'danh sách'}.</p>`;
                 return;
             }
             paintMenuView();

@@ -12,10 +12,22 @@ if (apiKey) {
 }
 
 // URL gốc phục vụ ảnh logo và liên kết
-const DEFAULT_BASE_URL = 'https://app.pastiechat.com';
+const DEFAULT_AGENT_URL = 'https://agent.pastiechat.com';
+const DEFAULT_SALE_URL = 'https://sale.pastiechat.com';
+const MAIN_WEBSITE_URL = 'https://pastiechat.com';
+const MAIN_WEBSITE_DISPLAY = 'pastiechat.com';
 
-function getBaseUrl() {
-  return (process.env.FRONTEND_URL || DEFAULT_BASE_URL).replace(/\/$/, '');
+function getAgentUrl() {
+  return (process.env.AGENT_PUBLIC_URL || DEFAULT_AGENT_URL).replace(/\/$/, '');
+}
+
+function getSaleUrl() {
+  return (process.env.SALE_PUBLIC_URL || DEFAULT_SALE_URL).replace(/\/$/, '');
+}
+
+function getBaseUrl(role) {
+  if (role === 'sale') return getSaleUrl();
+  return (process.env.DASHBOARD_PUBLIC_URL || process.env.FRONTEND_URL || getAgentUrl()).replace(/\/$/, '');
 }
 
 /**
@@ -32,8 +44,8 @@ async function sendOTPEmail(toEmail, otpCode) {
   }
 
   const sender = process.env.SENDER_EMAIL || 'onboarding@resend.dev';
-  const baseUrl = getBaseUrl();
-  const logoUrl = `${baseUrl}/pastie-chat-biz-compact.png`;
+  const customerUrl = (process.env.QR_CHAT_PORTAL_URL || 'https://chat.pastiechat.com').replace(/\/$/, '');
+  const logoUrl = `${getAgentUrl()}/pastie-chat-biz-compact.png`;
 
   try {
     const data = await resendClient.emails.send({
@@ -89,7 +101,7 @@ async function sendOTPEmail(toEmail, otpCode) {
           <td style="padding:18px 30px 26px;background-color:#ffffff;color:#9a9aa6;font-size:12px;line-height:1.9">
             <div><b style="color:#7c7c8a">Hotline:</b> 0984 448 834</div>
             <div><b style="color:#7c7c8a">Email:</b> <a href="mailto:ai@pastie.vn" style="color:#C90C6C;text-decoration:none">ai@pastie.vn</a></div>
-            <div><b style="color:#7c7c8a">Website:</b> <a href="${baseUrl}" style="color:#C90C6C;text-decoration:none">app.pastiechat.com</a></div>
+            <div><b style="color:#7c7c8a">Website:</b> <a href="${MAIN_WEBSITE_URL}" style="color:#C90C6C;text-decoration:none">${MAIN_WEBSITE_DISPLAY}</a></div>
             <div style="margin-top:10px;color:#b6b6c0">© 2026 Pastie Chat — Nền tảng tư vấn &amp; CSKH đa kênh thông minh.</div>
           </td>
         </tr>
@@ -119,16 +131,18 @@ async function sendOTPEmail(toEmail, otpCode) {
 /**
  * Sends a 6-digit OTP code for Admin / Staff Login.
  */
-async function sendAdminOTPEmail(toEmail, otpCode, recipientName = 'Quản trị viên') {
+async function sendAdminOTPEmail(toEmail, otpCode, recipientName = 'Quản trị viên', options = {}) {
   if (!resendClient) {
     const msg = 'Resend client not initialized — RESEND_API_KEY missing.';
     console.error(msg);
     return { ok: false, reason: msg };
   }
 
+  const { loginUrl, role } = typeof options === 'string' ? { loginUrl: options } : (options || {});
   const sender = process.env.SENDER_EMAIL || 'onboarding@resend.dev';
-  const baseUrl = getBaseUrl();
-  const logoUrl = `${baseUrl}/pastie-chat-biz-compact.png`;
+  // Nút đăng nhập theo role: agent.pastiechat.com hoặc sale.pastiechat.com
+  const targetUrl = (role === 'sale' ? getSaleUrl() : getAgentUrl()).replace(/\/$/, '');
+  const logoUrl = `${getAgentUrl()}/pastie-chat-biz-compact.png`;
 
   try {
     const data = await resendClient.emails.send({
@@ -167,7 +181,7 @@ async function sendAdminOTPEmail(toEmail, otpCode, recipientName = 'Quản trị
             
             <p style="margin:0">Mã có hiệu lực trong <b>5 phút</b> và chỉ sử dụng được một lần.</p>
             <div style="text-align:center;margin:22px 0 6px">
-              <a href="${baseUrl}" style="display:inline-block;background:linear-gradient(90deg,#F438A1,#C90C6C);color:#ffffff;padding:13px 30px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Đăng nhập PastieChat ngay! &rarr;</a>
+              <a href="${targetUrl}" style="display:inline-block;background:linear-gradient(90deg,#F438A1,#C90C6C);color:#ffffff;padding:13px 30px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Đăng nhập PastieChat ngay! &rarr;</a>
             </div>
             <p style="margin:16px 0 0;color:#8a8a96;font-size:13px">Nếu cần thêm sự hỗ trợ, quý khách vui lòng liên hệ theo thông tin bên dưới.</p>
           </td>
@@ -187,7 +201,7 @@ async function sendAdminOTPEmail(toEmail, otpCode, recipientName = 'Quản trị
           <td style="padding:18px 30px 26px;background-color:#ffffff;color:#9a9aa6;font-size:12px;line-height:1.9">
             <div><b style="color:#7c7c8a">Hotline:</b> 0984 448 834</div>
             <div><b style="color:#7c7c8a">Email:</b> <a href="mailto:ai@pastie.vn" style="color:#C90C6C;text-decoration:none">ai@pastie.vn</a></div>
-            <div><b style="color:#7c7c8a">Website:</b> <a href="${baseUrl}" style="color:#C90C6C;text-decoration:none">app.pastiechat.com</a></div>
+            <div><b style="color:#7c7c8a">Website:</b> <a href="${MAIN_WEBSITE_URL}" style="color:#C90C6C;text-decoration:none">${MAIN_WEBSITE_DISPLAY}</a></div>
             <div style="margin-top:10px;color:#b6b6c0">© 2026 Pastie Chat — Nền tảng tư vấn &amp; CSKH đa kênh thông minh.</div>
           </td>
         </tr>
@@ -223,9 +237,10 @@ async function sendAccountActivationEmail({ toEmail, fullName, role, createdByNa
   }
 
   const sender = process.env.SENDER_EMAIL || 'onboarding@resend.dev';
-  const baseUrl = getBaseUrl();
-  const logoUrl = `${baseUrl}/pastie-chat-biz-compact.png`;
-  const guideUrl = `${baseUrl}/guide`;
+  // Nút đăng nhập theo role: agent.pastiechat.com hoặc sale.pastiechat.com
+  const resolvedLoginUrl = (role === 'sale' ? getSaleUrl() : getAgentUrl()).replace(/\/$/, '');
+  const logoUrl = `${getAgentUrl()}/pastie-chat-biz-compact.png`;
+  const guideUrl = `${getAgentUrl()}/guide`;
 
   const roleNameMap = {
     superadmin: 'Quản trị viên cấp cao',
@@ -235,7 +250,6 @@ async function sendAccountActivationEmail({ toEmail, fullName, role, createdByNa
     sale: 'Chuyên viên tư vấn'
   };
   const displayRole = roleNameMap[role] || 'Thành viên quản trị';
-  const resolvedLoginUrl = loginUrl || baseUrl;
 
   try {
     const data = await resendClient.emails.send({
@@ -300,7 +314,7 @@ async function sendAccountActivationEmail({ toEmail, fullName, role, createdByNa
           <td style="padding:18px 30px 26px;background-color:#ffffff;color:#9a9aa6;font-size:12px;line-height:1.9">
             <div><b style="color:#7c7c8a">Hotline:</b> 0984 448 834</div>
             <div><b style="color:#7c7c8a">Email:</b> <a href="mailto:ai@pastie.vn" style="color:#C90C6C;text-decoration:none">ai@pastie.vn</a></div>
-            <div><b style="color:#7c7c8a">Website:</b> <a href="${baseUrl}" style="color:#C90C6C;text-decoration:none">app.pastiechat.com</a></div>
+            <div><b style="color:#7c7c8a">Website:</b> <a href="${MAIN_WEBSITE_URL}" style="color:#C90C6C;text-decoration:none">${MAIN_WEBSITE_DISPLAY}</a></div>
             <div style="margin-top:10px;color:#b6b6c0">© 2026 Pastie Chat — Nền tảng tư vấn &amp; CSKH đa kênh thông minh.</div>
           </td>
         </tr>

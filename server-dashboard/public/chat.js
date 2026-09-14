@@ -328,7 +328,7 @@ async function selectTechnicalAgentSession(chat) {
     chatMicBtn?.classList.add('hide');
 
     if (chatMessagesContainer) {
-        chatMessagesContainer.innerHTML = '<div class="chat-loading-state" style="display:flex;align-items:center;justify-content:center;height:200px;color:var(--text-muted);"><i class="ri-loader-4-line rotating" style="font-size:24px;margin-right:8px;"></i> Đang tải tin nhắn...</div>';
+        chatMessagesContainer.innerHTML = '<div class="chat-loading-state" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);"><i class="ri-loader-4-line rotating" style="font-size:24px;margin-right:8px;"></i> Đang tải tin nhắn...</div>';
     }
 
     await loadMessages(chat.sessionId);
@@ -493,7 +493,9 @@ async function selectInternalSession(chat) {
         chatInput.disabled = false;
         chatInput.classList.remove('is-supervisor-mode');
         chatInput.placeholder = 'Nhập tin nhắn nội bộ...';
-        setTimeout(() => chatInput?.focus(), 150);
+        if (window.innerWidth > 768 && !window.matchMedia?.('(pointer: coarse)').matches) {
+            setTimeout(() => chatInput?.focus({ preventScroll: true }), 150);
+        }
     }
     const sendBtn = chatForm?.querySelector('button[type="submit"]');
     if (sendBtn) sendBtn.disabled = false;
@@ -2697,6 +2699,7 @@ function renderAdminSavedBills() {
                 <span><strong>${escapeHtml(totalText)} ₫</strong></span>
                 ${methodText ? `<span><i class="ri-bank-card-line"></i> ${escapeHtml(methodText)}</span>` : ''}
                 ${pdf ? `<button type="button" class="attachment-preview-trigger admin-invoice-open" data-preview-url="${escapeHtml(preview || pdf)}" data-preview-type="${preview ? 'image' : 'document'}" data-preview-title="Hóa đơn" data-download-url="${escapeHtml(pdf)}"><i class="ri-file-pdf-2-line"></i> Mở PDF</button>` : ''}
+                ${(CURRENT_ADMIN?.role === 'sale' && bill.orderId && bill.orderStatus !== 'paid') ? `<button type="button" class="admin-invoice-open is-forward-agent" data-forward-order="${escapeHtml(bill.orderId)}" title="Chuyển bill này sang Agent"><i class="ri-share-forward-fill"></i> Chuyển Agent</button>` : ''}
             </div>
         `;
         insertIntoChatFlow(wrapper, bill.createdAt);
@@ -2933,12 +2936,6 @@ function scrollChatToBottom(force = false) {
     const doScroll = () => {
         if (!chatMessagesContainer) return;
         chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
-        const last = chatMessagesContainer.lastElementChild;
-        if (last && typeof last.scrollIntoView === 'function') {
-            try {
-                last.scrollIntoView({ block: 'end', inline: 'nearest' });
-            } catch (_) {}
-        }
     };
 
     doScroll();
@@ -3415,12 +3412,12 @@ const SPINNER_ICON_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true" style="ani
 function resizeAgentChatInput() {
     const chatInput = document.getElementById('chat-input');
     if (!chatInput) return;
-    chatInput.style.height = '0px';
+    chatInput.style.height = 'auto';
     const lineHeight = Number.parseFloat(getComputedStyle(chatInput).lineHeight) || 21;
     // Tối đa 2 dòng: nếu gõ/ghi âm qua dòng thứ 3 thì hiển thị 2 dòng mới nhất
     const maxHeight = lineHeight * 2 + 18;
     const scrollHeight = chatInput.scrollHeight;
-    chatInput.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+    chatInput.style.height = `${Math.max(40, Math.min(scrollHeight, maxHeight))}px`;
     chatInput.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
     if (scrollHeight > maxHeight) {
         chatInput.scrollTop = chatInput.scrollHeight;
@@ -3904,6 +3901,69 @@ function openMediaPreview(url, type = 'document', title = 'Tệp đính kèm', d
         } else {
             downloadBtn.classList.add('hide');
         }
+        if (!downloadBtn.dataset.boundShortcut) {
+            downloadBtn.dataset.boundShortcut = 'true';
+            downloadBtn.addEventListener('click', async (e) => {
+                const isStandalone = window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+                const canShare = typeof navigator.share === 'function' && (navigator.maxTouchPoints > 0 || window.matchMedia?.('(pointer: coarse)').matches);
+                if (isStandalone || canShare) {
+                    e.preventDefault();
+                    const href = downloadBtn.getAttribute('href');
+                    if (!href) return;
+                    try {
+                        showToast('Đang chuẩn bị tệp hóa đơn...', 'info');
+                        let blob;
+                        let ext = 'pdf';
+                        let mime = 'application/pdf';
+
+                        if (href.startsWith('data:')) {
+                            const parts = href.split(',');
+                            const mimeMatch = parts[0].match(/:(.*?);/);
+                            if (mimeMatch) mime = mimeMatch[1];
+                            if (mime.includes('svg')) ext = 'svg';
+                            else if (mime.includes('png')) ext = 'png';
+                            else if (mime.includes('jpeg') || mime.includes('jpg')) ext = 'jpg';
+                            else if (mime.includes('pdf')) ext = 'pdf';
+
+                            const bstr = atob(parts[1]);
+                            let n = bstr.length;
+                            const u8arr = new Uint8Array(n);
+                            while (n--) u8arr[n] = bstr.charCodeAt(n);
+                            blob = new Blob([u8arr], { type: mime });
+                        } else {
+                            const fetched = await fetch(href);
+                            blob = await fetched.blob();
+                        }
+
+                        const fileName = (downloadBtn.getAttribute('download') || 'hoa-don').replace(/\.[^/.]+$/, '') + '.' + ext;
+                        const file = new File([blob], fileName, { type: blob.type || mime });
+
+                        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                            await navigator.share({
+                                files: [file],
+                                title: 'Hóa đơn',
+                            });
+                            return;
+                        }
+
+                        const blobUrl = URL.createObjectURL(blob);
+                        const tempLink = document.createElement('a');
+                        tempLink.href = blobUrl;
+                        tempLink.download = fileName;
+                        tempLink.target = '_blank';
+                        document.body.appendChild(tempLink);
+                        tempLink.click();
+                        setTimeout(() => {
+                            tempLink.remove();
+                            URL.revokeObjectURL(blobUrl);
+                        }, 1000);
+                    } catch (err) {
+                        console.warn('[Download] Fallback to open window:', err);
+                        window.open(href, '_blank', 'noopener,noreferrer');
+                    }
+                }
+            });
+        }
     }
 
     mediaPreviewModal.classList.remove('hide');
@@ -3922,3 +3982,32 @@ function handleEnablePushClick() {
     if (Notification.permission === 'granted') return enablePushNotifications().then(closePushPermissionModal).catch(console.error);
     pushPermissionModal?.classList.remove('hide');
 }
+
+
+// Click listener for forwarding bill in chat
+document.addEventListener('click', async (e) => {
+    const fwdBtn = e.target.closest('[data-forward-order]');
+    if (!fwdBtn) return;
+    const orderId = fwdBtn.dataset.forwardOrder;
+    const ok = await pastieConfirm('Chuyển bill này sang cho Agent quản lý cơ sở xử lý tiếp?', {
+        title: 'Chuyển bill cho Agent',
+        confirmText: 'Chuyển ngay',
+        cancelText: 'Hủy'
+    });
+    if (!ok) return;
+    fwdBtn.disabled = true;
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/transfer-to-agent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Không thể chuyển bill.');
+        showToast(data.message || 'Đã chuyển bill cho Agent thành công.', 'success');
+        if (currentSessionId) selectSession(currentSessionId);
+    } catch (err) {
+        showToast(err.message, 'error');
+        fwdBtn.disabled = false;
+    }
+}); // data-forward-order listener

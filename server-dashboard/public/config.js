@@ -10,3 +10,4 @@
 // File này tồn tại sẵn (thay vì chỉ sinh lúc build) để bản chạy kèm backend
 // không bị 404 config.js trong console mỗi lần tải trang.
 window.PASTIE_API_BASE = null;
+window.PASTIE_CONSOLE_ROLES = ['superadmin', 'project_admin'];
