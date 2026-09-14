@@ -780,23 +780,6 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // hóa đơn là phí dịch vụ theo % do Agent tự đặt.
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS service_fee_rate NUMERIC(5,2) NOT NULL DEFAULT 0;`);
 
-    // Cột đánh dấu để việc quy đổi giá cũ chỉ chạy MỘT LẦN cho mỗi món.
-    // Không có nó thì mỗi lần deploy giá lại bị nhân thêm 10% nữa.
-    await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS price_includes_vat BOOLEAN NOT NULL DEFAULT FALSE;`);
-    const quyDoi = await query(
-      `UPDATE qr_menu_items
-          SET price = ROUND(price * (1 + COALESCE(vat_rate, 10)::numeric / 100)),
-              price_includes_vat = TRUE
-        WHERE price_includes_vat = FALSE`
-    ).catch((error) => { console.error('[Giá] Không quy đổi được giá đã gồm VAT:', error.message); return null; });
-    if (quyDoi?.rowCount) {
-      // Quy đổi để SỐ TIỀN KHÁCH NHÌN THẤY KHÔNG ĐỔI: trước đây thực đơn hiện
-      // price × 1.1, giờ hiện thẳng price, nên phải nhân sẵn vào cột.
-      console.log(`[Giá] Đã quy đổi ${quyDoi.rowCount} món sang giá đã gồm VAT (số tiền khách thấy giữ nguyên).`);
-    }
-    // Món mới tạo từ nay đã là giá gồm VAT.
-    await query(`ALTER TABLE qr_menu_items ALTER COLUMN price_includes_vat SET DEFAULT TRUE;`);
-
     await query(`
       CREATE TABLE IF NOT EXISTS agent_groups (
         id SERIAL PRIMARY KEY,
@@ -1077,6 +1060,34 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_menu_items_agent ON qr_menu_items(agent_id, is_available, sort_order);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_menu_items_category ON qr_menu_items(category_id, sort_order);`);
+
+    // ── GIÁ ĐÃ GỒM VAT ──────────────────────────────────────────────────────
+    // KHỐI NÀY PHẢI NẰM SAU CREATE TABLE qr_menu_items Ở NGAY TRÊN.
+    //
+    // Trước đây nó nằm tít phía trên, trong cụm migration của admins. Trên DB đã
+    // có sẵn bảng thì không sao. Nhưng trên một DB RỖNG (môi trường mới, khôi
+    // phục sau sự cố), ALTER TABLE vào một bảng chưa tồn tại ném lỗi, và vì cả
+    // hàm này nằm trong một try chung nên MỌI THỨ PHÍA SAU bị bỏ qua: không có
+    // agent_groups, không có qr_menu_items, không có chat_order_bills. Máy chủ
+    // vẫn lên, chỉ là thiếu nửa lược đồ — và khởi động lại bao nhiêu lần cũng
+    // hỏng ở đúng chỗ đó.
+    //
+    // Cột đánh dấu để việc quy đổi giá cũ chỉ chạy MỘT LẦN cho mỗi món.
+    // Không có nó thì mỗi lần deploy giá lại bị nhân thêm 10% nữa.
+    await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS price_includes_vat BOOLEAN NOT NULL DEFAULT FALSE;`);
+    const quyDoi = await query(
+      `UPDATE qr_menu_items
+          SET price = ROUND(price * (1 + COALESCE(vat_rate, 10)::numeric / 100)),
+              price_includes_vat = TRUE
+        WHERE price_includes_vat = FALSE`
+    ).catch((error) => { console.error('[Giá] Không quy đổi được giá đã gồm VAT:', error.message); return null; });
+    if (quyDoi?.rowCount) {
+      // Quy đổi để SỐ TIỀN KHÁCH NHÌN THẤY KHÔNG ĐỔI: trước đây thực đơn hiện
+      // price × 1.1, giờ hiện thẳng price, nên phải nhân sẵn vào cột.
+      console.log(`[Giá] Đã quy đổi ${quyDoi.rowCount} món sang giá đã gồm VAT (số tiền khách thấy giữ nguyên).`);
+    }
+    // Món mới tạo từ nay đã là giá gồm VAT.
+    await query(`ALTER TABLE qr_menu_items ALTER COLUMN price_includes_vat SET DEFAULT TRUE;`);
     await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS proper_name VARCHAR(255);`);
     await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS common_name VARCHAR(255);`);
     await query(`ALTER TABLE qr_menu_items ADD COLUMN IF NOT EXISTS name_order VARCHAR(20) DEFAULT 'common_first';`);

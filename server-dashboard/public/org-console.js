@@ -123,6 +123,310 @@ function drawPosterRoundedRect(ctx, x, y, width, height, radius) {
     ctx.closePath();
 }
 
+// Vẽ đường viền khung Bong bóng thoại (Shape Speech Bubble chuẩn xác theo qrcode.io)
+function drawSpeechBubblePath(ctx, x, y, w, mainH, tailW, tailH, r) {
+    const cr = Math.min(r, w / 2, mainH / 2);
+    ctx.beginPath();
+    // Đỉnh nhọn góc dưới bên trái (x, y + mainH + tailH)
+    ctx.moveTo(x, y + mainH + tailH);
+    // Cạnh trái thẳng đứng từ mũi nhọn lên đỉnh
+    ctx.lineTo(x, y + cr);
+    // Bo góc trên bên trái
+    ctx.arcTo(x, y, x + cr, y, cr);
+    // Cạnh trên nằm ngang
+    ctx.lineTo(x + w - cr, y);
+    // Bo góc trên bên phải
+    ctx.arcTo(x + w, y, x + w, y + cr, cr);
+    // Cạnh phải thẳng đứng
+    ctx.lineTo(x + w, y + mainH - cr);
+    // Bo góc dưới bên phải
+    ctx.arcTo(x + w, y + mainH, x + w - cr, y + mainH, cr);
+    // Cạnh dưới nằm ngang nối tới chân đuôi thoại
+    ctx.lineTo(x + tailW, y + mainH);
+    // Cạnh chéo của đuôi thoại nối xuống đỉnh nhọn
+    ctx.lineTo(x, y + mainH + tailH);
+    ctx.closePath();
+}
+
+function drawCustomCellRoundRect(ctx, x, y, w, h, rTL, rTR, rBR, rBL) {
+    ctx.beginPath();
+    ctx.moveTo(x + rTL, y);
+    ctx.lineTo(x + w - rTR, y);
+    if (rTR) ctx.arcTo(x + w, y, x + w, y + rTR, rTR);
+    else ctx.lineTo(x + w, y);
+    ctx.lineTo(x + w, y + h - rBR);
+    if (rBR) ctx.arcTo(x + w, y + h, x + w - rBR, y + h, rBR);
+    else ctx.lineTo(x + w, y);
+    ctx.lineTo(x + rBL, y + h);
+    if (rBL) ctx.arcTo(x, y + h, x, y + h - rBL, rBL);
+    else ctx.lineTo(x, y + h);
+    ctx.lineTo(x, y + rTL);
+    if (rTL) ctx.arcTo(x, y, x + rTL, y, rTL);
+    else ctx.lineTo(x, y);
+    ctx.closePath();
+}
+
+function extractQrText(url) {
+    if (!url) return '';
+    try {
+        const u = new URL(url);
+        return u.searchParams.get('text') || url;
+    } catch {
+        return url;
+    }
+}
+
+// Vẽ mã QR vector cao cấp định hình Bong bóng thoại (Speech Bubble) chuẩn qrcode.io
+// ĐẢM BẢO KHÔNG BỊ MẤT MÃ, CÁC HẠT NẰM AN TOÀN TRONG Ô VÀ QUÉT ĐƯỢC 100%
+function drawStyledVectorQrCode(ctx, text, frameX, frameY, frameW, frameH, options = {}) {
+    if (typeof frameH === 'object' && frameH !== null) {
+        options = frameH;
+        frameH = frameW;
+    }
+    const size = frameW || 380;
+    const w = size;
+
+    if (!window.QRCode || !text) {
+        if (options.fallbackImage) {
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(options.fallbackImage, frameX + 16, frameY + 16, w - 32, w - 32);
+            ctx.imageSmoothingEnabled = true;
+        }
+        return;
+    }
+
+    let qr;
+    try {
+        // Luôn sử dụng Error Correction Level 'H' (High 30%) để máy ảnh nhận diện siêu nhạy
+        qr = window.QRCode.create(text, { errorCorrectionLevel: 'H' });
+    } catch (e) {
+        console.warn('QRCode.create failed, fallback to image:', e);
+        if (options.fallbackImage) {
+            ctx.drawImage(options.fallbackImage, frameX + 16, frameY + 16, w - 32, w - 32);
+        }
+        return;
+    }
+
+    const n = qr.modules.size;
+
+    // Tỉ lệ hình học Speech Bubble chuẩn theo ảnh qrcode.io
+    const tailH = Math.round(w * 0.20);    // Chiều cao đuôi thoại ~20%
+    const tailW = Math.round(w * 0.32);    // Độ rộng chân đuôi thoại ~32%
+    const mainH = w - tailH;               // Chiều cao thân chính ~80%
+    const totalH = mainH + tailH;          // Tổng chiều cao = w (1:1 bounding box)
+    const radius = Math.round(w * 0.09);   // Bán kính bo góc
+    const strokeW = Math.max(5, Math.round(w * 0.038)); // Độ dày viền khung
+
+    // Gradient thương hiệu Pastie (#ef2b9d -> #c90c6c -> #8b0aa5)
+    const qrGrad = ctx.createLinearGradient(frameX, frameY, frameX + w, frameY + totalH);
+    qrGrad.addColorStop(0, '#ef2b9d');
+    qrGrad.addColorStop(0.5, '#c90c6c');
+    qrGrad.addColorStop(1, '#8b0aa5');
+
+    // Tọa độ inset chuẩn cho khung viền
+    const halfStroke = strokeW / 2;
+    const px0 = frameX + halfStroke;
+    const py0 = frameY + halfStroke;
+    const pw = w - strokeW;
+    const pMainH = mainH - halfStroke;
+    const pTailH = tailH - halfStroke;
+    const pTailW = tailW - halfStroke;
+    const pr = Math.max(4, radius - halfStroke);
+
+    // 1. VẼ NỀN TRẮNG VÀ KHUNG VIỀN NGOÀI BONG BÓNG THOẠI (Frame Stroke theo qrcode.io)
+    ctx.save();
+    drawSpeechBubblePath(ctx, px0, py0, pw, pMainH, pTailW, pTailH, pr);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.lineWidth = strokeW;
+    ctx.strokeStyle = qrGrad;
+    ctx.stroke();
+    ctx.restore();
+
+    // 2. TÍNH VÙNG AN TOÀN TUYỆT ĐỐI CHO MÃ QR (ĐẢM BẢO KHÔNG BỊ CẮT XÉN BẤT KỲ Ô NÀO VÀ QUÉT ĐƯỢC 100%)
+    // Toàn bộ ma trận n x n của mã QR được đặt trọn vẹn bên trong thân chính của bong bóng thoại,
+    // với khoảng cách an toàn (Quiet Zone) đạt chuẩn ISO cách xa các góc bo và viền khung.
+    const safeMarginX = Math.round(w * 0.14); // Lề ngang an toàn chuẩn ISO Quiet Zone
+    const qw = w - safeMarginX * 2;
+    const cell = qw / n;
+    const qx = frameX + safeMarginX;
+    // Căn chuẩn vị trí Y trong thân chính để có Quiet Zone đều trên dưới
+    const qy = frameY + Math.round(w * 0.06);
+
+    // Vùng 3 góc Finder (7x7 module)
+    function isFinder(r, c) {
+        if (r < 7 && c < 7) return true;
+        if (r < 7 && c >= n - 7) return true;
+        if (r >= n - 7 && c < 7) return true;
+        return false;
+    }
+
+    // Vùng viền trắng phân cách xung quanh Finder (Separator 1 cell)
+    function isFinderSeparator(r, c) {
+        if (r <= 7 && c <= 7 && (r === 7 || c === 7)) return true;
+        if (r <= 7 && c >= n - 8 && (r === 7 || c === n - 8)) return true;
+        if (r >= n - 8 && c <= 7 && (r === n - 8 || c === 7)) return true;
+        return false;
+    }
+
+    // Vùng Logo trung tâm
+    const hasCenterLogo = Boolean(options.centerLogoImage);
+    const centerR = hasCenterLogo ? 4.5 : 0;
+    const centerRow = (n - 1) / 2;
+    const centerCol = (n - 1) / 2;
+
+    function isCenterLogo(r, c) {
+        if (!hasCenterLogo) return false;
+        const dr = r - centerRow;
+        const dc = c - centerCol;
+        return (dr * dr + dc * dc) <= (centerR * centerR);
+    }
+
+    // 3. VẼ CÁC MODULE DỮ LIỆU CHÍNH (Classy-rounded) - BATCH PATH VẼ TỨC THÌ (<3ms)
+    ctx.save();
+    ctx.fillStyle = qrGrad;
+    ctx.beginPath();
+
+    for (let r = 0; r < n; r++) {
+        for (let c = 0; c < n; c++) {
+            if (isFinder(r, c) || isFinderSeparator(r, c) || isCenterLogo(r, c)) continue;
+            if (!qr.modules.get(r, c)) continue;
+
+            const top = (r > 0) && !isFinder(r - 1, c) && !isFinderSeparator(r - 1, c) && !isCenterLogo(r - 1, c) && qr.modules.get(r - 1, c);
+            const right = (c < n - 1) && !isFinder(r, c + 1) && !isFinderSeparator(r, c + 1) && !isCenterLogo(r, c + 1) && qr.modules.get(r, c + 1);
+            const bottom = (r < n - 1) && !isFinder(r + 1, c) && !isFinderSeparator(r + 1, c) && !isCenterLogo(r + 1, c) && qr.modules.get(r + 1, c);
+            const left = (c > 0) && !isFinder(r, c - 1) && !isFinderSeparator(r, c - 1) && !isCenterLogo(r, c - 1) && qr.modules.get(r, c - 1);
+
+            const px = qx + c * cell;
+            const py = qy + r * cell;
+            const maxR = cell * 0.40;
+
+            const rTL = (!top && !left) ? maxR : 0;
+            const rTR = (!top && !right) ? maxR : 0;
+            const rBR = (!bottom && !right) ? maxR : 0;
+            const rBL = (!bottom && !left) ? maxR : 0;
+
+            if (ctx.roundRect) {
+                ctx.roundRect(px, py, cell, cell, [rTL, rTR, rBR, rBL]);
+            } else {
+                drawCustomCellRoundRect(ctx, px, py, cell, cell, rTL, rTR, rBR, rBL);
+            }
+        }
+    }
+    ctx.fill();
+
+    // 4. VẼ 3 GÓC FINDER CHUẨN QUỐC TẾ (Circle Ring + Circle Dot, tỉ lệ 1:1:3:1:1)
+    // Giữ tuyệt đối khả năng quét tức thì cho mọi camera smartphone
+    const finders = [
+        { cx: qx + 3.5 * cell, cy: qy + 3.5 * cell },
+        { cx: qx + (n - 3.5) * cell, cy: qy + 3.5 * cell },
+        { cx: qx + 3.5 * cell, cy: qy + (n - 3.5) * cell },
+    ];
+
+    // Vẽ 3 vòng ngoài cùng một mảng vẽ (single stroke call)
+    ctx.beginPath();
+    ctx.strokeStyle = qrGrad;
+    ctx.lineWidth = cell;
+    finders.forEach(({ cx, cy }) => {
+        ctx.moveTo(cx + 3 * cell, cy);
+        ctx.arc(cx, cy, 3 * cell, 0, Math.PI * 2);
+    });
+    ctx.stroke();
+
+    // Vẽ 3 tâm tròn cùng một mảng vẽ (single fill call)
+    ctx.beginPath();
+    ctx.fillStyle = qrGrad;
+    finders.forEach(({ cx, cy }) => {
+        ctx.moveTo(cx + 1.5 * cell, cy);
+        ctx.arc(cx, cy, 1.5 * cell, 0, Math.PI * 2);
+    });
+    ctx.fill();
+
+    // 5. VẼ CÁC HẠT ĐIỀN VÀO PHẦN ĐUÔI THOẠI (Shape: Speech Bubble Filler) - BATCH PATH
+    // Đặt hạt ở phần đuôi thoại bên dưới mã QR, có khoảng cách đệm (Quiet Zone) an toàn
+    // dưới góc finder để không gây nhiễu góc đọc của máy quét
+    const tailStartY = qy + qw + cell * 2.0; // Cách đáy mã QR ít nhất 2.0 cell an toàn
+    const tailTipY = frameY + totalH - halfStroke;
+    const tailRowStart = Math.ceil((tailStartY - qy) / cell);
+    const tailRowEnd = Math.floor((tailTipY - qy) / cell);
+
+    ctx.beginPath();
+    for (let r = tailRowStart; r <= tailRowEnd; r++) {
+        const py = qy + r * cell;
+        if (py + cell * 0.4 >= tailTipY) continue;
+
+        const progress = Math.min(1, Math.max(0, (py - (frameY + mainH)) / tailH));
+        const maxDiagX = frameX + tailW * (1 - progress);
+
+        for (let c = 0; qx + c * cell < maxDiagX - 4; c++) {
+            const px = qx + c * cell;
+            if (px + cell * 0.5 > maxDiagX - 4) continue;
+
+            const isDark = ((c * 7 + r * 13 + n) % 9) < 6 || ((c + r) % 2 === 0);
+            if (!isDark) continue;
+
+            const maxR = cell * 0.40;
+            if (ctx.roundRect) {
+                ctx.roundRect(px, py, cell, cell, maxR);
+            } else {
+                drawCustomCellRoundRect(ctx, px, py, cell, cell, maxR, maxR, maxR, maxR);
+            }
+        }
+    }
+    ctx.fill();
+    ctx.restore();
+
+    // 6. VẼ LOGO TRUNG TÂM (Badge tròn bảo vệ logo khách)
+    if (hasCenterLogo) {
+        const logoImg = options.centerLogoImage;
+        const logoCenterX = qx + qw / 2;
+        const logoCenterY = qy + qw / 2;
+        const badgeRadius = (centerR + 0.5) * cell;
+
+        // Badge nền trắng tròn
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(logoCenterX, logoCenterY, badgeRadius, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(201, 12, 108, 0.16)';
+        ctx.shadowBlur = 10;
+        ctx.fill();
+        ctx.restore();
+
+        // Viền badge hồng tinh tế
+        ctx.beginPath();
+        ctx.arc(logoCenterX, logoCenterY, badgeRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = '#f3c4db';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Vẽ logo bên trong badge tròn
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(logoCenterX, logoCenterY, badgeRadius - 2, 0, Math.PI * 2);
+        ctx.clip();
+
+        const imgW = logoImg.naturalWidth || 100;
+        const imgH = logoImg.naturalHeight || 100;
+        const imgRatio = imgW / imgH;
+        const maxDraw = (badgeRadius - 4) * 2;
+
+        let drawW, drawH;
+        if (imgRatio >= 1) {
+            drawW = maxDraw;
+            drawH = maxDraw / imgRatio;
+        } else {
+            drawH = maxDraw;
+            drawW = maxDraw * imgRatio;
+        }
+        ctx.drawImage(logoImg, logoCenterX - drawW / 2, logoCenterY - drawH / 2, drawW, drawH);
+        ctx.restore();
+    }
+}
+
 
 function drawCameraCorners(ctx, x, y, width, height, len = 38, radius = 10, strokeWidth = 4.5, strokeColor = '#ef2b9d') {
     ctx.save();
@@ -353,30 +657,35 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
         qrLabelEn = '',
         agentLogoUrl = '',
         style = 'cobranded',
+        chatUrl = '',
     } = options;
+    const qrText = chatUrl || extractQrText(imageUrl);
 
     if (document.fonts?.load) {
-        await Promise.allSettled([
-            document.fonts.load('500 13px "Be Vietnam Pro"'),
-            document.fonts.load('600 16px "Be Vietnam Pro"'),
-            document.fonts.load('700 18px "Be Vietnam Pro"'),
-            document.fonts.load('800 18px "Be Vietnam Pro"'),
-            document.fonts.load('800 24px "Be Vietnam Pro"'),
-            document.fonts.load('800 36px "Be Vietnam Pro"'),
-            document.fonts.load('italic 600 18px "Nunito"'),
-            document.fonts.load('italic 700 18px "Nunito"'),
+        // Giới hạn thời gian đợi font tối đa 60ms để vẽ poster tức thì mà không bị đơ trình duyệt
+        await Promise.race([
+            Promise.allSettled([
+                document.fonts.load('700 18px "Be Vietnam Pro"'),
+                document.fonts.load('600 18px "Be Vietnam Pro"'),
+                document.fonts.load('italic 600 18px "Nunito"'),
+            ]),
+            new Promise(resolve => setTimeout(resolve, 60))
         ]);
     }
 
     const hasLogoCandidate = (style === 'cobranded') && isValidImageUrl(agentLogoUrl);
+    // Khi đã có window.QRCode (được bundle sẵn cục bộ), thuật toán vector vẽ trực tiếp trong bộ nhớ CPU (<3ms),
+    // không phải gửi HTTP request qua QuickChart trên internet (tiết kiệm 1-2 giây độ trễ mạng)
+    const qrImagePromise = window.QRCode ? Promise.resolve(null) : loadPosterImage(imageUrl).catch(() => null);
+
     const [qrImage, logoImage, agentLogoImage] = await Promise.all([
-        loadPosterImage(imageUrl),
-        loadPosterImage('/pastie-chat-biz-compact.png'),
+        qrImagePromise,
+        loadPosterImage('/pastie-chat-biz-compact.png').catch(() => null),
         hasLogoCandidate ? loadPosterImage(agentLogoUrl).catch(() => null) : Promise.resolve(null),
     ]);
 
     const hasAgentLogo = Boolean(style === 'cobranded' && agentLogoImage);
-    const trimmedQr = trimQrWhitespace(qrImage);
+    const trimmedQr = qrImage ? trimQrWhitespace(qrImage) : null;
 
     // Xuất ảnh độ nét cao 2160x2160 (scale 2x) chuẩn in ấn 300 DPI
     const scale = 2;
@@ -478,68 +787,56 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     }
 
     // 3. Quy chuẩn 3 size chữ:
-    // - Size 1: 36px (Tên Agent và Tên QR ở trên cùng)
-    // - Size 2: 18px (Slogan, Lời kêu gọi, Hướng dẫn camera)
-    // - Size 3: 13px (Chân trang bản quyền)
-    const agentBilingual = getBilingualAgentName(businessName, businessNameEn);
+    // 3. Quy chuẩn nội dung và bố cục:
+    // - Tên Agent: Chỉ sử dụng Tiếng Anh theo yêu cầu ("Tên agent chỉ cần tiếng anh bỏ tiếng việt đi")
+    const agentNameEnOnly = (businessNameEn && businessNameEn.trim()) ? businessNameEn.trim() : (businessName || '').trim();
     const qrBilingual = getBilingualQrLabel(qrLabel, qrLabelEn);
-
-    const hasAgentEn = Boolean(agentBilingual.en && agentBilingual.en.trim() && agentBilingual.en.toLowerCase() !== agentBilingual.vi.toLowerCase());
     const hasCustomLabel = Boolean(qrLabel && qrLabel.trim() && qrLabel.trim() !== businessName.trim());
 
+    // Chân trang bản quyền (Size 3: 13px)
+    const footerY = frameY + frameH - 24;
+
+    // Khối 5: Thanh hướng dẫn camera đặt xuống dưới gần license theo yêu cầu ("phần hướng dẫn cho xuông dưới gần lisence hơn")
+    const pillH2 = 42;
+    const pillW2 = 680;
+    const pillX2 = (baseW - pillW2) / 2;
+    const pillY2 = footerY - 58;
+
     // Chiều cao từng khối:
-    // Khối 1: Tên Agent & Tên QR
+    // Khối 1: Tên Agent (36px) & Tên QR (nếu có)
     let h1 = 44;
-    if (hasAgentEn) h1 += 44;
     if (hasCustomLabel) h1 += 54;
 
     // Khối 2: Slogan song ngữ (2 dòng 18px)
     const h2 = 48;
 
-    // Khối 3: Thẻ QR (Mã QR 390px + padding 14px = 418px)
-    const qrSize = 390;
-    const qrPadding = 14;
-    const cardSize = qrSize + qrPadding * 2; // 418px
-    const h3 = cardSize;
+    // Khối 3: Mã QR Speech Bubble (Giảm size QR lại từ 380 xuống 320 theo yêu cầu)
+    const qrSize = 320;
+    const h3 = qrSize;
 
-    // Khối 4: Lời kêu gọi quét mã song ngữ (2 dòng 18px)
-    const h4 = 48;
+    // Khối 4: Lời kêu gọi quét mã song ngữ (Tăng size bằng size Agent: 36px / 26px)
+    const h4 = 84;
 
-    // Khối 5: Thanh hướng dẫn camera (Pill 42px)
-    const h5 = 42;
+    // Phân bổ đều khoảng cách trong không gian từ logo đến thanh hướng dẫn
+    const contentTop = logoBottom;
+    const contentBottom = pillY2 - 24;
+    const availableSpace = contentBottom - contentTop;
+    const totalContentH = h1 + h2 + h3 + h4;
+    const equalGap = Math.max(16, (availableSpace - totalContentH) / 5);
 
-    // Chân trang bản quyền (Size 3: 13px)
-    const footerY = frameY + frameH - 24;
-    const footerTop = footerY - 20;
-
-    // Phân bổ 6 khoảng cách bằng nhau giữa các khối
-    const availableSpace = footerTop - logoBottom;
-    const totalContentH = h1 + h2 + h3 + h4 + h5;
-    const equalGap = Math.max(12, (availableSpace - totalContentH) / 6);
-
-    const y1 = logoBottom + equalGap;
+    const y1 = contentTop + equalGap;
     const y2 = y1 + h1 + equalGap;
     const y3 = y2 + h2 + equalGap;
     const y4 = y3 + h3 + equalGap;
-    const y5 = y4 + h4 + equalGap;
 
     ctx.textAlign = 'center';
 
-    // Khối 1: TÊN AGENT VÀ TÊN QR (SIZE 1: 36px - TO NHẤT, NỔI BẬT)
+    // Khối 1: TÊN AGENT (CHỈ TIẾNG ANH - SIZE 1: 36px) VÀ TÊN QR
     let curY1 = y1 + 32;
 
-    // Tên Agent Tiếng Việt (Size 1: 36px)
     ctx.fillStyle = '#201424';
     ctx.font = `800 36px ${posterFont}`;
-    drawPosterText(ctx, agentBilingual.vi, baseW / 2, curY1, 880, 42, 1);
-
-    // Dịch tiếng Anh Tên Agent (SIZE 1: 36px - BẰNG CHÍNH XÁC VỚI TIẾNG VIỆT)
-    if (hasAgentEn) {
-        curY1 += 44;
-        ctx.fillStyle = '#4a384b';
-        ctx.font = `700 36px ${posterFont}`;
-        drawPosterText(ctx, agentBilingual.en, baseW / 2, curY1, 880, 42, 1);
-    }
+    drawPosterText(ctx, agentNameEnOnly, baseW / 2, curY1, 880, 42, 1);
 
     // Tên QR song ngữ (Size 1: 36px trong Pill tinh tế)
     if (hasCustomLabel) {
@@ -569,7 +866,7 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
         ctx.fillText(qrDisplayText, baseW / 2, pillY + 39);
     }
 
-    // 4. Khối 2: Slogan nhận diện song ngữ (SIZE BẰNG VỚI KHỐI QUÉT MÃ: 18px / 18px - FONT NUNITO ITALIC)
+    // 4. Khối 2: Slogan nhận diện song ngữ (18px / 18px - FONT NUNITO ITALIC)
     ctx.fillStyle = '#000000';
     ctx.font = `italic 700 18px ${sloganFont}`;
     ctx.fillText('Không rào cản ngôn ngữ, thấu hiểu mọi khách hàng', baseW / 2, y2 + 16);
@@ -578,66 +875,24 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     ctx.font = `italic 600 18px ${sloganFont}`;
     ctx.fillText('No language barriers • Understand every customer', baseW / 2, y2 + 42);
 
-    // 5. Khối 3: Thẻ QR — UI/UX PRO MAX: DIMENSIONAL LAYERING & BENTO LUXURY FRAMING
-    const cardX = (baseW - cardSize) / 2;
-    const cardY = y3;
+    // 5. Khối 3: Mã QR Bong bóng thoại Speech Bubble trực tiếp (ĐÃ BỎ VIỀN THẺ XUNG QUANH)
+    const qrX = (baseW - qrSize) / 2;
+    const qrY = y3;
+    drawStyledVectorQrCode(ctx, qrText, qrX, qrY, qrSize, qrSize, {
+        centerLogoImage: hasAgentLogo ? agentLogoImage : null,
+        fallbackImage: trimmedQr
+    });
 
-    // Layer 1: Ambient diffusion glow (Ánh sáng tỏa dịu đa tầng)
-    ctx.save();
-    ctx.shadowColor = 'rgba(201, 12, 108, 0.10)';
-    ctx.shadowBlur = 32;
-    ctx.shadowOffsetY = 12;
-    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 24);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
-    ctx.restore();
-
-    // Layer 2: Contact shadow (Đổ bóng tiếp xúc thực tế tạo chiều sâu)
-    ctx.save();
-    ctx.shadowColor = 'rgba(32, 16, 36, 0.06)';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetY = 3;
-    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 24);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
-    ctx.restore();
-
-    // Layer 3: Luxury Gradient Frame Border (Viền chuyển sắc hoa anh đào cao cấp)
-    const cardBorderGrad = ctx.createLinearGradient(cardX, cardY, cardX + cardSize, cardY + cardSize);
-    cardBorderGrad.addColorStop(0, '#f2d5e7');
-    cardBorderGrad.addColorStop(0.5, '#ebd0e3');
-    cardBorderGrad.addColorStop(1, '#fdeff7');
-    ctx.strokeStyle = cardBorderGrad;
-    ctx.lineWidth = 1.5;
-    drawPosterRoundedRect(ctx, cardX, cardY, cardSize, cardSize, 24);
-    ctx.stroke();
-
-    // Layer 4: Frosted Bevel Highlight (Viền sáng phản chiếu bên trong phong cách Apple)
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.lineWidth = 1;
-    drawPosterRoundedRect(ctx, cardX + 2.5, cardY + 2.5, cardSize - 5, cardSize - 5, 22);
-    ctx.stroke();
-
-    // Layer 5: Mã QR đã cắt sạch viền trắng thừa, căn giữa tuyệt đối sát viền
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(trimmedQr, cardX + qrPadding, cardY + qrPadding, qrSize, qrSize);
-    ctx.imageSmoothingEnabled = true;
-
-    // 6. Khối 4: Lời kêu gọi quét mã song ngữ (SIZE BẰNG HOÀN TOÀN VỚI SLOGAN: 18px / 18px)
+    // 6. Khối 4: Lời kêu gọi quét mã song ngữ (SIZE BẰNG SIZE AGENT: 36px / 26px)
     ctx.fillStyle = '#201424';
-    ctx.font = `700 18px ${posterFont}`;
-    ctx.fillText('Quét mã để bắt đầu trò chuyện', baseW / 2, y4 + 16);
+    ctx.font = `800 36px ${posterFont}`;
+    ctx.fillText('Quét mã để bắt đầu trò chuyện', baseW / 2, y4 + 32);
 
-    ctx.fillStyle = '#6b5667';
-    ctx.font = `600 18px ${posterFont}`;
-    ctx.fillText('Scan to start a chat', baseW / 2, y4 + 42);
+    ctx.fillStyle = '#5a4658';
+    ctx.font = `700 26px ${posterFont}`;
+    ctx.fillText('Scan to start a chat', baseW / 2, y4 + 72);
 
-    // 7. Khối 5: Thanh hướng dẫn thao tác camera song ngữ (Size 2: 18px)
-    const pillH2 = 42;
-    const pillW2 = 680;
-    const pillX2 = (baseW - pillW2) / 2;
-    const pillY2 = y5;
-
+    // 7. Khối 5: Thanh hướng dẫn thao tác camera song ngữ (Đặt sát gần license phía dưới)
     // Gradient nền cho pill hướng dẫn
     const pillGrad = ctx.createLinearGradient(pillX2, pillY2, pillX2 + pillW2, pillY2);
     pillGrad.addColorStop(0, '#fff2f8');

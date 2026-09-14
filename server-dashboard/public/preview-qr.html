@@ -33,151 +33,16 @@
         <img id="poster-img" alt="QR Poster" />
     </div>
 
-    <script src="config.js?v=r134"></script>
-    <script src="core.js?v=r134"></script>
-    <script src="chat.js?v=r134"></script>
-    <script src="qrcode.bundle.js?v=r134"></script>
-    <script src="org-console.js?v=r134"></script>
+    <script src="config.js?v=r140"></script>
+    <script src="core.js?v=r140"></script>
+    <script src="chat.js?v=r140"></script>
+    <script src="qrcode.bundle.js?v=r140"></script>
+    <script src="org-console.js?v=r140"></script>
     <script>
         window.addEventListener('load', async () => {
             const statusEl = document.getElementById('status');
+            const scanEl = document.getElementById('scan-result');
             const imgEl = document.getElementById('poster-img');
-            const imgData = rCtx.getImageData(0, 0, refCanvas.width, refCanvas.height);
-            const data = imgData.data;
-            const w = refCanvas.width;
-            const h = refCanvas.height;
-
-            // Find bounds of non-white pixels
-            let minX = w, maxX = 0, minY = h, maxY = 0;
-            for (let y = 0; y < h; y++) {
-                for (let x = 0; x < w; x++) {
-                    const idx = (y * w + x) * 4;
-                    const r = data[idx], g = data[idx+1], b = data[idx+2], a = data[idx+3];
-                    if (a > 50 && (r < 200 || g < 200 || b < 200)) {
-                        if (x < minX) minX = x;
-                        if (x > maxX) maxX = x;
-                        if (y < minY) minY = y;
-                        if (y > maxY) maxY = y;
-                    }
-                }
-            }
-
-            // Find exact outer border path
-            // For each y from minY to maxY, find minX and maxX
-            let mainBottomY = -1;
-            let tailTip = { x: 0, y: 0 };
-            let tailJoin = { x: 0, y: 0 };
-            
-            // Find where the bottom-right corner ends and where bottom edge goes
-            // Left edge is at minX. The tail tip is at bottom-most y where pixels exist
-            tailTip = { x: 0, y: maxY - minY }; // relative to (minX, minY)
-
-            // Let's find horizontal bottom edge:
-            // Scan columns from right to left at y ~ 120..135 to find the horizontal bottom line
-            let bottomYHistogram = {};
-            for (let x = 30; x < maxX - minX - 20; x++) {
-                // scan from bottom up to find the border
-                for (let y = maxY - minY; y >= 0; y--) {
-                    const idx = ((y + minY) * w + (x + minX)) * 4;
-                    if (data[idx+3] > 50 && data[idx] < 150) {
-                        bottomYHistogram[y] = (bottomYHistogram[y] || 0) + 1;
-                        break;
-                    }
-                }
-            }
-            
-            // Find the most common bottom y (horizontal bottom edge)
-            let maxCount = 0;
-            for (const [by, count] of Object.entries(bottomYHistogram)) {
-                if (count > maxCount) {
-                    maxCount = count;
-                    mainBottomY = Number(by);
-                }
-            }
-
-            // Find where bottom horizontal edge transitions to diagonal tail
-            let tailDiagStartX = 0;
-            for (let x = 5; x < maxX - minX - 10; x++) {
-                let foundY = -1;
-                for (let y = maxY - minY; y >= 0; y--) {
-                    const idx = ((y + minY) * w + (x + minX)) * 4;
-                    if (data[idx+3] > 50 && data[idx] < 150) {
-                        foundY = y;
-                        break;
-                    }
-                }
-                if (foundY !== -1 && Math.abs(foundY - mainBottomY) <= 2) {
-                    tailDiagStartX = x;
-                    break;
-                }
-            }
-
-            // Find stroke width of outer frame
-            // Check top border thickness at center x
-            const centerX = Math.round((maxX - minX) / 2);
-            let topStrokeW = 0;
-            for (let y = 0; y < 30; y++) {
-                const idx = ((y + minY) * w + (centerX + minX)) * 4;
-                if (data[idx+3] > 50 && data[idx] < 150) {
-                    topStrokeW++;
-                } else if (topStrokeW > 0) {
-                    break;
-                }
-            }
-
-            // Find all 3 finder centers
-            // Search for concentric circles
-            function findFinderCenter(startX, endX, startY, endY) {
-                for (let y = startY; y < endY; y++) {
-                    let darkSpans = [];
-                    let inDark = false, sX = 0;
-                    for (let x = startX; x < endX; x++) {
-                        const idx = ((y + minY) * w + (x + minX)) * 4;
-                        const isDark = (data[idx+3] > 50 && data[idx] < 150);
-                        if (isDark && !inDark) { inDark = true; sX = x; }
-                        else if (!isDark && inDark) { inDark = false; darkSpans.push({ sX, eX: x, len: x - sX }); }
-                    }
-                    if (darkSpans.length === 3) {
-                        return {
-                            cx: (darkSpans[2].eX + darkSpans[0].sX) / 2,
-                            cy: y,
-                            outerDiameter: darkSpans[2].eX - darkSpans[0].sX,
-                            dotDiameter: darkSpans[1].len
-                        };
-                    }
-                }
-                return null;
-            }
-
-            const fTL = findFinderCenter(10, 60, 15, 50);
-            const fTR = findFinderCenter(90, 145, 15, 50);
-            const fBL = findFinderCenter(10, 60, 75, 115);
-
-            analysisEl.textContent = JSON.stringify({
-                refSize: { w, h },
-                shapeBounds: { minX, maxX, minY, maxY, shapeW: maxX - minX, shapeH: maxY - minY },
-                mainRect: {
-                    width: maxX - minX,
-                    height: mainBottomY,
-                    ratio: (maxX - minX) / mainBottomY
-                },
-                tail: {
-                    tailHeight: (maxY - minY) - mainBottomY,
-                    tailWidthAtBase: tailDiagStartX,
-                    tailTip: { x: 0, y: (maxY - minY) }
-                },
-                finders: { fTL, fTR, fBL },
-                finderDistances: {
-                    horizontal: fTR && fTL ? fTR.cx - fTL.cx : null,
-                    vertical: fBL && fTL ? fBL.cy - fTL.cy : null
-                },
-                topStrokeW: topStrokeW,
-                ratios: {
-                    tailHeightRatio: ((maxY - minY) - mainBottomY) / (maxX - minX),
-                    tailWidthRatio: tailDiagStartX / (maxX - minX),
-                    strokeRatio: topStrokeW / (maxX - minX)
-                }
-            }, null, 2);
 
             try {
                 const dummyChatUrl = 'https://chattest.pastiechat.com/?code=qr_test123456&api=https://apitest.pastiechat.com';
@@ -198,7 +63,6 @@
 
                 // Verify decode
                 if (window.jsQR) {
-                    const scanEl = document.getElementById('scan-result');
                     const scanCanvas = document.createElement('canvas');
                     const sCtx = scanCanvas.getContext('2d');
                     const tempImg = new Image();
@@ -210,23 +74,29 @@
                     const sImgData = sCtx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
                     const code = window.jsQR(sImgData.data, sImgData.width, sImgData.height);
                     if (code && code.data) {
-                        scanEl.textContent = ' Quét QR thành công (Decoded URL): ' + code.data;
+                        scanEl.textContent = '✅ QUÉT QR TOÀN POSTER THÀNH CÔNG: ' + code.data;
                         scanEl.style.color = '#10b981';
                     } else {
-                        scanEl.textContent = '️ jsQR chưa quét được trực tiếp trên toàn poster. Đang thử crop vùng QR...';
-                        // Crop central QR region
-                        const qrRegionCanvas = document.createElement('canvas');
-                        const qCtx = qrRegionCanvas.getContext('2d');
-                        // In 2160x2160 canvas: QR card is centered
+                        // Thử quét vùng khung QR trung tâm
                         const scale = 2;
-                        const cropX = ((1080 - 432) / 2 + 26) * scale;
-                        const cropY = (430) * scale; // approximate
-                        const cropS = 380 * scale;
-                        qrRegionCanvas.width = cropS;
-                        qrRegionCanvas.height = cropS;
-                        // scan with binarization or check
-                        scanEl.textContent = 'QR Code rendering complete.';
-                        scanEl.style.color = '#10b981';
+                        const cropW = 380 * scale;
+                        const cropH = 380 * scale;
+                        const cropX = ((1080 - 380) / 2) * scale;
+                        const cropY = 360 * scale;
+                        const cCanvas = document.createElement('canvas');
+                        cCanvas.width = cropW;
+                        cCanvas.height = cropH;
+                        const cCtx = cCanvas.getContext('2d');
+                        cCtx.drawImage(tempImg, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+                        const cData = cCtx.getImageData(0, 0, cropW, cropH);
+                        const cCode = window.jsQR(cData.data, cropW, cropH);
+                        if (cCode && cCode.data) {
+                            scanEl.textContent = '✅ QUÉT VÙNG QR THÀNH CÔNG: ' + cCode.data;
+                            scanEl.style.color = '#10b981';
+                        } else {
+                            scanEl.textContent = '❌ Chưa quét được mã QR';
+                            scanEl.style.color = '#ef4444';
+                        }
                     }
                 }
             } catch (err) {
