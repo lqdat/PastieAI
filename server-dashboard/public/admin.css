@@ -3065,7 +3065,7 @@ button:focus-visible {
 .dpq-google-wrapper {
   position: relative;
   width: 100%;
-  max-width: 340px;
+  max-width: 400px;
   margin-inline: auto;
   display: flex;
   justify-content: center;
@@ -3088,7 +3088,6 @@ button:focus-visible {
 }
 
 .dpq-google-slot iframe {
-  max-width: 100%;
   cursor: pointer !important;
 }
 
