@@ -577,11 +577,11 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     }
 
     // 4. Khối 2: Slogan nhận diện song ngữ (SIZE BẰNG VỚI KHỐI QUÉT MÃ: 18px / 18px - FONT NUNITO ITALIC)
-    ctx.fillStyle = '#c90c6c';
+    ctx.fillStyle = '#000000';
     ctx.font = `italic 700 18px ${sloganFont}`;
     ctx.fillText('Không rào cản ngôn ngữ, thấu hiểu mọi khách hàng', baseW / 2, y2 + 16);
 
-    ctx.fillStyle = '#6b5667';
+    ctx.fillStyle = '#000000';
     ctx.font = `italic 600 18px ${sloganFont}`;
     ctx.fillText('No language barriers • Understand every customer', baseW / 2, y2 + 42);
 
