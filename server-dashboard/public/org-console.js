@@ -441,41 +441,34 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     drawPosterRoundedRect(ctx, frameX, frameY, frameW, frameH, frameR);
     ctx.stroke();
 
-    // 2. Header thương hiệu (Logo Pastie bên trái, Logo Agent/chữ LOGO bên phải - TĂNG SIZE RÕ RÀNG)
+    // 2. Header thương hiệu (Co-branded: Logo khách chuyển vô giữa; Standard: Logo Pastie Chat ở giữa)
     const logoY = frameY + 28;
     const logoH = 96;
     const logoBottom = logoY + logoH;
 
     if (style === 'cobranded') {
-        // Logo Pastie Chat Biz (BÊN TRÁI, hoàn toàn không nền, kích thước lớn nổi bật)
-        const pHeight = 90;
-        const pWidth = pHeight * (logoImage.naturalWidth / logoImage.naturalHeight);
-        const pX = frameX + 40;
-        const pY = logoY + (logoH - pHeight) / 2;
-        ctx.drawImage(logoImage, pX, pY, pWidth, pHeight);
-
-        // Logo Agent (BÊN PHẢI - SIZE BẰNG NHAU VỚI LOGO TRÁI: 90px, không viền, không background)
+        // Logo khách chuyển vô giữa (Agent / Khách hàng là thương hiệu chính ở đỉnh)
         if (hasAgentLogo) {
             const aNaturalW = agentLogoImage.naturalWidth || 100;
             const aNaturalH = agentLogoImage.naturalHeight || 100;
             const aRatio = aNaturalW / aNaturalH;
-            const aHeight = 90; // Bằng chiều cao logo Pastie bên trái
+            const aHeight = 92;
             const aWidth = aHeight * aRatio;
-            const maxAWidth = 360;
+            const maxAWidth = 520;
             const finalAWidth = Math.min(aWidth, maxAWidth);
             const finalAHeight = finalAWidth / aRatio;
-            const aX = frameX + frameW - 40 - finalAWidth;
+            const aX = (baseW - finalAWidth) / 2; // Căn giữa tuyệt đối
             const aY = logoY + (logoH - finalAHeight) / 2;
 
             ctx.drawImage(agentLogoImage, aX, aY, finalAWidth, finalAHeight);
         } else {
-            // Khi chưa có logo tải lên: hiển thị chữ LOGO kích thước BẰNG NHAU với logo bên trái (~90px)
+            // Khi khách chưa có logo: hiển thị chữ LOGO căn giữa
             ctx.save();
-            ctx.textAlign = 'right';
+            ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = '#b62b70';
             ctx.font = `800 74px ${posterFont}`;
-            ctx.fillText('LOGO', frameX + frameW - 40, logoY + logoH / 2);
+            ctx.fillText('LOGO', baseW / 2, logoY + logoH / 2);
             ctx.restore();
         }
     } else {
@@ -662,10 +655,32 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     ctx.font = `700 18px ${posterFont}`;
     ctx.fillText('Mở Camera / Open Camera  •  Hướng vào QR / Point at QR', baseW / 2, pillY2 + 27);
 
-    // 8. Khối 6: Chân trang bản quyền (Size 3: 13px - LUÔN HIỂN THỊ RÕ NÉT)
-    ctx.fillStyle = '#8f7d91';
+    // 8. Khối 6: Chân trang bản quyền (Size 3: 13px)
+    // Với Co-branded: Logo Pastie Chat nhỏ bằng size chỗ license (~16px), nằm cạnh license
+    const licenseText = 'Vận hành bởi Pastie  •  Powered by Pastie';
     ctx.font = `500 13px ${posterFont}`;
-    ctx.fillText('Vận hành bởi Pastie  •  Powered by Pastie', baseW / 2, footerY);
+    ctx.fillStyle = '#8f7d91';
+
+    if (style === 'cobranded' && logoImage) {
+        const pFooterH = 16;
+        const pRatio = (logoImage.naturalWidth || 1280) / (logoImage.naturalHeight || 286);
+        const pFooterW = pFooterH * pRatio;
+        const textW = ctx.measureText(licenseText).width;
+        const gap = 10;
+        const totalFooterW = pFooterW + gap + textW;
+        const startX = (baseW - totalFooterW) / 2;
+        const logoY = footerY - pFooterH / 2;
+
+        ctx.drawImage(logoImage, startX, logoY, pFooterW, pFooterH);
+
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(licenseText, startX + pFooterW + gap, footerY);
+    } else {
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(licenseText, baseW / 2, footerY);
+    }
 
     return new Promise((resolve, reject) => {
         canvas.toBlob(async (blob) => {
