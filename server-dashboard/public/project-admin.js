@@ -49,7 +49,7 @@ function renderProjectList() {
             </div>
             <label>Tên dự án<input data-field="name" value="${projectName}" maxlength="255"></label>
             <label>Tên hiển thị trên header<input data-field="display_name" value="${displayName}" maxlength="255"></label>
-            <label>Link website<input data-field="website_url" type="url" value="${websiteUrl}" placeholder="https://website.com"></label>
+            <label>Link website<input data-field="website_url" type="url" value="${websiteUrl}" placeholder="Nhập địa chỉ website"></label>
             <label class="project-ai-toggle">
                 <input data-field="ai_enabled" type="checkbox" ${aiChecked}>
                 <div class="project-ai-toggle-text">

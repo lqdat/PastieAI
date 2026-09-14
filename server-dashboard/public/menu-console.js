@@ -626,7 +626,7 @@
                     <div class="menu-form-grid">
                         <label class="menu-field menu-field-name">
                             <span>Địa chỉ nhận dữ liệu (webhook URL)</span>
-                            <input type="url" id="menu-pos-url" placeholder="https://pos-cua-ban.com/pastie/webhook"
+                            <input type="url" id="menu-pos-url" placeholder="Nhập URL webhook"
                                    value="${escapeHtml(it?.webhook_url || '')}">
                         </label>
                         <label class="menu-field menu-field-price">

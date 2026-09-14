@@ -15,12 +15,12 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- Be Vietnam Pro, Lobster & Nunito — hỗ trợ tiếng Việt đầy đủ -->
-    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&family=Nunito:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600;1,700;1,800&display=swap" rel="stylesheet">
+    <!-- Font giao diện và font slogan -->
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Bricolage+Grotesque:wght@600&family=Lobster&family=Nunito:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600;1,700;1,800&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r131">
-    <link rel="stylesheet" href="menu-console.css?v=r130">
+    <link rel="stylesheet" href="admin.css?v=r132">
+    <link rel="stylesheet" href="menu-console.css?v=r131">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -463,8 +463,8 @@
                     </button>
                     <form class="org-form" id="org-agent-form">
                         <div class="org-form-row">
-                            <label>Họ và tên *<input type="text" id="org-agent-name" required placeholder="Nguyễn Văn A"></label>
-                            <label>Email *<input type="email" id="org-agent-email" required placeholder="agent@vidu.com"></label>
+                            <label>Họ và tên *<input type="text" id="org-agent-name" required placeholder="Nhập họ và tên"></label>
+                            <label>Email *<input type="email" id="org-agent-email" required placeholder="Nhập địa chỉ email"></label>
                         </div>
                         <div class="org-form-row">
                             <!-- Ô dự án chỉ hiện khi có TỪ HAI dự án QR trở lên. Hầu hết
@@ -501,7 +501,7 @@
                     <form class="org-form" id="org-group-form">
                         <input type="hidden" id="org-group-id" value="">
                         <div class="org-form-row">
-                            <label>Tên nhóm *<input type="text" id="org-group-name" required placeholder="Lễ tân, Nhà hàng, VIP..."></label>
+                            <label>Tên nhóm *<input type="text" id="org-group-name" required placeholder="Nhập tên nhóm"></label>
                             <label>Ghi chú<input type="text" id="org-group-desc" placeholder="Mô tả nhóm (tùy chọn)"></label>
                         </div>
                         <div class="org-form-row" id="org-group-sales-row" style="margin-top: 4px;">
@@ -533,8 +533,8 @@
                     <form class="org-form" id="org-sale-form">
                         <input type="hidden" id="org-sale-id" value="">
                         <div class="org-form-row">
-                            <label>Họ tên *<input type="text" id="org-sale-name" required placeholder="Sale An"></label>
-                            <label>Email *<input type="email" id="org-sale-email" required placeholder="sale@vidu.com"></label>
+                            <label>Họ tên *<input type="text" id="org-sale-name" required placeholder="Nhập họ và tên"></label>
+                            <label>Email *<input type="email" id="org-sale-email" required placeholder="Nhập địa chỉ email"></label>
                         </div>
                         <div class="org-form-row">
                             <label>Nhóm tiếp nhận (Tùy chọn)<select id="org-sale-group"><option value="">— Chưa gán nhóm —</option></select></label>
@@ -594,7 +594,7 @@
                     <form class="org-form" id="org-qr-form">
                         <input type="hidden" id="org-qr-id" value="">
                         <div class="org-form-row">
-                            <label>Tên vị trí đặt QR *<input type="text" id="org-qr-label" required placeholder="Bàn 1, Phòng 101, Quầy Bar..."></label>
+                            <label>Tên vị trí đặt QR *<input type="text" id="org-qr-label" required placeholder="Nhập tên vị trí đặt mã QR"></label>
                             <label>Nhóm tiếp nhận *<select id="org-qr-group"></select></label>
                         </div>
                         <p class="org-field-hint" style="margin:0;font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:5px;">
@@ -629,12 +629,10 @@
                                     <input type="radio" name="showcase_mode" value="menu" id="showcase-mode-menu" checked style="accent-color:var(--accent-color);">
                                     <span><i class="ri-shopping-bag-3-line" style="color:var(--accent-color);"></i> Hiển thị Sản phẩm</span>
                                 </label>
-                                <!-- Tạm ẩn UI Banner & Bài viết khi phát hành production.
                                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:rgba(255,255,255,0.04);padding:8px 14px;border-radius:8px;border:1px solid var(--panel-border);font-size:13px;font-weight:600;">
                                     <input type="radio" name="showcase_mode" value="banner" id="showcase-mode-banner" style="accent-color:#f59e0b;">
                                     <span><i class="ri-slideshow-3-line" style="color:#f59e0b;"></i> Hiển thị Banner &amp; Bài viết</span>
                                 </label>
-                                -->
                             </div>
                         </div>
 
@@ -646,7 +644,7 @@
                                     <span>Bật nút Sản phẩm trong phiên chat</span>
                                 </label>
                                 <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:360px;">
-                                    <input type="text" id="agent-menu-label-input" maxlength="100" placeholder="Chữ hiển thị (VD: Sản phẩm, Đặt hàng, Menu...)" style="font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);flex:1;">
+                                    <input type="text" id="agent-menu-label-input" maxlength="100" placeholder="Nhập tên nút hiển thị" style="font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);flex:1;">
                                 </div>
                             </div>
 
@@ -662,7 +660,7 @@
                                     </div>
                                     <div style="display:flex;align-items:center;gap:8px;">
                                         <div class="menu-input-suffix" style="display:flex;align-items:center;gap:4px;">
-                                            <input type="number" id="agent-service-fee-input" min="0" max="100" step="0.5" placeholder="0" inputmode="decimal" style="width:86px;font-size:13px;font-weight:700;text-align:right;padding:7px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);">
+                                            <input type="number" id="agent-service-fee-input" min="0" max="100" step="0.5" placeholder="Nhập tỷ lệ" inputmode="decimal" style="width:86px;font-size:13px;font-weight:700;text-align:right;padding:7px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);">
                                             <span style="font-size:13px;font-weight:700;color:var(--text-secondary);">%</span>
                                         </div>
                                     </div>
@@ -677,8 +675,7 @@
                     </div>
 
                     <!-- Khung Quản lý Banner & Bài viết (Hiện khi chọn chế độ Banner) -->
-                    <!-- Tạm ẩn UI Banner & Bài viết khi phát hành production. -->
-                    <div id="agent-banner-settings-card" class="glass-panel hide" hidden style="margin-bottom:14px;padding:14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);">
+                    <div id="agent-banner-settings-card" class="glass-panel hide" style="margin-bottom:14px;padding:14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;">
                             <div>
                                 <div style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px;">
@@ -708,7 +705,7 @@
                         <div class="menu-form-grid">
                             <label class="menu-field menu-field-catname">
                                 <span>Danh mục</span>
-                                <input type="text" id="menu-category-name" placeholder="Món khai vị, Đồ uống, Hải sản..." maxlength="150" autocomplete="off">
+                                <input type="text" id="menu-category-name" placeholder="Nhập tên danh mục" maxlength="150" autocomplete="off">
                             </label>
                             <div class="menu-field menu-field-catbtn">
                                 <span aria-hidden="true">&nbsp;</span>
@@ -727,13 +724,13 @@
                         <div class="menu-form-grid">
                             <label class="menu-field menu-field-name">
                                 <span>Tên sản phẩm <b>*</b></span>
-                                <input type="text" id="menu-item-name" required placeholder="Gỏi cá trích" maxlength="255" autocomplete="off">
+                                <input type="text" id="menu-item-name" required placeholder="Nhập tên sản phẩm" maxlength="255" autocomplete="off">
                             </label>
 
                             <label class="menu-field menu-field-price">
                                 <span>Giá bán (đã gồm VAT) <b>*</b></span>
                                 <div class="menu-input-suffix">
-                                    <input type="number" id="menu-item-price" required min="0" step="1000" placeholder="120000" inputmode="numeric">
+                                    <input type="number" id="menu-item-price" required min="0" step="1000" placeholder="Nhập giá bán" inputmode="numeric">
                                     <em>₫</em>
                                 </div>
                             </label>
@@ -759,7 +756,7 @@
 
                             <label class="menu-field menu-field-desc">
                                 <span>Mô tả</span>
-                                <input type="text" id="menu-item-desc" placeholder="Cá trích tươi, rau rừng, bánh tráng" autocomplete="off">
+                                <textarea id="menu-item-desc" rows="3" placeholder="Nhập mô tả sản phẩm" autocomplete="off"></textarea>
                             </label>
 
                             <div class="menu-field menu-field-photo">
@@ -1127,7 +1124,7 @@
             </div>
 
             <div style="display:flex;gap:8px;margin-bottom:16px;">
-                <input type="text" id="keyword-input" placeholder='Nhập từ khóa rồi nhấn Enter... (vd: giá phòng, đặt tour, ưu đãi)' style="flex:1;padding:10px 12px;border-radius:8px;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-family:inherit;font-size:13px;outline:none;">
+                <input type="text" id="keyword-input" placeholder="Nhập từ khóa rồi nhấn Enter" style="flex:1;padding:10px 12px;border-radius:8px;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-family:inherit;font-size:13px;outline:none;">
                 <button id="keyword-add-btn" class="secondary-btn" style="white-space:nowrap;background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.25);"><i class="ri-add-line"></i> Thêm</button>
             </div>
 
@@ -1183,7 +1180,7 @@
             <div class="form-group" style="margin-bottom: 20px;">
                 <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">Cào dữ liệu tự động từ URL (Landing Page)</label>
                 <div style="display: flex; gap: 8px;">
-                    <input type="url" id="kb-url-input" placeholder="Ví dụ: https://pastiechat.com" style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;" value="https://pastie-landingpage.vercel.app">
+                    <input type="url" id="kb-url-input" placeholder="Nhập địa chỉ website" style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;" value="https://pastie-landingpage.vercel.app">
                     <button id="kb-sync-btn" class="primary-btn" style="width: auto; padding: 0 20px; white-space: nowrap;"><i class="ri-refresh-line"></i> Đồng bộ URL</button>
                 </div>
                 <div id="kb-sync-status" style="font-size: 12px; margin-top: 8px; color: var(--text-secondary); text-align: left; display: flex; align-items: center; gap: 6px;">
@@ -1239,13 +1236,13 @@
                         <label style="display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; color: var(--text-secondary); text-align: left;">
                             Phone Number ID *
                         </label>
-                        <input type="text" id="channel-whatsapp-phone-id" placeholder="1155601220972710" required style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+                        <input type="text" id="channel-whatsapp-phone-id" placeholder="Nhập Phone Number ID" required style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
                     </div>
                     <div class="form-group">
                         <label style="display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; color: var(--text-secondary); text-align: left;">
                             WABA ID (Tài khoản Business)
                         </label>
-                        <input type="text" id="channel-whatsapp-waba-id" placeholder="1888394188493675" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+                        <input type="text" id="channel-whatsapp-waba-id" placeholder="Nhập WhatsApp Business Account ID" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
                     </div>
                 </div>
 
@@ -1253,14 +1250,14 @@
                     <label style="display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; color: var(--text-secondary); text-align: left;">
                         Số điện thoại WhatsApp
                     </label>
-                    <input type="text" id="channel-whatsapp-phone" placeholder="+84901819883" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+                    <input type="text" id="channel-whatsapp-phone" placeholder="Nhập số điện thoại" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
                 </div>
 
                 <div class="form-group" style="margin-bottom: 14px;">
                     <label style="display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; color: var(--text-secondary); text-align: left;">
                         WhatsApp Access Token (Permanent / System User Token) *
                     </label>
-                    <textarea id="channel-whatsapp-token" rows="3" placeholder="Nhập Access Token (bắt đầu bằng EAAG... hoặc EAA...)" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: monospace; font-size: 12px; resize: vertical;"></textarea>
+                    <textarea id="channel-whatsapp-token" rows="3" placeholder="Nhập Access Token" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: monospace; font-size: 12px; resize: vertical;"></textarea>
                 </div>
 
                 <!-- Direct WhatsApp Link Box for Customers -->
@@ -1419,8 +1416,8 @@
                     <div class="admin-mgmt-section-head">
                         <h3><i class="ri-folder-3-line"></i> Danh sách dự án</h3>
                         <div class="project-create-controls">
-                            <input type="text" id="project-new-name" placeholder="Tên project...">
-                            <input type="url" id="project-new-link" placeholder="https://website.com">
+                            <input type="text" id="project-new-name" placeholder="Nhập tên project">
+                            <input type="url" id="project-new-link" placeholder="Nhập địa chỉ website">
                             <button id="project-add-btn" class="primary-btn" style="width: auto; padding: 8px 12px; font-size: 12px; white-space: nowrap;"><i class="ri-add-line"></i> Thêm dự án</button>
                         </div>
                     </div>
@@ -1527,19 +1524,19 @@
                     <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Loại hình cơ sở</label>
                     <input id="admin-create-venue-type" list="admin-create-venue-type-list"
                            style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" autocomplete="off"
-                           placeholder="Hộ Kinh Doanh, Nhà hàng, Khách sạn… (để trống nếu là tên người)">
+                           placeholder="Nhập loại hình cơ sở">
                     <datalist id="admin-create-venue-type-list"></datalist>
                 </div>
 
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Họ và tên *</label>
-                    <input type="text" id="admin-create-fullname" placeholder="Đan Trinh Pastie / Nguyễn Văn A..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
+                    <input type="text" id="admin-create-fullname" placeholder="Nhập họ và tên" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
                     <small id="admin-create-name-preview" style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;"></small>
                 </div>
 
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Email đăng nhập *</label>
-                    <input type="email" id="admin-create-email" placeholder="agent@company.com" autocomplete="email" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
+                    <input type="email" id="admin-create-email" placeholder="Nhập địa chỉ email" autocomplete="email" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
                 </div>
 
                 <div class="form-group" id="admin-create-project-group" style="margin: 0;">
@@ -1631,7 +1628,7 @@
                     <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Loại hình cơ sở</label>
                     <input id="admin-edit-venue-type" list="admin-edit-venue-type-list"
                            style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" autocomplete="off"
-                           placeholder="Hộ Kinh Doanh, Nhà hàng, Khách sạn… (để trống nếu là tên người)">
+                           placeholder="Nhập loại hình cơ sở">
                     <datalist id="admin-edit-venue-type-list"></datalist>
                 </div>
 
@@ -2131,8 +2128,7 @@
     </div>
 
     <!-- Modal Thêm/Sửa bài viết và banner quảng bá -->
-    <!-- Tạm ẩn UI Banner & Bài viết khi phát hành production. -->
-    <div id="agent-post-modal" class="modal-overlay hide" hidden style="z-index: 10050; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px);">
+    <div id="agent-post-modal" class="modal-overlay hide" style="z-index: 10050; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px);">
         <div class="login-box glass-panel admin-dialog-box" style="max-width: 720px; width: 95%; max-height: min(92vh, 800px); display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 20px; background: #ffffff !important; box-shadow: 0 24px 64px -8px rgba(239, 43, 157, 0.25), 0 12px 32px -4px rgba(35, 16, 30, 0.2) !important; border: 1px solid rgba(239, 43, 157, 0.22) !important;">
             <div style="padding: 16px 22px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; background: #ffffff;">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -2154,18 +2150,18 @@
                 <div class="post-form-grid-2col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <div>
                         <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Tiêu đề (Tiếng Việt) *</label>
-                        <input type="text" id="post-form-title-vi" required placeholder="VD: Combo Sáng Tỉnh Táo..." style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
+                        <input type="text" id="post-form-title-vi" required placeholder="Nhập tiêu đề tiếng Việt" style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
                     </div>
                     <div>
                         <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Tiêu đề (Tiếng Anh)</label>
-                        <input type="text" id="post-form-title-en" placeholder="VD: Breakfast Combo..." style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
+                        <input type="text" id="post-form-title-en" placeholder="Nhập tiêu đề tiếng Anh" style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
                     </div>
                 </div>
 
                 <div class="post-form-grid-2col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <div>
                         <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Danh mục / Thẻ nổi bật</label>
-                        <input type="text" id="post-form-category" placeholder="ƯU ĐÃI, COMBO, CẨM NANG..." value="ƯU ĐÃI" style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
+                        <input type="text" id="post-form-category" placeholder="Nhập tên danh mục" value="ƯU ĐÃI" style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
                     </div>
                     <div>
                         <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Thứ tự hiển thị (nhỏ đứng trước)</label>
@@ -2292,11 +2288,11 @@
     <script src="core.js?v=r131"></script>
     <script src="chat.js?v=r130"></script>
     <script src="org-console.js?v=r130"></script>
-    <script src="project-admin.js?v=r130"></script>
-    <script src="menu-console.js?v=r130"></script>
+    <script src="project-admin.js?v=r131"></script>
+    <script src="menu-console.js?v=r131"></script>
     <script src="order-console.js?v=r130"></script>
-    <script src="cart-console.js?v=r130"></script>
-    <script src="ticket-console.js?v=r130"></script>
+    <script src="cart-console.js?v=r131"></script>
+    <script src="ticket-console.js?v=r131"></script>
     <script src="admin.js?v=r130"></script>
 </body>
 </html>

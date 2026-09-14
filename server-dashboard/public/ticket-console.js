@@ -269,7 +269,7 @@
             <div class="ticket-form">
                 ${tinNguon ? '<p class="ticket-note"><i class="ri-links-line"></i> Ticket này sẽ gắn với tin nhắn bạn vừa chọn, để sau còn lần lại được.</p>' : ''}
                 <div><label for="tk-subject">Tiêu đề</label>
-                <input id="tk-subject" maxlength="255" placeholder="Ví dụ: Máy in hóa đơn không nhận lệnh"></div>
+                <input id="tk-subject" maxlength="255" placeholder="Nhập tiêu đề ticket"></div>
                 <div><label for="tk-desc">Mô tả</label>
                 <textarea id="tk-desc" maxlength="5000" placeholder="Mô tả rõ hiện tượng, thời điểm bắt đầu, đã thử cách nào.">${thoat(moTaSan)}</textarea></div>
                 <div class="ticket-form-row">
@@ -326,7 +326,7 @@
                 .map(([k, v]) => `<button type="button" class="ticket-chip${locTrangThai === k ? ' is-active' : ''}" data-loc="${k}">${v}</button>`).join('')}
             </div>
             <div class="ticket-search">
-                <input id="tk-search" placeholder="Tìm theo mã ticket, ví dụ PT-260910-000001" value="${thoat(tuKhoa)}">
+                <input id="tk-search" placeholder="Nhập mã hoặc nội dung cần tìm" value="${thoat(tuKhoa)}">
                 <button type="button" class="ticket-btn" id="tk-search-btn"><i class="ri-search-line"></i></button>
             </div>
             ${doanChatHienTai && !laSuper() ? '<div class="ticket-search"><button type="button" class="ticket-btn primary" id="tk-new" style="flex:1"><i class="ri-add-line"></i> Tạo ticket mới</button></div>' : ''}
@@ -424,7 +424,7 @@
             ${quyen.chiXem ? '<p class="ticket-note"><i class="ri-eye-line"></i> Bạn theo dõi được ticket này nhưng không đổi trạng thái. Việc đó thuộc về Kỹ thuật và Admin tổng — cần nói thêm gì thì nhắn trong đoạn chat với Kỹ thuật.</p>' : ''}
             ${nutTrangThai.length ? `
               <div><label class="ticket-note" for="tk-note">Ghi chú kèm theo (không bắt buộc)</label>
-              <input id="tk-note" class="ticket-form" placeholder="Ví dụ: đã thay driver máy in"></div>
+              <input id="tk-note" class="ticket-form" placeholder="Nhập ghi chú xử lý"></div>
               <div class="ticket-detail-actions">
                 ${nutTrangThai.map(([k, nhan, kieu]) => `<button type="button" class="ticket-btn ${kieu}" data-hanh-dong="${k}">${nhan}</button>`).join('')}
               </div>` : ''}

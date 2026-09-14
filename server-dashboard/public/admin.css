@@ -2798,16 +2798,13 @@ button:focus-visible {
   display: block;
 }
 
-/* Slogan màn đăng nhập. Nét 800 đọc ra như một tiêu đề hệ thống, trong khi đây
-   là một câu nói — hạ xuống nét 400 và giãn dòng rộng hơn cho mềm.
-   Bộ số này dùng CHUNG với slogan bên cổng khách (.login-tagline trong
-   qr-chat-portal/app/globals.css): cùng font, cùng 17px, cùng nét 400. Đổi ở
-   đây thì phải đổi luôn bên kia, nếu không hai màn lại lệch nhau. */
+/* Slogan dùng chung typography với form đăng nhập khách. */
 .dpq-title {
-  font-family: 'Nunito', 'Be Vietnam Pro', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Bricolage Grotesque', 'Be Vietnam Pro', 'Inter', sans-serif;
   font-size: 18px;
   font-weight: 600;
-  font-style: italic;
+  font-stretch: 100%;
+  font-style: normal;
   letter-spacing: .008em;
   color: #374151;
   line-height: 1.5;

@@ -217,7 +217,7 @@
                         </label>
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Ghi chú thêm:</span>
-                            <input type="text" id="edit-item-note" placeholder="Ví dụ: Ít cay, không hành" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;" value="${escapeHtml(String(item.note || '').replace(/^\(|\)$/g, ''))}">
+                            <input type="text" id="edit-item-note" placeholder="Nhập ghi chú cho sản phẩm" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;" value="${escapeHtml(String(item.note || '').replace(/^\(|\)$/g, ''))}">
                         </label>
                     </div>
                     <div class="confirm-actions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -264,11 +264,11 @@
                     <div style="display:grid;gap:12px;margin-bottom:18px;text-align:left;">
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Tên món <b style="color:#ef4444;">*</b>:</span>
-                            <input type="text" id="add-item-name" required placeholder="Ví dụ: Cơm chiên hải sản" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
+                            <input type="text" id="add-item-name" required placeholder="Nhập tên sản phẩm" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
                         </label>
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Đơn giá (₫) <b style="color:#ef4444;">*</b>:</span>
-                            <input type="number" id="add-item-price" min="0" step="1000" placeholder="Ví dụ: 85000" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
+                            <input type="number" id="add-item-price" min="0" step="1000" placeholder="Nhập giá bán" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
                         </label>
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Số lượng <b style="color:#ef4444;">*</b>:</span>
@@ -288,7 +288,7 @@
                         </label>
                         <label style="font-size:12.5px;font-weight:600;display:grid;gap:5px;color:var(--text-secondary);">
                             <span>Ghi chú:</span>
-                            <input type="text" id="add-item-note" placeholder="Ví dụ: Ít cay, không tiêu" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
+                            <input type="text" id="add-item-note" placeholder="Nhập ghi chú cho sản phẩm" style="width:100%;height:42px;padding:0 12px;border-radius:10px;border:1px solid rgba(84,62,100,.2);font-size:15px;color:var(--text-primary);background:#fff;">
                         </label>
                     </div>
                     <div class="confirm-actions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
