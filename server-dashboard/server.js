@@ -591,6 +591,23 @@ app.use('/api/chats/:sessionId', async (req, res, next) => {
   try {
     // Đây là route thao tác của nhân viên và có checkAdminAuth riêng ở phía sau.
     if (req.method === 'POST' && /\/transfer\/?$/.test(req.originalUrl.split('?')[0])) return next();
+
+    // NHÂN VIÊN (Sale / Agent) gọi đường /api/chats/:sessionId/order cùng với
+    // cổng khách. Token của họ nằm trong admin_sessions, KHÔNG phải identity
+    // token của khách. Nếu Bearer token khớp admin session thì bỏ qua kiểm tra
+    // thiết bị khách — middleware này chỉ ngăn hai KHÁCH mở cùng phiên trên hai
+    // thiết bị, không phải ngăn nhân viên xem phiên đó.
+    const bearerToken = req.headers['authorization']?.startsWith('Bearer ')
+      ? req.headers['authorization'].slice(7).trim()
+      : (req.query?.token || '');
+    if (bearerToken) {
+      const adminCheck = await db.query(
+        'SELECT 1 FROM admin_sessions WHERE token = $1 LIMIT 1',
+        [bearerToken]
+      );
+      if (adminCheck.rows.length > 0) return next();
+    }
+
     const result = await db.query(
       'SELECT active_identity_token FROM sessions WHERE id = $1',
       [req.params.sessionId]
@@ -5425,7 +5442,28 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   const currentSessionRes = await db.query('SELECT * FROM sessions WHERE id = $1', [targetSessionId]);
   const currentSession = currentSessionRes.rows[0];
 
-  if (currentSession && currentSession.status === 'closed') {
+  // exact=1 : TRẢ ĐƠN CỦA ĐÚNG PHIÊN ĐƯỢC HỎI, KHÔNG NHẢY SANG PHIÊN KHÁC.
+  //
+  // Endpoint này dùng chung cho hai người với hai nhu cầu ngược nhau:
+  //
+  //   · Cổng khách — khách đang cầm điện thoại. Phiên cũ đóng, khách quét lại
+  //     mã bàn thì phải được kéo sang phiên mới. Đúng, giữ nguyên.
+  //
+  //   · Màn chat của Sale/Agent — nhân viên bấm vào MỘT đoạn chat cụ thể trong
+  //     danh sách để xem đơn CỦA ĐOẠN ĐÓ. Nhảy sang phiên khác là đơn biến mất
+  //     ngay trước mắt: route trả 404 kèm sessionSwitched, loadOrderForAdmin
+  //     thấy !response.ok nên xoá sạch adminOrder, và nhân viên nhìn thấy một
+  //     đoạn chat có đơn chờ xác nhận mà khung đơn thì trống trơn.
+  //
+  // Bàn nào đông khách thì cảnh này xảy ra liên tục: khách A gọi món, đóng
+  // phiên, khách B quét lại đúng mã bàn đó — đơn của khách A lập tức không xem
+  // được nữa, dù nó vẫn nằm nguyên trong "Quản lý bill".
+  //
+  // Cờ này không mở thêm gì cho ai: muốn dùng nó vẫn phải biết trước sessionId,
+  // mà biết sessionId thì endpoint này vốn đã trả đơn rồi.
+  const chinhXacPhien = ['1', 'true', 'yes'].includes(String(req.query.exact || '').toLowerCase());
+
+  if (!chinhXacPhien && currentSession && currentSession.status === 'closed') {
     const newerSession = await findNewerActiveSession(currentSession);
     if (newerSession) {
       res.setHeader('X-Switched-Session', newerSession.id);

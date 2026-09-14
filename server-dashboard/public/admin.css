@@ -9312,3 +9312,33 @@ button:focus-visible {
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(124, 58, 237, 0.15);
 }
+
+.admin-invoice-block.has-forward-action {
+    position: relative;
+    margin-right: 56px;
+}
+.admin-invoice-forward-btn {
+    position: absolute;
+    top: 50%;
+    right: -54px;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: #ef2b9d;
+    color: #fff;
+    box-shadow: 0 7px 18px rgba(239, 43, 157, .28);
+    cursor: pointer;
+    transform: translateY(-50%);
+    transition: background-color .18s ease, box-shadow .18s ease;
+}
+.admin-invoice-forward-btn i { font-size: 21px; line-height: 1; }
+.admin-invoice-forward-btn:hover { background: #d91b88; box-shadow: 0 9px 22px rgba(239, 43, 157, .36); }
+.admin-invoice-forward-btn:focus-visible { outline: 3px solid rgba(239, 43, 157, .28); outline-offset: 3px; }
+.admin-invoice-forward-btn:disabled { opacity: .55; cursor: wait; }
+@media (max-width: 720px) {
+    .admin-invoice-block.has-forward-action { max-width: calc(100% - 56px) !important; }
+}
