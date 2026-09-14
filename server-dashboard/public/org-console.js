@@ -804,15 +804,14 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     const pillY2 = footerY - 58;
 
     // Chiều cao từng khối:
-    // Khối 1: Tên Agent (36px) & Tên QR (nếu có)
-    let h1 = 44;
-    if (hasCustomLabel) h1 += 54;
+    // Khối 1: Tên Agent & Tên QR cùng nằm trong khối nền hồng theo yêu cầu ("tên Agent và phần tên Qr cho vào khôi nền hông luôn")
+    const h1 = hasCustomLabel ? 110 : 64;
 
     // Khối 2: Slogan song ngữ (2 dòng 18px)
     const h2 = 48;
 
-    // Khối 3: Mã QR Speech Bubble (Giảm size QR lại từ 380 xuống 320 theo yêu cầu)
-    const qrSize = 320;
+    // Khối 3: Mã QR Speech Bubble (Giảm size QR lại từ 380 xuống 310 theo yêu cầu)
+    const qrSize = 310;
     const h3 = qrSize;
 
     // Khối 4: Lời kêu gọi quét mã song ngữ (Tăng size bằng size Agent: 36px / 26px)
@@ -832,39 +831,48 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
 
     ctx.textAlign = 'center';
 
-    // Khối 1: TÊN AGENT (CHỈ TIẾNG ANH - SIZE 1: 36px) VÀ TÊN QR
-    let curY1 = y1 + 32;
+    // Khối 1: KHỐI NỀN HỒNG CHỨA CẢ TÊN AGENT VÀ TÊN QR
+    const qrDisplayText = hasCustomLabel
+        ? (qrBilingual.en ? `${qrBilingual.vi} • ${qrBilingual.en}` : qrBilingual.vi)
+        : '';
 
-    ctx.fillStyle = '#201424';
-    ctx.font = `800 36px ${posterFont}`;
-    drawPosterText(ctx, agentNameEnOnly, baseW / 2, curY1, 880, 42, 1);
+    ctx.font = `800 32px ${posterFont}`;
+    const textW1 = ctx.measureText(agentNameEnOnly).width;
+    ctx.font = `800 28px ${posterFont}`;
+    const textW2 = hasCustomLabel ? ctx.measureText(qrDisplayText).width : 0;
 
-    // Tên QR song ngữ (Size 1: 36px trong Pill tinh tế)
+    const boxW = Math.min(Math.max(textW1, textW2) + 72, 860);
+    const boxH = h1;
+    const boxX = (baseW - boxW) / 2;
+    const boxY = y1;
+    const boxR = hasCustomLabel ? 26 : 32;
+
+    // Nền hồng phấn cao cấp
+    ctx.fillStyle = '#fff2f7';
+    drawPosterRoundedRect(ctx, boxX, boxY, boxW, boxH, boxR);
+    ctx.fill();
+
+    // Viền hồng tinh tế
+    ctx.strokeStyle = '#f3c4db';
+    ctx.lineWidth = 1.5;
+    drawPosterRoundedRect(ctx, boxX, boxY, boxW, boxH, boxR);
+    ctx.stroke();
+
     if (hasCustomLabel) {
-        curY1 += 48;
-        const qrDisplayText = qrBilingual.en
-            ? `${qrBilingual.vi} • ${qrBilingual.en}`
-            : qrBilingual.vi;
+        // Dòng 1: Tên Agent (32px)
+        ctx.fillStyle = '#201424';
+        ctx.font = `800 32px ${posterFont}`;
+        drawPosterText(ctx, agentNameEnOnly, baseW / 2, boxY + 44, boxW - 32, 38, 1);
 
-        ctx.font = `800 36px ${posterFont}`;
-        const textW = ctx.measureText(qrDisplayText).width;
-        const pillW = Math.min(Math.max(textW + 56, 240), 860);
-        const pillH = 54;
-        const pillX = (baseW - pillW) / 2;
-        const pillY = curY1 - 38;
-
-        // Nền pill hồng phấn cao cấp
-        ctx.fillStyle = '#fff2f7';
-        drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 27);
-        ctx.fill();
-
-        ctx.strokeStyle = '#f3c4db';
-        ctx.lineWidth = 1.5;
-        drawPosterRoundedRect(ctx, pillX, pillY, pillW, pillH, 27);
-        ctx.stroke();
-
+        // Dòng 2: Tên QR (28px - hồng thương hiệu đậm)
         ctx.fillStyle = '#c90c6c';
-        ctx.fillText(qrDisplayText, baseW / 2, pillY + 39);
+        ctx.font = `800 28px ${posterFont}`;
+        drawPosterText(ctx, qrDisplayText, baseW / 2, boxY + 86, boxW - 32, 34, 1);
+    } else {
+        // Chỉ có Tên Agent căn giữa khối hồng
+        ctx.fillStyle = '#201424';
+        ctx.font = `800 34px ${posterFont}`;
+        drawPosterText(ctx, agentNameEnOnly, baseW / 2, boxY + 43, boxW - 32, 40, 1);
     }
 
     // 4. Khối 2: Slogan nhận diện song ngữ (18px / 18px - FONT NUNITO ITALIC)
@@ -876,11 +884,11 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     ctx.font = `italic 600 18px ${sloganFont}`;
     ctx.fillText('No language barriers • Understand every customer', baseW / 2, y2 + 42);
 
-    // 5. Khối 3: Mã QR Bong bóng thoại Speech Bubble trực tiếp (ĐÃ BỎ VIỀN THẺ XUNG QUANH)
+    // 5. Khối 3: Mã QR Bong bóng thoại Speech Bubble trực tiếp (ĐÃ BỎ VIỀN THẺ XUNG QUANH & BỎ LOGO Ở GIỮA)
     const qrX = (baseW - qrSize) / 2;
     const qrY = y3;
     drawStyledVectorQrCode(ctx, qrText, qrX, qrY, qrSize, qrSize, {
-        centerLogoImage: hasAgentLogo ? agentLogoImage : null,
+        centerLogoImage: null, // Bỏ logo ở giữa theo yêu cầu ("bỏ logo ở giữa")
         fallbackImage: trimmedQr
     });
 
