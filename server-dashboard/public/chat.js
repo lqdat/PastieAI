@@ -325,7 +325,11 @@ async function selectTechnicalAgentSession(chat) {
     }
     const sendBtn = chatForm?.querySelector('button[type="submit"]');
     if (sendBtn) sendBtn.disabled = true;
-    chatMicBtn?.classList.add('hide');
+    // KHÔNG dùng `chatMicBtn?.` — biến đó chưa bao giờ được khai báo, và toán tử
+    // `?.` không cứu được một tên chưa khai báo: nó ném ReferenceError ngay tại
+    // đây, nuốt luôn phần nạp tin nhắn bên dưới. Hậu quả: Admin tổng bấm vào một
+    // đoạn chat kỹ thuật thì màn hình đứng ở câu "Chọn một cuộc trò chuyện…".
+    document.getElementById('chat-mic-btn')?.classList.add('hide');
 
     if (chatMessagesContainer) {
         chatMessagesContainer.innerHTML = '<div class="chat-loading-state" style="display:flex;align-items:center;justify-content:center;height:200px;color:var(--text-muted);"><i class="ri-loader-4-line rotating" style="font-size:24px;margin-right:8px;"></i> Đang tải tin nhắn...</div>';
@@ -338,7 +342,32 @@ async function selectTechnicalAgentSession(chat) {
     window.TicketConsole?.onInternalChat?.(chat);
 }
 
+// Tóm tắt cuộc chat do AI dựng: Agent và Sale không xem.
+//
+// Quyết định theo VAI, và chỉ quyết định được sau khi CURRENT_ADMIN đã nạp xong
+// — đó là lý do hàm này được gọi từ initSessionCategoryTabs (chạy ngay sau khi
+// nạp hồ sơ) chứ không gọi lúc dựng khung. Dựng khung xong mới nạp hồ sơ, nên
+// kiểm vai ở thời điểm đó luôn cho ra "chưa biết vai" và ẩn nhầm của mọi người.
+//
+// Ẩn ở MỨC DỮ LIỆU chứ không chỉ giấu thẻ: nội dung tóm tắt bị xoá khỏi DOM, để
+// người không được xem thì mở DevTools cũng không đọc được.
+function capNhatHienTomTat() {
+    const the = document.getElementById('detail-summary-card');
+    if (!the) return;
+    const vai = CURRENT_ADMIN?.role;
+    // Chưa biết vai thì ẩn. Thà một nhịp không thấy còn hơn lộ ra rồi mới giấu.
+    const duocXem = Boolean(vai) && !['agent', 'sale'].includes(vai);
+    the.classList.toggle('hide', !duocXem);
+    if (!duocXem) {
+        const chu = document.getElementById('detail-summary');
+        if (chu) chu.textContent = '';
+    }
+}
+
 function initSessionCategoryTabs() {
+    // Gọi TRƯỚC câu return sớm bên dưới: hàm này thoát sớm khi thiếu thẻ tab,
+    // mà phần tóm tắt thì không liên quan gì tới các tab đó.
+    capNhatHienTomTat();
     const tabsContainer = document.getElementById('session-category-tabs');
     const tabCustomers = document.getElementById('tab-cat-customers');
     const tabInternal = document.getElementById('tab-cat-internal');
@@ -646,7 +675,10 @@ function applyTranslations(lang) {
         if (session) {
             applyDetailsPanelMode(session);
             const summaryText = document.getElementById('detail-summary');
-            if (summaryText && (!session.ai_summary)) {
+            // Đổi ngôn ngữ giao diện cũng là một lối ghi chữ vào ô tóm tắt.
+            capNhatHienTomTat();
+            const xemDuoc = Boolean(CURRENT_ADMIN?.role) && !['agent', 'sale'].includes(CURRENT_ADMIN.role);
+            if (summaryText && xemDuoc && (!session.ai_summary)) {
                 summaryText.textContent = dictObj.closeChatToAnalyze;
             }
             const dl = document.getElementById('detail-lang-select');
@@ -2465,7 +2497,11 @@ async function selectSession(sessionId) {
     }
     
     renderTags(session.intent_tags);
-    if (detailSummary) {
+    // Mỗi lần đổi phiên là một lần nữa có thể ghi tóm tắt vào DOM — kiểm lại vai
+    // ngay tại đây, không dựa vào lần ẩn lúc khởi động.
+    capNhatHienTomTat();
+    const duocXemTomTat = Boolean(CURRENT_ADMIN?.role) && !['agent', 'sale'].includes(CURRENT_ADMIN.role);
+    if (detailSummary && duocXemTomTat) {
         if (session.ai_summary && session.ai_summary.trim() && session.ai_summary !== 'Không có dữ liệu phân tích.') {
             detailSummary.textContent = session.ai_summary;
             detailSummary.style.color = 'var(--text-primary)';
@@ -2683,7 +2719,7 @@ function renderAdminSavedBills() {
         const totalText = new Intl.NumberFormat('vi-VN').format(Number(bill.totalAmount || 0));
         const label = bill.invoice?.invoiceNo || bill.orderCode || '';
         const wrapper = document.createElement('div');
-        wrapper.className = 'admin-invoice-block is-archived';
+        wrapper.className = `admin-invoice-block is-archived${CURRENT_ADMIN?.role === 'sale' ? ' has-forward-action' : ''}`;
         wrapper.innerHTML = `
             <div class="admin-invoice-head">
                 <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> Hóa đơn đã gửi khách${label ? ` · ${escapeHtml(label)}` : ''}</span>
@@ -2692,6 +2728,7 @@ function renderAdminSavedBills() {
                     : ['superseded', 'rejected', 'cancelled'].includes(String(bill.orderStatus || '')) ? 'Bản trước khi sửa'
                     : 'Đã lưu')}</span>
             </div>
+            ${CURRENT_ADMIN?.role === 'sale' ? `<button type="button" class="admin-invoice-forward-btn" data-forward-bill="${escapeHtml(bill.orderId)}" title="Chuyển hóa đơn vào chat nội bộ với Agent" aria-label="Chuyển hóa đơn cho Agent"><i class="ri-share-forward-line"></i></button>` : ''}
             ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(preview)}" data-preview-type="image" data-preview-title="Hóa đơn" data-download-url="${escapeHtml(pdf || preview)}"><img src="${escapeHtml(preview)}" alt="Hóa đơn"></button>` : ''}
             <div class="admin-invoice-meta">
                 <span><strong>${escapeHtml(totalText)} ₫</strong></span>
@@ -3044,6 +3081,13 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
                 ? (Number(msg.sender_admin_id) === Number(CURRENT_ADMIN?.id))
                 : (msg.sender === CURRENT_ADMIN?.role);
             const attachmentHtml = renderAttachmentHtml(msg);
+            const billMatch = msg.system_kind === 'order_forward'
+                ? /^\[\[bill:([^\]\r\n]+)\]\]$/.exec(String(msg.original_text || ''))
+                : null;
+            const internalText = billMatch ? '' : msg.original_text;
+            const billHtml = billMatch
+                ? `<div class="internal-forwarded-bill" data-forwarded-bill="${escapeHtml(billMatch[1])}" aria-label="Hóa đơn"><i class="ri-loader-4-line ri-spin"></i></div>`
+                : '';
 
             if (isMe) {
                 wrapper.className = 'message-wrapper agent';
@@ -3051,7 +3095,8 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
                     <div class="msg-body-wrap">
                         <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
                             ${attachmentHtml}
-                            ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(msg.original_text)}</div>`}
+                            ${internalText ? `<div class="original-text">${escapeHtml(internalText)}</div>` : ''}
+                            ${billHtml}
                         </div>
                         <div class="message-time"><span>${timeStr}</span></div>
                     </div>
@@ -3073,7 +3118,8 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
                         <div style="font-size:11px;color:var(--text-secondary);margin-bottom:3px;font-weight:600;">${escapeHtml(peerName)}</div>
                         <div class="message-bubble${attachmentHtml ? ' has-attachment' : ''}">
                             ${attachmentHtml}
-                            ${attachmentHtml && isAttachmentPlaceholder(msg.original_text) ? '' : `<div class="original-text">${escapeHtml(msg.original_text)}</div>`}
+                            ${internalText ? `<div class="original-text">${escapeHtml(internalText)}</div>` : ''}
+                            ${billHtml}
                         </div>
                         <div class="message-time">${timeStr}</div>
                     </div>
@@ -3147,6 +3193,52 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
     } else {
         if (forceScrollToLatest || isFirstLoad || isNearBottom || isInternal) {
             scrollChatToBottom(true);
+        }
+    }
+    hydrateForwardedBills();
+}
+
+const forwardedBillCache = new Map();
+document.getElementById('chat-messages-container')?.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-forward-bill]');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(button.dataset.forwardBill)}/transfer-to-agent`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Không thể chuyển hóa đơn.');
+        showToast(data.message || 'Đã chuyển hóa đơn vào chat nội bộ với Agent.', 'success');
+    } catch (error) {
+        showToast(error.message, 'error');
+    } finally {
+        button.disabled = false;
+    }
+});
+
+async function hydrateForwardedBills() {
+    for (const node of chatMessagesContainer?.querySelectorAll('[data-forwarded-bill]') || []) {
+        const orderId = node.dataset.forwardedBill;
+        if (node.dataset.loaded === '1') continue;
+        node.dataset.loaded = '1';
+        try {
+            let pending = forwardedBillCache.get(orderId);
+            if (!pending) {
+                pending = authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/details?lang=vi&invoice=1`)
+                    .then(async (res) => {
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data?.error || 'Không tải được hóa đơn.');
+                        return data.order?.invoice?.svgDataUrl || data.order?.invoice?.imageUrl || data.order?.invoice?.imageDataUrl || '';
+                    });
+                forwardedBillCache.set(orderId, pending);
+            }
+            const preview = await pending;
+            if (!preview) throw new Error('Hóa đơn chưa được phát hành.');
+            node.innerHTML = `<img src="${escapeHtml(preview)}" alt="Hóa đơn" loading="lazy" style="display:block;width:min(360px,72vw);max-height:70vh;object-fit:contain;border-radius:10px;background:#fff;" onload="window.scrollChatToBottom?.(true)">`;
+        } catch (error) {
+            forwardedBillCache.delete(orderId);
+            node.textContent = error.message;
         }
     }
 }
@@ -3232,12 +3324,13 @@ function renderAdminInvoice() {
     const openPdfText = dict.invoiceOpenPdf || 'Mở PDF';
 
     const wrapper = document.createElement('div');
-    wrapper.className = 'admin-invoice-block';
+    wrapper.className = `admin-invoice-block${CURRENT_ADMIN?.role === 'sale' ? ' has-forward-action' : ''}`;
     wrapper.innerHTML = `
         <div class="admin-invoice-head">
             <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> ${escapeHtml(kickerText)}</span>
             <span class="admin-invoice-status ${statusClass}">${escapeHtml(statusText)}</span>
         </div>
+        ${CURRENT_ADMIN?.role === 'sale' ? `<button type="button" class="admin-invoice-forward-btn" data-forward-bill="${escapeHtml(adminOrder.id)}" title="Chuyển hóa đơn vào chat nội bộ với Agent" aria-label="Chuyển hóa đơn cho Agent"><i class="ri-share-forward-line"></i></button>` : ''}
         ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(preview)}" data-preview-type="image" data-preview-title="${escapeHtml(kickerText)}" data-download-url="${escapeHtml(pdf || preview)}"><img src="${escapeHtml(preview)}" alt="${escapeHtml(kickerText)}"></button>` : ''}
         <div class="admin-invoice-meta">
             <span><strong>${escapeHtml(totalText)} ₫</strong></span>

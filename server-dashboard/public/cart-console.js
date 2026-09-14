@@ -536,7 +536,7 @@
                                 <button type="button" class="secondary-btn order-nav-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
                                 <button type="button" class="secondary-btn order-nav-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem hóa đơn</button>
                                 ${CURRENT_ADMIN?.role === 'sale' ? `
-                                <button type="button" class="secondary-btn order-nav-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này vào chat nội bộ với Agent" aria-label="Chuyển bill cho Agent"><i class="ri-arrow-go-forward-line"></i></button>` : ''}
+                                <button type="button" class="secondary-btn order-nav-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này vào chat nội bộ với Agent" aria-label="Chuyển bill cho Agent"><i class="ri-share-forward-line"></i></button>` : ''}
                             </div>
                         `}
                     </div>
@@ -776,6 +776,7 @@
             const soTrang = Math.max(1, Number(data.totalPages || 1));
             const thanhCongCu = `
                 <div class="cart-toolbar">
+                    <!-- Comment lại phần lọc quản lý bill theo bàn
                     <label class="cart-filter">
                         <span>Mã QR</span>
                         <select class="cart-qr-filter">
@@ -783,7 +784,8 @@
                             ${dsQr.map((q) => `<option value="${escapeHtml(q.code)}"${q.code === locQr ? ' selected' : ''}>${escapeHtml(q.label)}</option>`).join('')}
                         </select>
                     </label>
-                    <span class="cart-count">${tong} hóa đơn${locQr ? ' (đã lọc)' : ''}</span>
+                    -->
+                    <span class="cart-count">${tong} hóa đơn</span>
                 </div>`;
             const thanhTrang = soTrang > 1 ? `
                 <div class="cart-pager">
@@ -870,7 +872,7 @@
                             </button>
                             ${CURRENT_ADMIN?.role === 'sale' ? `
                             <button type="button" class="cart-action-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này vào chat nội bộ với Agent" aria-label="Chuyển bill cho Agent">
-                                <i class="ri-arrow-go-forward-line"></i>
+                                <i class="ri-share-forward-line"></i>
                             </button>` : ''}
                             ${canEdit ? `
                             <button type="button" class="cart-action-btn is-edit-bill" data-details="${escapeHtml(order.id)}" data-mode="edit">
@@ -919,6 +921,7 @@
         const body = overlay.querySelector('.cart-body');
         // Đổi bàn -> luôn về trang 1. Giữ nguyên trang cũ là người dùng đang ở
         // trang 3 của bàn A, lọc sang bàn B chỉ có 1 trang, rồi thấy màn trống.
+        /* Comment lại phần lọc quản lý bill theo bàn
         overlay.addEventListener('change', async (event) => {
             const chon = event.target.closest('.cart-qr-filter');
             if (!chon) return;
@@ -926,6 +929,7 @@
             trangHienTai = 1;
             await load(body);
         });
+        */
 
         overlay.addEventListener('click', async (event) => {
             if (event.target === overlay || event.target.closest('.cart-close')) return close();
