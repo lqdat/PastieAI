@@ -1198,7 +1198,8 @@ async function validateVisitorDeviceToken(req, session) {
     || (req.headers['authorization']?.startsWith('Bearer ') ? req.headers['authorization'].slice(7).trim() : null)
     || req.query?.identityToken
     || req.query?.token
-    || req.body?.identityToken;
+    || req.body?.identityToken
+    || (typeof readCookie === 'function' ? (readCookie(req, 'pastie_identity_token') || readCookie(req, 'pastie_visitor_token')) : null);
 
   if (!token || token !== session.active_identity_token) {
     return {
