@@ -536,7 +536,7 @@
                                 <button type="button" class="secondary-btn order-nav-btn" data-open="${escapeHtml(order.session_id)}"><i class="ri-chat-3-line"></i> Đến hội thoại</button>
                                 <button type="button" class="secondary-btn order-nav-btn" data-bill="${escapeHtml(order.id)}"><i class="ri-file-list-3-line"></i> Xem hóa đơn</button>
                                 ${CURRENT_ADMIN?.role === 'sale' ? `
-                                <button type="button" class="secondary-btn order-nav-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này vào chat nội bộ với Agent"><i class="ri-arrow-go-forward-line"></i> Chuyển Agent</button>` : ''}
+                                <button type="button" class="secondary-btn order-nav-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này vào chat nội bộ với Agent" aria-label="Chuyển bill cho Agent"><i class="ri-arrow-go-forward-line"></i></button>` : ''}
                             </div>
                         `}
                     </div>
@@ -869,8 +869,8 @@
                                 <i class="ri-file-list-3-line"></i> Xem hóa đơn
                             </button>
                             ${CURRENT_ADMIN?.role === 'sale' ? `
-                            <button type="button" class="cart-action-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này vào chat nội bộ với Agent">
-                                <i class="ri-arrow-go-forward-line"></i> Chuyển Agent
+                            <button type="button" class="cart-action-btn is-forward-agent" data-forward="${escapeHtml(order.id)}" title="Chuyển bill này vào chat nội bộ với Agent" aria-label="Chuyển bill cho Agent">
+                                <i class="ri-arrow-go-forward-line"></i>
                             </button>` : ''}
                             ${canEdit ? `
                             <button type="button" class="cart-action-btn is-edit-bill" data-details="${escapeHtml(order.id)}" data-mode="edit">

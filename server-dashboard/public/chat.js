@@ -2723,10 +2723,13 @@ function renderAdminSavedBills() {
         wrapper.innerHTML = `
             <div class="admin-invoice-head">
                 <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> Hóa đơn đã gửi khách${label ? ` · ${escapeHtml(label)}` : ''}</span>
-                <span class="admin-invoice-status ${bill.orderStatus === 'paid' ? 'is-paid' : 'is-waiting'}">${escapeHtml(
-                    bill.orderStatus === 'paid' ? 'Đã thanh toán'
-                    : ['superseded', 'rejected', 'cancelled'].includes(String(bill.orderStatus || '')) ? 'Bản trước khi sửa'
-                    : 'Đã lưu')}</span>
+                <span style="display:flex;align-items:center;gap:6px;">
+                    <span class="admin-invoice-status ${bill.orderStatus === 'paid' ? 'is-paid' : 'is-waiting'}">${escapeHtml(
+                        bill.orderStatus === 'paid' ? 'Đã thanh toán'
+                        : ['superseded', 'rejected', 'cancelled'].includes(String(bill.orderStatus || '')) ? 'Bản trước khi sửa'
+                        : 'Đã lưu')}</span>
+                    ${CURRENT_ADMIN?.role === 'sale' ? `<button type="button" class="admin-invoice-open is-forward-agent" data-forward-bill="${escapeHtml(bill.orderId)}" title="Chuyển hóa đơn vào chat nội bộ với Agent" aria-label="Chuyển hóa đơn cho Agent"><i class="ri-arrow-go-forward-line"></i></button>` : ''}
+                </span>
             </div>
             ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(preview)}" data-preview-type="image" data-preview-title="Hóa đơn" data-download-url="${escapeHtml(pdf || preview)}"><img src="${escapeHtml(preview)}" alt="Hóa đơn"></button>` : ''}
             <div class="admin-invoice-meta">
@@ -3192,6 +3195,24 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
 }
 
 const forwardedBillCache = new Map();
+chatMessagesContainer?.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-forward-bill]');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try {
+        const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(button.dataset.forwardBill)}/transfer-to-agent`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Không thể chuyển hóa đơn.');
+        showToast(data.message || 'Đã chuyển hóa đơn vào chat nội bộ với Agent.', 'success');
+    } catch (error) {
+        showToast(error.message, 'error');
+    } finally {
+        button.disabled = false;
+    }
+});
+
 async function hydrateForwardedBills() {
     for (const node of chatMessagesContainer?.querySelectorAll('[data-forwarded-bill]') || []) {
         const orderId = node.dataset.forwardedBill;
@@ -3303,7 +3324,10 @@ function renderAdminInvoice() {
     wrapper.innerHTML = `
         <div class="admin-invoice-head">
             <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> ${escapeHtml(kickerText)}</span>
-            <span class="admin-invoice-status ${statusClass}">${escapeHtml(statusText)}</span>
+            <span style="display:flex;align-items:center;gap:6px;">
+                <span class="admin-invoice-status ${statusClass}">${escapeHtml(statusText)}</span>
+                ${CURRENT_ADMIN?.role === 'sale' ? `<button type="button" class="admin-invoice-open is-forward-agent" data-forward-bill="${escapeHtml(adminOrder.id)}" title="Chuyển hóa đơn vào chat nội bộ với Agent" aria-label="Chuyển hóa đơn cho Agent"><i class="ri-arrow-go-forward-line"></i></button>` : ''}
+            </span>
         </div>
         ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(preview)}" data-preview-type="image" data-preview-title="${escapeHtml(kickerText)}" data-download-url="${escapeHtml(pdf || preview)}"><img src="${escapeHtml(preview)}" alt="${escapeHtml(kickerText)}"></button>` : ''}
         <div class="admin-invoice-meta">
