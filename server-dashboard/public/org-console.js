@@ -209,16 +209,18 @@ function drawStyledVectorQrCode(ctx, text, frameX, frameY, frameW, frameH, optio
 
     const n = qr.modules.size;
 
-    // Tỉ lệ hình học Speech Bubble chuẩn theo ảnh qrcode.io
-    const tailH = Math.round(w * 0.20);    // Chiều cao đuôi thoại ~20%
-    const tailW = Math.round(w * 0.32);    // Độ rộng chân đuôi thoại ~32%
-    const mainH = w - tailH;               // Chiều cao thân chính ~80%
-    const totalH = mainH + tailH;          // Tổng chiều cao = w (1:1 bounding box)
-    const radius = Math.round(w * 0.09);   // Bán kính bo góc
-    const strokeW = Math.max(5, Math.round(w * 0.038)); // Độ dày viền khung
+    // Tỉ lệ hình học Speech Bubble chuẩn theo ảnh qrcode.io:
+    // Thân chính của bong bóng thoại là HÌNH VUÔNG (SQUARE) để ma trận mã QR lấp đầy trọn vẹn 100%,
+    // không còn khoảng trắng thừa hai bên như khi dùng thân chữ nhật.
+    const bodySize = w;
+    const tailH = Math.round(bodySize * 0.15); // Đuôi thoại nhô xuống dưới ~15%
+    const tailW = Math.round(bodySize * 0.32); // Độ rộng chân đuôi thoại ~32%
+    const totalH = bodySize + tailH;
+    const radius = Math.round(bodySize * 0.085); // Bán kính bo góc
+    const strokeW = Math.max(5, Math.round(bodySize * 0.034)); // Độ dày viền khung
 
     // Gradient thương hiệu Pastie (#ef2b9d -> #c90c6c -> #8b0aa5)
-    const qrGrad = ctx.createLinearGradient(frameX, frameY, frameX + w, frameY + totalH);
+    const qrGrad = ctx.createLinearGradient(frameX, frameY, frameX + bodySize, frameY + totalH);
     qrGrad.addColorStop(0, '#ef2b9d');
     qrGrad.addColorStop(0.5, '#c90c6c');
     qrGrad.addColorStop(1, '#8b0aa5');
@@ -227,10 +229,10 @@ function drawStyledVectorQrCode(ctx, text, frameX, frameY, frameW, frameH, optio
     const halfStroke = strokeW / 2;
     const px0 = frameX + halfStroke;
     const py0 = frameY + halfStroke;
-    const pw = w - strokeW;
-    const pMainH = mainH - halfStroke;
-    const pTailH = tailH - halfStroke;
-    const pTailW = tailW - halfStroke;
+    const pw = bodySize - strokeW;
+    const pMainH = bodySize - strokeW; // THÂN VUÔNG ĐỒNG ĐỀU
+    const pTailH = tailH;
+    const pTailW = tailW;
     const pr = Math.max(4, radius - halfStroke);
 
     // 1. VẼ NỀN TRẮNG VÀ KHUNG VIỀN NGOÀI BONG BÓNG THOẠI (Frame Stroke theo qrcode.io)
@@ -246,15 +248,14 @@ function drawStyledVectorQrCode(ctx, text, frameX, frameY, frameW, frameH, optio
     ctx.stroke();
     ctx.restore();
 
-    // 2. TÍNH VÙNG AN TOÀN TUYỆT ĐỐI CHO MÃ QR (ĐẢM BẢO KHÔNG BỊ CẮT XÉN BẤT KỲ Ô NÀO VÀ QUÉT ĐƯỢC 100%)
-    // Toàn bộ ma trận n x n của mã QR được đặt trọn vẹn bên trong thân chính của bong bóng thoại,
-    // với khoảng cách an toàn (Quiet Zone) đạt chuẩn ISO cách xa các góc bo và viền khung.
-    const safeMarginX = Math.round(w * 0.14); // Lề ngang an toàn chuẩn ISO Quiet Zone
-    const qw = w - safeMarginX * 2;
+    // 2. LẤP ĐẦY TRỌN VẸN MÃ QR VÀO THÂN BONG BÓNG THOẠI (~90% DIỆN TÍCH THÂN)
+    // Khoảng đệm đều 4 phía (trên, dưới, trái, phải) ~5.2%, giúp mã QR lấp đầy ô,
+    // các mắt finder đặt sát góc đẹp mắt như qrcode.io mà vẫn quét nhạy 100%.
+    const margin = Math.round(bodySize * 0.052);
+    const qw = bodySize - margin * 2;
     const cell = qw / n;
-    const qx = frameX + safeMarginX;
-    // Căn chuẩn vị trí Y trong thân chính để có Quiet Zone đều trên dưới
-    const qy = frameY + Math.round(w * 0.06);
+    const qx = px0 + (pw - qw) / 2;
+    const qy = py0 + (pMainH - qw) / 2;
 
     // Vùng 3 góc Finder (7x7 module)
     function isFinder(r, c) {
@@ -348,8 +349,8 @@ function drawStyledVectorQrCode(ctx, text, frameX, frameY, frameW, frameH, optio
     // 5. VẼ CÁC HẠT ĐIỀN VÀO PHẦN ĐUÔI THOẠI (Shape: Speech Bubble Filler) - BATCH PATH
     // Đặt hạt ở phần đuôi thoại bên dưới mã QR, có khoảng cách đệm (Quiet Zone) an toàn
     // dưới góc finder để không gây nhiễu góc đọc của máy quét
-    const tailStartY = qy + qw + cell * 2.0; // Cách đáy mã QR ít nhất 2.0 cell an toàn
-    const tailTipY = frameY + totalH - halfStroke;
+    const tailStartY = qy + qw + cell * 1.5; // Cách đáy mã QR ít nhất 1.5 cell an toàn
+    const tailTipY = py0 + pMainH + pTailH - halfStroke;
     const tailRowStart = Math.ceil((tailStartY - qy) / cell);
     const tailRowEnd = Math.floor((tailTipY - qy) / cell);
 
@@ -358,8 +359,8 @@ function drawStyledVectorQrCode(ctx, text, frameX, frameY, frameW, frameH, optio
         const py = qy + r * cell;
         if (py + cell * 0.4 >= tailTipY) continue;
 
-        const progress = Math.min(1, Math.max(0, (py - (frameY + mainH)) / tailH));
-        const maxDiagX = frameX + tailW * (1 - progress);
+        const progress = Math.min(1, Math.max(0, (py - (py0 + pMainH)) / pTailH));
+        const maxDiagX = px0 + pTailW * (1 - progress);
 
         for (let c = 0; qx + c * cell < maxDiagX - 4; c++) {
             const px = qx + c * cell;
