@@ -274,7 +274,9 @@ function deviceHeaders(extra = {}) {
 function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
     const stop = new AbortController();
     const timer = setTimeout(() => stop.abort(), timeoutMs);
-    return fetch(url, { ...options, signal: stop.signal })
+    const token = typeof getToken === 'function' ? getToken() : null;
+    const fetchFn = (token && typeof authFetch === 'function') ? authFetch : fetch;
+    return fetchFn(url, { ...options, signal: stop.signal })
         .finally(() => clearTimeout(timer));
 }
 window.fetchWithTimeout = fetchWithTimeout;

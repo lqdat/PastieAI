@@ -597,12 +597,13 @@ app.use('/api/chats/:sessionId', async (req, res, next) => {
     // token của khách. Nếu Bearer token khớp admin session thì bỏ qua kiểm tra
     // thiết bị khách — middleware này chỉ ngăn hai KHÁCH mở cùng phiên trên hai
     // thiết bị, không phải ngăn nhân viên xem phiên đó.
-    const bearerToken = req.headers['authorization']?.startsWith('Bearer ')
-      ? req.headers['authorization'].slice(7).trim()
+    const authHeader = req.headers['authorization'] || '';
+    const bearerToken = /^Bearer\s+/i.test(authHeader)
+      ? authHeader.replace(/^Bearer\s+/i, '').trim()
       : (req.query?.token || '');
     if (bearerToken) {
       const adminCheck = await db.query(
-        'SELECT 1 FROM admin_sessions WHERE token = $1 LIMIT 1',
+        'SELECT 1 FROM admin_sessions WHERE token = $1 AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1',
         [bearerToken]
       );
       if (adminCheck.rows.length > 0) return next();
