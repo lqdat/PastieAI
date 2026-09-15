@@ -5870,6 +5870,10 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
     const bo = (trang - 1) * soMoiTrang;
     // Lọc theo mã QR (mã của bàn/phòng). 'all' hoặc để trống là không lọc.
     const locQr = String(req.query.qr || '').trim();
+    // Lọc theo ngày: 'today' (hôm nay), 'yesterday' (hôm qua), 'all' (tất cả), 'custom' (từ ngày đến ngày), hoặc 'YYYY-MM-DD'
+    const locDate = String(req.query.date || '').trim();
+    const fromDate = String(req.query.from || req.query.fromDate || '').trim();
+    const toDate = String(req.query.to || req.query.toDate || '').trim();
 
     const where = ['o.status NOT IN ($1, $2)'];
     const params = ['rejected', 'superseded'];
@@ -5910,9 +5914,33 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
       where.push(`q.code = $${params.length}`);
     }
 
+    if (locDate === 'today') {
+      where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date`);
+    } else if (locDate === 'yesterday') {
+      where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh') - INTERVAL '1 day')::date`);
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(locDate)) {
+      params.push(locDate);
+      where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = $${params.length}::date`);
+    } else if (locDate === 'custom' || locDate === 'range' || fromDate || toDate) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(fromDate) && /^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+        const f = fromDate <= toDate ? fromDate : toDate;
+        const t = fromDate <= toDate ? toDate : fromDate;
+        params.push(f);
+        where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= $${params.length}::date`);
+        params.push(t);
+        where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= $${params.length}::date`);
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(fromDate)) {
+        params.push(fromDate);
+        where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= $${params.length}::date`);
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+        params.push(toDate);
+        where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= $${params.length}::date`);
+      }
+    }
+
     const [demRes, qrRes] = await Promise.all([
       db.query(
-        `SELECT COUNT(*)::int AS n
+        `SELECT COUNT(*)::int AS n, COALESCE(SUM(o.total_amount), 0)::numeric AS tong_tien
            FROM chat_orders o
            JOIN sessions s ON s.id = o.session_id
            LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
@@ -5920,7 +5948,7 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
            LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
           WHERE ${where.join(' AND ')}`,
         params
-      ).catch(() => ({ rows: [{ n: 0 }] })),
+      ).catch(() => ({ rows: [{ n: 0, tong_tien: 0 }] })),
       db.query(
         `SELECT DISTINCT q.code, q.label
            FROM chat_orders o
@@ -5934,6 +5962,7 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
       ).catch(() => ({ rows: [] })),
     ]);
     const tong = demRes.rows[0]?.n || 0;
+    const tongTien = Number(demRes.rows[0]?.tong_tien || 0);
 
     params.push(soMoiTrang, bo);
     const rows = await db.query(
@@ -5972,14 +6001,19 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
       // Sale không được xác nhận thu tiền. Chỉ Agent quản lý và Superadmin được xác nhận.
       canMarkPaid: isSuperAdmin(req.admin) || isAgentManager(req.admin),
       total: tong,
+      totalAmount: tongTien,
       page: trang,
       pageSize: soMoiTrang,
       totalPages: Math.max(1, Math.ceil(tong / soMoiTrang)),
       hasMore: bo + rows.rows.length < tong,
       qr: locQr && locQr !== 'all' ? locQr : '',
+      date: locDate,
+      from: fromDate,
+      to: toDate,
       // Danh sách mã QR trong phạm vi người đang xem, để đổ vào ô lọc.
       qrOptions: qrRes.rows.map((r) => ({ code: r.code, label: r.label || r.code })),
     });
+
   } catch (error) {
     console.error('Order cart error:', error);
     res.status(500).json({ error: 'Không tải được giỏ hàng.' });

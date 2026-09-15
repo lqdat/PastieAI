@@ -751,54 +751,94 @@
         }
     }
 
-    // Trang đang xem và bàn đang lọc. Để ngoài load() để bấm sang trang rồi vẽ
+    // Trang đang xem và điều kiện đang lọc. Để ngoài load() để bấm sang trang rồi vẽ
     // lại không mất lựa chọn.
     let trangHienTai = 1;
+    let tongSoTrang = 1;
     let locQr = '';
+    let locDate = 'all'; // 'all', 'today', 'yesterday', 'custom'
+    let locFrom = '';
+    let locTo = '';
+    let qrOptionsCached = [];
     const MOI_TRANG = 50;
+
+    function getTodayVn() {
+        try {
+            return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
+        } catch {
+            return new Date().toISOString().slice(0, 10);
+        }
+    }
 
     async function load(body) {
         body.innerHTML = '<p class="cart-loading"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
         try {
             const tham = new URLSearchParams({ limit: String(MOI_TRANG), page: String(trangHienTai) });
             if (locQr) tham.set('qr', locQr);
+            if (locDate === 'custom') {
+                if (locFrom) tham.set('from', locFrom);
+                if (locTo) tham.set('to', locTo);
+                tham.set('date', 'custom');
+            } else if (locDate && locDate !== 'all') {
+                tham.set('date', locDate);
+            }
             const res = await authFetch(`${API_BASE}/api/admin/orders/cart?${tham.toString()}`);
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || 'Không tải được danh sách hóa đơn.');
             canMarkPaid = !!data.canMarkPaid;
             const orders = Array.isArray(data.orders) ? data.orders : [];
-
-            // Thanh công cụ vẽ TRƯỚC khi xét danh sách rỗng: lọc ra không còn đơn
-            // nào mà thanh lọc biến mất luôn thì người dùng kẹt, không có đường
-            // quay về "Tất cả".
-            const dsQr = Array.isArray(data.qrOptions) ? data.qrOptions : [];
             const tong = Number(data.total || 0);
-            const soTrang = Math.max(1, Number(data.totalPages || 1));
-            const thanhCongCu = `
-                <div class="cart-toolbar">
-                    <!-- Comment lại phần lọc quản lý bill theo bàn
-                    <label class="cart-filter">
-                        <span>Mã QR</span>
-                        <select class="cart-qr-filter">
-                            <option value="">Tất cả</option>
-                            ${dsQr.map((q) => `<option value="${escapeHtml(q.code)}"${q.code === locQr ? ' selected' : ''}>${escapeHtml(q.label)}</option>`).join('')}
-                        </select>
-                    </label>
-                    -->
-                    <span class="cart-count">${tong} hóa đơn</span>
-                </div>`;
-            const thanhTrang = soTrang > 1 ? `
+            const tongTien = Number(data.totalAmount || 0);
+            tongSoTrang = Math.max(1, Number(data.totalPages || 1));
+
+            // Cập nhật chỉ số thống kê trên header của modal
+            const statsEl = overlay ? overlay.querySelector('#cart-head-stats') : null;
+            if (statsEl) {
+                statsEl.innerHTML = `
+                    <span class="cart-stat-pill" title="Tổng số hóa đơn"><i class="ri-receipt-line"></i> <b>${tong}</b> bill</span>
+                    <span class="cart-stat-pill is-money" title="Tổng doanh thu"><i class="ri-money-dollar-circle-line"></i> <b>${money(tongTien)}</b></span>
+                `;
+            }
+
+            // Cập nhật danh sách mã QR vào dropdown nếu có thay đổi
+            if (Array.isArray(data.qrOptions) && data.qrOptions.length > 0) {
+                qrOptionsCached = data.qrOptions;
+                const qrSel = overlay ? overlay.querySelector('.cart-qr-filter') : null;
+                if (qrSel) {
+                    const currentVal = qrSel.value;
+                    const optionsHtml = `<option value="">— Tất cả vị trí —</option>` +
+                        data.qrOptions.map((q) => `<option value="${escapeHtml(q.code)}"${q.code === locQr ? ' selected' : ''}>${escapeHtml(q.label)}</option>`).join('');
+                    if (qrSel.dataset.loadedOptions !== String(data.qrOptions.length)) {
+                        qrSel.innerHTML = optionsHtml;
+                        qrSel.dataset.loadedOptions = String(data.qrOptions.length);
+                        qrSel.value = locQr;
+                    }
+                }
+            }
+
+            const thanhTrang = tongSoTrang > 1 ? `
                 <div class="cart-pager">
                     <button type="button" class="secondary-btn cart-prev"${trangHienTai <= 1 ? ' disabled' : ''}>
                         <i class="ri-arrow-left-s-line"></i> Trước</button>
-                    <span class="cart-page-label">Trang ${trangHienTai}/${soTrang}</span>
-                    <button type="button" class="secondary-btn cart-next"${trangHienTai >= soTrang ? ' disabled' : ''}>
+                    <span class="cart-page-label">Trang ${trangHienTai}/${tongSoTrang}</span>
+                    <button type="button" class="secondary-btn cart-next"${trangHienTai >= tongSoTrang ? ' disabled' : ''}>
                         Sau <i class="ri-arrow-right-s-line"></i></button>
                 </div>` : '';
 
             if (orders.length === 0) {
-                body.innerHTML = thanhCongCu
-                    + `<p class="cart-empty">${locQr ? 'Bàn này chưa có hóa đơn nào.' : 'Chưa có đơn hàng nào.'}</p>`;
+                let msgEmpty = 'Chưa có đơn hàng nào.';
+                if (locQr && locDate !== 'all') {
+                    msgEmpty = 'Không có hóa đơn nào của bàn này trong khoảng thời gian đã chọn.';
+                } else if (locQr) {
+                    msgEmpty = 'Bàn này chưa có hóa đơn nào.';
+                } else if (locDate !== 'all') {
+                    msgEmpty = 'Không có hóa đơn nào trong khoảng thời gian đã chọn.';
+                }
+                body.innerHTML = `
+                    <div class="cart-empty-state">
+                        <i class="ri-inbox-line"></i>
+                        <p>${escapeHtml(msgEmpty)}</p>
+                    </div>`;
                 return;
             }
             // Gom nhóm theo NGƯỜI ĐANG NHÌN, không theo một quy tắc cố định:
@@ -887,7 +927,7 @@
                     </div>
                 </article>`;
             };
-            body.innerHTML = thanhCongCu + [...groups].map(([venue, list]) => {
+            body.innerHTML = [...groups].map(([venue, list]) => {
                 const total = list.reduce((sum, order) => sum + Number(order.total_amount || 0), 0);
                 return `
                 <section class="cart-group">
@@ -912,27 +952,123 @@
             <div class="admin-management-box cart-box">
                 <div class="sheet-drag-handle"></div>
                 <div class="admin-list-head">
-                    <h3><i class="ri-bill-line"></i> Quản lý hóa đơn</h3>
+                    <div class="cart-head-title-wrap">
+                        <h3><i class="ri-bill-line"></i> Quản lý hóa đơn</h3>
+                        <div class="cart-head-stats" id="cart-head-stats"></div>
+                    </div>
                     <button type="button" class="icon-btn cart-close" title="Đóng"><i class="ri-close-line"></i></button>
+                </div>
+                <div class="cart-toolbar-wrap">
+                    <div class="cart-filter-row">
+                        <div class="cart-filter-col cart-col-qr">
+                            <label class="cart-filter-label" for="cart-qr-select">
+                                <i class="ri-qr-code-line"></i> Bàn / Mã QR
+                            </label>
+                            <div class="cart-select-box">
+                                <select id="cart-qr-select" class="cart-qr-filter">
+                                    <option value="">— Tất cả vị trí —</option>
+                                    ${qrOptionsCached.map((q) => `<option value="${escapeHtml(q.code)}"${q.code === locQr ? ' selected' : ''}>${escapeHtml(q.label)}</option>`).join('')}
+                                </select>
+                                <i class="ri-arrow-down-s-line cart-select-icon"></i>
+                            </div>
+                        </div>
+                        <div class="cart-filter-col cart-col-date">
+                            <label class="cart-filter-label">
+                                <i class="ri-calendar-event-line"></i> Thời gian
+                            </label>
+                            <div class="cart-date-pills">
+                                <button type="button" class="cart-pill-btn${locDate === 'all' ? ' is-active' : ''}" data-date-filter="all">Tất cả</button>
+                                <button type="button" class="cart-pill-btn${locDate === 'today' ? ' is-active' : ''}" data-date-filter="today">Hôm nay</button>
+                                <button type="button" class="cart-pill-btn${locDate === 'yesterday' ? ' is-active' : ''}" data-date-filter="yesterday">Hôm qua</button>
+                                <button type="button" class="cart-pill-btn${locDate === 'custom' ? ' is-active' : ''}" data-date-filter="custom">
+                                    <i class="ri-calendar-2-line"></i> Từ ngày…
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cart-range-row" id="cart-range-row" style="${locDate === 'custom' ? '' : 'display: none;'}">
+                        <div class="cart-range-wrap">
+                            <div class="cart-range-field">
+                                <span class="cart-range-label">Từ ngày:</span>
+                                <input type="date" class="cart-date-input cart-from-date" value="${escapeHtml(locFrom || getTodayVn())}">
+                            </div>
+                            <div class="cart-range-field">
+                                <span class="cart-range-label">Đến ngày:</span>
+                                <input type="date" class="cart-date-input cart-to-date" value="${escapeHtml(locTo || getTodayVn())}">
+                            </div>
+                            <button type="button" class="cart-range-submit-btn">
+                                <i class="ri-filter-3-line"></i> Lọc
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 <div class="cart-body"></div>
             </div>`;
         document.body.appendChild(overlay);
         const body = overlay.querySelector('.cart-body');
-        // Đổi bàn -> luôn về trang 1. Giữ nguyên trang cũ là người dùng đang ở
-        // trang 3 của bàn A, lọc sang bàn B chỉ có 1 trang, rồi thấy màn trống.
-        /* Comment lại phần lọc quản lý bill theo bàn
+
+        // Bắt sự kiện chọn bàn / mã QR
         overlay.addEventListener('change', async (event) => {
             const chon = event.target.closest('.cart-qr-filter');
-            if (!chon) return;
-            locQr = chon.value || '';
-            trangHienTai = 1;
-            await load(body);
+            if (chon) {
+                locQr = chon.value || '';
+                trangHienTai = 1;
+                await load(body);
+            }
         });
-        */
+
+        // Bắt phím Enter trong ô nhập ngày
+        overlay.addEventListener('keydown', async (event) => {
+            if (event.key === 'Enter' && event.target.closest('.cart-date-input')) {
+                event.preventDefault();
+                const fromInp = overlay.querySelector('.cart-from-date');
+                const toInp = overlay.querySelector('.cart-to-date');
+                locFrom = fromInp ? fromInp.value : '';
+                locTo = toInp ? toInp.value : '';
+                trangHienTai = 1;
+                await load(body);
+            }
+        });
 
         overlay.addEventListener('click', async (event) => {
             if (event.target === overlay || event.target.closest('.cart-close')) return close();
+
+            // Nút bấm lọc nhanh ngày: Tất cả, Hôm nay, Hôm qua, Từ ngày...
+            const pill = event.target.closest('[data-date-filter]');
+            if (pill) {
+                const val = pill.dataset.dateFilter;
+                locDate = val;
+                overlay.querySelectorAll('.cart-pill-btn').forEach((btn) => {
+                    btn.classList.toggle('is-active', btn.dataset.dateFilter === val);
+                });
+                const rangeRow = overlay.querySelector('#cart-range-row');
+                if (val === 'custom') {
+                    if (rangeRow) rangeRow.style.display = '';
+                    const fromInp = overlay.querySelector('.cart-from-date');
+                    const toInp = overlay.querySelector('.cart-to-date');
+                    if (fromInp && !locFrom) locFrom = fromInp.value || getTodayVn();
+                    if (toInp && !locTo) locTo = toInp.value || getTodayVn();
+                    trangHienTai = 1;
+                    await load(body);
+                } else {
+                    if (rangeRow) rangeRow.style.display = 'none';
+                    trangHienTai = 1;
+                    await load(body);
+                }
+                return;
+            }
+
+            // Nút Lọc tùy chọn ngày
+            const applyBtn = event.target.closest('.cart-range-submit-btn');
+            if (applyBtn) {
+                const fromInp = overlay.querySelector('.cart-from-date');
+                const toInp = overlay.querySelector('.cart-to-date');
+                locFrom = fromInp ? fromInp.value : '';
+                locTo = toInp ? toInp.value : '';
+                trangHienTai = 1;
+                await load(body);
+                return;
+            }
 
             const truoc = event.target.closest('.cart-prev');
             if (truoc) {
@@ -940,7 +1076,10 @@
                 return;
             }
             const sau = event.target.closest('.cart-next');
-            if (sau) { trangHienTai += 1; await load(body); body.scrollTop = 0; return; }
+            if (sau) {
+                if (trangHienTai < tongSoTrang) { trangHienTai += 1; await load(body); body.scrollTop = 0; }
+                return;
+            }
 
             const open = event.target.closest('[data-open]');
             if (open) {
