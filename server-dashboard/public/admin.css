@@ -2747,20 +2747,13 @@ button:focus-visible {
   #close-session-btn span, #claim-chat-btn span { display: none; }
   #assignee-selector-container { display: inline-flex; flex: 1 0 160px; min-width: 160px; }
   #close-session-btn, #claim-chat-btn, #delete-session-btn {
-    width: 36px !important;
-    min-width: 36px !important;
-    max-width: 36px !important;
-    height: 36px !important;
-    min-height: 36px !important;
-    max-height: 36px !important;
-    aspect-ratio: 1 / 1 !important;
-    padding: 0 !important;
-    box-sizing: border-box !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    flex: 0 0 36px !important;
-    border-radius: 50% !important;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
+    flex: 0 0 36px;
+    border-radius: 50%;
   }
   .chat-messages {
     min-height: 0;
@@ -4953,9 +4946,10 @@ button:focus-visible {
       dành thừa đó và cho tên xuống tối đa hai dòng: hầu hết tên dài đều hiện đủ
       mà header vẫn không cao thêm bao nhiêu. */
 @media (max-width: 720px) {
-    .header-right .header-quick-btn,
-    .header-right .settings-trigger-btn,
-    .header-right .icon-btn {
+    .header-right > .header-quick-btn,
+    .header-right > .settings-trigger-btn,
+    .header-right > .icon-btn,
+    .header-right > .header-menu-wrap > .header-quick-btn {
         width: 38px;
         height: 38px;
         min-width: 38px;
@@ -4972,11 +4966,13 @@ button:focus-visible {
         gap: 0;
         flex: 0 0 38px !important;
     }
-    .header-right .header-quick-btn i,
-    .header-right .settings-trigger-btn i,
-    .header-right .icon-btn i { font-size: 17px; }
-    .header-right .header-quick-btn span,
-    .header-right .settings-trigger-btn span { display: none; }
+    .header-right > .header-quick-btn i,
+    .header-right > .settings-trigger-btn i,
+    .header-right > .icon-btn i,
+    .header-right > .header-menu-wrap > .header-quick-btn i { font-size: 17px; }
+    .header-right > .header-quick-btn span,
+    .header-right > .settings-trigger-btn span,
+    .header-right > .header-menu-wrap > .header-quick-btn span { display: none; }
     /* Nút thông báo đã bật: chỉ đổi màu icon và viền, KHÔNG phình rộng ra. */
     .header-right .header-quick-btn-push.is-icon-only {
         width: 38px !important;
@@ -6020,14 +6016,46 @@ button:focus-visible {
     background: var(--panel-bg, #fff);
     box-shadow: 0 18px 44px rgba(28, 12, 30, .18);
 }
-.header-menu-panel .header-menu-item {
-    width: 100%; justify-content: flex-start; gap: 10px;
-    padding: 10px 12px; border-radius: 10px; border: 0; background: transparent;
-    font-size: 13px; font-weight: 650;
+.header-menu-panel .header-menu-item,
+.header-right .header-menu-panel .header-menu-item {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 40px !important;
+    max-height: none !important;
+    aspect-ratio: auto !important;
+    flex: 1 1 auto !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 12px !important;
+    padding: 10px 14px !important;
+    border-radius: 10px !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 13px !important;
+    font-weight: 650 !important;
+    box-sizing: border-box !important;
+    cursor: pointer !important;
+    text-align: left !important;
 }
-.header-menu-panel .header-menu-item span { display: inline !important; }
-.header-menu-panel .header-menu-item i { font-size: 17px; }
-.header-menu-panel .header-menu-item:hover { background: rgba(0, 0, 0, .05); }
+.header-menu-panel .header-menu-item span,
+.header-right .header-menu-panel .header-menu-item span {
+    display: inline-block !important;
+    flex: 1 1 auto !important;
+    pointer-events: none !important;
+}
+.header-menu-panel .header-menu-item i,
+.header-right .header-menu-panel .header-menu-item i {
+    font-size: 17px !important;
+    flex-shrink: 0 !important;
+    pointer-events: none !important;
+}
+.header-menu-panel .header-menu-item:hover { background: rgba(0, 0, 0, .05) !important; }
+.header-quick-btn * { pointer-events: none; }
+.header-action-btn * { pointer-events: none; }
 .header-menu-divider {
     height: 1px;
     background: rgba(239, 43, 157, 0.12);
@@ -9227,6 +9255,14 @@ button:focus-visible {
 
 
 
+/* ── Tạm ẩn ảnh và video trong sổ tay hướng dẫn ─────────────────────────────
+   Ẩn bằng MỘT khối CSS thay vì xoá thẻ trong HTML: khi cần bật lại chỉ việc gỡ
+   khối này, không phải dựng lại từng thẻ ảnh và từng đường dẫn.
+   Chỉ ẩn phần media — các bước hướng dẫn bằng chữ vẫn đọc được đầy đủ. */
+.agent-guide-body .guide-media-center,
+.agent-guide-body .guide-media-grid {
+  display: none !important;
+}
 
 
 /* =============================================================================

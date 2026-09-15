@@ -62,7 +62,7 @@
                         ${note ? `<p class="order-line-note"><i class="ri-sticky-note-line"></i> <em>(${escapeHtml(String(note).replace(/^\(|\)$/g, ''))})</em></p>` : ''}
                         <input type="text" class="order-note" data-note-for="${escapeHtml(key)}"
                                maxlength="300" value="${escapeHtml(note)}"
-                               placeholder="Ghi chú cho bếp: không hành, ít cay…">
+                               placeholder="Nhập ghi chú cho đơn hàng...">
                     </div>`;
                 }).join('')}
             </div>

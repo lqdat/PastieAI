@@ -132,7 +132,7 @@
                 <!-- Step 1: Input Email -->
                 <form id="otp-step-email" class="dpq-form-step" novalidate onsubmit="handleSendAdminOtp(event); return false;">
                     <div class="dpq-input-wrap">
-                        <input type="email" id="admin-otp-email-input" class="dpq-input" placeholder="Email nhân viên / quản trị..." autocomplete="email" required>
+                        <input type="email" id="admin-otp-email-input" class="dpq-input" placeholder="Nhập địa chỉ email..." autocomplete="email" required>
                     </div>
                     <p class="dpq-helper-text">Chúng tôi sẽ gửi mã xác thực 6 số đến email của bạn.</p>
                     <button type="submit" id="send-admin-otp-btn" class="dpq-primary-btn">
@@ -461,15 +461,15 @@
                     </button>
                     <form class="org-form" id="org-agent-form">
                         <div class="org-form-row">
-                            <label>Họ và tên *<input type="text" id="org-agent-name" required placeholder="Nguyễn Văn A"></label>
-                            <label>Email *<input type="email" id="org-agent-email" required placeholder="agent@vidu.com"></label>
+                            <label>Họ và tên *<input type="text" id="org-agent-name" required placeholder="Nhập họ và tên..."></label>
+                            <label>Email *<input type="email" id="org-agent-email" required placeholder="Nhập địa chỉ email..."></label>
                         </div>
                         <div class="org-form-row">
                             <!-- Ô dự án chỉ hiện khi có TỪ HAI dự án QR trở lên. Hầu hết
                                  trường hợp chỉ có một, khi đó tự chọn sẵn và ẩn đi cho gọn
                                  — xem openOrgModal(). -->
                             <label id="org-agent-project-field" class="hide">Dự án QR *<select id="org-agent-project"></select></label>
-                            <label>Giới hạn Sale<input type="number" id="org-agent-sale-limit" min="0" step="1" placeholder="Không giới hạn"></label>
+                            <label>Giới hạn Sale<input type="number" id="org-agent-sale-limit" min="0" step="1" placeholder="Nhập hạn mức hoặc để trống..."></label>
                             <label>Trả chậm cho khách (chỉ 1 trong 2)
                                 <select id="org-agent-defer-create">
                                     <option value="none">Không có (Chỉ trả ngay: Tiền mặt, QR, Thẻ)</option>
@@ -499,8 +499,8 @@
                     <form class="org-form" id="org-group-form">
                         <input type="hidden" id="org-group-id" value="">
                         <div class="org-form-row">
-                            <label>Tên nhóm *<input type="text" id="org-group-name" required placeholder="Lễ tân, Nhà hàng, VIP..."></label>
-                            <label>Ghi chú<input type="text" id="org-group-desc" placeholder="Mô tả nhóm (tùy chọn)"></label>
+                            <label>Tên nhóm *<input type="text" id="org-group-name" required placeholder="Nhập tên nhóm..."></label>
+                            <label>Ghi chú<input type="text" id="org-group-desc" placeholder="Nhập mô tả nhóm..."></label>
                         </div>
                         <div class="org-form-row" id="org-group-sales-row" style="margin-top: 4px;">
                             <label style="flex:1;">Chọn Sale vào nhóm ngay (Tùy chọn)
@@ -531,8 +531,8 @@
                     <form class="org-form" id="org-sale-form">
                         <input type="hidden" id="org-sale-id" value="">
                         <div class="org-form-row">
-                            <label>Họ tên *<input type="text" id="org-sale-name" required placeholder="Sale An"></label>
-                            <label>Email *<input type="email" id="org-sale-email" required placeholder="sale@vidu.com"></label>
+                            <label>Họ tên *<input type="text" id="org-sale-name" required placeholder="Nhập họ và tên..."></label>
+                            <label>Email *<input type="email" id="org-sale-email" required placeholder="Nhập địa chỉ email..."></label>
                         </div>
                         <div class="org-form-row">
                             <label>Nhóm tiếp nhận (Tùy chọn)<select id="org-sale-group"><option value="">— Chưa gán nhóm —</option></select></label>
@@ -592,7 +592,7 @@
                     <form class="org-form" id="org-qr-form">
                         <input type="hidden" id="org-qr-id" value="">
                         <div class="org-form-row">
-                            <label>Tên vị trí đặt QR *<input type="text" id="org-qr-label" required placeholder="Bàn 1, Phòng 101, Quầy Bar..."></label>
+                            <label>Tên vị trí đặt QR *<input type="text" id="org-qr-label" required placeholder="Nhập tên vị trí đặt QR..."></label>
                             <label>Nhóm tiếp nhận *<select id="org-qr-group"></select></label>
                         </div>
                         <p class="org-field-hint" style="margin:0;font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:5px;">
@@ -642,7 +642,7 @@
                                     <span>Bật nút Sản phẩm trong phiên chat</span>
                                 </label>
                                 <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:360px;">
-                                    <input type="text" id="agent-menu-label-input" maxlength="100" placeholder="Chữ hiển thị (VD: Sản phẩm, Đặt hàng, Menu...)" style="font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);flex:1;">
+                                    <input type="text" id="agent-menu-label-input" maxlength="100" placeholder="Nhập chữ hiển thị trên nút..." style="font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid var(--panel-border);background:var(--panel-bg);color:var(--text-primary);flex:1;">
                                 </div>
                             </div>
 
@@ -703,7 +703,7 @@
                         <div class="menu-form-grid">
                             <label class="menu-field menu-field-catname">
                                 <span>Danh mục</span>
-                                <input type="text" id="menu-category-name" placeholder="Món khai vị, Đồ uống, Hải sản..." maxlength="150" autocomplete="off">
+                                <input type="text" id="menu-category-name" placeholder="Nhập tên danh mục..." maxlength="150" autocomplete="off">
                             </label>
                             <div class="menu-field menu-field-catbtn">
                                 <span aria-hidden="true">&nbsp;</span>
@@ -722,13 +722,13 @@
                         <div class="menu-form-grid">
                             <label class="menu-field menu-field-name">
                                 <span>Tên sản phẩm <b>*</b></span>
-                                <input type="text" id="menu-item-name" required placeholder="Gỏi cá trích" maxlength="255" autocomplete="off">
+                                <input type="text" id="menu-item-name" required placeholder="Nhập tên sản phẩm..." maxlength="255" autocomplete="off">
                             </label>
 
                             <label class="menu-field menu-field-price">
                                 <span>Giá bán (đã gồm VAT) <b>*</b></span>
                                 <div class="menu-input-suffix">
-                                    <input type="number" id="menu-item-price" required min="0" step="1000" placeholder="120000" inputmode="numeric">
+                                    <input type="number" id="menu-item-price" required min="0" step="1000" placeholder="Nhập giá bán..." inputmode="numeric">
                                     <em>₫</em>
                                 </div>
                             </label>
@@ -741,7 +741,7 @@
 
                             <label class="menu-field menu-field-stock">
                                 <span>Số lượng tồn</span>
-                                <input type="number" id="menu-item-stock" min="0" step="1" placeholder="Không giới hạn" inputmode="numeric">
+                                <input type="number" id="menu-item-stock" min="0" step="1" placeholder="Nhập số lượng tồn hoặc để trống..." inputmode="numeric">
                             </label>
 
                             <label class="menu-field menu-field-hide" id="menu-item-hide-field">
@@ -754,7 +754,7 @@
 
                             <label class="menu-field menu-field-desc">
                                 <span>Mô tả</span>
-                                <input type="text" id="menu-item-desc" placeholder="Cá trích tươi, rau rừng, bánh tráng" autocomplete="off">
+                                <input type="text" id="menu-item-desc" placeholder="Nhập mô tả sản phẩm..." autocomplete="off">
                             </label>
 
                             <div class="menu-field menu-field-photo">
@@ -1122,7 +1122,7 @@
             </div>
 
             <div style="display:flex;gap:8px;margin-bottom:16px;">
-                <input type="text" id="keyword-input" placeholder='Nhập từ khóa rồi nhấn Enter... (vd: giá phòng, đặt tour, ưu đãi)' style="flex:1;padding:10px 12px;border-radius:8px;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-family:inherit;font-size:13px;outline:none;">
+                <input type="text" id="keyword-input" placeholder="Nhập từ khóa rồi nhấn Enter..." style="flex:1;padding:10px 12px;border-radius:8px;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-family:inherit;font-size:13px;outline:none;">
                 <button id="keyword-add-btn" class="secondary-btn" style="white-space:nowrap;background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.25);"><i class="ri-add-line"></i> Thêm</button>
             </div>
 
@@ -1178,7 +1178,7 @@
             <div class="form-group" style="margin-bottom: 20px;">
                 <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); text-align: left;">Cào dữ liệu tự động từ URL (Landing Page)</label>
                 <div style="display: flex; gap: 8px;">
-                    <input type="url" id="kb-url-input" placeholder="Ví dụ: https://pastiechat.com" style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;" value="https://pastie-landingpage.vercel.app">
+                    <input type="url" id="kb-url-input" placeholder="Nhập địa chỉ website (https://...)" style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;" value="https://pastie-landingpage.vercel.app">
                     <button id="kb-sync-btn" class="primary-btn" style="width: auto; padding: 0 20px; white-space: nowrap;"><i class="ri-refresh-line"></i> Đồng bộ URL</button>
                 </div>
                 <div id="kb-sync-status" style="font-size: 12px; margin-top: 8px; color: var(--text-secondary); text-align: left; display: flex; align-items: center; gap: 6px;">
@@ -1234,13 +1234,13 @@
                         <label style="display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; color: var(--text-secondary); text-align: left;">
                             Phone Number ID *
                         </label>
-                        <input type="text" id="channel-whatsapp-phone-id" placeholder="1155601220972710" required style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+                        <input type="text" id="channel-whatsapp-phone-id" placeholder="Nhập Phone Number ID..." required style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
                     </div>
                     <div class="form-group">
                         <label style="display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; color: var(--text-secondary); text-align: left;">
                             WABA ID (Tài khoản Business)
                         </label>
-                        <input type="text" id="channel-whatsapp-waba-id" placeholder="1888394188493675" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+                        <input type="text" id="channel-whatsapp-waba-id" placeholder="Nhập WhatsApp Business Account ID..." style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
                     </div>
                 </div>
 
@@ -1248,14 +1248,14 @@
                     <label style="display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; color: var(--text-secondary); text-align: left;">
                         Số điện thoại WhatsApp
                     </label>
-                    <input type="text" id="channel-whatsapp-phone" placeholder="+84901819883" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+                    <input type="text" id="channel-whatsapp-phone" placeholder="Nhập số điện thoại WhatsApp..." style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: inherit; font-size: 13px;">
                 </div>
 
                 <div class="form-group" style="margin-bottom: 14px;">
                     <label style="display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; color: var(--text-secondary); text-align: left;">
                         WhatsApp Access Token (Permanent / System User Token) *
                     </label>
-                    <textarea id="channel-whatsapp-token" rows="3" placeholder="Nhập Access Token (bắt đầu bằng EAAG... hoặc EAA...)" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: monospace; font-size: 12px; resize: vertical;"></textarea>
+                    <textarea id="channel-whatsapp-token" rows="3" placeholder="Nhập Access Token..." style="width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-family: monospace; font-size: 12px; resize: vertical;"></textarea>
                 </div>
 
                 <!-- Direct WhatsApp Link Box for Customers -->
@@ -1414,8 +1414,8 @@
                     <div class="admin-mgmt-section-head">
                         <h3><i class="ri-folder-3-line"></i> Danh sách dự án</h3>
                         <div class="project-create-controls">
-                            <input type="text" id="project-new-name" placeholder="Tên project...">
-                            <input type="url" id="project-new-link" placeholder="https://website.com">
+                            <input type="text" id="project-new-name" placeholder="Nhập tên dự án...">
+                            <input type="url" id="project-new-link" placeholder="Nhập địa chỉ website...">
                             <button id="project-add-btn" class="primary-btn" style="width: auto; padding: 8px 12px; font-size: 12px; white-space: nowrap;"><i class="ri-add-line"></i> Thêm dự án</button>
                         </div>
                     </div>
@@ -1522,19 +1522,19 @@
                     <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Loại hình cơ sở</label>
                     <input id="admin-create-venue-type" list="admin-create-venue-type-list"
                            style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" autocomplete="off"
-                           placeholder="Hộ Kinh Doanh, Nhà hàng, Khách sạn… (để trống nếu là tên người)">
+                           placeholder="Nhập loại hình cơ sở hoặc để trống...">
                     <datalist id="admin-create-venue-type-list"></datalist>
                 </div>
 
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Họ và tên *</label>
-                    <input type="text" id="admin-create-fullname" placeholder="Đan Trinh Pastie / Nguyễn Văn A..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
+                    <input type="text" id="admin-create-fullname" placeholder="Nhập họ và tên..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
                     <small id="admin-create-name-preview" style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;"></small>
                 </div>
 
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Email đăng nhập *</label>
-                    <input type="email" id="admin-create-email" placeholder="agent@company.com" autocomplete="email" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
+                    <input type="email" id="admin-create-email" placeholder="Nhập địa chỉ email..." autocomplete="email" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
                 </div>
 
                 <div class="form-group" id="admin-create-project-group" style="margin: 0;">
@@ -1555,7 +1555,7 @@
 
                 <div class="form-group" id="admin-create-sale-limit-group" style="margin: 0;">
                     <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Hạn mức số Sale cấp phép cho Agent</label>
-                    <input type="number" id="admin-create-sale-limit" min="0" step="1" placeholder="Để trống = Không giới hạn" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;">
+                    <input type="number" id="admin-create-sale-limit" min="0" step="1" placeholder="Nhập hạn mức hoặc để trống..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;">
                     <small style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;">Số lượng tài khoản Sale tối đa mà Agent này được tạo.</small>
                 </div>
 
@@ -1626,13 +1626,13 @@
                     <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Loại hình cơ sở</label>
                     <input id="admin-edit-venue-type" list="admin-edit-venue-type-list"
                            style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" autocomplete="off"
-                           placeholder="Hộ Kinh Doanh, Nhà hàng, Khách sạn… (để trống nếu là tên người)">
+                           placeholder="Nhập loại hình cơ sở hoặc để trống...">
                     <datalist id="admin-edit-venue-type-list"></datalist>
                 </div>
 
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Họ và tên *</label>
-                    <input type="text" id="admin-edit-fullname" placeholder="Họ và tên..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
+                    <input type="text" id="admin-edit-fullname" placeholder="Nhập họ và tên..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
                     <small id="admin-edit-name-preview" style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;"></small>
                 </div>
 
@@ -1670,7 +1670,7 @@
 
                 <div class="form-group" id="admin-edit-sale-limit-group" style="margin: 0;">
                     <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Hạn mức số Sale cấp phép cho Agent</label>
-                    <input type="number" id="admin-edit-sale-limit" min="0" step="1" placeholder="Để trống = Không giới hạn" style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;">
+                    <input type="number" id="admin-edit-sale-limit" min="0" step="1" placeholder="Nhập hạn mức hoặc để trống..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;">
                     <small style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;">Số lượng tài khoản Sale tối đa mà Agent này được tạo.</small>
                 </div>
 
@@ -1868,7 +1868,7 @@
                     </div>
                     <form id="otp-quick-unlock-form" onsubmit="handleQuickUnlockOtp(event); return false;">
                         <div class="otp-unlock-form-row">
-                            <input type="email" id="otp-unlock-email-input" class="otp-input" placeholder="Nhập email nhân viên / quản trị..." required>
+                            <input type="email" id="otp-unlock-email-input" class="otp-input" placeholder="Nhập địa chỉ email..." required>
                             <button type="submit" id="otp-unlock-submit-btn" class="primary-btn">
                                 <i class="ri-key-2-line"></i> Mở khóa email này
                             </button>
@@ -2148,18 +2148,18 @@
                 <div class="post-form-grid-2col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <div>
                         <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Tiêu đề (Tiếng Việt) *</label>
-                        <input type="text" id="post-form-title-vi" required placeholder="VD: Combo Sáng Tỉnh Táo..." style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
+                        <input type="text" id="post-form-title-vi" required placeholder="Nhập tiêu đề bài viết (Tiếng Việt)..." style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
                     </div>
                     <div>
                         <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Tiêu đề (Tiếng Anh)</label>
-                        <input type="text" id="post-form-title-en" placeholder="VD: Breakfast Combo..." style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
+                        <input type="text" id="post-form-title-en" placeholder="Nhập tiêu đề bài viết (Tiếng Anh)..." style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
                     </div>
                 </div>
 
                 <div class="post-form-grid-2col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <div>
                         <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Danh mục / Thẻ nổi bật</label>
-                        <input type="text" id="post-form-category" placeholder="ƯU ĐÃI, COMBO, CẨM NANG..." value="ƯU ĐÃI" style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
+                        <input type="text" id="post-form-category" placeholder="Nhập danh mục hoặc thẻ nổi bật..." value="ƯU ĐÃI" style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #0f172a; outline: none;">
                     </div>
                     <div>
                         <label style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin-bottom: 5px; display: block;">Thứ tự hiển thị (nhỏ đứng trước)</label>
