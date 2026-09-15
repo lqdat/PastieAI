@@ -823,6 +823,11 @@ function setPushButtonState(state) {
         pushHeaderHidden = state === 'enabled' || (typeof Notification !== 'undefined' && Notification.permission === 'granted');
         if (typeof window !== 'undefined') window.pushHeaderHidden = pushHeaderHidden;
         headerBtn.classList.toggle('hide', pushHeaderHidden);
+        if (pushHeaderHidden) {
+            headerBtn.style.setProperty('display', 'none', 'important');
+        } else {
+            headerBtn.style.removeProperty('display');
+        }
         renderPushStatusRow(state);
     }
 

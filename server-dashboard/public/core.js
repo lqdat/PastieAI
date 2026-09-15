@@ -1157,7 +1157,13 @@ function updateAgentHeaderUI() {
     // Giỏ hàng/Bill trên header: CHỈ dành cho Agent / Sale (và được gom vào bảng Công cụ)
     document.getElementById('order-cart-btn')?.classList.toggle('hide', !isAgentRole);
     // Sản phẩm (thực đơn xem nhanh): CHỈ dành cho Sale (Agent quản lý sản phẩm trong Quản trị)
-    document.getElementById('sale-menu-btn')?.classList.toggle('hide', role !== 'sale');
+    const hideSaleMenu = role !== 'sale';
+    const saleMenuEl = document.getElementById('sale-menu-btn');
+    if (saleMenuEl) {
+        saleMenuEl.classList.toggle('hide', hideSaleMenu);
+        if (hideSaleMenu) saleMenuEl.style.setProperty('display', 'none', 'important');
+        else saleMenuEl.style.removeProperty('display');
+    }
 
     document.getElementById('project-selector-wrap')?.classList.toggle('hide', isAgentRole || isTechnical);
 
@@ -1184,12 +1190,23 @@ function updateAgentHeaderUI() {
     const hideLangPicker = (isRestrictedConsole() && isQrConciergeProject(CURRENT_ADMIN?.project_id)) || isTechnical;
     document.getElementById('admin-lang-selector-wrap')?.classList.toggle('hide', hideLangPicker);
 
-    // Báo cáo là công cụ quản lý: CHỈ hiện cho Agent quản lý (gom vào bảng Công cụ)
-    document.getElementById('report-modal-btn')?.classList.toggle('hide', role !== 'agent');
+    // Báo cáo là công cụ quản lý: CHỈ hiện cho Agent quản lý (gom vào bảng Công cụ), hoàn toàn ẩn với Sale
+    const hideReportModal = role !== 'agent';
+    const reportModalEl = document.getElementById('report-modal-btn');
+    if (reportModalEl) {
+        reportModalEl.classList.toggle('hide', hideReportModal);
+        if (hideReportModal) reportModalEl.style.setProperty('display', 'none', 'important');
+        else reportModalEl.style.removeProperty('display');
+    }
 
     // Nút quản lý Sale, nhóm, QR và thực đơn: CHỈ dành cho Agent (Chủ cơ sở)
     const canManageOrg = role === 'agent';
-    document.getElementById('org-manage-btn')?.classList.toggle('hide', !canManageOrg);
+    const orgManageEl = document.getElementById('org-manage-btn');
+    if (orgManageEl) {
+        orgManageEl.classList.toggle('hide', !canManageOrg);
+        if (!canManageOrg) orgManageEl.style.setProperty('display', 'none', 'important');
+        else orgManageEl.style.removeProperty('display');
+    }
 
     // Nút hồ sơ tài khoản: hiển thị cho Agent / Sale
     document.getElementById('agent-account-btn')?.classList.toggle('hide', !isAgentRole);
@@ -1208,7 +1225,13 @@ function updateAgentHeaderUI() {
     // đó không còn thao tác nào để làm — xem setPushButtonState).
     const isPushGranted = (typeof Notification !== 'undefined' && Notification.permission === 'granted') || Boolean(window.pushHeaderHidden);
     const isInFrame = (typeof inIframe !== 'undefined' ? inIframe : (typeof window !== 'undefined' && window.inIframe));
-    document.getElementById('agent-push-btn')?.classList.toggle('hide', !isAgentRole || isInFrame || isPushGranted);
+    const hidePushBtn = !isAgentRole || isInFrame || isPushGranted;
+    const pushBtnEl = document.getElementById('agent-push-btn');
+    if (pushBtnEl) {
+        pushBtnEl.classList.toggle('hide', hidePushBtn);
+        if (hidePushBtn) pushBtnEl.style.setProperty('display', 'none', 'important');
+        else pushBtnEl.style.removeProperty('display');
+    }
 
     if (isAgentRole || isTechnical) document.getElementById('manage-admins-btn')?.classList.add('hide');
 
@@ -1456,9 +1479,24 @@ document.addEventListener('click', (event) => {
     const panel = document.getElementById('header-menu-panel');
     if (!panel) return;
     if (trigger) {
-        const open = panel.classList.contains('hide');
-        panel.classList.toggle('hide', !open);
-        document.getElementById('header-menu-btn')?.setAttribute('aria-expanded', String(open));
+        const willOpen = panel.classList.contains('hide');
+        if (willOpen) {
+            const role = CURRENT_ADMIN?.role || 'agent';
+            if (role !== 'agent') {
+                const rBtn = document.getElementById('report-modal-btn');
+                if (rBtn) { rBtn.classList.add('hide'); rBtn.style.setProperty('display', 'none', 'important'); }
+            }
+            if (role !== 'sale') {
+                const sBtn = document.getElementById('sale-menu-btn');
+                if (sBtn) { sBtn.classList.add('hide'); sBtn.style.setProperty('display', 'none', 'important'); }
+            }
+            if ((typeof Notification !== 'undefined' && Notification.permission === 'granted') || Boolean(window.pushHeaderHidden)) {
+                const pBtn = document.getElementById('agent-push-btn');
+                if (pBtn) { pBtn.classList.add('hide'); pBtn.style.setProperty('display', 'none', 'important'); }
+            }
+        }
+        panel.classList.toggle('hide', !willOpen);
+        document.getElementById('header-menu-btn')?.setAttribute('aria-expanded', String(willOpen));
         return;
     }
     // Bấm vào một mục trong bảng cũng đóng bảng: mục nào cũng mở một cửa sổ

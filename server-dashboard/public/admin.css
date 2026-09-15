@@ -6041,6 +6041,12 @@ button:focus-visible {
     cursor: pointer !important;
     text-align: left !important;
 }
+.header-menu-panel .header-menu-item.hide,
+.header-right .header-menu-panel .header-menu-item.hide,
+.header-menu-panel .hide,
+.header-right .header-menu-panel .hide {
+    display: none !important;
+}
 .header-menu-panel .header-menu-item span,
 .header-right .header-menu-panel .header-menu-item span {
     display: inline-block !important;
