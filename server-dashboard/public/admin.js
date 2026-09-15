@@ -1166,6 +1166,13 @@ document.addEventListener('click', (e) => {
     }
 });
 
+settingsDropdownMenu?.addEventListener('click', (e) => {
+    if (e.target.closest('.sdm-item')) {
+        settingsDropdownMenu.classList.add('hide');
+        settingsTriggerBtn?.classList.remove('open');
+    }
+});
+
 
 // --- AI KNOWLEDGE BASE ---
 const knowledgeSettingsBtn = document.getElementById('knowledge-settings-btn');
