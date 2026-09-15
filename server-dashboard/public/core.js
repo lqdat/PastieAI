@@ -1156,8 +1156,8 @@ function updateAgentHeaderUI() {
 
     // Giỏ hàng/Bill trên header: CHỈ dành cho Agent / Sale (và được gom vào bảng Công cụ)
     document.getElementById('order-cart-btn')?.classList.toggle('hide', !isAgentRole);
-    // Sản phẩm (thực đơn xem nhanh): hiển thị cho cả Agent và Sale
-    document.getElementById('sale-menu-btn')?.classList.toggle('hide', !isAgentRole);
+    // Sản phẩm (thực đơn xem nhanh): CHỈ dành cho Sale (Agent quản lý sản phẩm trong Quản trị)
+    document.getElementById('sale-menu-btn')?.classList.toggle('hide', role !== 'sale');
 
     document.getElementById('project-selector-wrap')?.classList.toggle('hide', isAgentRole || isTechnical);
 
@@ -1206,7 +1206,9 @@ function updateAgentHeaderUI() {
 
     // Ẩn nếu không phải Agent/Sale, đang trong iframe, HOẶC thông báo đã bật (khi
     // đó không còn thao tác nào để làm — xem setPushButtonState).
-    document.getElementById('agent-push-btn')?.classList.toggle('hide', !isAgentRole || inIframe || pushHeaderHidden);
+    const isPushGranted = (typeof Notification !== 'undefined' && Notification.permission === 'granted') || Boolean(window.pushHeaderHidden);
+    const isInFrame = (typeof inIframe !== 'undefined' ? inIframe : (typeof window !== 'undefined' && window.inIframe));
+    document.getElementById('agent-push-btn')?.classList.toggle('hide', !isAgentRole || isInFrame || isPushGranted);
 
     if (isAgentRole || isTechnical) document.getElementById('manage-admins-btn')?.classList.add('hide');
 

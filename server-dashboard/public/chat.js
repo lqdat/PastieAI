@@ -820,7 +820,8 @@ function setPushButtonState(state) {
         // Nút chỉ xuất hiện khi THẬT SỰ cần thao tác: chưa bật, bị chặn, hoặc máy
         // chủ chưa cấu hình. Trạng thái "đang bật" chuyển vào màn hình Quản lý
         // tài khoản — xem renderPushStatusRow().
-        pushHeaderHidden = state === 'enabled';
+        pushHeaderHidden = state === 'enabled' || (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+        if (typeof window !== 'undefined') window.pushHeaderHidden = pushHeaderHidden;
         headerBtn.classList.toggle('hide', pushHeaderHidden);
         renderPushStatusRow(state);
     }
