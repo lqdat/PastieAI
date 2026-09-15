@@ -1156,7 +1156,8 @@ function updateAgentHeaderUI() {
 
     // Giỏ hàng/Bill trên header: CHỈ dành cho Agent / Sale (và được gom vào bảng Công cụ)
     document.getElementById('order-cart-btn')?.classList.toggle('hide', !isAgentRole);
-    document.getElementById('sale-menu-btn')?.classList.toggle('hide', !isSaleView);
+    // Sản phẩm (thực đơn xem nhanh): hiển thị cho cả Agent và Sale
+    document.getElementById('sale-menu-btn')?.classList.toggle('hide', !isAgentRole);
 
     document.getElementById('project-selector-wrap')?.classList.toggle('hide', isAgentRole || isTechnical);
 
@@ -1168,8 +1169,8 @@ function updateAgentHeaderUI() {
     }
     
     // Superadmin & Project Admin: gom tất cả công cụ vào menu Quản trị duy nhất
-    const isSuperadmin = CURRENT_ADMIN?.role === 'superadmin';
-    const isProjectAdmin = CURRENT_ADMIN?.role === 'project_admin';
+    const isSuperadmin = role === 'superadmin';
+    const isProjectAdmin = role === 'project_admin' || role === 'project_owner';
     const canManageTeam = isSuperadmin || isProjectAdmin;
 
     // Các nút chức năng gom gọn bên trong menu Quản trị
@@ -1183,20 +1184,16 @@ function updateAgentHeaderUI() {
     const hideLangPicker = (isRestrictedConsole() && isQrConciergeProject(CURRENT_ADMIN?.project_id)) || isTechnical;
     document.getElementById('admin-lang-selector-wrap')?.classList.toggle('hide', hideLangPicker);
 
-    // Báo cáo là công cụ quản lý: nút trên header chỉ hiện cho Agent quản lý (gom vào bảng Công cụ)
-    document.getElementById('report-modal-btn')?.classList.toggle('hide', !isAgentRole || isSaleRole());
+    // Báo cáo là công cụ quản lý: CHỈ hiện cho Agent quản lý (gom vào bảng Công cụ)
+    document.getElementById('report-modal-btn')?.classList.toggle('hide', role !== 'agent');
 
-    // Nút quản lý Sale, nhóm và QR (chỉ Agent quản lý của dự án QR)
-    const canManageOrg = isAgentManagerRole();
+    // Nút quản lý Sale, nhóm, QR và thực đơn: CHỈ dành cho Agent (Chủ cơ sở)
+    const canManageOrg = role === 'agent';
     document.getElementById('org-manage-btn')?.classList.toggle('hide', !canManageOrg);
 
     // Nút hồ sơ tài khoản: hiển thị cho Agent / Sale
     document.getElementById('agent-account-btn')?.classList.toggle('hide', !isAgentRole);
     document.getElementById('agent-guide-btn')?.classList.toggle('hide', !isAgentRole);
-
-    // Chỉ Agent quản lý mới tạo và xem QR. Sale không đụng tới QR.
-    const hasQr = isAgentManagerRole() && isQrConciergeProject(CURRENT_ADMIN.project_id);
-    document.getElementById('agent-qr-btn')?.classList.toggle('hide', !hasQr);
 
     // Agent/Kỹ thuật không dùng dropdown Quản trị
     document.getElementById('settings-dropdown-wrapper')?.classList.toggle('hide', isAgentRole || isTechnical);
@@ -1413,8 +1410,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) void
 // trình xử lý sự kiện đã gắn ở nơi khác vẫn còn nguyên, kể cả các chỗ gọi
 // classList.toggle('hide', ...) để ẩn nút theo vai trò.
 const HEADER_MENU_BTN_IDS = [
-    'ticket-manage-btn',
-    'org-manage-btn', 'order-cart-btn', 'sale-menu-btn', 'agent-qr-btn',
+    'org-manage-btn', 'order-cart-btn', 'sale-menu-btn',
     'report-modal-btn', 'agent-account-btn', 'agent-guide-btn', 'agent-push-btn',
 ];
 const headerBtnHome = new Map();

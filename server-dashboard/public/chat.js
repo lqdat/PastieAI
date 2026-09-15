@@ -2037,6 +2037,7 @@ function applyChatPermissionUI(session) {
         if (sendBtn) sendBtn.disabled = false;
         return;
     }
+    document.getElementById('chat-header-actions')?.classList.remove('hide');
     document.getElementById('details-toggle-btn')?.classList.remove('hide');
     const dict = TRANSLATIONS[currentLang] || TRANSLATIONS['vi'];
     const isSuper = CURRENT_ADMIN && CURRENT_ADMIN.role === 'superadmin';
