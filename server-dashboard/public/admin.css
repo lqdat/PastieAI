@@ -3057,9 +3057,23 @@ button:focus-visible {
     transform: scale(0.94);
   }
   #chat-header-avatar > * { width: 36px !important; height: 36px !important; font-size: 15px !important; }
-  /* Ẩn CHỮ trên nút (icon-only) cho gọn, nhưng VẪN hiện phần "Phân công" trên mobile */
-  #close-session-btn span, #claim-chat-btn span { display: none; }
-  #assignee-selector-container { display: inline-flex; flex: 1 0 160px; min-width: 160px; }
+  /* Ẩn CHỮ trên nút (icon-only) cho gọn, và thu gọn ô Phân công để không đè vào tiêu đề chat */
+  #close-session-btn span, #claim-chat-btn span, .assignee-label { display: none !important; }
+  #assignee-selector-container {
+    display: inline-flex !important;
+    align-items: center !important;
+    flex: 0 1 auto !important;
+    min-width: 0 !important;
+    max-width: 116px !important;
+    height: 36px !important;
+    padding: 0 8px !important;
+    border-radius: 10px !important;
+    box-sizing: border-box !important;
+  }
+  #assignee-selector-container select {
+    max-width: 78px !important;
+    font-size: 12px !important;
+  }
   #close-session-btn, #claim-chat-btn, #delete-session-btn {
     width: 36px;
     min-width: 36px;
