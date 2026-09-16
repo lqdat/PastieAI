@@ -1051,7 +1051,67 @@ projectFilter?.addEventListener('change', (e) => {
 });
 
 
-refreshSessionsBtn?.addEventListener('click', fetchSessions);
+// Nút tải lại danh sách hội thoại chat (sidebar)
+refreshSessionsBtn?.addEventListener('click', async (e) => {
+    e?.preventDefault?.();
+    const icon = refreshSessionsBtn.querySelector('i');
+    if (icon) icon.classList.add('ri-spin');
+    refreshSessionsBtn.disabled = true;
+    try {
+        if (typeof showToast === 'function') {
+            showToast('Đang làm mới hội thoại...', 'info');
+        }
+        await fetchSessions();
+        if (typeof currentCategoryTab !== 'undefined') {
+            if (currentCategoryTab === 'internal' && typeof renderInternalSessionsList === 'function') {
+                await fetchInternalChats().catch(() => {});
+                renderInternalSessionsList();
+            } else if (currentCategoryTab === 'technical' && typeof renderTechnicalSessionsList === 'function') {
+                await fetchTechnicalAgentChats().catch(() => {});
+                renderTechnicalSessionsList();
+            }
+        }
+        if (currentSessionId && typeof fetchMessages === 'function') {
+            await fetchMessages(currentSessionId).catch(() => {});
+        }
+        if (typeof showToast === 'function') {
+            showToast('Đã làm mới danh sách hội thoại!', 'success');
+        }
+    } catch (err) {
+        console.error('Error refreshing sessions:', err);
+    } finally {
+        setTimeout(() => {
+            if (icon) icon.classList.remove('ri-spin');
+            refreshSessionsBtn.disabled = false;
+        }, 500);
+    }
+});
+
+// Nút tải lại tin nhắn trực tiếp trong thanh tác vụ phòng chat
+document.getElementById('chat-reload-btn')?.addEventListener('click', async (e) => {
+    e?.preventDefault?.();
+    const btn = e.currentTarget;
+    const icon = btn.querySelector('i');
+    if (icon) icon.classList.add('ri-spin');
+    btn.disabled = true;
+    try {
+        if (currentSessionId && typeof fetchMessages === 'function') {
+            await fetchMessages(currentSessionId);
+            if (typeof showToast === 'function') {
+                showToast('Đã làm mới tin nhắn hội thoại!', 'success');
+            }
+        } else if (typeof fetchSessions === 'function') {
+            await fetchSessions();
+        }
+    } catch (err) {
+        console.error('Error refreshing chat messages:', err);
+    } finally {
+        setTimeout(() => {
+            if (icon) icon.classList.remove('ri-spin');
+            btn.disabled = false;
+        }, 500);
+    }
+});
 
 closeSessionBtn?.addEventListener('click', closeActiveSession);
 

@@ -1238,30 +1238,49 @@ function updateAgentHeaderUI() {
     // Ô avatar: ẢNH của cơ sở nếu Agent đã tải lên, không có thì lấy chữ cái
     // đầu. Sale nhìn thấy ảnh của Agent quản lý mình, không phải ảnh của chính
     // mình — header là để nhận ra ĐANG Ở CƠ SỞ NÀO.
+    // Hàm tự sinh ảnh đại diện SVG với chữ cái & dải màu nhận diện, đảm bảo không bao giờ để trắng
+    function getGeneratedAvatarSvg(text) {
+        const char = (String(text || 'P').trim().charAt(0) || 'P').toUpperCase();
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+          <defs>
+            <linearGradient id="avG" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ef2b9d"/>
+              <stop offset="50%" stop-color="#db2777"/>
+              <stop offset="100%" stop-color="#7c3aed"/>
+            </linearGradient>
+          </defs>
+          <rect width="96" height="96" rx="28" fill="url(#avG)"/>
+          <text x="50%" y="54%" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="46" font-weight="800" fill="#ffffff" text-anchor="middle" dominant-baseline="middle">${char}</text>
+        </svg>`;
+        return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+    }
+
     const badge = document.getElementById('agent-avatar-badge');
     const avatarChar = document.getElementById('agent-avatar-char');
-    // Ảnh của CHÍNH NGƯỜI ĐANG ĐĂNG NHẬP: Sale thấy ảnh Sale, Agent thấy ảnh
-    // Agent. Trước đây Sale chưa có ảnh riêng thì rơi về ảnh của Agent quản lý,
-    // nên hai người ngồi cạnh nhau nhìn thấy cùng một khuôn mặt trên header và
-    // không biết máy nào đang đăng nhập bằng tài khoản nào.
     const avatarUrl = CURRENT_ADMIN.avatar_url || '';
+    const fallbackChar = (visibleName || (isSaleView ? managerName : '') || 'P').trim().charAt(0).toUpperCase() || 'P';
+    const fallbackAvatarDataUrl = getGeneratedAvatarSvg(fallbackChar);
+
     if (badge) {
         let img = badge.querySelector('img');
-        if (/^https?:\/\/|^\//.test(String(avatarUrl))) {
-            if (avatarChar) avatarChar.classList.add('hide');
-            if (img) {
+        if (!img) {
+            badge.insertAdjacentHTML('afterbegin', `<img src="" alt="">`);
+            img = badge.querySelector('img');
+        }
+        if (img) {
+            img.onerror = () => {
+                img.onerror = null;
+                img.src = fallbackAvatarDataUrl;
+            };
+            if (/^https?:\/\/|^\//.test(String(avatarUrl))) {
                 img.src = avatarUrl;
-                img.style.display = 'block';
             } else {
-                badge.insertAdjacentHTML('afterbegin', `<img src="${avatarUrl}" alt="">`);
+                img.src = fallbackAvatarDataUrl;
             }
-        } else {
-            if (img) img.style.display = 'none';
-            if (avatarChar) {
-                avatarChar.classList.remove('hide');
-                const src = visibleName || (isSaleView ? managerName : '') || 'P';
-                avatarChar.textContent = src.trim().charAt(0).toUpperCase() || 'P';
-            }
+            img.style.display = 'block';
+        }
+        if (avatarChar) {
+            avatarChar.textContent = fallbackChar;
         }
     }
     badge?.classList.toggle('hide', !visibleName);
