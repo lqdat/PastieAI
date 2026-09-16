@@ -1164,7 +1164,10 @@ document.querySelectorAll('#logout-btn, #superadmin-logout-btn, #agent-logout-bt
 ['admin-lang-select', 'agent-menu-lang-select', 'super-menu-lang-select'].forEach(id => {
     const sel = document.getElementById(id);
     if (sel) {
+        sel.addEventListener('click', (e) => e.stopPropagation());
+        sel.addEventListener('mousedown', (e) => e.stopPropagation());
         sel.addEventListener('change', (e) => {
+            e.stopPropagation();
             applyTranslations(e.target.value);
         });
     }

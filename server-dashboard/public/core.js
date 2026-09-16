@@ -1287,9 +1287,8 @@ function updateAgentHeaderUI() {
 
     const badge = document.getElementById('agent-avatar-badge');
     const avatarChar = document.getElementById('agent-avatar-char');
-    const avatarUrl = CURRENT_ADMIN.avatar_url || '';
+    const avatarUrl = CURRENT_ADMIN?.avatar_url || (isSaleView ? CURRENT_ADMIN?.manager_avatar_url : '') || '';
     const fallbackChar = (visibleName || (isSaleView ? managerName : '') || 'P').trim().charAt(0).toUpperCase() || 'P';
-    const fallbackAvatarDataUrl = getGeneratedAvatarSvg(fallbackChar);
 
     if (badge) {
         let img = badge.querySelector('img');
@@ -1297,20 +1296,27 @@ function updateAgentHeaderUI() {
             badge.insertAdjacentHTML('afterbegin', `<img src="" alt="">`);
             img = badge.querySelector('img');
         }
-        if (img) {
-            img.onerror = () => {
-                img.onerror = null;
-                img.src = fallbackAvatarDataUrl;
+        if (avatarUrl) {
+            img.onload = () => {
+                img.style.display = 'block';
+                if (avatarChar) avatarChar.classList.add('hide');
             };
-            if (/^https?:\/\/|^\//.test(String(avatarUrl))) {
-                img.src = avatarUrl;
-            } else {
-                img.src = fallbackAvatarDataUrl;
-            }
+            img.onerror = () => {
+                img.style.display = 'none';
+                if (avatarChar) {
+                    avatarChar.textContent = fallbackChar;
+                    avatarChar.classList.remove('hide');
+                }
+            };
+            img.src = avatarUrl;
             img.style.display = 'block';
-        }
-        if (avatarChar) {
-            avatarChar.textContent = fallbackChar;
+            if (avatarChar) avatarChar.classList.add('hide');
+        } else {
+            img.style.display = 'none';
+            if (avatarChar) {
+                avatarChar.textContent = fallbackChar;
+                avatarChar.classList.remove('hide');
+            }
         }
     }
     badge?.classList.toggle('hide', !visibleName);
@@ -1556,7 +1562,16 @@ document.addEventListener('click', (event) => {
     }
     // Bấm vào một mục trong bảng cũng đóng bảng: mục nào cũng mở một cửa sổ
     // khác, để bảng mở chồng lên trên là che mất thứ vừa mở.
-    if (!panel.classList.contains('hide')) closeHeaderQuickMenu();
+    if (!panel.classList.contains('hide')) {
+        // Không đóng bảng nếu người dùng đang thao tác chọn ngôn ngữ
+        if (event.target.closest('.menu-lang-dropdown-row') || event.target.closest('.sdm-lang-bar') || event.target.closest('select') || event.target.closest('option')) {
+            return;
+        }
+        const wrap = document.getElementById('header-menu-wrap');
+        if (!wrap?.contains(event.target) || event.target.closest('.header-menu-item')) {
+            closeHeaderQuickMenu();
+        }
+    }
 });
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeHeaderQuickMenu(); });
 

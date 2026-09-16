@@ -2093,57 +2093,41 @@ function applyChatPermissionUI(session) {
 
     const isQrProject = isRestrictedConsole() || isQrConciergeProject(session?.project_id);
 
-    // 1. Nút "Tiếp nhận": Ẩn ở Sale và Agent, CHỈ hiện cho Superadmin khi chưa có ai tiếp nhận
+    // 1. Nút "Tiếp nhận": Bỏ hoàn toàn ở Sale, Agent và toàn bộ dự án QR Chat
     if (claimChatBtn) {
-        if (isSuper && !isClosed && !session.claimed_by_admin_id) {
+        if (isSale || isAgent || isQrProject || isClosed) {
+            claimChatBtn.classList.add('hide');
+        } else if (isSuper) {
             claimChatBtn.classList.remove('hide');
-            claimChatBtn.disabled = false;
-            claimChatBtn.innerHTML = '<i class="ri-hand-heart-line"></i> <span data-i18n="claimChat">' + (dict.claimChat || 'Tiếp nhận') + '</span>';
+            if (isClaimedByMe) {
+                claimChatBtn.disabled = true;
+                claimChatBtn.innerHTML = '<i class="ri-checkbox-circle-fill"></i> <span>' + (dict.claimedStatus || 'Đã tiếp nhận') + '</span>';
+            } else {
+                claimChatBtn.disabled = false;
+                claimChatBtn.innerHTML = '<i class="ri-hand-heart-line"></i> <span data-i18n="claimChat">' + (dict.claimChat || 'Tiếp nhận') + '</span>';
+            }
         } else {
             claimChatBtn.classList.add('hide');
         }
     }
 
-    // 2. Bộ chọn "Phân công": Ẩn ở Sale và Agent, CHỈ hiện cho Superadmin
-    const assigneeContainer = document.getElementById('assignee-selector-container');
-    if (assigneeContainer) {
-        assigneeContainer.classList.toggle('hide', !isSuper || isClosed);
-    }
-
-    // 3. Nút "Đóng cuộc chat": Ẩn ở Sale và Agent, CHỈ hiện cho Superadmin
+    // 2. Nút "Đóng cuộc chat": Bỏ hoàn toàn ở Sale và Agent
     if (closeBtn) {
-        if (isSuper && !isClosed) {
+        if (isSale || isAgent || isClosed) {
+            closeBtn.classList.add('hide');
+        } else if (isSuper) {
             closeBtn.classList.remove('hide');
         } else {
             closeBtn.classList.add('hide');
         }
     }
 
-    // 4. Nút "Xóa chat": Ẩn ở Sale và Agent, CHỈ hiện cho Superadmin
-    const deleteBtn = document.getElementById('delete-session-btn');
-    if (deleteBtn) {
-        deleteBtn.classList.toggle('hide', !isSuper);
-    }
-
-    // 5. Nút "Tải lại tin nhắn": Ẩn ở Sale và Agent, CHỈ hiện cho Superadmin
-    const reloadBtn = document.getElementById('chat-reload-btn');
-    if (reloadBtn) {
-        reloadBtn.classList.toggle('hide', !isSuper);
-    }
-
-    // 6. Nút "Bàn giao ca": CHỈ hiện ở Sale khi HẾT CA (Draining Grace Mode)
+    // 3. Nút Bàn giao ca: chỉ hiện khi cuộc chat đang active và là Sale hoặc Superadmin
     if (handoverBtn) {
-        const showHandover = isSale && !isClosed && (window.CURRENT_SHIFT_DRAINING === true);
-        handoverBtn.classList.toggle('hide', !showHandover);
+        handoverBtn.classList.toggle('hide', isClosed || isAgent || (!isClaimedByMe && !isSuper && !isSale));
     }
 
-    // 7. Nút "Thông tin chi tiết": Luôn hiện cho cả Sale, Agent và Superadmin
-    const detailsBtn = document.getElementById('details-toggle-btn');
-    if (detailsBtn) {
-        detailsBtn.classList.remove('hide');
-    }
-
-    // 8. Banner Draining Grace Mode: hiện khi phiên chat đang active và tài khoản ở chế độ gia hạn hoàn tất ca
+    // 4. Banner Draining Grace Mode: hiện khi phiên chat đang active và tài khoản ở chế độ gia hạn hoàn tất ca
     if (drainingBanner) {
         const showDraining = !isClosed && isClaimedByMe && (window.CURRENT_SHIFT_DRAINING === true);
         drainingBanner.classList.toggle('hide', !showDraining);
