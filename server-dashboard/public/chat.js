@@ -2093,7 +2093,7 @@ function applyChatPermissionUI(session) {
 
     const isQrProject = isRestrictedConsole() || isQrConciergeProject(session?.project_id);
 
-    // 1. Nút "Tiếp nhận": Bỏ hoàn toàn ở Sale, Agent và toàn bộ dự án QR Chat
+    // 1. Nút "Tiếp nhận": Bỏ hoàn toàn ở Sale và Agent. Chỉ hiện cho Superadmin khi chưa có ai nhận
     if (claimChatBtn) {
         if (isSale || isAgent || isQrProject || isClosed) {
             claimChatBtn.classList.add('hide');
@@ -2111,7 +2111,13 @@ function applyChatPermissionUI(session) {
         }
     }
 
-    // 2. Nút "Đóng cuộc chat": Bỏ hoàn toàn ở Sale và Agent
+    // 2. Bộ chọn "Phân công": Bỏ hoàn toàn ở Sale và Agent, CHỈ hiện cho Superadmin
+    const assigneeContainer = document.getElementById('assignee-selector-container');
+    if (assigneeContainer) {
+        assigneeContainer.classList.toggle('hide', !isSuper || isClosed);
+    }
+
+    // 3. Nút "Đóng cuộc chat": Bỏ hoàn toàn ở Sale và Agent, CHỈ hiện cho Superadmin
     if (closeBtn) {
         if (isSale || isAgent || isClosed) {
             closeBtn.classList.add('hide');
@@ -2122,12 +2128,31 @@ function applyChatPermissionUI(session) {
         }
     }
 
-    // 3. Nút Bàn giao ca: chỉ hiện khi cuộc chat đang active và là Sale hoặc Superadmin
-    if (handoverBtn) {
-        handoverBtn.classList.toggle('hide', isClosed || isAgent || (!isClaimedByMe && !isSuper && !isSale));
+    // 4. Nút "Xóa chat": Bỏ hoàn toàn ở Sale và Agent, CHỈ hiện cho Superadmin
+    const deleteBtn = document.getElementById('delete-session-btn');
+    if (deleteBtn) {
+        deleteBtn.classList.toggle('hide', !isSuper);
     }
 
-    // 4. Banner Draining Grace Mode: hiện khi phiên chat đang active và tài khoản ở chế độ gia hạn hoàn tất ca
+    // 5. Nút "Tải lại tin nhắn": Bỏ hoàn toàn ở Sale và Agent, CHỈ hiện cho Superadmin
+    const reloadBtn = document.getElementById('chat-reload-btn');
+    if (reloadBtn) {
+        reloadBtn.classList.toggle('hide', !isSuper);
+    }
+
+    // 6. Nút "Bàn giao ca": CHỈ hiện riêng cho Sale khi HẾT CA (Draining Grace Mode)
+    if (handoverBtn) {
+        const showHandover = isSale && !isClosed && (window.CURRENT_SHIFT_DRAINING === true);
+        handoverBtn.classList.toggle('hide', !showHandover);
+    }
+
+    // 7. Nút "Thông tin chi tiết": Luôn hiện cho cả Sale, Agent và Superadmin
+    const detailsBtn = document.getElementById('details-toggle-btn');
+    if (detailsBtn) {
+        detailsBtn.classList.remove('hide');
+    }
+
+    // 8. Banner Draining Grace Mode: hiện khi phiên chat đang active và tài khoản ở chế độ gia hạn hoàn tất ca
     if (drainingBanner) {
         const showDraining = !isClosed && isClaimedByMe && (window.CURRENT_SHIFT_DRAINING === true);
         drainingBanner.classList.toggle('hide', !showDraining);
@@ -3032,7 +3057,50 @@ function scrollChatToBottom(force = false) {
     setTimeout(doScroll, 300);
     setTimeout(doScroll, 600);
 }
-window.scrollChatToBottom = scrollChatToBottom;
+function translateSystemMessage(rawText, lang) {
+    if (!rawText || !lang || lang === 'vi') return rawText;
+    let text = String(rawText);
+
+    // 1. [Đặt món] Khách vừa đặt: ... Tạm tính ...
+    if (text.includes('[Đặt món]') || text.includes('Khách vừa đặt') || text.includes('Khách đã cập nhật đơn')) {
+        const tPrefix = { en: '[Order placed]', zh: '[下单通知]', ko: '[주문 접수]', ru: '[Заказ оформлен]' }[lang] || '[Order]';
+        const tOrdered = { en: 'Customer ordered:', zh: '客户刚点单：', ko: '고객 주문:', ru: 'Клиент заказал:' }[lang] || 'Customer ordered:';
+        const tUpdated = { en: 'Customer updated order', zh: '客户已修改订单', ko: '고객이 주문을 수정함', ru: 'Клиент изменил заказ' }[lang] || 'Customer updated order';
+        const tSubtotal = { en: 'Estimated total', zh: '小计', ko: '예상 금액', ru: 'Итого' }[lang] || 'Estimated total';
+        const tPleaseConfirm = { en: 'Please confirm again.', zh: '请重新确认。', ko: '다시 확인해 주세요.', ru: 'Пожалуйста, подтвердите снова.' }[lang] || 'Please confirm again.';
+
+        text = text.replace(/\[Đặt món\]/g, tPrefix)
+                   .replace(/Khách vừa đặt:/g, tOrdered)
+                   .replace(/Khách đã cập nhật đơn/g, tUpdated)
+                   .replace(/Tạm tính/g, tSubtotal)
+                   .replace(/Vui lòng xác nhận lại\./g, tPleaseConfirm);
+        return text;
+    }
+
+    // 2. Kết thúc cuộc trò chuyện
+    if (text.includes('Cuộc trò chuyện đã kết thúc') || text.includes('kết thúc cuộc trò chuyện')) {
+        return { en: 'This conversation has ended.', zh: '此对话已结束。', ko: '대화가 종료되었습니다.', ru: 'Этот диалог завершен.' }[lang] || text;
+    }
+
+    // 3. Tiếp nhận cuộc trò chuyện
+    if (text.includes('đã tiếp nhận cuộc trò chuyện') || text.includes('tiếp nhận cuộc trò chuyện')) {
+        const tClaim = { en: 'claimed the conversation', zh: '已接待此会话', ko: '채팅을 접수했습니다', ru: 'принял этот диалог' }[lang] || 'claimed the conversation';
+        return text.replace(/đã tiếp nhận cuộc trò chuyện/g, tClaim).replace(/tiếp nhận cuộc trò chuyện/g, tClaim);
+    }
+
+    // 4. Bàn giao ca trực
+    if (text.includes('đã bàn giao ca') || text.includes('bàn giao ca')) {
+        const tHandover = { en: 'handed over the shift', zh: '已交接班', ko: '교대 인계 완료', ru: 'сдал смену' }[lang] || 'handed over the shift';
+        return text.replace(/đã bàn giao ca/g, tHandover).replace(/bàn giao ca/g, tHandover);
+    }
+
+    // 5. Khách rời bàn
+    if (text.includes('đã rời bàn') || text.includes('rời bàn')) {
+        return { en: 'Customer has left the table.', zh: '客户已离桌。', ko: '고객이 퇴장했습니다.', ru: 'Клиент покинул столик.' }[lang] || text;
+    }
+
+    return text;
+}
 
 function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
     // Vẽ xong mới gắn nút ticket vào từng tin (module ticket-console.js lo phần
@@ -3207,8 +3275,8 @@ function renderAdminMessages(isLoadMore = false, forceScrollToLatest = false) {
             // System message
             innerHtml = `
                 <div class="message-bubble">
-                    ${staffOnly ? '<span class="staff-only-label" title="Khách không nhìn thấy tin này"><i class="ri-lock-2-line"></i></span>' : ''}
-                    <div class="original-text">${escapeHtml(readableOrderText(msg.original_text))}</div>
+                    ${staffOnly ? `<span class="staff-only-label" title="${escapeHtml(dict.staffOnlyNotice || 'Khách không nhìn thấy tin này')}"><i class="ri-lock-2-line"></i></span>` : ''}
+                    <div class="original-text">${escapeHtml(translateSystemMessage(readableOrderText(msg.original_text), currentLang))}</div>
                 </div>
             `;
         }

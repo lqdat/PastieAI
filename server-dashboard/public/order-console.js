@@ -32,8 +32,19 @@
     function renderPending(order, container) {
         if (!order || order.status !== 'pending_confirm' || !container) return;
 
+        const curLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+        const dict = (window.TRANSLATIONS && window.TRANSLATIONS[curLang]) || (window.TRANSLATIONS && window.TRANSLATIONS.vi) || {};
+
         const items = Array.isArray(order.items) ? order.items : [];
         const placedByCustomer = order.placed_by === 'customer';
+
+        const kickerText = placedByCustomer ? (dict.orderPlacedByCustomer || 'Khách vừa đặt món') : (dict.orderPlacedByStaff || 'Đơn nhân viên tạo');
+        const badgeText = dict.statusPending || 'Chờ xác nhận';
+        const subtotalText = dict.subtotalLabel || 'Tạm tính';
+        const hintText = dict.orderNoteHint || 'Chỉ ghi chú được cho từng món. Khách muốn đổi món hay số lượng thì mời khách sửa lại trong thực đơn rồi gửi đơn mới.';
+        const editText = dict.editBtn || 'Chỉnh sửa';
+        const confirmText = dict.confirmBtn || 'Xác nhận';
+        const placeholderText = dict.orderNotePlaceholder || 'Nhập ghi chú cho đơn hàng...';
 
         const wrapper = document.createElement('div');
         wrapper.className = 'order-card';
@@ -42,9 +53,9 @@
             <div class="order-card-head">
                 <span class="order-kicker">
                     <i class="ri-restaurant-2-line"></i>
-                    ${placedByCustomer ? 'Khách vừa đặt món' : 'Đơn nhân viên tạo'}
+                    ${escapeHtml(kickerText)}
                 </span>
-                <span class="order-badge">Chờ xác nhận</span>
+                <span class="order-badge">${escapeHtml(badgeText)}</span>
             </div>
 
             <div class="order-lines">
@@ -62,28 +73,27 @@
                         ${note ? `<p class="order-line-note"><i class="ri-sticky-note-line"></i> <em>(${escapeHtml(String(note).replace(/^\(|\)$/g, ''))})</em></p>` : ''}
                         <input type="text" class="order-note" data-note-for="${escapeHtml(key)}"
                                maxlength="300" value="${escapeHtml(note)}"
-                               placeholder="Nhập ghi chú cho đơn hàng...">
+                               placeholder="${escapeHtml(placeholderText)}">
                     </div>`;
                 }).join('')}
             </div>
 
             <div class="order-total">
-                <span>Tạm tính</span>
+                <span>${escapeHtml(subtotalText)}</span>
                 <strong>${money(order.total_amount)}</strong>
             </div>
 
             <p class="order-hint">
                 <i class="ri-information-line"></i>
-                <span>Chỉ ghi chú được cho từng món. Khách muốn đổi món hay số lượng thì
-                mời khách sửa lại trong thực đơn rồi gửi đơn mới.</span>
+                <span>${escapeHtml(hintText)}</span>
             </p>
 
             <div class="order-actions">
                 <button type="button" class="order-btn is-note" data-order-edit="${order.id}">
-                    <i class="ri-edit-2-line"></i> <span data-edit-label>Chỉnh sửa</span>
+                    <i class="ri-edit-2-line"></i> <span data-edit-label>${escapeHtml(editText)}</span>
                 </button>
                 <button type="button" class="order-btn is-confirm" data-order-confirm="${order.id}">
-                    <i class="ri-check-line"></i> Xác nhận
+                    <i class="ri-check-line"></i> ${escapeHtml(confirmText)}
                 </button>
             </div>`;
 
@@ -91,7 +101,7 @@
         // mở thì ô ghi chú tự đóng lại ngay giữa lúc Sale đang gõ.
         if (editingOrderId === order.id) {
             wrapper.classList.add('is-editing');
-            setEditLabel(wrapper, 'Xong');
+            setEditLabel(wrapper, dict.doneBtn || 'Xong');
         }
 
         // Thẻ đơn thuộc về LẦN GỬI GẦN NHẤT, không phải lần đặt đầu tiên.
