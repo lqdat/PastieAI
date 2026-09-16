@@ -1173,6 +1173,15 @@ settingsDropdownMenu?.addEventListener('click', (e) => {
     }
 });
 
+function closeSettingsDropdown() {
+    const sdm = document.getElementById('settings-dropdown-menu');
+    const trigger = document.getElementById('settings-trigger-btn');
+    if (sdm) sdm.classList.add('hide');
+    if (trigger) trigger.classList.remove('open');
+}
+window.closeSettingsDropdown = closeSettingsDropdown;
+
+
 
 // --- AI KNOWLEDGE BASE ---
 const knowledgeSettingsBtn = document.getElementById('knowledge-settings-btn');
@@ -2510,10 +2519,26 @@ document.getElementById('superadmin-report-modal-btn')?.addEventListener('click'
 });
 
 // Nút Tải lại ứng dụng trong Menu Quản trị
-document.getElementById('app-reload-super-btn')?.addEventListener('click', (event) => {
+document.getElementById('app-reload-super-btn')?.addEventListener('click', async (event) => {
     event.stopPropagation();
     closeSettingsDropdown();
-    window.location.reload(true);
+    const splash = document.getElementById('app-boot-splash');
+    if (splash) {
+        splash.style.visibility = 'visible';
+        splash.style.opacity = '1';
+        splash.style.pointerEvents = 'auto';
+    }
+    if ('caches' in window) {
+        try {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        } catch (_) {}
+    }
+    if (typeof reloadApp === 'function') {
+        void reloadApp();
+    } else {
+        window.location.href = window.location.pathname + '?r=' + Date.now();
+    }
 });
 
 // --- MỞ KHÓA & QUẢN LÝ GIỚI HẠN OTP ---

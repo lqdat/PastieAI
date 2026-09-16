@@ -1318,6 +1318,12 @@ window.refreshAgentSaleCount = refreshAgentSaleCount;
 // Tải lại bằng cách gắn thêm một tham số vào URL: location.reload() ở
 // standalone vẫn có thể lấy lại đúng bản HTML đang nằm trong cache.
 async function reloadApp() {
+    const splash = document.getElementById('app-boot-splash');
+    if (splash) {
+        splash.style.visibility = 'visible';
+        splash.style.opacity = '1';
+        splash.style.pointerEvents = 'auto';
+    }
     const badge = document.getElementById('app-update-badge')?.textContent?.trim();
     if (badge) {
         try {
@@ -1342,9 +1348,9 @@ async function reloadApp() {
     }
 
     try {
-        window.location.reload();
+        window.location.href = window.location.pathname + '?r=' + Date.now();
     } catch (_) {
-        window.location.href = window.location.pathname;
+        window.location.reload();
     }
 }
 window.reloadApp = reloadApp;

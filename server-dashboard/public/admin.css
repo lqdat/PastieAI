@@ -2478,12 +2478,14 @@ button:focus-visible {
   }
   /* ── Superadmin & Default Mobile Header (UI/UX Pro Max) ── */
   .dashboard-header:not(.sale-header) {
-    min-height: calc(104px + env(safe-area-inset-top));
+    min-height: calc(52px + env(safe-area-inset-top)) !important;
     height: auto !important;
-    padding: calc(10px + env(safe-area-inset-top)) 14px 10px !important;
+    padding: calc(6px + env(safe-area-inset-top)) 12px 6px !important;
     border-radius: 0;
     display: flex !important;
-    flex-direction: column !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
     gap: 8px !important;
     border-left: 0;
     border-right: 0;
@@ -2497,59 +2499,99 @@ button:focus-visible {
     box-sizing: border-box !important;
   }
 
-  /* Row 1: Logo (Left) */
+  /* Single row: Logo (Trái) + Dropdown dự án (Giữa) */
   .dashboard-header:not(.sale-header) .header-left {
     display: flex !important;
-    flex-direction: column !important;
-    width: 100% !important;
-    gap: 8px !important;
-    padding-right: 0 !important;
-    min-width: 0 !important;
-  }
-  .dashboard-header:not(.sale-header) .logo {
-    height: 40px !important;
-    display: flex !important;
+    flex-direction: row !important;
     align-items: center !important;
     gap: 8px !important;
+    flex: 1 1 auto !important;
     min-width: 0 !important;
-    max-width: calc(100% - 104px) !important;
+    width: auto !important;
+    padding-right: 0 !important;
+  }
+  .dashboard-header:not(.sale-header) .logo {
+    height: 38px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 0 !important;
+    min-width: 0 !important;
+    max-width: none !important;
     flex-shrink: 0 !important;
+    margin: 0 !important;
   }
   .dashboard-header:not(.sale-header) .logo-img {
     width: 32px !important;
     height: 32px !important;
-    border-radius: 8px !important;
+    border-radius: 9px !important;
     object-fit: contain !important;
     flex-shrink: 0 !important;
   }
   .dashboard-header:not(.sale-header) .logo .pastie-chat-wordmark {
-    font-size: 20px !important;
-    line-height: 1 !important;
+    display: none !important;
   }
 
-  /* Row 1: Action Buttons (Right) */
-  .dashboard-header:not(.sale-header) .header-right {
-    position: absolute !important;
-    top: calc(10px + env(safe-area-inset-top)) !important;
-    right: 14px !important;
-    height: 40px !important;
+  /* Dropdown chọn dự án: nằm cạnh logo bên trái, chiếm khoảng trống còn lại */
+  .dashboard-header:not(.sale-header) .project-selector {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 38px !important;
+    padding: 0 10px !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+    border: 1px solid rgba(239, 43, 157, 0.2) !important;
+    border-radius: 11px !important;
     display: flex !important;
     align-items: center !important;
-    gap: 8px !important;
+    gap: 6px !important;
+    box-shadow: 0 2px 6px rgba(110, 43, 83, 0.04) !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+  }
+  .dashboard-header:not(.sale-header) .project-selector i {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 15px !important;
+    color: var(--accent-color, #ef2b9d) !important;
+    flex-shrink: 0 !important;
+  }
+  .dashboard-header:not(.sale-header) .project-selector select {
+    width: 100% !important;
+    min-width: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #1e1b2e !important;
+    outline: none !important;
+    cursor: pointer !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  /* Nút Quản trị bên phải (Cùng 1 hàng, kích thước 38px chuẩn chạm) */
+  .dashboard-header:not(.sale-header) .header-right {
+    position: static !important;
+    height: 38px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
     flex-wrap: nowrap !important;
+    flex-shrink: 0 !important;
     z-index: 10 !important;
   }
   .settings-trigger-btn span, .settings-trigger-btn .chevron-icon, .lang-selector, .admin-profile-badge { display: none !important; }
 
-  /* Nút Ticket trên mobile (Chuẩn touch 40x40px, icon sắc nét) */
-  /* Nút Quản trị trigger (Nổi bật rực rỡ với gradient) */
   .dashboard-header:not(.sale-header) .settings-trigger-btn {
-    width: 40px !important;
-    height: 40px !important;
-    min-width: 40px !important;
-    min-height: 40px !important;
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
     padding: 0 !important;
-    border-radius: 12px !important;
+    border-radius: 11px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -2559,55 +2601,17 @@ button:focus-visible {
     box-shadow: 0 4px 14px rgba(239, 43, 157, 0.35) !important;
     transition: all 0.15s ease !important;
     cursor: pointer !important;
+    flex-shrink: 0 !important;
   }
   .dashboard-header:not(.sale-header) .settings-trigger-btn:active {
     transform: scale(0.94) !important;
     filter: brightness(1.08) !important;
   }
   .dashboard-header:not(.sale-header) .settings-trigger-btn i {
-    font-size: 20px !important;
+    font-size: 19px !important;
     color: #ffffff !important;
     line-height: 1 !important;
     pointer-events: none !important;
-  }
-
-  /* Row 2: Project Selector (Chiếm trọn 100% chiều rộng, không bị chèn ép) */
-  .dashboard-header:not(.sale-header) .project-selector {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-    height: 40px !important;
-    padding: 0 12px !important;
-    background: rgba(255, 255, 255, 0.95) !important;
-    border: 1px solid rgba(239, 43, 157, 0.2) !important;
-    border-radius: 12px !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-    box-shadow: 0 2px 6px rgba(110, 43, 83, 0.04) !important;
-    box-sizing: border-box !important;
-  }
-  .dashboard-header:not(.sale-header) .project-selector i {
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    font-size: 16px !important;
-    color: var(--accent-color, #ef2b9d) !important;
-    flex-shrink: 0 !important;
-  }
-  .dashboard-header:not(.sale-header) .project-selector select {
-    width: 100% !important;
-    min-width: 0 !important;
-    border: none !important;
-    background: transparent !important;
-    font-size: 13.5px !important;
-    font-weight: 600 !important;
-    color: #1e1b2e !important;
-    outline: none !important;
-    cursor: pointer !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
   }
 
   /* Nút Agent thu về dạng icon trên mobile để không tràn header */
@@ -2717,6 +2721,42 @@ button:focus-visible {
     background: #fff0f8 !important;
     border-color: rgba(239, 43, 157, 0.22) !important;
     transform: scale(0.99) !important;
+  }
+
+  /* Bảo vệ nút Ticket trong menu: luôn full-width, hiển thị đầy đủ icon & tên */
+  #ticket-manage-btn.sdm-item,
+  .dashboard-header #ticket-manage-btn.sdm-item {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    min-height: 52px !important;
+    height: auto !important;
+    padding: 9px 12px !important;
+    border-radius: 14px !important;
+    box-sizing: border-box !important;
+  }
+  #ticket-manage-btn.sdm-item .sdm-icon,
+  .dashboard-header #ticket-manage-btn.sdm-item .sdm-icon {
+    display: inline-flex !important;
+    visibility: visible !important;
+  }
+  #ticket-manage-btn.sdm-item .sdm-text,
+  .dashboard-header #ticket-manage-btn.sdm-item .sdm-text {
+    display: flex !important;
+    visibility: visible !important;
+  }
+  #ticket-manage-btn.sdm-item .sdm-text span,
+  .dashboard-header #ticket-manage-btn.sdm-item .sdm-text span {
+    display: block !important;
+    visibility: visible !important;
+  }
+  #ticket-manage-btn.sdm-item .sdm-text small,
+  .dashboard-header #ticket-manage-btn.sdm-item .sdm-text small {
+    display: block !important;
+    visibility: visible !important;
   }
 
   .sdm-icon {
@@ -3224,11 +3264,9 @@ button:focus-visible {
 
 @media (max-width: 390px) {
   .dashboard-header { padding-inline: 10px; gap: 6px; }
-  .dashboard-header:not(.sale-header) { padding-inline: 10px !important; }
-  .dashboard-header:not(.sale-header) .header-right { right: 10px !important; gap: 6px !important; }
-  .dashboard-header:not(.sale-header) .logo { max-width: calc(100% - 94px) !important; gap: 6px !important; }
-  .dashboard-header:not(.sale-header) .logo .pastie-chat-wordmark { font-size: 18px !important; }
-  .settings-dropdown-menu { left: 8px !important; right: 8px !important; padding: 10px !important; }
+  .dashboard-header:not(.sale-header) { padding-inline: 8px !important; gap: 6px !important; }
+  .dashboard-header:not(.sale-header) .header-right { position: static !important; gap: 4px !important; }
+  .settings-dropdown-menu { left: 6px !important; right: 6px !important; padding: 10px !important; }
   .header-left { gap: 6px; }
   .logo { gap: 6px; }
   .logo span { font-size: 15px; }
