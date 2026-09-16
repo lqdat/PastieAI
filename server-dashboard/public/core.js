@@ -1286,40 +1286,24 @@ function updateAgentHeaderUI() {
     }
 
     const badge = document.getElementById('agent-avatar-badge');
-    const avatarChar = document.getElementById('agent-avatar-char');
-    const avatarUrl = CURRENT_ADMIN?.avatar_url || (isSaleView ? CURRENT_ADMIN?.manager_avatar_url : '') || '';
-    const fallbackChar = (visibleName || (isSaleView ? managerName : '') || 'P').trim().charAt(0).toUpperCase() || 'P';
+    const avatarUrl = CURRENT_ADMIN?.avatar_url || '';
+    const name = CURRENT_ADMIN?.full_name || CURRENT_ADMIN?.username || (isSaleView ? managerName : '') || 'P';
+    const fallbackChar = name.trim().charAt(0).toUpperCase() || 'P';
+    const fallbackAvatarDataUrl = getGeneratedAvatarSvg(fallbackChar);
 
     if (badge) {
-        let img = badge.querySelector('img');
-        if (!img) {
-            badge.insertAdjacentHTML('afterbegin', `<img src="" alt="">`);
-            img = badge.querySelector('img');
-        }
         if (avatarUrl) {
-            img.onload = () => {
-                img.style.display = 'block';
-                if (avatarChar) avatarChar.classList.add('hide');
-            };
-            img.onerror = () => {
-                img.style.display = 'none';
-                if (avatarChar) {
-                    avatarChar.textContent = fallbackChar;
-                    avatarChar.classList.remove('hide');
-                }
-            };
-            img.src = avatarUrl;
-            img.style.display = 'block';
-            if (avatarChar) avatarChar.classList.add('hide');
+            badge.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:50%;" onerror="this.onerror=null;this.src='${fallbackAvatarDataUrl}';">`;
         } else {
-            img.style.display = 'none';
-            if (avatarChar) {
-                avatarChar.textContent = fallbackChar;
-                avatarChar.classList.remove('hide');
-            }
+            badge.innerHTML = `<img src="${fallbackAvatarDataUrl}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:50%;">`;
         }
+        badge.classList.toggle('hide', !visibleName);
     }
-    badge?.classList.toggle('hide', !visibleName);
+
+    document.body.classList.toggle('role-superadmin', role === 'superadmin');
+    document.body.classList.toggle('role-agent', role === 'agent');
+    document.body.classList.toggle('role-sale', role === 'sale');
+    document.body.classList.toggle('role-staff', isStaffHeader);
 
     // Dòng phụ dưới tên. Sale: tên của chính mình đã nằm ở hàng dưới rồi nên
     // dòng này để trống; Agent quản lý: số Sale đang có.

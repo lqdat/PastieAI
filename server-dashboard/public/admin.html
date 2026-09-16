@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r151">
-    <link rel="stylesheet" href="menu-console.css?v=r151">
+    <link rel="stylesheet" href="admin.css?v=r152">
+    <link rel="stylesheet" href="menu-console.css?v=r152">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -226,10 +226,7 @@
                     <!-- Ô avatar giống hệt header của khách: cùng một khối nhận
                          diện ở cả ba giao diện thì người dùng không phải học lại
                          chỗ nhìn khi chuyển giữa Agent, Sale và cổng khách. -->
-                    <span class="agent-avatar-badge" id="agent-avatar-badge">
-                        <img src="/pastie-mark.png?v=2" alt="">
-                        <span id="agent-avatar-char" class="hide">P</span>
-                    </span>
+                    <span class="agent-avatar-badge" id="agent-avatar-badge"></span>
                     <span class="agent-identity-text">
                         <span class="agent-identity-label hide" id="agent-identity-label"></span>
                         <!-- Hai hàng: trên là tên Agent quản lý, dưới là tên Sale.
@@ -334,42 +331,42 @@
                             </select>
                         </div>
                         <div class="sdm-group sdm-tools-grid">
-                            <div class="sdm-label">Vận hành &amp; Đội ngũ</div>
-                            <button id="ticket-manage-btn" class="sdm-item hide" type="button" title="Ticket hỗ trợ toàn hệ thống">
+                            <div class="sdm-label" data-i18n="operationsGroup">Vận hành &amp; Đội ngũ</div>
+                            <button id="ticket-manage-btn" class="sdm-item hide" type="button" title="Ticket hỗ trợ toàn hệ thống" data-i18n-title="ticketTitle">
                                 <span class="sdm-icon" style="background:rgba(244,63,94,0.14);color:#f43f5e;"><i class="ri-coupon-3-line"></i></span>
-                                <div class="sdm-text"><span>Ticket hỗ trợ</span><small>Toàn hệ thống &amp; kỹ thuật</small></div>
+                                <div class="sdm-text"><span data-i18n="ticketTitle">Ticket hỗ trợ</span><small data-i18n="ticketSubtitle">Toàn hệ thống &amp; kỹ thuật</small></div>
                             </button>
                             <button id="superadmin-team-btn" class="sdm-item hide">
                                 <span class="sdm-icon" style="background:rgba(236,72,153,0.14);color:#ec4899;"><i class="ri-team-line"></i></span>
-                                <div class="sdm-text"><span>Quản lý đội ngũ</span><small>Nhân viên &amp; phân quyền</small></div>
+                                <div class="sdm-text"><span data-i18n="manageTeamTitle">Quản lý đội ngũ</span><small data-i18n="manageTeamSubtitle">Nhân viên &amp; phân quyền</small></div>
                             </button>
                             <button id="superadmin-monitor-btn" class="sdm-item hide">
                                 <span class="sdm-icon" style="background:rgba(14,165,233,0.14);color:#0ea5e9;"><i class="ri-pulse-line"></i></span>
-                                <div class="sdm-text"><span>Giám sát hệ thống</span><small>Lưu lượng &amp; real-time</small></div>
+                                <div class="sdm-text"><span data-i18n="monitorTitle">Giám sát hệ thống</span><small data-i18n="monitorSubtitle">Lưu lượng &amp; real-time</small></div>
                             </button>
                             <button id="superadmin-order-cart-btn" class="sdm-item hide">
                                 <span class="sdm-icon" style="background:rgba(245,158,11,0.14);color:#f59e0b;"><i class="ri-bill-line"></i></span>
-                                <div class="sdm-text"><span>Quản lý hóa đơn</span><small>Đơn hàng cuộc trò chuyện</small></div>
+                                <div class="sdm-text"><span data-i18n="orderCartTitle">Quản lý hóa đơn</span><small data-i18n="orderCartSubtitle">Đơn hàng cuộc trò chuyện</small></div>
                             </button>
                             <button id="superadmin-report-modal-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(168,85,247,0.14);color:#a855f7;"><i class="ri-file-chart-line"></i></span>
-                                <div class="sdm-text"><span>Báo cáo hiệu suất</span><small>Thống kê tư vấn &amp; Excel</small></div>
+                                <div class="sdm-text"><span data-i18n="reportTitle">Báo cáo hiệu suất</span><small data-i18n="reportSubtitle">Thống kê tư vấn &amp; Excel</small></div>
                             </button>
                             <button id="superadmin-otp-unlock-btn" class="sdm-item hide">
                                 <span class="sdm-icon" style="background:rgba(239,68,68,0.14);color:#ef4444;"><i class="ri-lock-unlock-line"></i></span>
-                                <div class="sdm-text"><span>Mở khóa chờ OTP</span><small>Bỏ qua chờ &amp; mở khóa</small></div>
+                                <div class="sdm-text"><span data-i18n="otpUnlockTitle">Mở khóa chờ OTP</span><small data-i18n="otpUnlockSubtitle">Bỏ qua chờ &amp; mở khóa</small></div>
                             </button>
                         </div>
                         <div class="sdm-divider"></div>
                         <div class="sdm-group sdm-tools-grid">
-                            <div class="sdm-label">Kênh &amp; Công cụ AI</div>
+                            <div class="sdm-label" data-i18n="aiToolsGroup">Kênh &amp; Công cụ AI</div>
                             <button id="knowledge-settings-btn" class="sdm-item hide">
                                 <span class="sdm-icon" style="background:rgba(99,102,241,0.15);color:#818cf8;"><i class="ri-brain-line"></i></span>
-                                <div class="sdm-text"><span>Knowledge Base</span><small>Huấn luyện &amp; quản lý tri thức</small></div>
+                                <div class="sdm-text"><span data-i18n="knowledgeTitle">Knowledge Base</span><small data-i18n="knowledgeSubtitle">Huấn luyện &amp; quản lý tri thức</small></div>
                             </button>
                             <button id="keyword-settings-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(239,68,68,0.12);color:#f87171;"><i class="ri-user-voice-line"></i></span>
-                                <div class="sdm-text"><span>Từ khóa chuyển Agent</span><small>Tự động kết nối nhân viên</small></div>
+                                <div class="sdm-text"><span data-i18n="keywordTitle">Từ khóa chuyển Agent</span><small data-i18n="keywordSubtitle">Tự động kết nối nhân viên</small></div>
                             </button>
                             <button id="channel-settings-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(37,211,102,0.15);color:#25D366;"><i class="ri-whatsapp-line"></i></span>
@@ -378,33 +375,33 @@
                         </div>
                         <div class="sdm-divider"></div>
                         <div class="sdm-group">
-                            <div class="sdm-label">Tài khoản &amp; Tiện ích</div>
+                            <div class="sdm-label" data-i18n="accountGroup">Tài khoản &amp; Tiện ích</div>
                             <button id="enable-push-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(16,185,129,.12);color:#10b981;"><i class="ri-notification-3-line"></i></span>
-                                <div class="sdm-text"><span id="enable-push-label">Bật thông báo</span><small id="enable-push-description">Nhận chat mới ngay cả khi đóng app</small></div>
+                                <div class="sdm-text"><span id="enable-push-label" data-i18n="pushTitle">Bật thông báo</span><small id="enable-push-description" data-i18n="pushSubtitle">Nhận chat mới ngay cả khi đóng app</small></div>
                             </button>
                             <button id="app-reload-super-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(59,130,246,.12);color:#3b82f6;"><i class="ri-refresh-line"></i></span>
-                                <div class="sdm-text"><span>Tải lại ứng dụng</span><small>Làm mới cache và phiên bản</small></div>
+                                <div class="sdm-text"><span data-i18n="appReloadBtn">Tải lại ứng dụng</span><small data-i18n="appReloadSubtitle">Làm mới cache và phiên bản</small></div>
                             </button>
                         </div>
                         <div class="sdm-divider"></div>
                         <div class="sdm-group">
-                            <div class="sdm-label">Xuất dữ liệu</div>
+                            <div class="sdm-label" data-i18n="exportGroup">Xuất dữ liệu</div>
                             <button id="export-csv-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(52,211,153,0.12);color:#34d399;"><i class="ri-file-excel-2-line"></i></span>
                                 <div class="sdm-text"><span data-i18n="exportCsv">Xuất CSV</span><small>Sales Script</small></div>
                             </button>
                             <button id="export-jsonl-btn" class="sdm-item">
                                 <span class="sdm-icon" style="background:rgba(139,92,246,0.12);color:#a78bfa;"><i class="ri-braces-line"></i></span>
-                                <div class="sdm-text"><span data-i18n="exportJsonl">Xuất JSONL</span><small>Dữ liệu huấn luyện</small></div>
+                                <div class="sdm-text"><span data-i18n="exportJsonl">Xuất JSONL</span><small data-i18n="trainingDataSubtitle">Dữ liệu huấn luyện</small></div>
                             </button>
                         </div>
                         <div class="sdm-divider"></div>
                         <div class="sdm-group">
                             <button id="superadmin-logout-btn" class="sdm-item sdm-item-logout" data-action="logout" type="button" title="Đăng xuất" data-i18n-title="logoutTitle">
                                 <span class="sdm-icon sdm-icon-logout" style="background:rgba(239,68,68,0.12);color:#ef4444;"><i class="ri-logout-box-r-line"></i></span>
-                                <div class="sdm-text"><span data-i18n="logoutTitle">Đăng xuất</span><small>Đăng xuất khỏi tài khoản</small></div>
+                                <div class="sdm-text"><span data-i18n="logoutTitle">Đăng xuất</span><small data-i18n="logoutSubtitle">Đăng xuất khỏi tài khoản</small></div>
                             </button>
                         </div>
                     </div>
@@ -2040,7 +2037,7 @@
             <header class="agent-guide-head">
                 <div class="agent-guide-title-box">
                     <span class="agent-guide-badge"><i class="ri-book-open-line"></i> Hướng Dẫn Sử Dụng</span>
-                    <h2>Sổ tay Hướng dẫn Sử dụng Role Agent (Chủ cơ sở)</h2>
+                    <h2 data-i18n="guideHeading">Sổ tay Hướng dẫn Sử dụng Role Agent (Chủ cơ sở)</h2>
                 </div>
                 <div class="agent-guide-head-actions">
                     <button type="button" class="icon-btn" id="agent-guide-close-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
@@ -2048,26 +2045,26 @@
             </header>
 
             <nav class="agent-guide-tabs">
-                <button type="button" class="guide-tab-btn is-active" data-guide-tab="video"><i class="ri-video-line"></i> <span>Video Mobile</span></button>
-                <button type="button" class="guide-tab-btn" data-guide-tab="groups"><i class="ri-team-line"></i> <span>Tạo Nhóm</span></button>
-                <button type="button" class="guide-tab-btn" data-guide-tab="sales"><i class="ri-user-shared-line"></i> <span>Thêm Sale &amp; Gán</span></button>
-                <button type="button" class="guide-tab-btn" data-guide-tab="qr"><i class="ri-qr-code-line"></i> <span>Bàn &amp; Mã QR</span></button>
-                <button type="button" class="guide-tab-btn" data-guide-tab="menu"><i class="ri-restaurant-line"></i> <span>Menu &amp; VAT</span></button>
-                <button type="button" class="guide-tab-btn" data-guide-tab="bills"><i class="ri-bill-line"></i> <span>Đa Hóa Đơn</span></button>
+                <button type="button" class="guide-tab-btn is-active" data-guide-tab="video"><i class="ri-video-line"></i> <span data-i18n="guideTabVideo">Video Mobile</span></button>
+                <button type="button" class="guide-tab-btn" data-guide-tab="groups"><i class="ri-team-line"></i> <span data-i18n="guideTabGroups">Tạo Nhóm</span></button>
+                <button type="button" class="guide-tab-btn" data-guide-tab="sales"><i class="ri-user-shared-line"></i> <span data-i18n="guideTabSales">Thêm Sale &amp; Gán</span></button>
+                <button type="button" class="guide-tab-btn" data-guide-tab="qr"><i class="ri-qr-code-line"></i> <span data-i18n="guideTabQr">Bàn &amp; Mã QR</span></button>
+                <button type="button" class="guide-tab-btn" data-guide-tab="menu"><i class="ri-restaurant-line"></i> <span data-i18n="guideTabMenu">Menu &amp; VAT</span></button>
+                <button type="button" class="guide-tab-btn" data-guide-tab="bills"><i class="ri-bill-line"></i> <span data-i18n="guideTabBills">Đa Hóa Đơn</span></button>
             </nav>
 
             <div class="agent-guide-body">
                 <!-- Tab 1: Video -->
                 <div class="guide-tab-pane" data-guide-pane="video">
                     <div class="guide-section-header">
-                        <h3>🎬 Video Hướng Dẫn Thao Tác Toàn Diện Trên Mobile (390x844)</h3>
-                        <p>Video ghi lại toàn bộ quy trình: Đăng nhập OTP 123456, Tạo nhóm sảnh, Thêm Sale ca trực, Gán Sale, Tạo bàn QR, Cài đặt menu VAT và Quản lý bill.</p>
+                        <h3 data-i18n="guideVideoTitle">🎬 Video Hướng Dẫn Thao Tác Toàn Diện Trên Mobile (390x844)</h3>
+                        <p data-i18n="guideVideoDesc">Video ghi lại toàn bộ quy trình: Đăng nhập OTP 123456, Tạo nhóm sảnh, Thêm Sale ca trực, Gán Sale, Tạo bàn QR, Cài đặt menu VAT và Quản lý bill.</p>
                     </div>
                     <div class="guide-media-center">
                         <img src="/agent_guide/agent_mobile_guide_video.webp" alt="Video Hướng Dẫn Agent Mobile" class="guide-media-preview" style="cursor: pointer;" title="Bấm để xem video kích thước đầy đủ">
                         <div style="margin-top: 12px;">
                             <a href="/agent_guide/agent_mobile_guide_video.webp" target="_blank" rel="noopener noreferrer" class="secondary-btn" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; text-decoration: none; padding: 7px 16px;">
-                                <i class="ri-external-link-line"></i> <span>Mở xem video toàn màn hình</span>
+                                <i class="ri-external-link-line"></i> <span data-i18n="guideOpenFullscreen">Mở xem video toàn màn hình</span>
                             </a>
                         </div>
                     </div>
@@ -2402,17 +2399,17 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="i18n-dictionary.js?v=r151"></script>
-    <script src="config.js?v=r151"></script>
-    <script src="core.js?v=r151"></script>
-    <script src="chat.js?v=r151"></script>
-    <script src="qrcode.bundle.js?v=r151"></script>
-    <script src="org-console.js?v=r151"></script>
-    <script src="project-admin.js?v=r151"></script>
-    <script src="menu-console.js?v=r151"></script>
-    <script src="order-console.js?v=r151"></script>
-    <script src="cart-console.js?v=r151"></script>
-    <script src="ticket-console.js?v=r151"></script>
-    <script src="admin.js?v=r151"></script>
+    <script src="i18n-dictionary.js?v=r152"></script>
+    <script src="config.js?v=r152"></script>
+    <script src="core.js?v=r152"></script>
+    <script src="chat.js?v=r152"></script>
+    <script src="qrcode.bundle.js?v=r152"></script>
+    <script src="org-console.js?v=r152"></script>
+    <script src="project-admin.js?v=r152"></script>
+    <script src="menu-console.js?v=r152"></script>
+    <script src="order-console.js?v=r152"></script>
+    <script src="cart-console.js?v=r152"></script>
+    <script src="ticket-console.js?v=r152"></script>
+    <script src="admin.js?v=r152"></script>
 </body>
 </html>

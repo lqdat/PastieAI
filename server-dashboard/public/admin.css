@@ -3145,8 +3145,8 @@ button:focus-visible {
   #chat-header-avatar > * { width: 36px !important; height: 36px !important; font-size: 15px !important; }
 
   /* Nút Tiếp nhận & Đóng chat: hiển thị dạng pill đẹp mắt có icon và chữ rõ ràng */
-  #claim-chat-btn,
-  #close-session-btn {
+  #claim-chat-btn:not(.hide),
+  #close-session-btn:not(.hide) {
     height: 34px !important;
     min-height: 34px !important;
     padding: 0 11px !important;
@@ -3174,7 +3174,7 @@ button:focus-visible {
   .assignee-label {
     display: none !important;
   }
-  #assignee-selector-container {
+  #assignee-selector-container:not(.hide) {
     display: inline-flex !important;
     align-items: center !important;
     gap: 4px !important;
@@ -3189,6 +3189,34 @@ button:focus-visible {
     background: #ffffff !important;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03) !important;
     flex-shrink: 0 !important;
+  }
+
+  /* Triệt để ẩn toàn bộ các nút tác vụ trên header chat khi ở vai trò Sale hoặc Agent */
+  body.role-sale #claim-chat-btn,
+  body.role-sale #close-session-btn,
+  body.role-sale #assignee-selector-container,
+  body.role-sale #chat-reload-btn,
+  body.role-sale #delete-session-btn,
+  body.role-agent #claim-chat-btn,
+  body.role-agent #close-session-btn,
+  body.role-agent #assignee-selector-container,
+  body.role-agent #chat-reload-btn,
+  body.role-agent #delete-session-btn,
+  body.role-staff #claim-chat-btn,
+  body.role-staff #close-session-btn,
+  body.role-staff #assignee-selector-container,
+  body.role-staff #chat-reload-btn,
+  body.role-staff #delete-session-btn {
+    display: none !important;
+  }
+
+  #claim-chat-btn.hide,
+  #close-session-btn.hide,
+  #assignee-selector-container.hide,
+  #chat-reload-btn.hide,
+  #delete-session-btn.hide,
+  #handover-session-btn.hide {
+    display: none !important;
   }
   #assignee-selector-container i {
     font-size: 14px !important;
@@ -6294,39 +6322,35 @@ button:focus-visible {
 }
 .agent-avatar-badge {
     position: relative;
-    flex: 0 0 auto;
-    display: grid; place-items: center;
-    /* Tròn hẳn, không phải vuông bo góc: đây là khuôn mặt người, và tròn cũng
-       khớp với ô avatar bên cổng khách. */
-    width: 44px; height: 44px; border-radius: 50%;
-    background: linear-gradient(140deg, #f472b6, #c026a4);
-    color: #fff; font-size: 19px; font-weight: 800; line-height: 1;
-    box-shadow: 0 6px 16px rgba(192, 38, 164, .22);
-}
-/* Chấm "đang trực" ở góc, giống cổng khách. */
-.agent-avatar-badge::after {
-    content: ""; position: absolute; right: -2px; bottom: -2px;
-    width: 12px; height: 12px; border-radius: 50%;
-    background: #10b981; box-shadow: 0 0 0 2px var(--panel-bg, #fff);
-    z-index: 2;
-}
-.agent-avatar-badge {
-    /* Không còn bấm được để đổi ảnh nên cũng không còn con trỏ bàn tay: con trỏ
-       đó là một lời hứa "bấm vào có chuyện xảy ra". */
+    flex: 0 0 44px !important;
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    border-radius: 50% !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    border: 2px solid rgba(255, 255, 255, 0.95) !important;
+    box-shadow: 0 4px 14px rgba(171, 22, 111, 0.18) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
     cursor: default;
-    overflow: hidden;
 }
 
-/* ẢNH PHẢI PHỦ KÍN KHUNG TRÒN.
-   Không có object-fit: cover thì ảnh dọc/ngang bị bóp méo hoặc chừa viền trắng
-   hai bên — đúng cảnh "ảnh không vừa ô" khi Sale/Agent tự tải ảnh lên. */
+/* ẢNH PHẢI PHỦ KÍN KHUNG TRÒN. */
 .agent-avatar-badge img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center;
-    border-radius: inherit;
-    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    object-position: center !important;
+    border-radius: 50% !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }
 .agent-avatar-edit-icon {
     position: absolute;

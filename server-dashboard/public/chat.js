@@ -3099,6 +3099,18 @@ function translateSystemMessage(rawText, lang) {
         return { en: 'Customer has left the table.', zh: '客户已离桌。', ko: '고객이 퇴장했습니다.', ru: 'Клиент покинул столик.' }[lang] || text;
     }
 
+    // 6. Yêu cầu gọi món / phục vụ
+    if (text.includes('yêu cầu gọi món') || text.includes('Yêu cầu gọi món')) {
+        const tService = { en: 'requested service/order', zh: '请求点单/服务', ko: '주문/서비스 요청', ru: 'запросил обслуживание' }[lang] || 'requested service/order';
+        return text.replace(/yêu cầu gọi món/gi, tService);
+    }
+
+    // 7. Chuyển cuộc trò chuyện
+    if (text.includes('đã chuyển cuộc trò chuyện') || text.includes('chuyển cuộc trò chuyện')) {
+        const tTransfer = { en: 'transferred the conversation', zh: '转接了会话', ko: '대화를 전달했습니다', ru: 'перевел диалог' }[lang] || 'transferred the conversation';
+        return text.replace(/đã chuyển cuộc trò chuyện/g, tTransfer).replace(/chuyển cuộc trò chuyện/g, tTransfer);
+    }
+
     return text;
 }
 
