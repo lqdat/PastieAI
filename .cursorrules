@@ -1,0 +1,16 @@
+# CURSOR RULES FOR PASTIECHAT MULTI-TENANT
+
+Before doing any task, DO NOT scan or review the whole codebase.
+Refer directly to:
+👉 docs/CODEBASE.md
+
+Quick reference:
+- Backend Core & Superadmin Console: `server-dashboard/` in `pastieBE_AI`
+- Staff Console (Agent & Sale): `pastie-dashboard/` (Vanilla JS SPA) - INDEPENDENT, NO SYNC REQUIRED
+- Guest Dine-in Portal: `qr-chat-portal/` (Next.js 15, React 19, TypeScript, Tailwind)
+
+Strict rules:
+1. Preserve Multiple Bills mechanism (Never overwrite existing bills on re-orders).
+2. Maintain async error wrapper in `server.js`.
+3. Independent roles: `pastieBE_AI` is Superadmin, `pastie-dashboard` is Agent/Sale (Do not mirror/sync).
+4. Test accounts OTP is always `123456`.
