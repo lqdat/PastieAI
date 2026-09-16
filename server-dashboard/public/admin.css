@@ -2169,12 +2169,24 @@ button:focus-visible {
     white-space: nowrap;
     box-shadow: 0 2px 8px rgba(239, 43, 157, 0.08);
 }
+.settings-trigger-btn > i:first-child {
+    font-size: 17px;
+    color: var(--accent-color, #ef2b9d);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
+}
 .settings-trigger-btn:hover {
     background: linear-gradient(135deg, #ffffff, #ffeaf6);
     border-color: rgba(239, 43, 157, 0.38);
     box-shadow: 0 4px 14px rgba(239, 43, 157, 0.16);
     transform: translateY(-1px);
     color: var(--accent-color);
+}
+.settings-trigger-btn:hover > i:first-child {
+    transform: scale(1.12);
+    color: #db2777;
 }
 .settings-trigger-btn .chevron-icon {
     font-size: 16px;
@@ -2530,36 +2542,6 @@ button:focus-visible {
   .settings-trigger-btn span, .settings-trigger-btn .chevron-icon, .lang-selector, .admin-profile-badge { display: none !important; }
 
   /* Nút Ticket trên mobile (Chuẩn touch 40x40px, icon sắc nét) */
-  .dashboard-header:not(.sale-header) #ticket-manage-btn {
-    width: 40px !important;
-    height: 40px !important;
-    min-width: 40px !important;
-    min-height: 40px !important;
-    padding: 0 !important;
-    border-radius: 12px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    border: 1px solid rgba(239, 43, 157, 0.22) !important;
-    background: #ffffff !important;
-    color: var(--accent-color, #ef2b9d) !important;
-    box-shadow: 0 2px 8px rgba(110, 43, 83, 0.08) !important;
-    transition: all 0.15s ease !important;
-    cursor: pointer !important;
-  }
-  .dashboard-header:not(.sale-header) #ticket-manage-btn:active {
-    transform: scale(0.94) !important;
-    background: #fdf2f8 !important;
-  }
-  .dashboard-header:not(.sale-header) #ticket-manage-btn i {
-    font-size: 19px !important;
-    line-height: 1 !important;
-    pointer-events: none !important;
-  }
-  .dashboard-header:not(.sale-header) #ticket-manage-btn span {
-    display: none !important;
-  }
-
   /* Nút Quản trị trigger (Nổi bật rực rỡ với gradient) */
   .dashboard-header:not(.sale-header) .settings-trigger-btn {
     width: 40px !important;
@@ -2940,94 +2922,120 @@ button:focus-visible {
   .detail-select { min-height: 48px; border-color: rgba(239,43,157,.2); background: #fff8fc; font-size: 15px; }
 
   .chat-header {
-    min-height: 60px;
-    padding: 8px 12px;
-    flex-wrap: nowrap;
-    gap: 8px;
-    background: #ffffff;
-    border-bottom: 1px solid var(--panel-border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    min-height: auto !important;
+    padding: 8px 12px 8px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 6px !important;
+    background: #ffffff !important;
+    border-bottom: 1px solid var(--panel-border) !important;
+  }
+  .dashboard-body.chat-open .chat-main > .chat-header {
+    flex: 0 0 auto !important;
+    padding: 8px 12px 8px !important;
   }
   .chat-header-user-info {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    flex: 1 1 auto;
-    overflow: hidden;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    flex: 1 1 auto !important;
+    overflow: hidden !important;
   }
   .chat-header-meta {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 0;
-    flex: 1;
-    overflow: hidden;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    overflow: hidden !important;
   }
   .chat-header-title-line {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: nowrap;
-    min-width: 0;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+    min-width: 0 !important;
   }
   .chat-header-title-line h3 {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-    flex-shrink: 1;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: var(--text-primary) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    min-width: 0 !important;
+    flex-shrink: 1 !important;
   }
   .chat-header-badge.group-badge {
-    font-size: 10.5px;
-    padding: 1px 6px;
-    border-radius: 8px;
-    flex-shrink: 0;
-    max-width: 130px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 10.5px !important;
+    padding: 1px 6px !important;
+    border-radius: 8px !important;
+    flex-shrink: 0 !important;
+    max-width: 130px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  .chat-header-badge.project-badge {
+    font-size: 10.5px !important;
+    padding: 1px 6px !important;
+    border-radius: 8px !important;
+    flex-shrink: 0 !important;
+    max-width: 110px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
   }
   .chat-header-sub-line {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: nowrap;
-    min-width: 0;
-    overflow: hidden;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
   }
   .chat-header-sub-line p {
-    font-size: 11.5px;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-    flex-shrink: 1;
+    font-size: 11.5px !important;
+    color: var(--text-secondary) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    min-width: 0 !important;
+    flex-shrink: 1 !important;
   }
   .chat-header-qr-info {
-    font-size: 10.5px;
-    padding: 1px 5px;
-    flex-shrink: 0;
+    font-size: 10.5px !important;
+    padding: 1px 5px !important;
+    flex-shrink: 0 !important;
   }
+
+  /* Row 2: Thanh nút tác vụ (Chat Header Actions Bar) */
   .chat-header-actions {
-    position: static;
-    width: auto;
-    min-height: auto;
-    justify-content: flex-end;
-    flex-wrap: nowrap;
+    position: static !important;
+    width: 100% !important;
+    min-height: 36px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    flex-wrap: nowrap !important;
     gap: 6px !important;
-    flex-shrink: 0;
-    overflow: visible;
+    padding-top: 6px !important;
+    border-top: 1px dashed rgba(239, 43, 157, 0.14) !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    flex-shrink: 0 !important;
   }
+  .chat-header-actions.hide {
+    display: none !important;
+  }
+  .chat-header-actions::-webkit-scrollbar {
+    display: none !important;
+  }
+
   .chat-back-btn,
-  .chat-details-btn,
-  #mobile-back-btn,
-  #details-toggle-btn {
+  #mobile-back-btn {
     width: 36px !important;
     height: 36px !important;
     min-width: 36px !important;
@@ -3049,39 +3057,113 @@ button:focus-visible {
     font-size: 16px !important;
   }
   .chat-back-btn:active,
+  #mobile-back-btn:active {
+    background: #fff0f8 !important;
+    border-color: var(--accent-color) !important;
+    transform: scale(0.94);
+  }
+
+  .chat-details-btn,
+  #details-toggle-btn,
+  #delete-session-btn {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+    max-width: 34px !important;
+    max-height: 34px !important;
+    aspect-ratio: 1 / 1 !important;
+    box-sizing: border-box !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: #ffffff !important;
+    border: 1px solid rgba(239, 43, 157, 0.22) !important;
+    color: var(--text-primary) !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04) !important;
+    flex: 0 0 34px !important;
+    font-size: 15px !important;
+  }
   .chat-details-btn:active,
-  #mobile-back-btn:active,
   #details-toggle-btn:active {
     background: #fff0f8 !important;
     border-color: var(--accent-color) !important;
     transform: scale(0.94);
   }
+  #delete-session-btn {
+    border-color: rgba(239, 68, 68, 0.25) !important;
+    color: #ef4444 !important;
+    background: #fff5f5 !important;
+  }
+  #delete-session-btn:active {
+    background: #fee2e2 !important;
+    transform: scale(0.94);
+  }
+
   #chat-header-avatar > * { width: 36px !important; height: 36px !important; font-size: 15px !important; }
-  /* Ẩn CHỮ trên nút (icon-only) cho gọn, và thu gọn ô Phân công để không đè vào tiêu đề chat */
-  #close-session-btn span, #claim-chat-btn span, .assignee-label { display: none !important; }
+
+  /* Nút Tiếp nhận & Đóng chat: hiển thị dạng pill đẹp mắt có icon và chữ rõ ràng */
+  #claim-chat-btn,
+  #close-session-btn {
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 11px !important;
+    border-radius: 999px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
+  }
+  #claim-chat-btn span,
+  #close-session-btn span {
+    display: inline !important;
+    font-size: 12px !important;
+  }
+  #claim-chat-btn i,
+  #close-session-btn i {
+    font-size: 14px !important;
+  }
+
+  /* Ô phân công nhân viên phụ trách */
+  .assignee-label {
+    display: none !important;
+  }
   #assignee-selector-container {
     display: inline-flex !important;
     align-items: center !important;
+    gap: 4px !important;
     flex: 0 1 auto !important;
     min-width: 0 !important;
-    max-width: 116px !important;
-    height: 36px !important;
+    max-width: 126px !important;
+    height: 34px !important;
     padding: 0 8px !important;
-    border-radius: 10px !important;
+    border-radius: 999px !important;
     box-sizing: border-box !important;
+    border: 1px solid rgba(239, 43, 157, 0.22) !important;
+    background: #ffffff !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03) !important;
+    flex-shrink: 0 !important;
+  }
+  #assignee-selector-container i {
+    font-size: 14px !important;
+    color: var(--accent-color, #ef2b9d) !important;
+    flex-shrink: 0 !important;
   }
   #assignee-selector-container select {
-    max-width: 78px !important;
+    max-width: 90px !important;
     font-size: 12px !important;
-  }
-  #close-session-btn, #claim-chat-btn, #delete-session-btn {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    padding: 0;
-    justify-content: center;
-    flex: 0 0 36px;
-    border-radius: 50%;
+    font-weight: 600 !important;
+    border: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+    outline: none !important;
+    color: var(--text-primary) !important;
   }
   .chat-messages {
     min-height: 0;

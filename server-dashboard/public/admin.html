@@ -254,13 +254,6 @@
                 <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, Nhóm tiếp nhận, Mã QR và Sản phẩm">
                     <i class="ri-organization-chart"></i><span>Quản trị</span>
                 </button>
-                <!-- Ticket có MÀN RIÊNG, không gộp vào Quản trị: đây là việc theo
-                     dõi hằng ngày của Admin tổng, gộp chung thì mỗi lần xem phải
-                     mở Quản trị rồi tìm tab. ticket-console.js tự gỡ lớp 'hide'
-                     khi người đăng nhập là Admin tổng. -->
-                <button id="ticket-manage-btn" class="header-quick-btn hide" type="button" title="Ticket hỗ trợ toàn hệ thống">
-                    <i class="ri-coupon-3-line"></i><span>Ticket</span>
-                </button>
                 <button id="tech-logout-btn" class="header-quick-btn hide" type="button" title="Đăng xuất" data-action="logout">
                     <i class="ri-logout-box-r-line"></i><span>Đăng xuất</span>
                 </button>
@@ -304,7 +297,7 @@
                 <!-- Menu Quản Trị Duy Nhất cho Superadmin & Project Admin (Gom gọn cả PC và Mobile) -->
                 <div class="settings-dropdown-wrapper" id="settings-dropdown-wrapper">
                     <button class="settings-trigger-btn" id="settings-trigger-btn" title="Trung tâm quản trị">
-                        <i class="ri-apps-2-line"></i>
+                        <i class="ri-apps-fill"></i>
                         <span>Quản trị</span>
                         <i class="ri-arrow-down-s-line chevron-icon"></i>
                     </button>
@@ -315,6 +308,10 @@
                         </div>
                         <div class="sdm-group sdm-tools-grid">
                             <div class="sdm-label">Vận hành &amp; Đội ngũ</div>
+                            <button id="ticket-manage-btn" class="sdm-item hide" type="button" title="Ticket hỗ trợ toàn hệ thống">
+                                <span class="sdm-icon" style="background:rgba(244,63,94,0.14);color:#f43f5e;"><i class="ri-coupon-3-line"></i></span>
+                                <div class="sdm-text"><span>Ticket hỗ trợ</span><small>Toàn hệ thống &amp; kỹ thuật</small></div>
+                            </button>
                             <button id="superadmin-team-btn" class="sdm-item hide">
                                 <span class="sdm-icon" style="background:rgba(236,72,153,0.14);color:#ec4899;"><i class="ri-team-line"></i></span>
                                 <div class="sdm-text"><span>Quản lý đội ngũ</span><small>Nhân viên &amp; phân quyền</small></div>
@@ -720,10 +717,47 @@
                     <div class="addbox hide" data-addbox="menu-item">
                     <form class="menu-form" id="menu-item-form">
                         <div class="menu-form-grid">
-                            <label class="menu-field menu-field-name">
-                                <span>Tên sản phẩm <b>*</b></span>
-                                <input type="text" id="menu-item-name" required placeholder="Nhập tên sản phẩm..." maxlength="255" autocomplete="off">
-                            </label>
+                            <div class="dual-name-group menu-field-name-group" id="menu-item-name-group" style="grid-column: span 12;">
+                                <div class="dual-name-header">
+                                    <span class="dual-name-title"><i class="ri-restaurant-line"></i> Tên sản phẩm / Món ăn <b>*</b></span>
+                                    <button type="button" class="btn-swap-order" id="menu-item-swap-btn" title="Bấm để đổi thứ tự trước / sau giữa Tên riêng của sản phẩm và Tên Còn lại">
+                                        <i class="ri-arrow-up-down-line"></i> <span>Đổi vị trí</span>
+                                        <span class="swap-badge" id="menu-item-order-badge">Tên Còn lại trước</span>
+                                    </button>
+                                </div>
+                                <div class="dual-name-inputs order-common-first" id="menu-item-name-inputs">
+                                    <div class="dual-field-row field-row-proper">
+                                        <label class="dual-field-label">
+                                            <span>Trường 01: Tên riêng của sản phẩm</span>
+                                            <span class="dual-field-hint">(Không tự động dịch)</span>
+                                        </label>
+                                        <input type="text" id="menu-item-proper-name" placeholder="Ví dụ: Wagyu A5, Pastie Special, Coca-Cola, Matcha Uji..." autocomplete="off">
+                                        <small class="field-help-text"><i class="ri-shield-check-line"></i> Tên riêng là tên không tự động dịch sang bất cứ ngôn ngữ nào.</small>
+                                    </div>
+                                    <div class="dual-field-row field-row-common">
+                                        <label class="dual-field-label">
+                                            <span>Trường 02: Tên Còn lại <b style="color:#ef4444;">*</b></span>
+                                            <span class="dual-field-hint">(Tự động dịch sang ngôn ngữ khác)</span>
+                                        </label>
+                                        <input type="text" id="menu-item-common-name" placeholder="Ví dụ: Bò bít tết, Trà sữa trân châu, Cà phê muối, Pizza hải sản..." autocomplete="off">
+                                        <small class="field-help-text"><i class="ri-translate-2"></i> Tên còn lại của đơn vị, được tự động dịch sang các ngôn ngữ khác.</small>
+                                    </div>
+                                </div>
+                                <input type="hidden" id="menu-item-name" required maxlength="255">
+                                <input type="hidden" id="menu-item-name-order" value="common_first">
+                                <div class="dual-name-preview-box" id="menu-item-preview-box">
+                                    <div class="preview-title-row">
+                                        <span><i class="ri-eye-line"></i> Xem trước tên sản phẩm (Preview)</span>
+                                        <span id="menu-item-preview-order-tag">Thứ tự: Tên Còn lại + Tên Riêng</span>
+                                    </div>
+                                    <div class="preview-full-name" id="menu-item-name-preview">Chưa nhập tên sản phẩm</div>
+                                    <div class="preview-chips-row">
+                                        <span class="preview-chip preview-chip-proper"><i class="ri-lock-line"></i> Tên riêng: Không dịch</span>
+                                        <span class="preview-chip preview-chip-common"><i class="ri-global-line"></i> Tên còn lại: Dịch tự động</span>
+                                    </div>
+                                    <div class="preview-bilingual-hint" id="menu-item-bilingual-hint"></div>
+                                </div>
+                            </div>
 
                             <label class="menu-field menu-field-price">
                                 <span>Giá bán (đã gồm VAT) <b>*</b></span>
@@ -1518,18 +1552,47 @@
                 <button id="admin-create-close-top-btn" type="button" class="icon-btn" aria-label="Đóng"><i class="ri-close-line"></i></button>
             </div>
             <form id="admin-create-user-form" style="display: flex; flex-direction: column; gap: 13px; max-height: min(70vh, 600px); overflow-y: auto; padding-right: 4px;">
-                <div class="form-group" id="admin-create-venue-group" style="margin: 0;">
-                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Loại hình cơ sở</label>
-                    <input id="admin-create-venue-type" list="admin-create-venue-type-list"
-                           style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" autocomplete="off"
-                           placeholder="Nhập loại hình cơ sở hoặc để trống...">
-                    <datalist id="admin-create-venue-type-list"></datalist>
-                </div>
-
-                <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Họ và tên *</label>
-                    <input type="text" id="admin-create-fullname" placeholder="Nhập họ và tên..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
-                    <small id="admin-create-name-preview" style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;"></small>
+                <div class="dual-name-group" id="admin-create-name-group">
+                    <div class="dual-name-header">
+                        <span class="dual-name-title"><i class="ri-user-smile-line"></i> Tên định danh Agent / Cơ sở</span>
+                        <button type="button" class="btn-swap-order" id="admin-create-swap-btn" title="Bấm để đổi thứ tự trước / sau giữa Tên Riêng và Tên Còn lại">
+                            <i class="ri-arrow-up-down-line"></i> <span>Đổi vị trí</span>
+                            <span class="swap-badge" id="admin-create-order-badge">Tên Còn lại trước</span>
+                        </button>
+                    </div>
+                    <div class="dual-name-inputs order-common-first" id="admin-create-name-inputs">
+                        <div class="dual-field-row field-row-proper">
+                            <label class="dual-field-label">
+                                <span>Trường 01: Tên Riêng <b style="color:#ef4444;">*</b></span>
+                                <span class="dual-field-hint">(Không tự động dịch)</span>
+                            </label>
+                            <input type="text" id="admin-create-proper-name" placeholder="Ví dụ: Pastie, Đan Trinh, An Nam..." autocomplete="off">
+                            <small class="field-help-text"><i class="ri-shield-check-line"></i> Tên riêng là tên không tự động dịch sang bất cứ ngôn ngữ nào.</small>
+                        </div>
+                        <div class="dual-field-row field-row-common">
+                            <label class="dual-field-label">
+                                <span>Trường 02: Tên Còn lại</span>
+                                <span class="dual-field-hint">(Tự động dịch sang ngôn ngữ khác)</span>
+                            </label>
+                            <input type="text" id="admin-create-venue-type" list="admin-create-venue-type-list" placeholder="Ví dụ: Nhà hàng, Khách sạn, Hộ kinh doanh, Quán cà phê..." autocomplete="off">
+                            <datalist id="admin-create-venue-type-list"></datalist>
+                            <small class="field-help-text"><i class="ri-translate-2"></i> Tên còn lại của đơn vị, được tự động dịch sang các ngôn ngữ khác.</small>
+                        </div>
+                    </div>
+                    <input type="hidden" id="admin-create-fullname" required>
+                    <input type="hidden" id="admin-create-name-order" value="common_first">
+                    <div class="dual-name-preview-box" id="admin-create-preview-box">
+                        <div class="preview-title-row">
+                            <span><i class="ri-eye-line"></i> Xem trước hiển thị (Preview)</span>
+                            <span id="admin-create-preview-order-tag">Thứ tự: Tên Còn lại + Tên Riêng</span>
+                        </div>
+                        <div class="preview-full-name" id="admin-create-name-preview">Chưa nhập tên</div>
+                        <div class="preview-chips-row">
+                            <span class="preview-chip preview-chip-proper"><i class="ri-lock-line"></i> Tên riêng: Giữ nguyên</span>
+                            <span class="preview-chip preview-chip-common"><i class="ri-global-line"></i> Tên còn lại: Dịch tự động</span>
+                        </div>
+                        <div class="preview-bilingual-hint" id="admin-create-bilingual-hint"></div>
+                    </div>
                 </div>
 
                 <div class="form-group" style="margin: 0;">
@@ -1622,18 +1685,47 @@
             <form id="admin-edit-user-form" style="display: flex; flex-direction: column; gap: 13px; max-height: min(70vh, 600px); overflow-y: auto; padding-right: 4px;">
                 <input type="hidden" id="admin-edit-id">
 
-                <div class="form-group" id="admin-edit-venue-group" style="margin: 0;">
-                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Loại hình cơ sở</label>
-                    <input id="admin-edit-venue-type" list="admin-edit-venue-type-list"
-                           style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" autocomplete="off"
-                           placeholder="Nhập loại hình cơ sở hoặc để trống...">
-                    <datalist id="admin-edit-venue-type-list"></datalist>
-                </div>
-
-                <div class="form-group" style="margin: 0;">
-                    <label style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px; display: block;">Họ và tên *</label>
-                    <input type="text" id="admin-edit-fullname" placeholder="Nhập họ và tên..." style="width:100%; box-sizing:border-box; padding:9px 12px; border-radius:8px; font-family:inherit; font-size:12.5px;" required>
-                    <small id="admin-edit-name-preview" style="display:block; margin-top:3px; color:var(--text-muted); font-size:10.5px;"></small>
+                <div class="dual-name-group" id="admin-edit-name-group">
+                    <div class="dual-name-header">
+                        <span class="dual-name-title"><i class="ri-user-smile-line"></i> Tên định danh Agent / Cơ sở</span>
+                        <button type="button" class="btn-swap-order" id="admin-edit-swap-btn" title="Bấm để đổi thứ tự trước / sau giữa Tên Riêng và Tên Còn lại">
+                            <i class="ri-arrow-up-down-line"></i> <span>Đổi vị trí</span>
+                            <span class="swap-badge" id="admin-edit-order-badge">Tên Còn lại trước</span>
+                        </button>
+                    </div>
+                    <div class="dual-name-inputs order-common-first" id="admin-edit-name-inputs">
+                        <div class="dual-field-row field-row-proper">
+                            <label class="dual-field-label">
+                                <span>Trường 01: Tên Riêng <b style="color:#ef4444;">*</b></span>
+                                <span class="dual-field-hint">(Không tự động dịch)</span>
+                            </label>
+                            <input type="text" id="admin-edit-proper-name" placeholder="Ví dụ: Pastie, Đan Trinh, An Nam..." autocomplete="off">
+                            <small class="field-help-text"><i class="ri-shield-check-line"></i> Tên riêng là tên không tự động dịch sang bất cứ ngôn ngữ nào.</small>
+                        </div>
+                        <div class="dual-field-row field-row-common">
+                            <label class="dual-field-label">
+                                <span>Trường 02: Tên Còn lại</span>
+                                <span class="dual-field-hint">(Tự động dịch sang ngôn ngữ khác)</span>
+                            </label>
+                            <input type="text" id="admin-edit-venue-type" list="admin-edit-venue-type-list" placeholder="Ví dụ: Nhà hàng, Khách sạn, Hộ kinh doanh, Quán cà phê..." autocomplete="off">
+                            <datalist id="admin-edit-venue-type-list"></datalist>
+                            <small class="field-help-text"><i class="ri-translate-2"></i> Tên còn lại của đơn vị, được tự động dịch sang các ngôn ngữ khác.</small>
+                        </div>
+                    </div>
+                    <input type="hidden" id="admin-edit-fullname" required>
+                    <input type="hidden" id="admin-edit-name-order" value="common_first">
+                    <div class="dual-name-preview-box" id="admin-edit-preview-box">
+                        <div class="preview-title-row">
+                            <span><i class="ri-eye-line"></i> Xem trước hiển thị (Preview)</span>
+                            <span id="admin-edit-preview-order-tag">Thứ tự: Tên Còn lại + Tên Riêng</span>
+                        </div>
+                        <div class="preview-full-name" id="admin-edit-name-preview">Chưa nhập tên</div>
+                        <div class="preview-chips-row">
+                            <span class="preview-chip preview-chip-proper"><i class="ri-lock-line"></i> Tên riêng: Giữ nguyên</span>
+                            <span class="preview-chip preview-chip-common"><i class="ri-global-line"></i> Tên còn lại: Dịch tự động</span>
+                        </div>
+                        <div class="preview-bilingual-hint" id="admin-edit-bilingual-hint"></div>
+                    </div>
                 </div>
 
                 <div class="form-group" style="margin: 0;">
