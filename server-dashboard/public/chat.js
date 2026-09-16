@@ -651,15 +651,12 @@ async function applyTranslations(lang) {
         }
     });
 
-    // 4. Update the language select dropdown value
-    const select = document.getElementById('admin-lang-select');
-    if (select && select.value !== lang) {
-        select.value = lang;
-    }
-
-    // 5. Update language pills state
-    document.querySelectorAll('.lang-pill-btn').forEach(btn => {
-        btn.classList.toggle('is-active', btn.getAttribute('data-lang') === lang);
+    // 4. Update all language select dropdown values
+    ['admin-lang-select', 'agent-menu-lang-select', 'super-menu-lang-select'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (sel && sel.value !== lang) {
+            sel.value = lang;
+        }
     });
 
     // 6. Phát sự kiện toàn cục để các console khác (Cart, Menu, Org) đồng bộ cập nhật
@@ -2096,41 +2093,57 @@ function applyChatPermissionUI(session) {
 
     const isQrProject = isRestrictedConsole() || isQrConciergeProject(session?.project_id);
 
-    // 1. Nút "Tiếp nhận": Bỏ hoàn toàn ở Sale, Agent và toàn bộ dự án QR Chat
+    // 1. Nút "Tiếp nhận": Ẩn ở Sale và Agent, CHỈ hiện cho Superadmin khi chưa có ai tiếp nhận
     if (claimChatBtn) {
-        if (isSale || isAgent || isQrProject || isClosed) {
-            claimChatBtn.classList.add('hide');
-        } else if (isSuper) {
+        if (isSuper && !isClosed && !session.claimed_by_admin_id) {
             claimChatBtn.classList.remove('hide');
-            if (isClaimedByMe) {
-                claimChatBtn.disabled = true;
-                claimChatBtn.innerHTML = '<i class="ri-checkbox-circle-fill"></i> <span>Đã tiếp nhận</span>';
-            } else {
-                claimChatBtn.disabled = false;
-                claimChatBtn.innerHTML = '<i class="ri-hand-heart-line"></i> <span>Tiếp nhận</span>';
-            }
+            claimChatBtn.disabled = false;
+            claimChatBtn.innerHTML = '<i class="ri-hand-heart-line"></i> <span data-i18n="claimChat">' + (dict.claimChat || 'Tiếp nhận') + '</span>';
         } else {
             claimChatBtn.classList.add('hide');
         }
     }
 
-    // 2. Nút "Đóng cuộc chat": Bỏ hoàn toàn ở Sale và Agent
+    // 2. Bộ chọn "Phân công": Ẩn ở Sale và Agent, CHỈ hiện cho Superadmin
+    const assigneeContainer = document.getElementById('assignee-selector-container');
+    if (assigneeContainer) {
+        assigneeContainer.classList.toggle('hide', !isSuper || isClosed);
+    }
+
+    // 3. Nút "Đóng cuộc chat": Ẩn ở Sale và Agent, CHỈ hiện cho Superadmin
     if (closeBtn) {
-        if (isSale || isAgent || isClosed) {
-            closeBtn.classList.add('hide');
-        } else if (isSuper) {
+        if (isSuper && !isClosed) {
             closeBtn.classList.remove('hide');
         } else {
             closeBtn.classList.add('hide');
         }
     }
 
-    // 3. Nút Bàn giao ca: chỉ hiện khi cuộc chat đang active và là Sale hoặc Superadmin
-    if (handoverBtn) {
-        handoverBtn.classList.toggle('hide', isClosed || isAgent || (!isClaimedByMe && !isSuper && !isSale));
+    // 4. Nút "Xóa chat": Ẩn ở Sale và Agent, CHỈ hiện cho Superadmin
+    const deleteBtn = document.getElementById('delete-session-btn');
+    if (deleteBtn) {
+        deleteBtn.classList.toggle('hide', !isSuper);
     }
 
-    // 4. Banner Draining Grace Mode: hiện khi phiên chat đang active và tài khoản ở chế độ gia hạn hoàn tất ca
+    // 5. Nút "Tải lại tin nhắn": Ẩn ở Sale và Agent, CHỈ hiện cho Superadmin
+    const reloadBtn = document.getElementById('chat-reload-btn');
+    if (reloadBtn) {
+        reloadBtn.classList.toggle('hide', !isSuper);
+    }
+
+    // 6. Nút "Bàn giao ca": CHỈ hiện ở Sale khi HẾT CA (Draining Grace Mode)
+    if (handoverBtn) {
+        const showHandover = isSale && !isClosed && (window.CURRENT_SHIFT_DRAINING === true);
+        handoverBtn.classList.toggle('hide', !showHandover);
+    }
+
+    // 7. Nút "Thông tin chi tiết": Luôn hiện cho cả Sale, Agent và Superadmin
+    const detailsBtn = document.getElementById('details-toggle-btn');
+    if (detailsBtn) {
+        detailsBtn.classList.remove('hide');
+    }
+
+    // 8. Banner Draining Grace Mode: hiện khi phiên chat đang active và tài khoản ở chế độ gia hạn hoàn tất ca
     if (drainingBanner) {
         const showDraining = !isClosed && isClaimedByMe && (window.CURRENT_SHIFT_DRAINING === true);
         drainingBanner.classList.toggle('hide', !showDraining);
@@ -2692,12 +2705,15 @@ function renderAdminOrderRevisions() {
                     ${item.note ? `<small>${escapeHtml(String(item.note))}</small>` : ''}</span>
                 <span>${new Intl.NumberFormat('vi-VN').format(Number(item.lineTotal || 0))} ₫</span>
             </div>`).join('');
+        const dict = (window.TRANSLATIONS && window.TRANSLATIONS[currentLang]) || (window.TRANSLATIONS && window.TRANSLATIONS.vi) || {};
+        const kickerText = (dict.customerSentOrder || 'Đơn khách đã gửi') + ` (${dict.versionLabel || 'bản'} ${Number(revision.version || 1)})`;
+        const revisedText = dict.customerRevisedOrder || 'Khách đã sửa lại';
         const wrapper = document.createElement('div');
         wrapper.className = 'admin-invoice-block admin-order-revision';
         wrapper.innerHTML = `
             <div class="admin-invoice-head">
-                <span class="admin-invoice-kicker"><i class="ri-file-list-3-line"></i> Đơn khách đã gửi (bản ${Number(revision.version || 1)})</span>
-                <span class="admin-invoice-status is-waiting">Khách đã sửa lại</span>
+                <span class="admin-invoice-kicker"><i class="ri-file-list-3-line"></i> ${escapeHtml(kickerText)}</span>
+                <span class="admin-invoice-status is-waiting">${escapeHtml(revisedText)}</span>
             </div>
             <div class="admin-order-rev-body">${rows}</div>
             <div class="admin-invoice-meta">
@@ -2728,7 +2744,14 @@ function renderAdminSavedBills() {
             newestOfOrder.set(key, Number(bill.version || 0));
         }
     }
-    const methodLabels = { cash: 'Tiền mặt', bank_qr: 'Chuyển khoản QR', card: 'Thẻ', room_charge: 'Cộng vào tiền phòng', pay_later: 'Thanh toán sau' };
+    const dict = (window.TRANSLATIONS && window.TRANSLATIONS[currentLang]) || (window.TRANSLATIONS && window.TRANSLATIONS.vi) || {};
+    const methodLabels = {
+        cash: dict.payMethodCash || 'Tiền mặt',
+        bank_qr: dict.payMethodTransfer || 'Chuyển khoản QR',
+        card: dict.payMethodCard || 'Thẻ',
+        room_charge: dict.payMethodRoomCharge || 'Cộng vào tiền phòng',
+        pay_later: dict.payMethodPayLater || 'Thanh toán sau'
+    };
 
     for (const bill of adminBills) {
       // Từng tờ một: dữ liệu hỏng ở tờ thứ hai không được xoá luôn tờ thứ nhất
@@ -2742,22 +2765,30 @@ function renderAdminSavedBills() {
         const methodText = bill.paymentMethod ? (methodLabels[bill.paymentMethod] || bill.paymentMethod) : '';
         const totalText = new Intl.NumberFormat('vi-VN').format(Number(bill.totalAmount || 0));
         const label = bill.invoice?.invoiceNo || bill.orderCode || '';
+        const kickerText = dict.invoiceSentToCustomer || 'Hóa đơn đã gửi khách';
+        const paidText = dict.statusPaid || 'Đã thanh toán';
+        const supersededText = dict.invoiceStatusSuperseded || 'Bản trước khi sửa';
+        const savedText = dict.invoiceStatusSaved || 'Đã lưu';
+        const openPdfText = dict.invoiceOpenPdf || 'Mở PDF';
+        const forwardText = dict.forwardToAgent || 'Chuyển hóa đơn vào chat nội bộ với Agent';
+        const invoiceTitle = dict.invoiceTitle || 'Hóa đơn';
+
         const wrapper = document.createElement('div');
         wrapper.className = `admin-invoice-block is-archived${CURRENT_ADMIN?.role === 'sale' ? ' has-forward-action' : ''}`;
         wrapper.innerHTML = `
             <div class="admin-invoice-head">
-                <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> Hóa đơn đã gửi khách${label ? ` · ${escapeHtml(label)}` : ''}</span>
+                <span class="admin-invoice-kicker"><i class="ri-receipt-line"></i> ${escapeHtml(kickerText)}${label ? ` · ${escapeHtml(label)}` : ''}</span>
                 <span class="admin-invoice-status ${bill.orderStatus === 'paid' ? 'is-paid' : 'is-waiting'}">${escapeHtml(
-                    bill.orderStatus === 'paid' ? 'Đã thanh toán'
-                    : ['superseded', 'rejected', 'cancelled'].includes(String(bill.orderStatus || '')) ? 'Bản trước khi sửa'
-                    : 'Đã lưu')}</span>
+                    bill.orderStatus === 'paid' ? paidText
+                    : ['superseded', 'rejected', 'cancelled'].includes(String(bill.orderStatus || '')) ? supersededText
+                    : savedText)}</span>
             </div>
-            ${CURRENT_ADMIN?.role === 'sale' ? `<button type="button" class="admin-invoice-forward-btn" data-forward-bill="${escapeHtml(bill.orderId)}" title="Chuyển hóa đơn vào chat nội bộ với Agent" aria-label="Chuyển hóa đơn cho Agent"><i class="ri-share-forward-line"></i></button>` : ''}
-            ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(preview)}" data-preview-type="image" data-preview-title="Hóa đơn" data-download-url="${escapeHtml(pdf || preview)}"><img src="${escapeHtml(preview)}" alt="Hóa đơn"></button>` : ''}
+            ${CURRENT_ADMIN?.role === 'sale' ? `<button type="button" class="admin-invoice-forward-btn" data-forward-bill="${escapeHtml(bill.orderId)}" title="${escapeHtml(forwardText)}" aria-label="${escapeHtml(forwardText)}"><i class="ri-share-forward-line"></i></button>` : ''}
+            ${preview ? `<button type="button" class="admin-invoice-preview attachment-preview-trigger" data-preview-url="${escapeHtml(preview)}" data-preview-type="image" data-preview-title="${escapeHtml(invoiceTitle)}" data-download-url="${escapeHtml(pdf || preview)}"><img src="${escapeHtml(preview)}" alt="${escapeHtml(invoiceTitle)}"></button>` : ''}
             <div class="admin-invoice-meta">
                 <span><strong>${escapeHtml(totalText)} ₫</strong></span>
                 ${methodText ? `<span><i class="ri-bank-card-line"></i> ${escapeHtml(methodText)}</span>` : ''}
-                ${pdf ? `<button type="button" class="attachment-preview-trigger admin-invoice-open" data-preview-url="${escapeHtml(preview || pdf)}" data-preview-type="${preview ? 'image' : 'document'}" data-preview-title="Hóa đơn" data-download-url="${escapeHtml(pdf)}"><i class="ri-file-pdf-2-line"></i> Mở PDF</button>` : ''}
+                ${pdf ? `<button type="button" class="attachment-preview-trigger admin-invoice-open" data-preview-url="${escapeHtml(preview || pdf)}" data-preview-type="${preview ? 'image' : 'document'}" data-preview-title="${escapeHtml(invoiceTitle)}" data-download-url="${escapeHtml(pdf)}"><i class="ri-file-pdf-2-line"></i> ${escapeHtml(openPdfText)}</button>` : ''}
             </div>
         `;
         insertIntoChatFlow(wrapper, bill.createdAt);
@@ -3249,7 +3280,8 @@ async function hydrateForwardedBills() {
         try {
             let pending = forwardedBillCache.get(orderId);
             if (!pending) {
-                pending = authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/details?lang=vi&invoice=1`)
+                const currentAdminLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+                pending = authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/details?lang=${currentAdminLang}&invoice=1`)
                     .then(async (res) => {
                         const data = await res.json();
                         if (!res.ok) throw new Error(data?.error || 'Không tải được hóa đơn.');
@@ -3258,8 +3290,9 @@ async function hydrateForwardedBills() {
                 forwardedBillCache.set(orderId, pending);
             }
             const preview = await pending;
-            if (!preview) throw new Error('Hóa đơn chưa được phát hành.');
-            node.innerHTML = `<img src="${escapeHtml(preview)}" alt="Hóa đơn" loading="lazy" style="display:block;width:min(360px,72vw);max-height:70vh;object-fit:contain;border-radius:10px;background:#fff;" onload="window.scrollChatToBottom?.(true)">`;
+            const dict = (window.TRANSLATIONS && window.TRANSLATIONS[currentLang]) || (window.TRANSLATIONS && window.TRANSLATIONS.vi) || {};
+            if (!preview) throw new Error(dict.invoiceNotIssued || 'Hóa đơn chưa được phát hành.');
+            node.innerHTML = `<img src="${escapeHtml(preview)}" alt="${escapeHtml(dict.invoiceTitle || 'Hóa đơn')}" loading="lazy" style="display:block;width:min(360px,72vw);max-height:70vh;object-fit:contain;border-radius:10px;background:#fff;" onload="window.scrollChatToBottom?.(true)">`;
         } catch (error) {
             forwardedBillCache.delete(orderId);
             node.textContent = error.message;

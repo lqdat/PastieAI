@@ -1160,24 +1160,13 @@ document.querySelectorAll('#logout-btn, #superadmin-logout-btn, #agent-logout-bt
 });
 
 
-// Bind language selection dropdown
-const adminLangSelect = document.getElementById('admin-lang-select');
-
-if (adminLangSelect) {
-    adminLangSelect.addEventListener('change', (e) => {
-        applyTranslations(e.target.value);
-    });
-}
-
-// Lắng nghe sự kiện click chọn nhanh trên các pill ngôn ngữ (Mobile & Menu)
-document.addEventListener('click', (e) => {
-    const pill = e.target.closest('.lang-pill-btn');
-    if (pill) {
-        e.preventDefault();
-        const targetLang = pill.getAttribute('data-lang');
-        if (targetLang) {
-            applyTranslations(targetLang);
-        }
+// Bind all language selection dropdowns (Header, Agent Menu, Superadmin Menu)
+['admin-lang-select', 'agent-menu-lang-select', 'super-menu-lang-select'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel) {
+        sel.addEventListener('change', (e) => {
+            applyTranslations(e.target.value);
+        });
     }
 });
 

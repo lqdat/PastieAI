@@ -48,8 +48,39 @@ function ensureToastHost() {
  * @param {number} [duration]  ms; lỗi để lâu hơn vì người dùng cần đọc kỹ
  */
 function showToast(message, kind = 'info', duration) {
-    const text = String(message || '').trim();
+    let text = String(message || '').trim();
     if (!text) return;
+
+    // Tự động dịch nội dung thông báo nếu giao diện đang ở ngôn ngữ khác tiếng Việt
+    const currentAdminLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+    if (currentAdminLang !== 'vi' && window.TRANSLATIONS) {
+        const dict = window.TRANSLATIONS[currentAdminLang];
+        const viDict = window.TRANSLATIONS.vi;
+        if (dict && viDict) {
+            // 1. Đối chiếu theo từ điển có sẵn
+            const foundKey = Object.keys(viDict).find(k => viDict[k] === text);
+            if (foundKey && dict[foundKey]) {
+                text = dict[foundKey];
+            } else {
+                // 2. Tra nhanh các mẫu thông báo phổ biến
+                const commonToasts = {
+                    'Lưu thành công': { en: 'Saved successfully', zh: '保存成功', ko: '성공적으로 저장되었습니다', ru: 'Успешно сохранено' },
+                    'Cập nhật thành công': { en: 'Updated successfully', zh: '更新成功', ko: '성공적으로 업데이트되었습니다', ru: 'Успешно обновлено' },
+                    'Đã sao chép': { en: 'Copied to clipboard', zh: '已复制', ko: '복사되었습니다', ru: 'Скопировано' },
+                    'Đã xóa': { en: 'Deleted successfully', zh: '已删除', ko: '삭제되었습니다', ru: 'Удалено' },
+                    'Lỗi kết nối': { en: 'Connection error', zh: '连接错误', ko: '연결 오류', ru: 'Ошибка подключения' },
+                    'Vui lòng thử lại': { en: 'Please try again', zh: '请重试', ko: '다시 시도해 주세요', ru: 'Пожалуйста, попробуйте снова' },
+                    'Không tải được': { en: 'Failed to load', zh: '加载失败', ko: '불러오지 못했습니다', ru: 'Не удалось загрузить' }
+                };
+                for (const [vText, tMap] of Object.entries(commonToasts)) {
+                    if (text.includes(vText) && tMap[currentAdminLang]) {
+                        text = text.replace(vText, tMap[currentAdminLang]);
+                        break;
+                    }
+                }
+            }
+        }
+    }
     const host = ensureToastHost();
 
     // Cùng một lỗi lặp lại (ví dụ mỗi vòng poll) thì không xếp chồng, chỉ đếm số lần.
@@ -1248,7 +1279,7 @@ function updateAgentHeaderUI() {
               <stop offset="100%" stop-color="#7c3aed"/>
             </linearGradient>
           </defs>
-          <rect width="96" height="96" rx="28" fill="url(#avG)"/>
+          <circle cx="48" cy="48" r="48" fill="url(#avG)"/>
           <text x="50%" y="54%" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="46" font-weight="800" fill="#ffffff" text-anchor="middle" dominant-baseline="middle">${char}</text>
         </svg>`;
         return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);

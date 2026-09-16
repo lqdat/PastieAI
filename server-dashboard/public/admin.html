@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r147">
-    <link rel="stylesheet" href="menu-console.css?v=r147">
+    <link rel="stylesheet" href="admin.css?v=r149">
+    <link rel="stylesheet" href="menu-console.css?v=r149">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -284,18 +284,19 @@
                         <i class="ri-menu-line"></i><span data-i18n="toolsBtn">Công cụ</span>
                     </button>
                     <div class="header-menu-panel hide" id="header-menu-panel">
-                        <!-- Chọn nhanh ngôn ngữ cho Agent / Sale (Mobile & Tablet) -->
-                        <div class="header-menu-lang-section" style="padding: 10px 12px 8px; border-bottom: 1px solid rgba(239, 43, 157, 0.12);">
-                            <div style="font-size: 10px; font-weight: 800; color: #9d5a86; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; display: flex; align-items: center; gap: 5px;">
-                                <i class="ri-translate-2"></i> <span data-i18n="languageLabel">Ngôn ngữ giao diện</span>
+                        <!-- Chọn ngôn ngữ cho Agent / Sale dạng Dropdown -->
+                        <div class="menu-lang-dropdown-row" style="padding: 10px 14px; border-bottom: 1px solid rgba(239, 43, 157, 0.12); display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                            <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: #9d5a86; text-transform: uppercase; letter-spacing: 0.05em;">
+                                <i class="ri-translate-2" style="font-size: 15px; color: #ef2b9d;"></i>
+                                <span data-i18n="languageLabel">Ngôn ngữ</span>
                             </div>
-                            <div class="lang-pill-row" style="display: flex; gap: 4px; flex-wrap: wrap;">
-                                <button type="button" class="lang-pill-btn is-active" data-lang="vi">🇻🇳 VI</button>
-                                <button type="button" class="lang-pill-btn" data-lang="en">🇬🇧 EN</button>
-                                <button type="button" class="lang-pill-btn" data-lang="zh">🇨🇳 中文</button>
-                                <button type="button" class="lang-pill-btn" data-lang="ko">🇰🇷 한국어</button>
-                                <button type="button" class="lang-pill-btn" data-lang="ru">🇷🇺 RU</button>
-                            </div>
+                            <select class="menu-lang-select" id="agent-menu-lang-select" style="padding: 5px 10px; border-radius: 9px; border: 1.5px solid rgba(239, 43, 157, 0.25); background: #ffffff; color: #2e2134; font-size: 12px; font-weight: 700; cursor: pointer; outline: none;">
+                                <option value="vi">🇻🇳 Tiếng Việt</option>
+                                <option value="en">🇬🇧 English</option>
+                                <option value="zh">🇨🇳 中文</option>
+                                <option value="ko">🇰🇷 한국어</option>
+                                <option value="ru">🇷🇺 Русский</option>
+                            </select>
                         </div>
                         <button id="app-reload-btn" class="header-quick-btn header-menu-item header-menu-fixed" type="button" title="Tải lại ứng dụng" data-i18n-title="appReloadBtn">
                             <i class="ri-refresh-line"></i><span data-i18n="appReloadBtn">Tải lại ứng dụng</span>
@@ -319,17 +320,18 @@
                             <span data-i18n="adminCenterBtn">TRUNG TÂM QUẢN TRỊ</span>
                             <strong data-i18n="headerTitle">Hệ thống &amp; Vận hành</strong>
                         </div>
-                        <div class="sdm-lang-bar" style="padding: 10px 14px 10px; border-bottom: 1px solid rgba(84,62,100,0.08); background: rgba(255,255,255,0.7);">
-                            <div style="font-size: 10px; font-weight: 800; color: #9d5a86; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; display: flex; align-items: center; gap: 5px;">
-                                <i class="ri-translate-2"></i> <span data-i18n="languageLabel">Ngôn ngữ giao diện</span>
+                        <div class="sdm-lang-bar" style="padding: 10px 14px 10px; border-bottom: 1px solid rgba(84,62,100,0.08); background: rgba(255,255,255,0.7); display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                            <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: #9d5a86; text-transform: uppercase; letter-spacing: 0.05em;">
+                                <i class="ri-translate-2" style="font-size: 15px; color: #ef2b9d;"></i>
+                                <span data-i18n="languageLabel">Ngôn ngữ</span>
                             </div>
-                            <div class="lang-pill-row" style="display: flex; gap: 5px; flex-wrap: wrap;">
-                                <button type="button" class="lang-pill-btn is-active" data-lang="vi">🇻🇳 VI</button>
-                                <button type="button" class="lang-pill-btn" data-lang="en">🇬🇧 EN</button>
-                                <button type="button" class="lang-pill-btn" data-lang="zh">🇨🇳 中文</button>
-                                <button type="button" class="lang-pill-btn" data-lang="ko">🇰🇷 한국어</button>
-                                <button type="button" class="lang-pill-btn" data-lang="ru">🇷🇺 RU</button>
-                            </div>
+                            <select class="menu-lang-select" id="super-menu-lang-select" style="padding: 5px 10px; border-radius: 9px; border: 1.5px solid rgba(84, 62, 100, 0.2); background: #ffffff; color: #2e2134; font-size: 12px; font-weight: 700; cursor: pointer; outline: none;">
+                                <option value="vi">🇻🇳 Tiếng Việt</option>
+                                <option value="en">🇬🇧 English</option>
+                                <option value="zh">🇨🇳 中文</option>
+                                <option value="ko">🇰🇷 한국어</option>
+                                <option value="ru">🇷🇺 Русский</option>
+                            </select>
                         </div>
                         <div class="sdm-group sdm-tools-grid">
                             <div class="sdm-label">Vận hành &amp; Đội ngũ</div>
@@ -2400,17 +2402,17 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="i18n-dictionary.js?v=r147"></script>
-    <script src="config.js?v=r147"></script>
-    <script src="core.js?v=r147"></script>
-    <script src="chat.js?v=r147"></script>
-    <script src="qrcode.bundle.js?v=r147"></script>
-    <script src="org-console.js?v=r147"></script>
-    <script src="project-admin.js?v=r147"></script>
-    <script src="menu-console.js?v=r147"></script>
-    <script src="order-console.js?v=r147"></script>
-    <script src="cart-console.js?v=r147"></script>
-    <script src="ticket-console.js?v=r147"></script>
-    <script src="admin.js?v=r147"></script>
+    <script src="i18n-dictionary.js?v=r149"></script>
+    <script src="config.js?v=r149"></script>
+    <script src="core.js?v=r149"></script>
+    <script src="chat.js?v=r149"></script>
+    <script src="qrcode.bundle.js?v=r149"></script>
+    <script src="org-console.js?v=r149"></script>
+    <script src="project-admin.js?v=r149"></script>
+    <script src="menu-console.js?v=r149"></script>
+    <script src="order-console.js?v=r149"></script>
+    <script src="cart-console.js?v=r149"></script>
+    <script src="ticket-console.js?v=r149"></script>
+    <script src="admin.js?v=r149"></script>
 </body>
 </html>

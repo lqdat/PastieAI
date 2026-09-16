@@ -200,15 +200,28 @@
     function stockBadge(item) {
         if (item.stock_quantity === null || item.stock_quantity === undefined) return '';
         const left = Number(item.stock_quantity);
+        const curLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+        const tOut = { en: 'Out of stock', zh: '已售罄', ko: '품절', ru: 'Распродано' }[curLang] || 'Hết hàng';
+        const tLeft = { en: 'In stock', zh: '剩余', ko: '재고', ru: 'В наличии' }[curLang] || 'Còn';
         if (left <= 0) {
-            return `<span class="menu-stock is-out"><i class="ri-close-circle-line"></i> Hết hàng${item.hide_when_out ? ' · đã ẩn' : ' · vẫn hiện'}</span>`;
+            return `<span class="menu-stock is-out"><i class="ri-close-circle-line"></i> ${tOut}${item.hide_when_out ? ' · đã ẩn' : ' · vẫn hiện'}</span>`;
         }
-        return `<span class="menu-stock${left <= 5 ? ' is-low' : ''}"><i class="ri-archive-line"></i> Còn ${left}</span>`;
+        return `<span class="menu-stock${left <= 5 ? ' is-low' : ''}"><i class="ri-archive-line"></i> ${tLeft} ${left}</span>`;
     }
 
     function itemCard(item) {
         const done = translatedCount(item);
         const waiting = pendingTranslation.has(item.id);
+        const curLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+        let itemName = item.name;
+        let itemDesc = item.description;
+        if (curLang !== 'vi' && Array.isArray(item.translations)) {
+            const hit = item.translations.find(t => t && t.lang === curLang && t.name);
+            if (hit) {
+                itemName = hit.name || itemName;
+                if (hit.description) itemDesc = hit.description;
+            }
+        }
         const langChips = LANGS.filter((l) => l.code !== 'vi').map((lang) => {
             const hit = (item.translations || []).find((t) => t && t.lang === lang.code && t.name);
             const state = hit ? (hit.is_manual ? 'is-manual' : 'is-auto') : 'is-missing';
@@ -222,18 +235,18 @@
         <article class="menu-item${item.is_available ? '' : ' is-off'}" data-item="${item.id}">
             <label class="menu-thumb" title="Đổi ảnh sản phẩm">
                 ${item.image_url
-                    ? `<img src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.name)}" loading="lazy">`
+                    ? `<img src="${escapeHtml(item.image_url)}" alt="${escapeHtml(itemName)}" loading="lazy">`
                     : '<i class="ri-image-add-line"></i>'}
                 <input type="file" accept="image/*" data-image-for="${item.id}" hidden>
             </label>
 
             <div class="menu-item-body">
                 <div class="menu-item-head">
-                    <strong>${escapeHtml(item.name)}</strong>
+                    <strong>${escapeHtml(itemName)}</strong>
                     <span class="menu-price">${money(item.price)}</span>
                 </div>
                 ${stockBadge(item)}
-                ${item.description ? `<p class="menu-desc">${escapeHtml(item.description)}</p>` : ''}
+                ${itemDesc ? `<p class="menu-desc">${escapeHtml(itemDesc)}</p>` : ''}
                 <div class="menu-langs">
                     ${waiting && done === 0
                         ? '<span class="menu-translating"><i class="ri-loader-4-line ri-spin"></i> đang dịch…</span>'
@@ -1335,6 +1348,14 @@
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
     else bind();
+
+    // Lắng nghe sự kiện đổi ngôn ngữ để dựng lại giao diện thực đơn tức thì
+    window.addEventListener('pastie:lang-changed', () => {
+        try {
+            lastRenderHash = '';
+            render();
+        } catch (e) {}
+    });
 
     // admin.js gọi vào đây khi người dùng mở thẻ "Thực đơn / Sản phẩm".
     window.MenuConsole = {
