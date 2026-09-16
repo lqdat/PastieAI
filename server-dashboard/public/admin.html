@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r146">
-    <link rel="stylesheet" href="menu-console.css?v=r146">
+    <link rel="stylesheet" href="admin.css?v=r147">
+    <link rel="stylesheet" href="menu-console.css?v=r147">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -251,41 +251,54 @@
             <div class="header-right">
                 <!-- Nút riêng cho Agent / Sale: Quản lý Sale & Nhóm, Bill, Sản phẩm, Báo cáo, Tài khoản, Thông báo
                      (Khi Agent/Sale đăng nhập, layoutHeaderQuickMenu gom gọn toàn bộ vào nút "Công cụ") -->
-                <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, Nhóm tiếp nhận, Mã QR và Sản phẩm">
-                    <i class="ri-organization-chart"></i><span>Quản trị</span>
+                <button id="org-manage-btn" class="header-quick-btn hide" type="button" title="Quản lý Sale, Nhóm tiếp nhận, Mã QR và Sản phẩm" data-i18n-title="orgManagementTitle">
+                    <i class="ri-organization-chart"></i><span data-i18n="orgManagementTitle">Quản trị</span>
                 </button>
-                <button id="tech-logout-btn" class="header-quick-btn hide" type="button" title="Đăng xuất" data-action="logout">
-                    <i class="ri-logout-box-r-line"></i><span>Đăng xuất</span>
+                <button id="tech-logout-btn" class="header-quick-btn hide" type="button" title="Đăng xuất" data-action="logout" data-i18n-title="logoutTitle">
+                    <i class="ri-logout-box-r-line"></i><span data-i18n="logoutTitle">Đăng xuất</span>
                 </button>
-                <button id="order-cart-btn" class="header-quick-btn hide" type="button" title="Quản lý hóa đơn: đơn của khách theo từng cuộc trò chuyện">
-                    <i class="ri-bill-line"></i><span>Quản lý hóa đơn</span>
+                <button id="order-cart-btn" class="header-quick-btn hide" type="button" title="Quản lý hóa đơn: đơn của khách theo từng cuộc trò chuyện" data-i18n-title="orderCartTitle">
+                    <i class="ri-bill-line"></i><span data-i18n="orderCartTitle">Quản lý hóa đơn</span>
                 </button>
-                <button id="sale-menu-btn" class="header-quick-btn hide" type="button" title="Xem danh sách sản phẩm của cơ sở">
-                    <i class="ri-shopping-bag-3-line"></i><span>Sản phẩm</span>
+                <button id="sale-menu-btn" class="header-quick-btn hide" type="button" title="Xem danh sách sản phẩm của cơ sở" data-i18n-title="menuConsoleTitle">
+                    <i class="ri-shopping-bag-3-line"></i><span data-i18n="menuConsoleTitle">Sản phẩm</span>
                 </button>
-                <button id="report-modal-btn" class="header-quick-btn hide" type="button" title="Báo cáo hiệu suất tư vấn &amp; Xuất Excel">
-                    <i class="ri-file-chart-line"></i><span>Báo cáo</span>
+                <button id="report-modal-btn" class="header-quick-btn hide" type="button" title="Báo cáo hiệu suất tư vấn &amp; Xuất Excel" data-i18n-title="reportTitle">
+                    <i class="ri-file-chart-line"></i><span data-i18n="reportTitle">Báo cáo</span>
                 </button>
-                <button id="agent-account-btn" class="header-quick-btn hide" type="button" title="Quản lý tài khoản của bạn">
-                    <i class="ri-user-settings-line"></i><span>Tài khoản</span>
+                <button id="agent-account-btn" class="header-quick-btn hide" type="button" title="Quản lý tài khoản của bạn" data-i18n-title="accountBtn">
+                    <i class="ri-user-settings-line"></i><span data-i18n="accountBtn">Tài khoản</span>
                 </button>
-                                <button id="agent-guide-btn" class="header-quick-btn hide" type="button" title="Sổ tay hướng dẫn sử dụng Agent">
-                    <i class="ri-book-open-line"></i><span>Hướng dẫn</span>
+                                <button id="agent-guide-btn" class="header-quick-btn hide" type="button" title="Sổ tay hướng dẫn sử dụng Agent" data-i18n-title="guideBtn">
+                    <i class="ri-book-open-line"></i><span data-i18n="guideBtn">Hướng dẫn</span>
 
                 </button>
-                <button id="agent-push-btn" class="header-quick-btn header-quick-btn-push hide" type="button" title="Thông báo đẩy">
-                    <i class="ri-notification-3-line" id="agent-push-icon"></i><span id="agent-push-label">Thông báo</span>
+                <button id="agent-push-btn" class="header-quick-btn header-quick-btn-push hide" type="button" title="Thông báo đẩy" data-i18n-title="notificationBtn">
+                    <i class="ri-notification-3-line" id="agent-push-icon"></i><span id="agent-push-label" data-i18n="notificationBtn">Thông báo</span>
                 </button>
 
                 <!-- Bảng thả xuống "Công cụ" dành cho Agent / Sale -->
                 <div class="header-menu-wrap hide" id="header-menu-wrap">
                     <button type="button" class="header-quick-btn header-menu-btn" id="header-menu-btn"
-                            aria-haspopup="true" aria-expanded="false" title="Công cụ">
-                        <i class="ri-menu-line"></i><span>Công cụ</span>
+                            aria-haspopup="true" aria-expanded="false" title="Công cụ" data-i18n-title="toolsBtn">
+                        <i class="ri-menu-line"></i><span data-i18n="toolsBtn">Công cụ</span>
                     </button>
                     <div class="header-menu-panel hide" id="header-menu-panel">
-                        <button id="app-reload-btn" class="header-quick-btn header-menu-item header-menu-fixed" type="button" title="Tải lại ứng dụng">
-                            <i class="ri-refresh-line"></i><span>Tải lại ứng dụng</span>
+                        <!-- Chọn nhanh ngôn ngữ cho Agent / Sale (Mobile & Tablet) -->
+                        <div class="header-menu-lang-section" style="padding: 10px 12px 8px; border-bottom: 1px solid rgba(239, 43, 157, 0.12);">
+                            <div style="font-size: 10px; font-weight: 800; color: #9d5a86; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; display: flex; align-items: center; gap: 5px;">
+                                <i class="ri-translate-2"></i> <span data-i18n="languageLabel">Ngôn ngữ giao diện</span>
+                            </div>
+                            <div class="lang-pill-row" style="display: flex; gap: 4px; flex-wrap: wrap;">
+                                <button type="button" class="lang-pill-btn is-active" data-lang="vi">🇻🇳 VI</button>
+                                <button type="button" class="lang-pill-btn" data-lang="en">🇬🇧 EN</button>
+                                <button type="button" class="lang-pill-btn" data-lang="zh">🇨🇳 中文</button>
+                                <button type="button" class="lang-pill-btn" data-lang="ko">🇰🇷 한국어</button>
+                                <button type="button" class="lang-pill-btn" data-lang="ru">🇷🇺 RU</button>
+                            </div>
+                        </div>
+                        <button id="app-reload-btn" class="header-quick-btn header-menu-item header-menu-fixed" type="button" title="Tải lại ứng dụng" data-i18n-title="appReloadBtn">
+                            <i class="ri-refresh-line"></i><span data-i18n="appReloadBtn">Tải lại ứng dụng</span>
                         </button>
                         <div class="header-menu-divider header-menu-fixed" id="agent-logout-divider"></div>
                         <button id="agent-logout-btn" class="header-quick-btn header-menu-item header-menu-fixed header-menu-logout" type="button" title="Đăng xuất" data-action="logout" data-i18n-title="logoutTitle">
@@ -303,8 +316,20 @@
                     </button>
                     <div class="settings-dropdown-menu hide" id="settings-dropdown-menu">
                         <div class="sdm-menu-head">
-                            <span>TRUNG TÂM QUẢN TRỊ</span>
-                            <strong>Hệ thống &amp; Vận hành</strong>
+                            <span data-i18n="adminCenterBtn">TRUNG TÂM QUẢN TRỊ</span>
+                            <strong data-i18n="headerTitle">Hệ thống &amp; Vận hành</strong>
+                        </div>
+                        <div class="sdm-lang-bar" style="padding: 10px 14px 10px; border-bottom: 1px solid rgba(84,62,100,0.08); background: rgba(255,255,255,0.7);">
+                            <div style="font-size: 10px; font-weight: 800; color: #9d5a86; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; display: flex; align-items: center; gap: 5px;">
+                                <i class="ri-translate-2"></i> <span data-i18n="languageLabel">Ngôn ngữ giao diện</span>
+                            </div>
+                            <div class="lang-pill-row" style="display: flex; gap: 5px; flex-wrap: wrap;">
+                                <button type="button" class="lang-pill-btn is-active" data-lang="vi">🇻🇳 VI</button>
+                                <button type="button" class="lang-pill-btn" data-lang="en">🇬🇧 EN</button>
+                                <button type="button" class="lang-pill-btn" data-lang="zh">🇨🇳 中文</button>
+                                <button type="button" class="lang-pill-btn" data-lang="ko">🇰🇷 한국어</button>
+                                <button type="button" class="lang-pill-btn" data-lang="ru">🇷🇺 RU</button>
+                            </div>
                         </div>
                         <div class="sdm-group sdm-tools-grid">
                             <div class="sdm-label">Vận hành &amp; Đội ngũ</div>
@@ -893,20 +918,20 @@
                 <!-- Category Tabs (Agent / SuperAdmin): Khách hàng, Nội bộ & Kỹ thuật (chỉ cho SuperAdmin) -->
                 <div class="session-category-tabs hide" id="session-category-tabs" role="tablist">
                     <button type="button" class="sct-tab is-active" data-tab="customers" id="tab-cat-customers" role="tab">
-                        <i class="ri-chat-3-line"></i> <span>Khách hàng</span>
+                        <i class="ri-chat-3-line"></i> <span data-i18n="tabCustomers">Khách hàng</span>
                     </button>
                     <button type="button" class="sct-tab" data-tab="internal" id="tab-cat-internal" role="tab">
-                        <i class="ri-team-line"></i> <span>Nội bộ</span>
+                        <i class="ri-team-line"></i> <span data-i18n="tabInternal">Nội bộ</span>
                         <span class="sct-badge hide" id="internal-unread-badge">0</span>
                     </button>
                     <button type="button" class="sct-tab hide" data-tab="technical" id="tab-cat-technical" role="tab">
-                        <i class="ri-tools-line"></i> <span>Kỹ thuật</span>
+                        <i class="ri-tools-line"></i> <span data-i18n="tabTechnical">Kỹ thuật</span>
                     </button>
                 </div>
                 <div class="session-status-filter" id="session-status-filter" role="tablist">
-                    <button type="button" class="ssf-btn is-active" data-status="all" role="tab"><span class="ssf-label">Tất cả</span><span class="ssf-count" id="ssf-count-all">0</span></button>
-                    <button type="button" class="ssf-btn" data-status="active" role="tab"><span class="ssf-label">Đang chat</span><span class="ssf-count" id="ssf-count-active">0</span></button>
-                    <button type="button" class="ssf-btn" data-status="closed" role="tab"><span class="ssf-label">Đã đóng</span><span class="ssf-count" id="ssf-count-closed">0</span></button>
+                    <button type="button" class="ssf-btn is-active" data-status="all" role="tab"><span class="ssf-label" data-i18n="filterAll">Tất cả</span><span class="ssf-count" id="ssf-count-all">0</span></button>
+                    <button type="button" class="ssf-btn" data-status="active" role="tab"><span class="ssf-label" data-i18n="filterActive">Đang chat</span><span class="ssf-count" id="ssf-count-active">0</span></button>
+                    <button type="button" class="ssf-btn" data-status="closed" role="tab"><span class="ssf-label" data-i18n="filterClosed">Đã đóng</span><span class="ssf-count" id="ssf-count-closed">0</span></button>
                 </div>
                 <div class="sessions-list" id="sessions-list-container">
                     <div class="empty-state" data-i18n="loadingConversations">Đang tải cuộc hội thoại...</div>
@@ -947,29 +972,29 @@
                         </div>
                     </div>
                     <div id="chat-header-actions" class="chat-header-actions hide">
-                        <button id="claim-chat-btn" class="header-action-btn claim-btn hide" title="Tiếp nhận cuộc trò chuyện này">
-                            <i class="ri-hand-heart-line"></i><span>Tiếp nhận</span>
+                        <button id="claim-chat-btn" class="header-action-btn claim-btn hide" title="Tiếp nhận cuộc trò chuyện này" data-i18n-title="claimChat">
+                            <i class="ri-hand-heart-line"></i><span data-i18n="claimChat">Tiếp nhận</span>
                         </button>
                         
-                        <div id="assignee-selector-container" class="assignee-selector-wrap" title="Phân công nhân viên phụ trách">
+                        <div id="assignee-selector-container" class="assignee-selector-wrap" title="Phân công nhân viên phụ trách" data-i18n-title="assigneeLabel">
                             <i class="ri-user-shared-line"></i>
-                            <span class="assignee-label">Phân công:</span>
+                            <span class="assignee-label" data-i18n="assigneeLabel">Phân công:</span>
                             <select id="chat-assignee-select" class="assignee-select">
-                                <option value="">Chưa chỉ định</option>
+                                <option value="" data-i18n="unassigned">Chưa chỉ định</option>
                             </select>
                         </div>
 
-                        <button id="close-session-btn" class="header-action-btn close-btn hide" title="Đóng cuộc chat và tóm tắt AI">
+                        <button id="close-session-btn" class="header-action-btn close-btn hide" title="Đóng cuộc chat và tóm tắt AI" data-i18n-title="closeChat">
                             <i class="ri-checkbox-circle-line"></i>
                             <span data-i18n="closeChat">Đóng chat</span>
                         </button>
                         
-                        <button id="delete-session-btn" class="header-action-btn delete-btn hide" title="Xóa cuộc trò chuyện (Hỗ trợ kỹ thuật)">
+                        <button id="delete-session-btn" class="header-action-btn delete-btn hide" title="Xóa cuộc trò chuyện (Hỗ trợ kỹ thuật)" data-i18n-title="deleteChat">
                             <i class="ri-delete-bin-line"></i>
                         </button>
 
-                        <button id="chat-reload-btn" class="icon-btn header-action-btn chat-reload-btn" title="Tải lại tin nhắn cuộc trò chuyện này"><i class="ri-refresh-line"></i></button>
-                        <button id="details-toggle-btn" class="icon-btn tablet-only chat-details-btn" title="Thông tin chi tiết"><i class="ri-information-line"></i></button>
+                        <button id="chat-reload-btn" class="icon-btn header-action-btn chat-reload-btn" title="Tải lại tin nhắn cuộc trò chuyện này" data-i18n-title="reloadChat"><i class="ri-refresh-line"></i></button>
+                        <button id="details-toggle-btn" class="icon-btn tablet-only chat-details-btn" title="Thông tin chi tiết" data-i18n-title="chatDetails"><i class="ri-information-line"></i></button>
                     </div>
                 </div>
 
@@ -2375,16 +2400,17 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="config.js?v=r146"></script>
-    <script src="core.js?v=r146"></script>
-    <script src="chat.js?v=r146"></script>
-    <script src="qrcode.bundle.js?v=r146"></script>
-    <script src="org-console.js?v=r146"></script>
-    <script src="project-admin.js?v=r146"></script>
-    <script src="menu-console.js?v=r146"></script>
-    <script src="order-console.js?v=r146"></script>
-    <script src="cart-console.js?v=r146"></script>
-    <script src="ticket-console.js?v=r146"></script>
-    <script src="admin.js?v=r146"></script>
+    <script src="i18n-dictionary.js?v=r147"></script>
+    <script src="config.js?v=r147"></script>
+    <script src="core.js?v=r147"></script>
+    <script src="chat.js?v=r147"></script>
+    <script src="qrcode.bundle.js?v=r147"></script>
+    <script src="org-console.js?v=r147"></script>
+    <script src="project-admin.js?v=r147"></script>
+    <script src="menu-console.js?v=r147"></script>
+    <script src="order-console.js?v=r147"></script>
+    <script src="cart-console.js?v=r147"></script>
+    <script src="ticket-console.js?v=r147"></script>
+    <script src="admin.js?v=r147"></script>
 </body>
 </html>

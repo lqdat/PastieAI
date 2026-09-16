@@ -378,6 +378,13 @@ const TRANSLATIONS = {
     }
 };
 
+// Đồng bộ từ điển đa ngôn ngữ toàn cục
+if (window.TRANSLATIONS) {
+    Object.keys(window.TRANSLATIONS).forEach(lang => {
+        TRANSLATIONS[lang] = Object.assign({}, TRANSLATIONS[lang] || {}, window.TRANSLATIONS[lang]);
+    });
+}
+window.TRANSLATIONS = TRANSLATIONS;
 
 let currentLang = localStorage.getItem('pastie_admin_lang') || 'vi';
 
@@ -1161,6 +1168,18 @@ if (adminLangSelect) {
         applyTranslations(e.target.value);
     });
 }
+
+// Lắng nghe sự kiện click chọn nhanh trên các pill ngôn ngữ (Mobile & Menu)
+document.addEventListener('click', (e) => {
+    const pill = e.target.closest('.lang-pill-btn');
+    if (pill) {
+        e.preventDefault();
+        const targetLang = pill.getAttribute('data-lang');
+        if (targetLang) {
+            applyTranslations(targetLang);
+        }
+    }
+});
 
 
 // Bind visitor detail language select dropdown

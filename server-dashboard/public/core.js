@@ -1186,9 +1186,8 @@ function updateAgentHeaderUI() {
     document.getElementById('superadmin-report-modal-btn')?.classList.toggle('hide', !(isSuperadmin || isProjectAdmin));
     document.getElementById('superadmin-otp-unlock-btn')?.classList.toggle('hide', !isSuperadmin);
 
-    // Ẩn ô chọn ngôn ngữ giao diện với Agent/Sale của dự án QR hoặc Kỹ thuật
-    const hideLangPicker = (isRestrictedConsole() && isQrConciergeProject(CURRENT_ADMIN?.project_id)) || isTechnical;
-    document.getElementById('admin-lang-selector-wrap')?.classList.toggle('hide', hideLangPicker);
+    // Luôn mở bộ chọn ngôn ngữ giao diện cho cả Superadmin, Agent và Sale
+    document.getElementById('admin-lang-selector-wrap')?.classList.remove('hide');
 
     // Báo cáo là công cụ quản lý: CHỈ hiện cho Agent quản lý (gom vào bảng Công cụ), hoàn toàn ẩn với Sale
     const hideReportModal = role !== 'agent';

@@ -37,7 +37,8 @@
     }
 
     async function fetchOrderDetails(orderId, { invoice = false } = {}) {
-        const query = new URLSearchParams({ lang: 'vi' });
+        const currentAdminLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+        const query = new URLSearchParams({ lang: currentAdminLang });
         if (invoice) query.set('invoice', '1');
         const res = await authFetch(`${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/details?${query.toString()}`);
         const data = await res.json();

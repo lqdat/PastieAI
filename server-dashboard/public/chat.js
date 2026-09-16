@@ -612,11 +612,20 @@ async function sendInternalMessage(text) {
 }
 
 // Translation Function
-function applyTranslations(lang) {
+async function applyTranslations(lang) {
     currentLang = lang;
     localStorage.setItem('pastie_admin_lang', lang);
 
-    const dict = TRANSLATIONS[lang] || TRANSLATIONS['vi'];
+    // Tự động nhận diện nếu là ngôn ngữ mới được cấu hình: gọi Gemini AI dịch tự động ngay lập tức
+    if (typeof window.ensureLanguageTranslations === 'function' && lang !== 'vi') {
+        var baseCount = Object.keys(window.TRANSLATIONS?.vi || {}).length;
+        var targetCount = Object.keys(window.TRANSLATIONS?.[lang] || {}).length;
+        if (targetCount < baseCount) {
+            await window.ensureLanguageTranslations(lang);
+        }
+    }
+
+    const dict = (window.TRANSLATIONS && window.TRANSLATIONS[lang]) || (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[lang]) || (window.TRANSLATIONS && window.TRANSLATIONS['vi']) || {};
 
     // 1. Translate elements with data-i18n
     document.querySelectorAll('[data-i18n]').forEach(el => {
@@ -644,9 +653,17 @@ function applyTranslations(lang) {
 
     // 4. Update the language select dropdown value
     const select = document.getElementById('admin-lang-select');
-    if (select) {
+    if (select && select.value !== lang) {
         select.value = lang;
     }
+
+    // 5. Update language pills state
+    document.querySelectorAll('.lang-pill-btn').forEach(btn => {
+        btn.classList.toggle('is-active', btn.getAttribute('data-lang') === lang);
+    });
+
+    // 6. Phát sự kiện toàn cục để các console khác (Cart, Menu, Org) đồng bộ cập nhật
+    window.dispatchEvent(new CustomEvent('pastie:lang-changed', { detail: { lang: lang, dict: dict } }));
 
     // Refresh dynamic states if visible
     const dictObj = TRANSLATIONS[lang] || TRANSLATIONS['vi'];

@@ -10045,3 +10045,41 @@ button:focus-visible {
 @media (max-width: 720px) {
     .admin-invoice-block.has-forward-action { max-width: calc(100% - 56px) !important; }
 }
+
+/* ── Multi-language quick switcher pills (Mobile & Dropdown Menus) ── */
+.lang-pill-row {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.lang-pill-btn {
+    border: 1px solid rgba(239, 43, 157, 0.22);
+    background: rgba(255, 255, 255, 0.85);
+    color: #4a2840;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    user-select: none;
+    line-height: 1.2;
+}
+.lang-pill-btn:hover {
+    border-color: #ef2b9d;
+    background: rgba(239, 43, 157, 0.08);
+    color: #d91b88;
+    transform: translateY(-1px);
+}
+.lang-pill-btn.is-active {
+    background: linear-gradient(135deg, #ef2b9d 0%, #d91b88 100%) !important;
+    color: #ffffff !important;
+    border-color: #d91b88 !important;
+    box-shadow: 0 3px 10px rgba(239, 43, 157, 0.35) !important;
+    font-weight: 800;
+}
+

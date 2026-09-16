@@ -3785,6 +3785,63 @@ app.post('/api/chats/session/language', async (req, res) => {
   }
 });
 
+// Endpoint dịch hàng loạt bằng Gemini AI kèm bộ nhớ đệm (LRU / Memory Cache) tốc độ cao
+const aiBatchTranslationCache = new Map();
+app.post('/api/ai/translate-batch', async (req, res) => {
+  const { texts, targetLang, sourceLang } = req.body;
+  if (!Array.isArray(texts) || !targetLang) {
+    return res.status(400).json({ error: 'texts (mảng chuỗi) và targetLang là bắt buộc.' });
+  }
+  const cleanTarget = String(targetLang).trim().toLowerCase().slice(0, 2);
+  const cleanSource = sourceLang ? String(sourceLang).trim().toLowerCase().slice(0, 2) : 'vi';
+  if (cleanTarget === cleanSource || texts.length === 0) {
+    return res.json({ translations: texts });
+  }
+
+  const results = new Array(texts.length);
+  const missingIndices = [];
+  const missingTexts = [];
+
+  texts.forEach((txt, idx) => {
+    const raw = String(txt || '').trim();
+    if (!raw) {
+      results[idx] = '';
+      return;
+    }
+    const cacheKey = `${cleanSource}:${cleanTarget}:${raw}`;
+    if (aiBatchTranslationCache.has(cacheKey)) {
+      results[idx] = aiBatchTranslationCache.get(cacheKey);
+    } else {
+      missingIndices.push(idx);
+      missingTexts.push(raw);
+    }
+  });
+
+  if (missingTexts.length > 0) {
+    try {
+      const outputs = await gemini.translateTexts(missingTexts, cleanTarget, { sourceLang: cleanSource });
+      outputs.forEach((out, i) => {
+        const origIndex = missingIndices[i];
+        const translated = out?.translatedText || missingTexts[i];
+        results[origIndex] = translated;
+        const cacheKey = `${cleanSource}:${cleanTarget}:${missingTexts[i]}`;
+        aiBatchTranslationCache.set(cacheKey, translated);
+        if (aiBatchTranslationCache.size > 10000) {
+          const firstKey = aiBatchTranslationCache.keys().next().value;
+          aiBatchTranslationCache.delete(firstKey);
+        }
+      });
+    } catch (err) {
+      console.error('[AI Translate Batch] Lỗi dịch batch:', err.message);
+      missingIndices.forEach((idx, i) => {
+        results[idx] = missingTexts[i];
+      });
+    }
+  }
+
+  return res.json({ translations: results });
+});
+
 /**
  * @openapi
  * /api/chats/{sessionId}/visitor-language:
