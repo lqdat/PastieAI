@@ -4,6 +4,42 @@
 const path = require('path');
 const db = require(path.join(__dirname, 'database.js'));
 const { CATEGORY_TRANSLATIONS, ITEM_TRANSLATIONS } = require(path.join(__dirname, 'scripts', 'seed-translations-data.js'));
+const gemini = require(path.join(__dirname, 'gemini-helper.js'));
+
+const NGON_NGU_DICH = ['en', 'ru', 'zh', 'ko'];
+
+// ── DỊCH ĐỘNG, KHÔNG TRA BẢNG CỐ ĐỊNH ───────────────────────────────────────
+//
+// Trước đây seed menu chỉ tra CATEGORY_TRANSLATIONS / ITEM_TRANSLATIONS — một
+// bảng chữ viết sẵn trong mã nguồn. Hệ quả: sửa một chữ trong tên món mẫu, hay
+// thêm một món mới, là món đó KHÔNG CÒN bản dịch nào và khách nước ngoài thấy
+// nguyên tiếng Việt — mà không có lấy một dòng cảnh báo.
+//
+// Nay dịch bằng chính bộ dịch của hệ thống, đúng đường mà nút "Lưu món" trên
+// dashboard đi. Bảng cố định giữ lại làm LƯỚI ĐỠ: khi không có khoá AI (máy
+// dựng, môi trường kiểm thử) thì vẫn còn bản dịch cho những món có sẵn.
+//
+// Gom cả thực đơn thành một lô cho mỗi ngôn ngữ: 60 món chỉ tốn vài lượt gọi
+// thay vì 60 lượt.
+async function dichCaThucDon(oNho, lang) {
+  const ra = new Map();
+  const KICH_LO = 32;
+  for (let i = 0; i < oNho.length; i += KICH_LO) {
+    const lo = oNho.slice(i, i + KICH_LO);
+    try {
+      const kq = await gemini.translateTexts(lo.map((o) => o.chu), lang, { sourceLang: 'vi' });
+      lo.forEach((o, idx) => {
+        const r = kq[idx];
+        // provider 'none' = cả hai đường dịch đều hỏng. KHÔNG ghi bản tiếng Việt
+        // vào bảng dịch: làm vậy là hệ thống tưởng đã dịch xong, không thử lại.
+        if (r && r.provider !== 'none' && r.translatedText) ra.set(o.khoa, r.translatedText);
+      });
+    } catch (error) {
+      console.warn(`[Seed menu] Không dịch được một lô sang ${lang}: ${error.message}`);
+    }
+  }
+  return ra;
+}
 
 const SEED_TAG = '[seed-menu]';
 
@@ -175,6 +211,27 @@ async function seedMenuForAgent({ agentIdentifier, cleanOnly = false, keepOld = 
   let itemCount = 0;
   let sortOrder = 0;
 
+  // Dịch TRƯỚC toàn bộ thực đơn mẫu, mỗi ngôn ngữ một lô, rồi mới đi chèn.
+  // Gọi AI xen giữa các lệnh INSERT thì một lượt dịch chậm là cả vòng chèn đứng
+  // lại, và mỗi món tốn một lượt gọi riêng.
+  const oNho = [];
+  for (const g of SEED_GROUPS) {
+    oNho.push({ khoa: `cat:${g.name}`, chu: g.name });
+    for (const [tenMon, , , , , moTa] of g.items) {
+      oNho.push({ khoa: `item:${tenMon}:name`, chu: tenMon });
+      if (moTa) oNho.push({ khoa: `item:${tenMon}:desc`, chu: moTa });
+    }
+  }
+  const banDich = {};
+  for (const lang of NGON_NGU_DICH) {
+    banDich[lang] = await dichCaThucDon(oNho, lang);
+  }
+  const thieu = NGON_NGU_DICH.filter((l) => banDich[l].size === 0);
+  if (thieu.length) {
+    // Nói ra ngay thay vì để khách nước ngoài phát hiện hộ.
+    console.warn(`[Seed menu] Bộ dịch không trả kết quả cho: ${thieu.join(', ')} — dùng bảng dịch sẵn có.`);
+  }
+
   for (const [groupIndex, group] of SEED_GROUPS.entries()) {
     let categoryId;
 
@@ -211,18 +268,19 @@ async function seedMenuForAgent({ agentIdentifier, cleanOnly = false, keepOld = 
       }
     }
 
-    // Ghi bản dịch danh mục (en, ru, zh, ko)
-    const catTrans = CATEGORY_TRANSLATIONS[group.name];
-    if (catTrans) {
-      for (const lang of ['en', 'ru', 'zh', 'ko']) {
-        if (catTrans[lang]) {
+    // Ghi bản dịch danh mục (en, ru, zh, ko) — dịch động, bảng cố định làm lưới đỡ
+    const catTrans = CATEGORY_TRANSLATIONS[group.name] || {};
+    {
+      for (const lang of NGON_NGU_DICH) {
+        const tenDich = (banDich[lang] && banDich[lang].get(`cat:${group.name}`)) || catTrans[lang];
+        if (tenDich) {
           await db.query(
             `INSERT INTO qr_menu_category_translations (category_id, lang, name, is_manual, updated_at)
              VALUES ($1, $2, $3, FALSE, CURRENT_TIMESTAMP)
              ON CONFLICT (category_id, lang) DO UPDATE
              SET name = EXCLUDED.name, updated_at = CURRENT_TIMESTAMP
              WHERE qr_menu_category_translations.is_manual = FALSE`,
-            [categoryId, lang, catTrans[lang]]
+            [categoryId, lang, tenDich]
           );
         }
       }
@@ -241,12 +299,17 @@ async function seedMenuForAgent({ agentIdentifier, cleanOnly = false, keepOld = 
       const itemId = itemRes.rows[0].id;
       itemCount++;
 
-      // Ghi bản dịch món vào qr_menu_item_translations (en, ru, zh, ko)
-      const itemTrans = ITEM_TRANSLATIONS[name];
-      if (itemTrans) {
-        for (const lang of ['en', 'ru', 'zh', 'ko']) {
-          const t = itemTrans[lang];
-          if (t) {
+      // Ghi bản dịch món (en, ru, zh, ko) — dịch động, bảng cố định làm lưới đỡ
+      const itemTrans = ITEM_TRANSLATIONS[name] || {};
+      {
+        for (const lang of NGON_NGU_DICH) {
+          const lo = banDich[lang];
+          const tenAI = lo && lo.get(`item:${name}:name`);
+          const moTaAI = lo && desc ? lo.get(`item:${name}:desc`) : null;
+          const t = tenAI
+            ? { name: tenAI, desc: moTaAI || (itemTrans[lang] && itemTrans[lang].desc) || null }
+            : itemTrans[lang];
+          if (t && t.name) {
             await db.query(
               `INSERT INTO qr_menu_item_translations (item_id, lang, name, description, is_manual, updated_at)
                VALUES ($1, $2, $3, $4, FALSE, CURRENT_TIMESTAMP)

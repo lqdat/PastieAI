@@ -9,6 +9,69 @@
 // chỉ chứa khai báo, không tự chạy gì.
 
 // ----------------------------------------------------
+// TRANSLATION HELPER (i18n)
+// ----------------------------------------------------
+
+function t(key, params, fallback) {
+    if (typeof window.t === 'function' && window.t !== t) {
+        return window.t(key, params, fallback);
+    }
+    if (!key) return fallback || '';
+    const lang = (typeof currentLang !== 'undefined' && currentLang) || (typeof localStorage !== 'undefined' && localStorage.getItem('pastie_admin_lang')) || 'vi';
+    const dict = (window.TRANSLATIONS && (window.TRANSLATIONS[lang] || window.TRANSLATIONS.vi)) || {};
+    let str = dict[key] !== undefined ? dict[key] : (window.TRANSLATIONS?.vi?.[key] !== undefined ? window.TRANSLATIONS.vi[key] : (fallback !== undefined ? fallback : key));
+    if (params && typeof params === 'object' && typeof str === 'string') {
+        for (const [k, v] of Object.entries(params)) {
+            str = str.split(`{${k}}`).join(String(v));
+        }
+    }
+    return str;
+}
+window.t = t;
+
+function pastieLang() {
+    return (typeof currentLang !== 'undefined' && currentLang) || (typeof localStorage !== 'undefined' && localStorage.getItem('pastie_admin_lang')) || 'vi';
+}
+window.pastieLang = pastieLang;
+
+function tMoney(value) {
+    const num = Number(value) || 0;
+    const lang = pastieLang();
+    const localeMap = { vi: 'vi-VN', en: 'en-US', zh: 'zh-CN', ko: 'ko-KR', ru: 'ru-RU' };
+    const locale = localeMap[lang] || 'vi-VN';
+    try {
+        return num.toLocaleString(locale) + ' ₫';
+    } catch (e) {
+        return num.toLocaleString('vi-VN') + ' ₫';
+    }
+}
+window.tMoney = tMoney;
+
+function tDate(value, options) {
+    if (!value) return '—';
+    const lang = pastieLang();
+    const localeMap = { vi: 'vi-VN', en: 'en-US', zh: 'zh-CN', ko: 'ko-KR', ru: 'ru-RU' };
+    const locale = localeMap[lang] || 'vi-VN';
+    try {
+        const d = (value instanceof Date) ? value : new Date(value);
+        if (isNaN(d.getTime())) return String(value);
+        if (options && typeof options === 'object') {
+            return d.toLocaleString(locale, options);
+        }
+        return d.toLocaleString(locale, {
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+    } catch (e) {
+        return String(value);
+    }
+}
+window.tDate = tDate;
+
+// ----------------------------------------------------
 // AUTHENTICATION LOGIC
 // ----------------------------------------------------
 
@@ -48,8 +111,39 @@ function ensureToastHost() {
  * @param {number} [duration]  ms; lỗi để lâu hơn vì người dùng cần đọc kỹ
  */
 function showToast(message, kind = 'info', duration) {
-    const text = String(message || '').trim();
+    let text = String(message || '').trim();
     if (!text) return;
+
+    // Tự động dịch nội dung thông báo nếu giao diện đang ở ngôn ngữ khác tiếng Việt
+    const currentAdminLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+    if (currentAdminLang !== 'vi' && window.TRANSLATIONS) {
+        const dict = window.TRANSLATIONS[currentAdminLang];
+        const viDict = window.TRANSLATIONS.vi;
+        if (dict && viDict) {
+            // 1. Đối chiếu theo từ điển có sẵn
+            const foundKey = Object.keys(viDict).find(k => viDict[k] === text);
+            if (foundKey && dict[foundKey]) {
+                text = dict[foundKey];
+            } else {
+                // 2. Tra nhanh các mẫu thông báo phổ biến
+                const commonToasts = {
+                    'Lưu thành công': { en: 'Saved successfully', zh: '保存成功', ko: '성공적으로 저장되었습니다', ru: 'Успешно сохранено' },
+                    'Cập nhật thành công': { en: 'Updated successfully', zh: '更新成功', ko: '성공적으로 업데이트되었습니다', ru: 'Успешно обновлено' },
+                    'Đã sao chép': { en: 'Copied to clipboard', zh: '已复制', ko: '복사되었습니다', ru: 'Скопировано' },
+                    'Đã xóa': { en: 'Deleted successfully', zh: '已删除', ko: '삭제되었습니다', ru: 'Удалено' },
+                    'Lỗi kết nối': { en: 'Connection error', zh: '连接错误', ko: '연결 오류', ru: 'Ошибка подключения' },
+                    'Vui lòng thử lại': { en: 'Please try again', zh: '请重试', ko: '다시 시도해 주세요', ru: 'Пожалуйста, попробуйте снова' },
+                    'Không tải được': { en: 'Failed to load', zh: '加载失败', ko: '불러오지 못했습니다', ru: 'Не удалось загрузить' }
+                };
+                for (const [vText, tMap] of Object.entries(commonToasts)) {
+                    if (text.includes(vText) && tMap[currentAdminLang]) {
+                        text = text.replace(vText, tMap[currentAdminLang]);
+                        break;
+                    }
+                }
+            }
+        }
+    }
     const host = ensureToastHost();
 
     // Cùng một lỗi lặp lại (ví dụ mỗi vòng poll) thì không xếp chồng, chỉ đếm số lần.
@@ -340,19 +434,61 @@ function setLoginSuccess(msg) {
 }
 
 
-// Khởi tạo Google Sign-in button (tham khảo DealPhuQuoc)
+// Khởi tạo Google Sign-in button (hỗ trợ cả Token Client OAuth2 và ID One Tap)
 let googleAuthInitialized = false;
+let googleTokenClient = null;
+let currentGoogleClientId = '';
+
+function clearGoogleStateCookie() {
+    try {
+        const expires = 'expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        document.cookie = 'g_state=; ' + expires;
+        if (window.location.hostname) {
+            document.cookie = 'g_state=; domain=' + window.location.hostname + '; ' + expires;
+            const parts = window.location.hostname.split('.');
+            if (parts.length > 2) {
+                document.cookie = 'g_state=; domain=.' + parts.slice(-2).join('.') + '; ' + expires;
+            }
+        }
+    } catch (_) {}
+}
+
 async function initGoogleAuth() {
     try {
         const configRes = await fetch(`${API_BASE}/api/admin/auth/config`);
         const configData = await configRes.json().catch(() => ({}));
         const googleClientId = (configData.googleClientId || '').trim();
+        if (!googleClientId) return;
+        currentGoogleClientId = googleClientId;
 
         const slot = document.getElementById('google-signin-btn-container');
         const customBtn = document.getElementById('google-auth-trigger-btn');
 
-        const renderGoogleBtn = () => {
-            if (!googleAuthInitialized && googleClientId && window.google?.accounts?.id) {
+        const setupGoogle = () => {
+            // 1. Khởi tạo OAuth2 Token Client (dành cho bấm nút, không bị cooldown của One Tap)
+            if (window.google?.accounts?.oauth2 && !googleTokenClient) {
+                try {
+                    googleTokenClient = window.google.accounts.oauth2.initTokenClient({
+                        client_id: googleClientId,
+                        scope: 'email profile openid',
+                        callback: async (tokenResponse) => {
+                            if (tokenResponse?.access_token) {
+                                if (typeof window.handleGoogleAccessTokenResponse === 'function') {
+                                    await window.handleGoogleAccessTokenResponse(tokenResponse.access_token);
+                                }
+                            } else if (tokenResponse?.error && tokenResponse.error !== 'popup_closed_by_user') {
+                                setLoginError('Đăng nhập Google thất bại: ' + tokenResponse.error);
+                            }
+                        }
+                    });
+                } catch (err) {
+                    console.warn('[Google] initTokenClient error:', err);
+                }
+            }
+
+            // 2. Khởi tạo Google ID One Tap / Credential fallback
+            if (window.google?.accounts?.id && !googleAuthInitialized) {
+                clearGoogleStateCookie();
                 window.google.accounts.id.initialize({
                     client_id: googleClientId,
                     callback: window.handleGoogleCredentialResponse,
@@ -360,34 +496,38 @@ async function initGoogleAuth() {
                     cancel_on_tap_outside: true
                 });
                 googleAuthInitialized = true;
-                if (slot) {
+            }
+
+            // 3. Render nút Google chính thức vào slot nếu có
+            if (slot && window.google?.accounts?.id) {
+                try {
+                    const parentWidth = slot.parentElement?.getBoundingClientRect().width || 0;
+                    const width = Math.min(400, Math.max(220, Math.floor(parentWidth || 320)));
                     slot.innerHTML = '';
-                    try {
-                        const width = Math.min(400, Math.max(200, Math.floor(slot.parentElement?.getBoundingClientRect().width || 400)));
-                        window.google.accounts.id.renderButton(slot, {
-                            type: 'standard',
-                            theme: 'outline',
-                            size: 'large',
-                            text: 'continue_with',
-                            shape: 'pill',
-                            logo_alignment: 'left',
-                            width
-                        });
-                        if (customBtn) customBtn.style.display = 'none';
-                    } catch(e) {}
-                    // Giữ customBtn luôn hiển thị chữ "Đăng nhập bằng Gmail",
-                    // slot Google iframe trong CSS được phủ lên trên để nhận click trực tiếp.
+                    window.google.accounts.id.renderButton(slot, {
+                        type: 'standard',
+                        theme: 'outline',
+                        size: 'large',
+                        text: 'continue_with',
+                        shape: 'pill',
+                        logo_alignment: 'left',
+                        width
+                    });
+                    if (slot.children.length > 0 && customBtn) {
+                        customBtn.style.display = 'none';
+                    }
+                } catch (e) {
+                    console.warn('[Google] renderButton error:', e);
                 }
             }
         };
 
-        if (window.google?.accounts?.id) {
-            renderGoogleBtn();
+        if (window.google?.accounts?.id || window.google?.accounts?.oauth2) {
+            setupGoogle();
         } else {
-            // Wait for script to load if needed
             let gsiScript = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
             if (gsiScript) {
-                gsiScript.addEventListener('load', renderGoogleBtn, { once: true });
+                gsiScript.addEventListener('load', setupGoogle, { once: true });
             }
         }
     } catch (e) {
@@ -398,8 +538,53 @@ async function initGoogleAuth() {
 
 function handleGoogleAuthTrigger() {
     try {
-        if (googleAuthInitialized && window.google?.accounts?.id) {
-            window.google.accounts.id.prompt();
+        setLoginError('');
+        // Ưu tiên 1: Dùng Google OAuth2 Token Client (mở popup tài khoản trực tiếp, bấm lại được vô hạn lần kể cả khi tắt form)
+        if (googleTokenClient) {
+            googleTokenClient.requestAccessToken({ prompt: '' });
+            return;
+        }
+
+        // Khởi tạo nhanh Token Client nếu script đã sẵn sàng
+        if (currentGoogleClientId && window.google?.accounts?.oauth2) {
+            try {
+                googleTokenClient = window.google.accounts.oauth2.initTokenClient({
+                    client_id: currentGoogleClientId,
+                    scope: 'email profile openid',
+                    callback: async (tokenResponse) => {
+                        if (tokenResponse?.access_token) {
+                            if (typeof window.handleGoogleAccessTokenResponse === 'function') {
+                                await window.handleGoogleAccessTokenResponse(tokenResponse.access_token);
+                            }
+                        } else if (tokenResponse?.error && tokenResponse.error !== 'popup_closed_by_user') {
+                            setLoginError('Đăng nhập Google thất bại: ' + tokenResponse.error);
+                        }
+                    }
+                });
+                googleTokenClient.requestAccessToken({ prompt: '' });
+                return;
+            } catch (err) {
+                console.warn('[Google] Re-init TokenClient error:', err);
+            }
+        }
+
+        // Ưu tiên 2: Fallback Google One Tap (xóa cookie g_state và hủy moment cũ để không bị suppression chặn)
+        clearGoogleStateCookie();
+        if (window.google?.accounts?.id) {
+            try { window.google.accounts.id.cancel(); } catch (_) {}
+            if (currentGoogleClientId) {
+                window.google.accounts.id.initialize({
+                    client_id: currentGoogleClientId,
+                    callback: window.handleGoogleCredentialResponse,
+                    auto_select: false,
+                    cancel_on_tap_outside: true
+                });
+            }
+            window.google.accounts.id.prompt((notification) => {
+                if (notification && notification.isNotDisplayed()) {
+                    console.warn('[Google] Prompt not displayed:', notification.getNotDisplayedReason?.());
+                }
+            });
         } else {
             void initGoogleAuth();
             setLoginError('Đang tải mô-đun Google Sign-In, vui lòng thử lại sau giây lát hoặc sử dụng OTP Email.');
@@ -1065,7 +1250,14 @@ function updateAgentHeaderUI() {
 
     // Giỏ hàng/Bill trên header: CHỈ dành cho Agent / Sale (và được gom vào bảng Công cụ)
     document.getElementById('order-cart-btn')?.classList.toggle('hide', !isAgentRole);
-    document.getElementById('sale-menu-btn')?.classList.toggle('hide', !isSaleView);
+    // Sản phẩm (thực đơn xem nhanh): CHỈ dành cho Sale (Agent quản lý sản phẩm trong Quản trị)
+    const hideSaleMenu = role !== 'sale';
+    const saleMenuEl = document.getElementById('sale-menu-btn');
+    if (saleMenuEl) {
+        saleMenuEl.classList.toggle('hide', hideSaleMenu);
+        if (hideSaleMenu) saleMenuEl.style.setProperty('display', 'none', 'important');
+        else saleMenuEl.style.removeProperty('display');
+    }
 
     document.getElementById('project-selector-wrap')?.classList.toggle('hide', isAgentRole || isTechnical);
 
@@ -1077,8 +1269,8 @@ function updateAgentHeaderUI() {
     }
     
     // Superadmin & Project Admin: gom tất cả công cụ vào menu Quản trị duy nhất
-    const isSuperadmin = CURRENT_ADMIN?.role === 'superadmin';
-    const isProjectAdmin = CURRENT_ADMIN?.role === 'project_admin';
+    const isSuperadmin = role === 'superadmin';
+    const isProjectAdmin = role === 'project_admin' || role === 'project_owner';
     const canManageTeam = isSuperadmin || isProjectAdmin;
 
     // Các nút chức năng gom gọn bên trong menu Quản trị
@@ -1088,24 +1280,30 @@ function updateAgentHeaderUI() {
     document.getElementById('superadmin-report-modal-btn')?.classList.toggle('hide', !(isSuperadmin || isProjectAdmin));
     document.getElementById('superadmin-otp-unlock-btn')?.classList.toggle('hide', !isSuperadmin);
 
-    // Ẩn ô chọn ngôn ngữ giao diện với Agent/Sale của dự án QR hoặc Kỹ thuật
-    const hideLangPicker = (isRestrictedConsole() && isQrConciergeProject(CURRENT_ADMIN?.project_id)) || isTechnical;
-    document.getElementById('admin-lang-selector-wrap')?.classList.toggle('hide', hideLangPicker);
+    // Luôn mở bộ chọn ngôn ngữ giao diện cho cả Superadmin, Agent và Sale
+    document.getElementById('admin-lang-selector-wrap')?.classList.remove('hide');
 
-    // Báo cáo là công cụ quản lý: nút trên header chỉ hiện cho Agent quản lý (gom vào bảng Công cụ)
-    document.getElementById('report-modal-btn')?.classList.toggle('hide', !isAgentRole || isSaleRole());
+    // Báo cáo là công cụ quản lý: CHỈ hiện cho Agent quản lý (gom vào bảng Công cụ), hoàn toàn ẩn với Sale
+    const hideReportModal = role !== 'agent';
+    const reportModalEl = document.getElementById('report-modal-btn');
+    if (reportModalEl) {
+        reportModalEl.classList.toggle('hide', hideReportModal);
+        if (hideReportModal) reportModalEl.style.setProperty('display', 'none', 'important');
+        else reportModalEl.style.removeProperty('display');
+    }
 
-    // Nút quản lý Sale, nhóm và QR (chỉ Agent quản lý của dự án QR)
-    const canManageOrg = isAgentManagerRole();
-    document.getElementById('org-manage-btn')?.classList.toggle('hide', !canManageOrg);
+    // Nút quản lý Sale, nhóm, QR và thực đơn: CHỈ dành cho Agent (Chủ cơ sở)
+    const canManageOrg = role === 'agent';
+    const orgManageEl = document.getElementById('org-manage-btn');
+    if (orgManageEl) {
+        orgManageEl.classList.toggle('hide', !canManageOrg);
+        if (!canManageOrg) orgManageEl.style.setProperty('display', 'none', 'important');
+        else orgManageEl.style.removeProperty('display');
+    }
 
     // Nút hồ sơ tài khoản: hiển thị cho Agent / Sale
     document.getElementById('agent-account-btn')?.classList.toggle('hide', !isAgentRole);
     document.getElementById('agent-guide-btn')?.classList.toggle('hide', !isAgentRole);
-
-    // Chỉ Agent quản lý mới tạo và xem QR. Sale không đụng tới QR.
-    const hasQr = isAgentManagerRole() && isQrConciergeProject(CURRENT_ADMIN.project_id);
-    document.getElementById('agent-qr-btn')?.classList.toggle('hide', !hasQr);
 
     // Agent/Kỹ thuật không dùng dropdown Quản trị
     document.getElementById('settings-dropdown-wrapper')?.classList.toggle('hide', isAgentRole || isTechnical);
@@ -1118,40 +1316,57 @@ function updateAgentHeaderUI() {
 
     // Ẩn nếu không phải Agent/Sale, đang trong iframe, HOẶC thông báo đã bật (khi
     // đó không còn thao tác nào để làm — xem setPushButtonState).
-    document.getElementById('agent-push-btn')?.classList.toggle('hide', !isAgentRole || inIframe || pushHeaderHidden);
+    const isPushGranted = (typeof Notification !== 'undefined' && Notification.permission === 'granted') || Boolean(window.pushHeaderHidden);
+    const isInFrame = (typeof inIframe !== 'undefined' ? inIframe : (typeof window !== 'undefined' && window.inIframe));
+    const hidePushBtn = !isAgentRole || isInFrame || isPushGranted;
+    const pushBtnEl = document.getElementById('agent-push-btn');
+    if (pushBtnEl) {
+        pushBtnEl.classList.toggle('hide', hidePushBtn);
+        if (hidePushBtn) pushBtnEl.style.setProperty('display', 'none', 'important');
+        else pushBtnEl.style.removeProperty('display');
+    }
 
     if (isAgentRole || isTechnical) document.getElementById('manage-admins-btn')?.classList.add('hide');
 
     // Ô avatar: ẢNH của cơ sở nếu Agent đã tải lên, không có thì lấy chữ cái
     // đầu. Sale nhìn thấy ảnh của Agent quản lý mình, không phải ảnh của chính
     // mình — header là để nhận ra ĐANG Ở CƠ SỞ NÀO.
-    const badge = document.getElementById('agent-avatar-badge');
-    const avatarChar = document.getElementById('agent-avatar-char');
-    // Ảnh của CHÍNH NGƯỜI ĐANG ĐĂNG NHẬP: Sale thấy ảnh Sale, Agent thấy ảnh
-    // Agent. Trước đây Sale chưa có ảnh riêng thì rơi về ảnh của Agent quản lý,
-    // nên hai người ngồi cạnh nhau nhìn thấy cùng một khuôn mặt trên header và
-    // không biết máy nào đang đăng nhập bằng tài khoản nào.
-    const avatarUrl = CURRENT_ADMIN.avatar_url || '';
-    if (badge) {
-        let img = badge.querySelector('img');
-        if (/^https?:\/\/|^\//.test(String(avatarUrl))) {
-            if (avatarChar) avatarChar.classList.add('hide');
-            if (img) {
-                img.src = avatarUrl;
-                img.style.display = 'block';
-            } else {
-                badge.insertAdjacentHTML('afterbegin', `<img src="${avatarUrl}" alt="">`);
-            }
-        } else {
-            if (img) img.style.display = 'none';
-            if (avatarChar) {
-                avatarChar.classList.remove('hide');
-                const src = visibleName || (isSaleView ? managerName : '') || 'P';
-                avatarChar.textContent = src.trim().charAt(0).toUpperCase() || 'P';
-            }
-        }
+    // Hàm tự sinh ảnh đại diện SVG với chữ cái & dải màu nhận diện, đảm bảo không bao giờ để trắng
+    function getGeneratedAvatarSvg(text) {
+        const char = (String(text || 'P').trim().charAt(0) || 'P').toUpperCase();
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+          <defs>
+            <linearGradient id="avG" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ef2b9d"/>
+              <stop offset="50%" stop-color="#db2777"/>
+              <stop offset="100%" stop-color="#7c3aed"/>
+            </linearGradient>
+          </defs>
+          <circle cx="48" cy="48" r="48" fill="url(#avG)"/>
+          <text x="50%" y="54%" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="46" font-weight="800" fill="#ffffff" text-anchor="middle" dominant-baseline="middle">${char}</text>
+        </svg>`;
+        return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
     }
-    badge?.classList.toggle('hide', !visibleName);
+
+    const badge = document.getElementById('agent-avatar-badge');
+    const avatarUrl = CURRENT_ADMIN?.avatar_url || '';
+    const name = CURRENT_ADMIN?.full_name || CURRENT_ADMIN?.username || (isSaleView ? managerName : '') || 'P';
+    const fallbackChar = name.trim().charAt(0).toUpperCase() || 'P';
+    const fallbackAvatarDataUrl = getGeneratedAvatarSvg(fallbackChar);
+
+    if (badge) {
+        if (avatarUrl) {
+            badge.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="" class="agent-avatar-img" style="width:100%;height:100%;object-fit:contain;padding:2px;box-sizing:border-box;display:block;border-radius:50%;" onerror="this.onerror=null;this.src='${fallbackAvatarDataUrl}';this.style.objectFit='cover';this.style.padding='0';this.classList.add('is-fallback');">`;
+        } else {
+            badge.innerHTML = `<img src="${fallbackAvatarDataUrl}" alt="" class="agent-avatar-img is-fallback" style="width:100%;height:100%;object-fit:cover;padding:0;box-sizing:border-box;display:block;border-radius:50%;">`;
+        }
+        badge.classList.toggle('hide', !visibleName);
+    }
+
+    document.body.classList.toggle('role-superadmin', role === 'superadmin');
+    document.body.classList.toggle('role-agent', role === 'agent');
+    document.body.classList.toggle('role-sale', role === 'sale');
+    document.body.classList.toggle('role-staff', isStaffHeader);
 
     // Dòng phụ dưới tên. Sale: tên của chính mình đã nằm ở hàng dưới rồi nên
     // dòng này để trống; Agent quản lý: số Sale đang có.
@@ -1186,7 +1401,10 @@ async function refreshAgentSaleCount(force) {
         const data = await res.json();
         const n = Array.isArray(data) ? data.length : 0;
         agentSaleCountLoaded = true;
-        subEl.innerHTML = `<i class="ri-user-shared-line"></i> ${n} nhân viên Sale`;
+        const currentAdminLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+        const dict = (window.TRANSLATIONS && window.TRANSLATIONS[currentAdminLang]) || {};
+        const staffUnit = dict.agentSalesStaffCount || 'nhân viên Sale';
+        subEl.innerHTML = `<i class="ri-user-shared-line"></i> ${n} ${escapeHtml(staffUnit)}`;
         subEl.classList.remove('hide');
     } catch (e) {
         // Không có số thì thôi, không hiện dòng rỗng.
@@ -1205,6 +1423,12 @@ window.refreshAgentSaleCount = refreshAgentSaleCount;
 // Tải lại bằng cách gắn thêm một tham số vào URL: location.reload() ở
 // standalone vẫn có thể lấy lại đúng bản HTML đang nằm trong cache.
 async function reloadApp() {
+    const splash = document.getElementById('app-boot-splash');
+    if (splash) {
+        splash.style.visibility = 'visible';
+        splash.style.opacity = '1';
+        splash.style.pointerEvents = 'auto';
+    }
     const badge = document.getElementById('app-update-badge')?.textContent?.trim();
     if (badge) {
         try {
@@ -1229,9 +1453,9 @@ async function reloadApp() {
     }
 
     try {
-        window.location.reload();
+        window.location.href = window.location.pathname + '?r=' + Date.now();
     } catch (_) {
-        window.location.href = window.location.pathname;
+        window.location.reload();
     }
 }
 window.reloadApp = reloadApp;
@@ -1322,8 +1546,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) void
 // trình xử lý sự kiện đã gắn ở nơi khác vẫn còn nguyên, kể cả các chỗ gọi
 // classList.toggle('hide', ...) để ẩn nút theo vai trò.
 const HEADER_MENU_BTN_IDS = [
-    'ticket-manage-btn',
-    'org-manage-btn', 'order-cart-btn', 'sale-menu-btn', 'agent-qr-btn',
+    'org-manage-btn', 'order-cart-btn', 'sale-menu-btn',
     'report-modal-btn', 'agent-account-btn', 'agent-guide-btn', 'agent-push-btn',
 ];
 const headerBtnHome = new Map();
@@ -1367,14 +1590,38 @@ document.addEventListener('click', (event) => {
     const panel = document.getElementById('header-menu-panel');
     if (!panel) return;
     if (trigger) {
-        const open = panel.classList.contains('hide');
-        panel.classList.toggle('hide', !open);
-        document.getElementById('header-menu-btn')?.setAttribute('aria-expanded', String(open));
+        const willOpen = panel.classList.contains('hide');
+        if (willOpen) {
+            const role = CURRENT_ADMIN?.role || 'agent';
+            if (role !== 'agent') {
+                const rBtn = document.getElementById('report-modal-btn');
+                if (rBtn) { rBtn.classList.add('hide'); rBtn.style.setProperty('display', 'none', 'important'); }
+            }
+            if (role !== 'sale') {
+                const sBtn = document.getElementById('sale-menu-btn');
+                if (sBtn) { sBtn.classList.add('hide'); sBtn.style.setProperty('display', 'none', 'important'); }
+            }
+            if ((typeof Notification !== 'undefined' && Notification.permission === 'granted') || Boolean(window.pushHeaderHidden)) {
+                const pBtn = document.getElementById('agent-push-btn');
+                if (pBtn) { pBtn.classList.add('hide'); pBtn.style.setProperty('display', 'none', 'important'); }
+            }
+        }
+        panel.classList.toggle('hide', !willOpen);
+        document.getElementById('header-menu-btn')?.setAttribute('aria-expanded', String(willOpen));
         return;
     }
     // Bấm vào một mục trong bảng cũng đóng bảng: mục nào cũng mở một cửa sổ
     // khác, để bảng mở chồng lên trên là che mất thứ vừa mở.
-    if (!panel.classList.contains('hide')) closeHeaderQuickMenu();
+    if (!panel.classList.contains('hide')) {
+        // Không đóng bảng nếu người dùng đang thao tác chọn ngôn ngữ
+        if (event.target.closest('.menu-lang-dropdown-row') || event.target.closest('.sdm-lang-bar') || event.target.closest('select') || event.target.closest('option')) {
+            return;
+        }
+        const wrap = document.getElementById('header-menu-wrap');
+        if (!wrap?.contains(event.target) || event.target.closest('.header-menu-item')) {
+            closeHeaderQuickMenu();
+        }
+    }
 });
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeHeaderQuickMenu(); });
 
@@ -1476,16 +1723,23 @@ async function handleSelfDisplayNameSubmit(event) {
 
 // Trạng thái rỗng nói rõ bước tiếp theo, thay vì chỉ báo "không có gì".
 function tableEmptyBlock(selectedGroupId) {
+    const currentAdminLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+    const dict = (window.TRANSLATIONS && window.TRANSLATIONS[currentAdminLang]) || {};
+    const titleGroupEmpty = dict.orgNoQrInGroup || 'Nhóm này chưa có mã QR';
+    const descGroupEmpty = dict.orgNoQrInGroupDesc || 'Chọn “— Tất cả nhóm —” để xem toàn bộ, hoặc tạo mã QR mới cho nhóm này ở form phía trên.';
+    const titleAllEmpty = dict.orgNoQr || 'Chưa có mã QR nào';
+    const descAllEmpty = dict.orgNoQrDesc || 'Tạo mã QR đầu tiên ở form phía trên. Mỗi vị trí một mã — Bàn 1, Phòng 101, Quầy Bar — khách quét mã nào thì chat vào đúng nhóm tiếp nhận của mã đó.';
+
     return selectedGroupId
         ? `<div class="empty-state">
                <span class="empty-state-icon"><i class="ri-qr-scan-2-line"></i></span>
-               <h5>Nhóm này chưa có mã QR</h5>
-               <p>Chọn “— Tất cả nhóm —” để xem toàn bộ, hoặc tạo mã QR mới cho nhóm này ở form phía trên.</p>
+               <h5>${escapeHtml(titleGroupEmpty)}</h5>
+               <p>${escapeHtml(descGroupEmpty)}</p>
            </div>`
         : `<div class="empty-state">
                <span class="empty-state-icon"><i class="ri-qr-scan-2-line"></i></span>
-               <h5>Chưa có mã QR nào</h5>
-               <p>Tạo mã QR đầu tiên ở form phía trên. Mỗi vị trí một mã — Bàn 1, Phòng 101, Quầy Bar — khách quét mã nào thì chat vào đúng nhóm tiếp nhận của mã đó.</p>
+               <h5>${escapeHtml(titleAllEmpty)}</h5>
+               <p>${escapeHtml(descAllEmpty)}</p>
            </div>`;
 }
 

@@ -837,10 +837,21 @@ button:focus-visible {
     position: absolute;
     bottom: -3px;
     right: -3px;
-    font-size: 12px;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    min-height: 18px;
+    max-width: 18px;
+    max-height: 18px;
+    aspect-ratio: 1 / 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    box-sizing: border-box;
+    font-size: 11px;
     background: #ffffff;
     border-radius: 50%;
-    padding: 2px;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.14);
     border: 1px solid rgba(0, 0, 0, 0.08);
     color: #4267B2;
@@ -1120,6 +1131,11 @@ button:focus-visible {
     width: 28px;
     height: 28px;
     min-width: 28px;
+    min-height: 28px;
+    max-width: 28px;
+    max-height: 28px;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
@@ -1736,6 +1752,12 @@ button:focus-visible {
 .avatar-picker-option {
     width: 32px;
     height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    max-width: 32px;
+    max-height: 32px;
+    aspect-ratio: 1 / 1;
+    flex-shrink: 0;
     border-radius: 50%;
     cursor: pointer;
     border: 2px solid #fff;
@@ -2147,12 +2169,24 @@ button:focus-visible {
     white-space: nowrap;
     box-shadow: 0 2px 8px rgba(239, 43, 157, 0.08);
 }
+.settings-trigger-btn > i:first-child {
+    font-size: 17px;
+    color: var(--accent-color, #ef2b9d);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
+}
 .settings-trigger-btn:hover {
     background: linear-gradient(135deg, #ffffff, #ffeaf6);
     border-color: rgba(239, 43, 157, 0.38);
     box-shadow: 0 4px 14px rgba(239, 43, 157, 0.16);
     transform: translateY(-1px);
     color: var(--accent-color);
+}
+.settings-trigger-btn:hover > i:first-child {
+    transform: scale(1.12);
+    color: #db2777;
 }
 .settings-trigger-btn .chevron-icon {
     font-size: 16px;
@@ -2442,28 +2476,144 @@ button:focus-visible {
     flex-direction: column !important;
     overflow: hidden !important;
   }
-  .dashboard-header {
-    min-height: calc(112px + env(safe-area-inset-top));
-    height: calc(112px + env(safe-area-inset-top));
-    padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+  /* ── Superadmin & Default Mobile Header (UI/UX Pro Max) ── */
+  .dashboard-header:not(.sale-header) {
+    min-height: calc(56px + env(safe-area-inset-top)) !important;
+    height: auto !important;
+    padding: calc(7px + env(safe-area-inset-top)) 12px 7px !important;
     border-radius: 0;
-    flex-wrap: nowrap;
-    gap: 10px;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
     border-left: 0;
     border-right: 0;
-    background: rgba(255,255,255,.96);
+    border-bottom: 1px solid rgba(239, 43, 157, 0.12) !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    position: relative !important;
+    z-index: 100 !important;
     flex: 0 0 auto !important;
+    box-sizing: border-box !important;
   }
-  .header-left { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; width: 100%; min-width: 0; padding-right: 98px; justify-content: flex-start; }
-  .logo { gap: 8px; min-width: 0; flex-shrink: 0; }
-  .logo span { display: block; font-size: 16px; white-space: nowrap; overflow: visible; text-overflow: clip; }
-  .logo-img { width: 31px; height: 31px; }
-  .project-selector { width: 100%; min-width: 0; padding: 8px 10px; max-width: none; }
-  .project-selector i { display: none; }
-  .project-selector select { width: 100%; min-width: 0; font-size: 14px; max-width: none; overflow: hidden; text-overflow: ellipsis; }
-  .header-right { position: absolute; top: calc(8px + env(safe-area-inset-top)); right: 12px; gap: 4px; flex-wrap: nowrap; }
+
+  /* Single row: Logo (Trái) + Dropdown dự án (Giữa) */
+  .dashboard-header:not(.sale-header) .header-left {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    width: auto !important;
+    padding-right: 0 !important;
+  }
+  .dashboard-header:not(.sale-header) .logo {
+    height: 42px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 0 !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex-shrink: 0 !important;
+    margin: 0 !important;
+  }
+  .dashboard-header:not(.sale-header) .logo-img {
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 11px !important;
+    object-fit: contain !important;
+    flex-shrink: 0 !important;
+  }
+  .dashboard-header:not(.sale-header) .logo .pastie-chat-wordmark {
+    display: none !important;
+  }
+
+  /* Dropdown chọn dự án: nằm cạnh logo bên trái, chiếm khoảng trống còn lại */
+  .dashboard-header:not(.sale-header) .project-selector {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 38px !important;
+    padding: 0 10px !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+    border: 1px solid rgba(239, 43, 157, 0.2) !important;
+    border-radius: 11px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    box-shadow: 0 2px 6px rgba(110, 43, 83, 0.04) !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+  }
+  .dashboard-header:not(.sale-header) .project-selector i {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 15px !important;
+    color: var(--accent-color, #ef2b9d) !important;
+    flex-shrink: 0 !important;
+  }
+  .dashboard-header:not(.sale-header) .project-selector select {
+    width: 100% !important;
+    min-width: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #1e1b2e !important;
+    outline: none !important;
+    cursor: pointer !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  /* Nút Quản trị bên phải (Cùng 1 hàng, kích thước 38px chuẩn chạm) */
+  .dashboard-header:not(.sale-header) .header-right {
+    position: static !important;
+    height: 38px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+    flex-shrink: 0 !important;
+    z-index: 10 !important;
+  }
   .settings-trigger-btn span, .settings-trigger-btn .chevron-icon, .lang-selector, .admin-profile-badge { display: none !important; }
-  .settings-trigger-btn { padding: 8px !important; min-width: 36px; justify-content: center; }
+
+  .dashboard-header:not(.sale-header) .settings-trigger-btn {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
+    padding: 0 !important;
+    border-radius: 11px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 0 !important;
+    background: linear-gradient(135deg, #ef2b9d 0%, #db2777 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 14px rgba(239, 43, 157, 0.35) !important;
+    transition: all 0.15s ease !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+  }
+  .dashboard-header:not(.sale-header) .settings-trigger-btn:active {
+    transform: scale(0.94) !important;
+    filter: brightness(1.08) !important;
+  }
+  .dashboard-header:not(.sale-header) .settings-trigger-btn i {
+    font-size: 19px !important;
+    color: #ffffff !important;
+    line-height: 1 !important;
+    pointer-events: none !important;
+  }
+
   /* Nút Agent thu về dạng icon trên mobile để không tràn header */
   .header-quick-btn span { display: none; }
   .header-quick-btn { padding: 8px; min-width: 36px; justify-content: center; }
@@ -2471,18 +2621,226 @@ button:focus-visible {
   .agent-identity { flex-direction: row; align-items: baseline; gap: 7px; padding-left: 0; border-left: 0; }
   .agent-identity-label { font-size: 9.5px; }
   .agent-display-name { font-size: 16px; max-width: calc(100vw - 150px); }
-  .settings-trigger-btn { background: #fff; border-color: rgba(239,43,157,.25); color: var(--text-primary); box-shadow: 0 3px 10px rgba(110,43,83,.08); }
-  .settings-dropdown-menu { right: -52px; width: min(360px, calc(100vw - 20px)); max-height: min(660px, calc(100dvh - 72px)); padding: 10px; background: linear-gradient(155deg, #fff 0%, #fff9fd 100%); border-color: rgba(239,43,157,.18); border-radius: 18px; box-shadow: 0 22px 48px rgba(110,43,83,.22); }
-  .sdm-menu-head { padding: 8px 10px 12px; border-color: rgba(239,43,157,.13); }
-  .sdm-menu-head span, .sdm-label { color: #a97899; }
-  .sdm-menu-head strong { color: #352441; }
-  .sdm-item { background: rgba(255,255,255,.72); }
-  .sdm-item:hover, .sdm-item:active { background: #fff0f8; border-color: rgba(239,43,157,.12); }
-  .sdm-item::after { color: #b08ca4; }
-  .sdm-item:hover::after { color: #ef2b9d; }
-  .sdm-text span { color: #382647; }
-  .sdm-text small { color: #8b718c; }
-  .sdm-divider { background: rgba(239,43,157,.12); }
+
+  /* ── Menu Quản trị Superadmin Mobile (UI/UX Pro Max, không tràn, không đè) ── */
+  .settings-dropdown-menu {
+    position: fixed !important;
+    top: calc(58px + env(safe-area-inset-top)) !important;
+    right: 12px !important;
+    left: 12px !important;
+    width: auto !important;
+    max-width: 440px !important;
+    margin: 0 0 0 auto !important;
+    max-height: min(84dvh, 660px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+    padding: 14px !important;
+    background: rgba(255, 255, 255, 0.98) !important;
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    border: 1px solid rgba(239, 43, 157, 0.22) !important;
+    border-radius: 22px !important;
+    box-shadow: 0 24px 60px -10px rgba(70, 20, 54, 0.35), 0 10px 24px -5px rgba(0, 0, 0, 0.1) !important;
+    z-index: 1200 !important;
+    animation: dropdownFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+  .settings-dropdown-menu.hide {
+    display: none !important;
+  }
+
+  .sdm-menu-head {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 3px !important;
+    padding: 12px 14px !important;
+    margin-bottom: 8px !important;
+    border-bottom: 1px solid rgba(239, 43, 157, 0.12) !important;
+    background: linear-gradient(135deg, rgba(239, 43, 157, 0.08) 0%, rgba(245, 158, 11, 0.05) 100%) !important;
+    border-radius: 14px !important;
+  }
+  .sdm-menu-head::after {
+    display: none !important;
+  }
+  .sdm-menu-head span {
+    font-size: 10.5px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase !important;
+    color: #be185d !important;
+  }
+  .sdm-menu-head strong {
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    color: #1e1b2e !important;
+  }
+
+  .sdm-group {
+    padding: 4px 0 2px !important;
+  }
+
+  /* 1 cột thoáng đạt, không còn bị chèn ép chữ như 2 cột cũ */
+  .sdm-tools-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+    padding: 4px 0 !important;
+  }
+
+  .sdm-label {
+    font-size: 10.5px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.08em !important;
+    color: #9d5a86 !important;
+    padding: 6px 8px 4px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+
+  .sdm-item {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    width: 100% !important;
+    min-height: 52px !important;
+    padding: 9px 12px !important;
+    border-radius: 14px !important;
+    border: 1px solid rgba(84, 62, 100, 0.08) !important;
+    background: rgba(255, 255, 255, 0.88) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03) !important;
+    transition: all 0.15s ease !important;
+    text-align: left !important;
+    position: relative !important;
+    margin-bottom: 4px !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+  }
+  .sdm-item:hover, .sdm-item:active {
+    background: #fff0f8 !important;
+    border-color: rgba(239, 43, 157, 0.22) !important;
+    transform: scale(0.99) !important;
+  }
+
+  /* Bảo vệ nút Ticket trong menu: luôn full-width, hiển thị đầy đủ icon & tên */
+  #ticket-manage-btn.sdm-item,
+  .dashboard-header #ticket-manage-btn.sdm-item {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    min-height: 52px !important;
+    height: auto !important;
+    padding: 9px 12px !important;
+    border-radius: 14px !important;
+    box-sizing: border-box !important;
+  }
+  #ticket-manage-btn.sdm-item .sdm-icon,
+  .dashboard-header #ticket-manage-btn.sdm-item .sdm-icon {
+    display: inline-flex !important;
+    visibility: visible !important;
+  }
+  #ticket-manage-btn.sdm-item .sdm-text,
+  .dashboard-header #ticket-manage-btn.sdm-item .sdm-text {
+    display: flex !important;
+    visibility: visible !important;
+  }
+  #ticket-manage-btn.sdm-item .sdm-text span,
+  .dashboard-header #ticket-manage-btn.sdm-item .sdm-text span {
+    display: block !important;
+    visibility: visible !important;
+  }
+  #ticket-manage-btn.sdm-item .sdm-text small,
+  .dashboard-header #ticket-manage-btn.sdm-item .sdm-text small {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  .sdm-icon {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
+    border-radius: 11px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+  }
+  .sdm-icon i {
+    font-size: 19px !important;
+    line-height: 1 !important;
+  }
+
+  .sdm-text {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    text-align: left !important;
+  }
+  .sdm-text span {
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    color: #1e1b2e !important;
+    line-height: 1.25 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  .sdm-text small {
+    font-size: 11.5px !important;
+    font-weight: 500 !important;
+    color: #6b5b75 !important;
+    line-height: 1.25 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .sdm-item::after {
+    content: '›' !important;
+    display: block !important;
+    margin-left: auto !important;
+    font-size: 18px !important;
+    font-weight: 400 !important;
+    color: #c4b5cb !important;
+    flex-shrink: 0 !important;
+    transition: transform 0.15s ease, color 0.15s ease !important;
+  }
+  .sdm-item:hover::after, .sdm-item:active::after {
+    color: #ef2b9d !important;
+    transform: translateX(2px) !important;
+  }
+
+  .sdm-divider {
+    height: 1px !important;
+    background: rgba(239, 43, 157, 0.1) !important;
+    margin: 8px 4px !important;
+  }
+
+  .sdm-item-logout {
+    background: rgba(254, 242, 242, 0.85) !important;
+    border-color: rgba(239, 68, 68, 0.18) !important;
+  }
+  .sdm-item-logout .sdm-text span {
+    color: #dc2626 !important;
+    font-weight: 700 !important;
+  }
+  .sdm-item-logout .sdm-text small {
+    color: #991b1b !important;
+  }
+  .sdm-item-logout::after {
+    color: #fca5a5 !important;
+  }
+  .sdm-item-logout:hover, .sdm-item-logout:active {
+    background: #fee2e2 !important;
+    border-color: rgba(239, 68, 68, 0.3) !important;
+  }
 
   .dashboard-body {
     grid-template-columns: 1fr !important;
@@ -2604,98 +2962,128 @@ button:focus-visible {
   .detail-select { min-height: 48px; border-color: rgba(239,43,157,.2); background: #fff8fc; font-size: 15px; }
 
   .chat-header {
-    min-height: 60px;
-    padding: 8px 12px;
-    flex-wrap: nowrap;
-    gap: 8px;
-    background: #ffffff;
-    border-bottom: 1px solid var(--panel-border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    min-height: auto !important;
+    padding: 8px 12px 8px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 6px !important;
+    background: #ffffff !important;
+    border-bottom: 1px solid var(--panel-border) !important;
+  }
+  .dashboard-body.chat-open .chat-main > .chat-header {
+    flex: 0 0 auto !important;
+    padding: 8px 12px 8px !important;
   }
   .chat-header-user-info {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    flex: 1 1 auto;
-    overflow: hidden;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    flex: 1 1 auto !important;
+    overflow: hidden !important;
   }
   .chat-header-meta {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    min-width: 0;
-    flex: 1;
-    overflow: hidden;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    overflow: hidden !important;
   }
   .chat-header-title-line {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: nowrap;
-    min-width: 0;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+    min-width: 0 !important;
   }
   .chat-header-title-line h3 {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-    flex-shrink: 1;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: var(--text-primary) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    min-width: 0 !important;
+    flex-shrink: 1 !important;
   }
   .chat-header-badge.group-badge {
-    font-size: 10.5px;
-    padding: 1px 6px;
-    border-radius: 8px;
-    flex-shrink: 0;
-    max-width: 130px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 10.5px !important;
+    padding: 1px 6px !important;
+    border-radius: 8px !important;
+    flex-shrink: 0 !important;
+    max-width: 130px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  .chat-header-badge.project-badge {
+    font-size: 10.5px !important;
+    padding: 1px 6px !important;
+    border-radius: 8px !important;
+    flex-shrink: 0 !important;
+    max-width: 110px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
   }
   .chat-header-sub-line {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: nowrap;
-    min-width: 0;
-    overflow: hidden;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
   }
   .chat-header-sub-line p {
-    font-size: 11.5px;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-    flex-shrink: 1;
+    font-size: 11.5px !important;
+    color: var(--text-secondary) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    min-width: 0 !important;
+    flex-shrink: 1 !important;
   }
   .chat-header-qr-info {
-    font-size: 10.5px;
-    padding: 1px 5px;
-    flex-shrink: 0;
+    font-size: 10.5px !important;
+    padding: 1px 5px !important;
+    flex-shrink: 0 !important;
   }
+
+  /* Row 2: Thanh nút tác vụ (Chat Header Actions Bar) */
   .chat-header-actions {
-    position: static;
-    width: auto;
-    min-height: auto;
-    justify-content: flex-end;
-    flex-wrap: nowrap;
+    position: static !important;
+    width: 100% !important;
+    min-height: 36px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    flex-wrap: nowrap !important;
     gap: 6px !important;
-    flex-shrink: 0;
-    overflow: visible;
+    padding-top: 6px !important;
+    border-top: 1px dashed rgba(239, 43, 157, 0.14) !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    flex-shrink: 0 !important;
   }
+  .chat-header-actions.hide {
+    display: none !important;
+  }
+  .chat-header-actions::-webkit-scrollbar {
+    display: none !important;
+  }
+
   .chat-back-btn,
-  .chat-details-btn,
-  #mobile-back-btn,
-  #details-toggle-btn {
+  #mobile-back-btn {
     width: 36px !important;
     height: 36px !important;
     min-width: 36px !important;
     min-height: 36px !important;
+    max-width: 36px !important;
+    max-height: 36px !important;
+    aspect-ratio: 1 / 1 !important;
+    box-sizing: border-box !important;
     padding: 0 !important;
     border-radius: 50% !important;
     display: inline-flex !important;
@@ -2709,25 +3097,141 @@ button:focus-visible {
     font-size: 16px !important;
   }
   .chat-back-btn:active,
+  #mobile-back-btn:active {
+    background: #fff0f8 !important;
+    border-color: var(--accent-color) !important;
+    transform: scale(0.94);
+  }
+
+  .chat-details-btn,
+  #details-toggle-btn,
+  #delete-session-btn {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+    max-width: 34px !important;
+    max-height: 34px !important;
+    aspect-ratio: 1 / 1 !important;
+    box-sizing: border-box !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: #ffffff !important;
+    border: 1px solid rgba(239, 43, 157, 0.22) !important;
+    color: var(--text-primary) !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04) !important;
+    flex: 0 0 34px !important;
+    font-size: 15px !important;
+  }
   .chat-details-btn:active,
-  #mobile-back-btn:active,
   #details-toggle-btn:active {
     background: #fff0f8 !important;
     border-color: var(--accent-color) !important;
     transform: scale(0.94);
   }
+  #delete-session-btn {
+    border-color: rgba(239, 68, 68, 0.25) !important;
+    color: #ef4444 !important;
+    background: #fff5f5 !important;
+  }
+  #delete-session-btn:active {
+    background: #fee2e2 !important;
+    transform: scale(0.94);
+  }
+
   #chat-header-avatar > * { width: 36px !important; height: 36px !important; font-size: 15px !important; }
-  /* Ẩn CHỮ trên nút (icon-only) cho gọn, nhưng VẪN hiện phần "Phân công" trên mobile */
-  #close-session-btn span, #claim-chat-btn span { display: none; }
-  #assignee-selector-container { display: inline-flex; flex: 1 0 160px; min-width: 160px; }
-  #close-session-btn, #claim-chat-btn, #delete-session-btn {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
-    padding: 0;
-    justify-content: center;
-    flex: 0 0 36px;
-    border-radius: 50%;
+
+  /* Nút Tiếp nhận & Đóng chat: hiển thị dạng pill đẹp mắt có icon và chữ rõ ràng */
+  #claim-chat-btn:not(.hide),
+  #close-session-btn:not(.hide) {
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 11px !important;
+    border-radius: 999px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
+  }
+  #claim-chat-btn span,
+  #close-session-btn span {
+    display: inline !important;
+    font-size: 12px !important;
+  }
+  #claim-chat-btn i,
+  #close-session-btn i {
+    font-size: 14px !important;
+  }
+
+  /* Ô phân công nhân viên phụ trách */
+  .assignee-label {
+    display: none !important;
+  }
+  #assignee-selector-container:not(.hide) {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    flex: 0 1 auto !important;
+    min-width: 0 !important;
+    max-width: 126px !important;
+    height: 34px !important;
+    padding: 0 8px !important;
+    border-radius: 999px !important;
+    box-sizing: border-box !important;
+    border: 1px solid rgba(239, 43, 157, 0.22) !important;
+    background: #ffffff !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03) !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Triệt để ẩn toàn bộ các nút tác vụ trên header chat khi ở vai trò Sale hoặc Agent */
+  body.role-sale #claim-chat-btn,
+  body.role-sale #close-session-btn,
+  body.role-sale #assignee-selector-container,
+  body.role-sale #chat-reload-btn,
+  body.role-sale #delete-session-btn,
+  body.role-agent #claim-chat-btn,
+  body.role-agent #close-session-btn,
+  body.role-agent #assignee-selector-container,
+  body.role-agent #chat-reload-btn,
+  body.role-agent #delete-session-btn,
+  body.role-staff #claim-chat-btn,
+  body.role-staff #close-session-btn,
+  body.role-staff #assignee-selector-container,
+  body.role-staff #chat-reload-btn,
+  body.role-staff #delete-session-btn {
+    display: none !important;
+  }
+
+  #claim-chat-btn.hide,
+  #close-session-btn.hide,
+  #assignee-selector-container.hide,
+  #chat-reload-btn.hide,
+  #delete-session-btn.hide,
+  #handover-session-btn.hide {
+    display: none !important;
+  }
+  #assignee-selector-container i {
+    font-size: 14px !important;
+    color: var(--accent-color, #ef2b9d) !important;
+    flex-shrink: 0 !important;
+  }
+  #assignee-selector-container select {
+    max-width: 90px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    border: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+    outline: none !important;
+    color: var(--text-primary) !important;
   }
   .chat-messages {
     min-height: 0;
@@ -2752,6 +3256,7 @@ button:focus-visible {
     border-radius: 50% !important;
     aspect-ratio: 1 / 1 !important;
     padding: 0 !important;
+    box-sizing: border-box !important;
     flex-shrink: 0 !important;
   }
   .settings-trigger-btn { min-width: 44px; min-height: 44px; }
@@ -2760,9 +3265,9 @@ button:focus-visible {
   .login-box { width: min(100%, 400px); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 28px); overflow-y: auto; padding: 28px 20px; }
   .login-box .form-group input { min-height: 46px; font-size: 16px !important; }
 
-  /* Mobile account management: full-width, touch-friendly bottom sheet. */
-  #admin-management-modal { align-items: flex-end; padding: 0; background: rgba(70, 22, 54, .26); backdrop-filter: blur(5px); }
-  #admin-management-modal .admin-management-box { width: 100% !important; max-width: none !important; max-height: 92dvh; overflow-y: auto; padding: 22px 16px calc(18px + env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: #fff; border-color: rgba(239,43,157,.16); box-shadow: 0 -12px 42px rgba(92,35,69,.18); }
+  /* Mobile account management: centered modal, avoids edge cropping and bottom clipping. */
+  #admin-management-modal { align-items: center; justify-content: center; padding: max(14px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom)); background: rgba(70, 22, 54, .26); backdrop-filter: blur(5px); }
+  #admin-management-modal .admin-management-box { width: min(100%, 580px) !important; max-width: calc(100vw - 24px) !important; max-height: min(88dvh, calc(100dvh - 36px)); overflow-y: auto; padding: 20px 16px; border-radius: 20px !important; margin: auto !important; background: #fff; border-color: rgba(239,43,157,.16); box-shadow: 0 16px 48px rgba(92,35,69,.22); }
   #admin-management-modal .brand-header { margin-bottom: 16px !important; }
   #admin-management-modal .brand-header h2 { font-size: 18px !important; color: var(--text-primary) !important; }
   #admin-management-modal .brand-header p { color: var(--text-secondary) !important; }
@@ -2787,6 +3292,9 @@ button:focus-visible {
 
 @media (max-width: 390px) {
   .dashboard-header { padding-inline: 10px; gap: 6px; }
+  .dashboard-header:not(.sale-header) { padding-inline: 8px !important; gap: 6px !important; }
+  .dashboard-header:not(.sale-header) .header-right { position: static !important; gap: 4px !important; }
+  .settings-dropdown-menu { left: 6px !important; right: 6px !important; padding: 10px !important; }
   .header-left { gap: 6px; }
   .logo { gap: 6px; }
   .logo span { font-size: 15px; }
@@ -3600,6 +4108,13 @@ button:focus-visible {
     place-items: center;
     width: 66px;
     height: 66px;
+    min-width: 66px;
+    min-height: 66px;
+    max-width: 66px;
+    max-height: 66px;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    flex-shrink: 0;
     padding: 18px;
     border: 0;
     border-radius: 50%;
@@ -4173,6 +4688,13 @@ button:focus-visible {
     place-items: center;
     width: 48px;
     height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+    max-width: 48px;
+    max-height: 48px;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    flex-shrink: 0;
     margin: 0 auto 14px;
     border-radius: 50%;
     background: var(--accent-soft, rgba(239, 63, 151, .12));
@@ -4273,6 +4795,12 @@ button:focus-visible {
     flex: none;
     width: 19px;
     height: 19px;
+    min-width: 19px;
+    min-height: 19px;
+    max-width: 19px;
+    max-height: 19px;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
     border: 1.5px solid var(--panel-border);
     border-radius: 50%;
     color: transparent;
@@ -4300,6 +4828,13 @@ button:focus-visible {
     place-items: center;
     width: 46px;
     height: 46px;
+    min-width: 46px;
+    min-height: 46px;
+    max-width: 46px;
+    max-height: 46px;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    flex-shrink: 0;
     border-radius: 50%;
     background: rgba(0, 0, 0, .05);
     color: var(--text-muted);
@@ -4530,6 +5065,12 @@ button:focus-visible {
 .sale-avatar {
     width: 42px !important;
     height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+    max-width: 42px !important;
+    max-height: 42px !important;
+    aspect-ratio: 1 / 1 !important;
+    box-sizing: border-box !important;
     border-radius: 50% !important;
     overflow: hidden !important;
     flex-shrink: 0 !important;
@@ -4852,6 +5393,13 @@ button:focus-visible {
     place-items: center;
     width: 52px;
     height: 52px;
+    min-width: 52px;
+    min-height: 52px;
+    max-width: 52px;
+    max-height: 52px;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    flex-shrink: 0;
     border-radius: 50%;
     /* Không nền khối: chỉ viền trắng mờ + bóng đổ để nổi trên mọi khung hình,
        kể cả cảnh sáng lẫn cảnh tối. */
@@ -4879,27 +5427,45 @@ button:focus-visible {
       dành thừa đó và cho tên xuống tối đa hai dòng: hầu hết tên dài đều hiện đủ
       mà header vẫn không cao thêm bao nhiêu. */
 @media (max-width: 720px) {
-    .header-right .header-quick-btn,
-    .header-right .settings-trigger-btn,
-    .header-right .icon-btn {
+    .header-right > .header-quick-btn,
+    .header-right > .settings-trigger-btn,
+    .header-right > .icon-btn,
+    .header-right > .header-menu-wrap > .header-quick-btn {
         width: 38px;
         height: 38px;
         min-width: 38px;
+        min-height: 38px;
+        max-width: 38px;
+        max-height: 38px;
+        aspect-ratio: 1 / 1 !important;
+        box-sizing: border-box !important;
         padding: 0;
         border-radius: 50%;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         gap: 0;
-        flex: none;
+        flex: 0 0 38px !important;
     }
-    .header-right .header-quick-btn i,
-    .header-right .settings-trigger-btn i,
-    .header-right .icon-btn i { font-size: 17px; }
-    .header-right .header-quick-btn span,
-    .header-right .settings-trigger-btn span { display: none; }
+    .header-right > .header-quick-btn i,
+    .header-right > .settings-trigger-btn i,
+    .header-right > .icon-btn i,
+    .header-right > .header-menu-wrap > .header-quick-btn i { font-size: 17px; }
+    .header-right > .header-quick-btn span,
+    .header-right > .settings-trigger-btn span,
+    .header-right > .header-menu-wrap > .header-quick-btn span { display: none; }
     /* Nút thông báo đã bật: chỉ đổi màu icon và viền, KHÔNG phình rộng ra. */
-    .header-right .header-quick-btn-push.is-icon-only { width: 38px; min-width: 38px; }
+    .header-right .header-quick-btn-push.is-icon-only {
+        width: 38px !important;
+        min-width: 38px !important;
+        max-width: 38px !important;
+        height: 38px !important;
+        min-height: 38px !important;
+        max-height: 38px !important;
+        aspect-ratio: 1 / 1 !important;
+        box-sizing: border-box !important;
+        flex: 0 0 38px !important;
+    }
 
     /* Tên hiển thị: dùng hết chiều ngang, tối đa hai dòng rồi mới cắt. */
     .agent-identity { min-width: 0; width: 100%; }
@@ -5066,16 +5632,79 @@ button:focus-visible {
    phải cố định CHIỀU CAO và để chiều rộng tự co theo tỉ lệ. */
 .logo-img {
     width: auto;
-    height: 30px;
-    max-width: 190px;
+    height: 38px;
+    max-width: 220px;
     object-fit: contain;
     flex-shrink: 0;
 }
+.dashboard-header:not(.sale-header) .logo {
+    height: 44px;
+    display: flex;
+    align-items: center;
+}
+.dashboard-header:not(.sale-header) .logo-img {
+    height: 38px !important;
+    max-width: 220px !important;
+}
 @media (max-width: 720px) {
-    .logo-img { width: auto; height: 27px; max-width: 150px; }
+    .logo-img { width: auto; height: 36px; max-width: 170px; }
 }
 /* Wordmark vẽ bằng CSS không còn dùng: đã thay bằng chính file logo. */
 .logo .pastie-chat-wordmark { display: none; }
+
+/* ── Avatar Agent & Sale: Tự sinh chữ cái nền gradient nếu chưa có ảnh, không để trắng ── */
+.agent-avatar-badge #agent-avatar-char {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(135deg, #ef2b9d 0%, #db2777 50%, #7c3aed 100%);
+    color: #ffffff;
+    font-size: 19px;
+    font-weight: 800;
+    line-height: 1;
+    text-transform: uppercase;
+}
+.agent-avatar-badge #agent-avatar-char.hide {
+    display: none !important;
+}
+
+/* ── Avatar & Logo Preview: Tự co giãn tỉ lệ hoàn toàn trong khung, không bị cắt xén khi ảnh to ── */
+.avatar-upload-preview,
+#admin-create-avatar-preview,
+#admin-edit-avatar-preview,
+#self-avatar-preview {
+    width: 54px !important;
+    height: 54px !important;
+    min-width: 54px !important;
+    min-height: 54px !important;
+    max-width: 54px !important;
+    max-height: 54px !important;
+    border-radius: 14px !important;
+    border: 2px solid rgba(239, 43, 157, 0.25) !important;
+    overflow: hidden !important;
+    background: #ffffff !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: 0 2px 8px rgba(239, 43, 157, 0.12) !important;
+    flex-shrink: 0 !important;
+}
+.avatar-upload-preview img,
+#admin-create-avatar-preview img,
+#admin-edit-avatar-preview img,
+#self-avatar-preview img,
+.sale-avatar-circle img,
+#org-sale-avatar-preview img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    padding: 2px !important;
+    box-sizing: border-box !important;
+    display: block !important;
+}
 
 /* --- Banner thông báo gia hạn hoàn tất ca (Draining Grace Mode) --- */
 .shift-draining-banner {
@@ -5175,6 +5804,10 @@ button:focus-visible {
     height: 42px;
     min-width: 42px;
     min-height: 42px;
+    max-width: 42px;
+    max-height: 42px;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
     margin: 0;
     padding: 0;
     border-radius: 50%;
@@ -5283,6 +5916,13 @@ button:focus-visible {
     place-items: center;
     width: 72px;
     height: 72px;
+    min-width: 72px;
+    min-height: 72px;
+    max-width: 72px;
+    max-height: 72px;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    flex-shrink: 0;
     padding: 19px;
     border: 0;
     border-radius: 50%;
@@ -5339,6 +5979,13 @@ button:focus-visible {
 .chat-input-area .voice-live-pulse {
     width: 58px;
     height: 58px;
+    min-width: 58px;
+    min-height: 58px;
+    max-width: 58px;
+    max-height: 58px;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    flex-shrink: 0;
     padding: 16px;
     background: linear-gradient(135deg, #f43aa0, #c90c6c);
     box-shadow: 0 0 0 8px rgba(239, 43, 157, .10), 0 8px 20px rgba(201, 12, 108, .22);
@@ -5440,6 +6087,13 @@ button:focus-visible {
     place-items: center;
     width: 82px;
     height: 82px;
+    min-width: 82px;
+    min-height: 82px;
+    max-width: 82px;
+    max-height: 82px;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
+    flex-shrink: 0;
     border-radius: 50%;
     color: #fff;
     background: linear-gradient(145deg, #f43aa0, #c90c6c);
@@ -5458,11 +6112,18 @@ button:focus-visible {
     .chat-input-area .attach-btn,
     .chat-input-area .mic-btn,
     .chat-input-area .send-btn {
+        flex: 0 0 40px !important;
         flex-basis: 40px;
         width: 40px;
         height: 40px;
         min-width: 40px;
         min-height: 40px;
+        max-width: 40px;
+        max-height: 40px;
+        aspect-ratio: 1 / 1 !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+        border-radius: 50% !important;
     }
     .chat-input-area .chat-form textarea {
         min-height: 40px;
@@ -5481,7 +6142,16 @@ button:focus-visible {
     .voice-live-actions { gap: 6px; }
     .voice-live-actions .voice-action { gap: 5px; padding-inline: 7px; }
     .chat-input-area .voice-live-panel:not(.is-ready) { min-height: 232px; }
-    .voice-send-orbit { width: 76px; height: 76px; }
+    .voice-send-orbit {
+        width: 76px;
+        height: 76px;
+        min-width: 76px;
+        min-height: 76px;
+        max-width: 76px;
+        max-height: 76px;
+        aspect-ratio: 1 / 1;
+        box-sizing: border-box;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -5652,39 +6322,39 @@ button:focus-visible {
 }
 .agent-avatar-badge {
     position: relative;
-    flex: 0 0 auto;
-    display: grid; place-items: center;
-    /* Tròn hẳn, không phải vuông bo góc: đây là khuôn mặt người, và tròn cũng
-       khớp với ô avatar bên cổng khách. */
-    width: 44px; height: 44px; border-radius: 50%;
-    background: linear-gradient(140deg, #f472b6, #c026a4);
-    color: #fff; font-size: 19px; font-weight: 800; line-height: 1;
-    box-shadow: 0 6px 16px rgba(192, 38, 164, .22);
-}
-/* Chấm "đang trực" ở góc, giống cổng khách. */
-.agent-avatar-badge::after {
-    content: ""; position: absolute; right: -2px; bottom: -2px;
-    width: 12px; height: 12px; border-radius: 50%;
-    background: #10b981; box-shadow: 0 0 0 2px var(--panel-bg, #fff);
-    z-index: 2;
-}
-.agent-avatar-badge {
-    /* Không còn bấm được để đổi ảnh nên cũng không còn con trỏ bàn tay: con trỏ
-       đó là một lời hứa "bấm vào có chuyện xảy ra". */
+    flex: 0 0 44px !important;
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    border-radius: 50% !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    border: 2px solid rgba(239, 43, 157, 0.35) !important;
+    box-shadow: 0 2px 8px rgba(239, 43, 157, 0.15) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
     cursor: default;
-    overflow: hidden;
 }
 
-/* ẢNH PHẢI PHỦ KÍN KHUNG TRÒN.
-   Không có object-fit: cover thì ảnh dọc/ngang bị bóp méo hoặc chừa viền trắng
-   hai bên — đúng cảnh "ảnh không vừa ô" khi Sale/Agent tự tải ảnh lên. */
+/* ẢNH HIỂN THỊ CHUẨN XÁC NHƯ PREVIEW TÀI KHOẢN */
 .agent-avatar-badge img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center;
-    border-radius: inherit;
-    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    padding: 2px !important;
+    box-sizing: border-box !important;
+    border-radius: 50% !important;
+    display: block !important;
+    margin: 0 !important;
+}
+.agent-avatar-badge img.is-fallback {
+    padding: 0 !important;
+    object-fit: cover !important;
 }
 .agent-avatar-edit-icon {
     position: absolute;
@@ -5755,20 +6425,36 @@ button:focus-visible {
     gap: 11px;
 }
 .dashboard-header.sale-header .agent-avatar-badge {
-    width: 46px;
-    height: 46px;
-    border-radius: 14px;
-    overflow: visible;
-    background: #fff;
-    border: 1px solid rgba(231, 30, 132, .16);
-    box-shadow: 0 6px 18px rgba(171, 22, 111, .13);
+    position: relative;
+    flex: 0 0 44px !important;
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    border-radius: 50% !important;
+    overflow: hidden !important;
+    background: #ffffff !important;
+    border: 2px solid rgba(239, 43, 157, 0.35) !important;
+    box-shadow: 0 2px 8px rgba(239, 43, 157, 0.15) !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
 }
 .dashboard-header.sale-header .agent-avatar-badge img {
-    width: 100%;
-    height: 100%;
-    padding: 6px;
-    border-radius: inherit;
-    object-fit: contain;
+    width: 100% !important;
+    height: 100% !important;
+    padding: 2px !important;
+    box-sizing: border-box !important;
+    border-radius: 50% !important;
+    object-fit: contain !important;
+    display: block !important;
+}
+.dashboard-header.sale-header .agent-avatar-badge img.is-fallback {
+    padding: 0 !important;
+    object-fit: cover !important;
 }
 .dashboard-header.sale-header .agent-identity-text {
     flex: 1 1 auto;
@@ -5890,14 +6576,52 @@ button:focus-visible {
     background: var(--panel-bg, #fff);
     box-shadow: 0 18px 44px rgba(28, 12, 30, .18);
 }
-.header-menu-panel .header-menu-item {
-    width: 100%; justify-content: flex-start; gap: 10px;
-    padding: 10px 12px; border-radius: 10px; border: 0; background: transparent;
-    font-size: 13px; font-weight: 650;
+.header-menu-panel .header-menu-item,
+.header-right .header-menu-panel .header-menu-item {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 40px !important;
+    max-height: none !important;
+    aspect-ratio: auto !important;
+    flex: 1 1 auto !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 12px !important;
+    padding: 10px 14px !important;
+    border-radius: 10px !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 13px !important;
+    font-weight: 650 !important;
+    box-sizing: border-box !important;
+    cursor: pointer !important;
+    text-align: left !important;
 }
-.header-menu-panel .header-menu-item span { display: inline !important; }
-.header-menu-panel .header-menu-item i { font-size: 17px; }
-.header-menu-panel .header-menu-item:hover { background: rgba(0, 0, 0, .05); }
+.header-menu-panel .header-menu-item.hide,
+.header-right .header-menu-panel .header-menu-item.hide,
+.header-menu-panel .hide,
+.header-right .header-menu-panel .hide {
+    display: none !important;
+}
+.header-menu-panel .header-menu-item span,
+.header-right .header-menu-panel .header-menu-item span {
+    display: inline-block !important;
+    flex: 1 1 auto !important;
+    pointer-events: none !important;
+}
+.header-menu-panel .header-menu-item i,
+.header-right .header-menu-panel .header-menu-item i {
+    font-size: 17px !important;
+    flex-shrink: 0 !important;
+    pointer-events: none !important;
+}
+.header-menu-panel .header-menu-item:hover { background: rgba(0, 0, 0, .05) !important; }
+.header-quick-btn * { pointer-events: none; }
+.header-action-btn * { pointer-events: none; }
 .header-menu-divider {
     height: 1px;
     background: rgba(239, 43, 157, 0.12);
@@ -6097,8 +6821,9 @@ button:focus-visible {
 .staff-only-label { display: inline-flex; padding: 0; margin-bottom: 2px; font-size: 12px; }
 .staff-only-label i { margin: 0; }
 
-/* Ảnh cơ sở lấp đầy ô avatar; nền gradient chỉ còn là lớp lót khi chưa có ảnh. */
-.agent-avatar-badge img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; display: block; }
+/* Ảnh cơ sở lấp đầy ô avatar; nền trắng sang trọng như preview tài khoản. */
+.agent-avatar-badge img { width: 100%; height: 100%; border-radius: inherit; object-fit: contain; padding: 2px; box-sizing: border-box; display: block; }
+.agent-avatar-badge img.is-fallback { padding: 0; object-fit: cover; }
 
 
 /* ── Lịch sử chỉnh sửa của một tờ hoá đơn ─────────────────────────────────
@@ -6740,18 +7465,17 @@ button:focus-visible {
 }
 @media (max-width: 768px) {
     #agent-post-modal.modal-overlay {
-        align-items: flex-end !important;
+        align-items: center !important;
         justify-content: center !important;
-        padding: 0 !important;
+        padding: max(14px, env(safe-area-inset-top)) 12px max(18px, env(safe-area-inset-bottom)) !important;
     }
     #agent-post-modal .admin-dialog-box {
-        width: 100% !important;
-        max-width: 100% !important;
-        max-height: 94dvh !important;
-        height: 94dvh !important;
-        border-radius: 22px 22px 0 0 !important;
-        border-bottom: none !important;
-        margin: 0 !important;
+        width: min(100%, 640px) !important;
+        max-width: calc(100vw - 24px) !important;
+        max-height: min(88dvh, calc(100dvh - 36px)) !important;
+        height: auto !important;
+        border-radius: 20px !important;
+        margin: auto !important;
     }
     #agent-post-modal form#agent-post-form {
         padding: 14px 16px calc(24px + env(safe-area-inset-bottom)) !important;
@@ -6770,11 +7494,13 @@ button:focus-visible {
 }
 
 @media (max-width: 760px) {
-    #admin-management-modal { align-items: flex-end; padding: 0 0 max(10px, env(safe-area-inset-bottom)); }
+    #admin-management-modal { align-items: center; justify-content: center; padding: max(12px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom)); }
     #admin-management-modal .admin-management-box {
-        width: 100%;
-        max-height: 92dvh;
-        border-radius: 24px 24px 16px 16px;
+        width: min(100%, 580px);
+        max-width: calc(100vw - 24px);
+        max-height: min(88dvh, calc(100dvh - 36px));
+        border-radius: 20px !important;
+        margin: auto;
     }
     #admin-management-modal .staff-modal-head { padding: 18px 18px 14px; }
     #admin-management-modal .admin-mgmt-brand-icon { width: 46px; height: 46px; border-radius: 14px; }
@@ -7382,6 +8108,12 @@ button:focus-visible {
 .message-wrapper.internal-peer .msg-avatar {
     width: 34px;
     height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    max-width: 34px;
+    max-height: 34px;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -7465,9 +8197,12 @@ button:focus-visible {
 
 /* ── 2. UI/UX Pro Max Mobile Redesign: Superadmin Modals, Forms & Actions ── */
 @media (max-width: 768px) {
+    /* Đưa toàn bộ popup lên GIỮA màn hình, không bám sát viền đáy tránh che nút và thanh điều hướng */
+    .modal-overlay,
     .modal-overlay:not(#login-modal):not(#session-revoked-modal):not(#qr-preview-modal):not(#org-modal):not(#push-permission-modal) {
-        align-items: flex-end !important;
-        padding: 0 !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: max(14px, env(safe-area-inset-top)) 12px max(18px, env(safe-area-inset-bottom)) !important;
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
     }
@@ -7480,7 +8215,7 @@ button:focus-visible {
     #session-revoked-modal .login-box {
         width: min(100%, 420px) !important;
         max-width: calc(100vw - 32px) !important;
-        border-radius: 24px !important;
+        border-radius: 20px !important;
         border: 1px solid rgba(239, 68, 68, 0.22) !important;
         box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35) !important;
         margin: auto !important;
@@ -7490,25 +8225,26 @@ button:focus-visible {
         height: auto !important;
     }
 
-    /* Modal Bottom Sheet Containers */
+    /* Modal Center Containers (Bo 4 góc đều 20px, cách viền an toàn, không bị che nút) */
     #admin-management-modal .admin-management-box,
     #report-modal .report-card,
     #monitor-modal .admin-management-box,
     #agent-devices-modal .agent-devices-card,
     .modal-box:not(.qr-preview-box),
     .login-box.admin-management-box {
-        width: 100% !important;
-        max-width: 100% !important;
-        max-height: 92dvh !important;
+        width: min(100%, 580px) !important;
+        max-width: calc(100vw - 24px) !important;
+        max-height: min(88dvh, calc(100dvh - 36px)) !important;
         height: auto !important;
-        border-radius: 22px 22px 0 0 !important;
+        border-radius: 20px !important;
         border: 1px solid rgba(239, 43, 157, 0.2) !important;
-        border-bottom: 0 !important;
-        padding: 14px 16px calc(16px + env(safe-area-inset-bottom)) !important;
-        box-shadow: 0 -12px 40px rgba(45, 20, 38, 0.25) !important;
-        overflow: hidden !important;
+        padding: 18px 16px !important;
+        box-shadow: 0 16px 48px rgba(45, 20, 38, 0.25) !important;
+        overflow-y: auto !important;
         display: flex !important;
         flex-direction: column !important;
+        margin: auto !important;
+        box-sizing: border-box !important;
     }
 
     /* Popup Quản lý Sale, Nhóm, QR, Thực đơn và Poster QR hiển thị ở GIỮA màn hình */
@@ -9091,6 +9827,14 @@ button:focus-visible {
 
 
 
+/* ── Tạm ẩn ảnh và video trong sổ tay hướng dẫn ─────────────────────────────
+   Ẩn bằng MỘT khối CSS thay vì xoá thẻ trong HTML: khi cần bật lại chỉ việc gỡ
+   khối này, không phải dựng lại từng thẻ ảnh và từng đường dẫn.
+   Chỉ ẩn phần media — các bước hướng dẫn bằng chữ vẫn đọc được đầy đủ. */
+.agent-guide-body .guide-media-center,
+.agent-guide-body .guide-media-grid {
+  display: none !important;
+}
 
 
 /* =============================================================================
@@ -9323,6 +10067,12 @@ button:focus-visible {
     right: -54px;
     width: 44px;
     height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 44px;
+    max-height: 44px;
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
     display: grid;
     place-items: center;
     padding: 0;
@@ -9342,3 +10092,41 @@ button:focus-visible {
 @media (max-width: 720px) {
     .admin-invoice-block.has-forward-action { max-width: calc(100% - 56px) !important; }
 }
+
+/* ── Multi-language quick switcher pills (Mobile & Dropdown Menus) ── */
+.lang-pill-row {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.lang-pill-btn {
+    border: 1px solid rgba(239, 43, 157, 0.22);
+    background: rgba(255, 255, 255, 0.85);
+    color: #4a2840;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    user-select: none;
+    line-height: 1.2;
+}
+.lang-pill-btn:hover {
+    border-color: #ef2b9d;
+    background: rgba(239, 43, 157, 0.08);
+    color: #d91b88;
+    transform: translateY(-1px);
+}
+.lang-pill-btn.is-active {
+    background: linear-gradient(135deg, #ef2b9d 0%, #d91b88 100%) !important;
+    color: #ffffff !important;
+    border-color: #d91b88 !important;
+    box-shadow: 0 3px 10px rgba(239, 43, 157, 0.35) !important;
+    font-weight: 800;
+}
+

@@ -378,6 +378,13 @@ const TRANSLATIONS = {
     }
 };
 
+// Đồng bộ từ điển đa ngôn ngữ toàn cục
+if (window.TRANSLATIONS) {
+    Object.keys(window.TRANSLATIONS).forEach(lang => {
+        TRANSLATIONS[lang] = Object.assign({}, TRANSLATIONS[lang] || {}, window.TRANSLATIONS[lang]);
+    });
+}
+window.TRANSLATIONS = TRANSLATIONS;
 
 let currentLang = localStorage.getItem('pastie_admin_lang') || 'vi';
 
@@ -571,6 +578,38 @@ window.handleGoogleCredentialResponse = async function(response) {
             method: 'POST',
             headers: deviceHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ credential: response.credential })
+        });
+        const data = await res.json();
+        if (res.ok && data.token) {
+            beginNewAdminSession(data.token);
+            setLoginSuccess('Đăng nhập thành công! Đang vào Console...');
+            setTimeout(() => {
+                hideLogin();
+                initDashboard();
+            }, 400);
+        } else {
+            setLoginError(data.error || 'Đăng nhập bằng Google thất bại.');
+        }
+    } catch (e) {
+        console.error('Google sign-in error:', e);
+        setLoginError('Lỗi kết nối khi xác thực Google: ' + e.message);
+    }
+};
+
+window.handleGoogleAccessTokenResponse = async function(accessToken) {
+    if (!accessToken) {
+        setLoginError('Không nhận được access token từ Google.');
+        return;
+    }
+
+    setLoginError('');
+    setLoginSuccess('Đang xác thực tài khoản Google với hệ thống...');
+
+    try {
+        const res = await fetch(`${API_BASE}/api/admin/auth/google`, {
+            method: 'POST',
+            headers: deviceHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ accessToken })
         });
         const data = await res.json();
         if (res.ok && data.token) {
@@ -1019,7 +1058,67 @@ projectFilter?.addEventListener('change', (e) => {
 });
 
 
-refreshSessionsBtn?.addEventListener('click', fetchSessions);
+// Nút tải lại danh sách hội thoại chat (sidebar)
+refreshSessionsBtn?.addEventListener('click', async (e) => {
+    e?.preventDefault?.();
+    const icon = refreshSessionsBtn.querySelector('i');
+    if (icon) icon.classList.add('ri-spin');
+    refreshSessionsBtn.disabled = true;
+    try {
+        if (typeof showToast === 'function') {
+            showToast('Đang làm mới hội thoại...', 'info');
+        }
+        await fetchSessions();
+        if (typeof currentCategoryTab !== 'undefined') {
+            if (currentCategoryTab === 'internal' && typeof renderInternalSessionsList === 'function') {
+                await fetchInternalChats().catch(() => {});
+                renderInternalSessionsList();
+            } else if (currentCategoryTab === 'technical' && typeof renderTechnicalSessionsList === 'function') {
+                await fetchTechnicalAgentChats().catch(() => {});
+                renderTechnicalSessionsList();
+            }
+        }
+        if (currentSessionId && typeof fetchMessages === 'function') {
+            await fetchMessages(currentSessionId).catch(() => {});
+        }
+        if (typeof showToast === 'function') {
+            showToast('Đã làm mới danh sách hội thoại!', 'success');
+        }
+    } catch (err) {
+        console.error('Error refreshing sessions:', err);
+    } finally {
+        setTimeout(() => {
+            if (icon) icon.classList.remove('ri-spin');
+            refreshSessionsBtn.disabled = false;
+        }, 500);
+    }
+});
+
+// Nút tải lại tin nhắn trực tiếp trong thanh tác vụ phòng chat
+document.getElementById('chat-reload-btn')?.addEventListener('click', async (e) => {
+    e?.preventDefault?.();
+    const btn = e.currentTarget;
+    const icon = btn.querySelector('i');
+    if (icon) icon.classList.add('ri-spin');
+    btn.disabled = true;
+    try {
+        if (currentSessionId && typeof fetchMessages === 'function') {
+            await fetchMessages(currentSessionId);
+            if (typeof showToast === 'function') {
+                showToast('Đã làm mới tin nhắn hội thoại!', 'success');
+            }
+        } else if (typeof fetchSessions === 'function') {
+            await fetchSessions();
+        }
+    } catch (err) {
+        console.error('Error refreshing chat messages:', err);
+    } finally {
+        setTimeout(() => {
+            if (icon) icon.classList.remove('ri-spin');
+            btn.disabled = false;
+        }, 500);
+    }
+});
 
 closeSessionBtn?.addEventListener('click', closeActiveSession);
 
@@ -1061,14 +1160,18 @@ document.querySelectorAll('#logout-btn, #superadmin-logout-btn, #agent-logout-bt
 });
 
 
-// Bind language selection dropdown
-const adminLangSelect = document.getElementById('admin-lang-select');
-
-if (adminLangSelect) {
-    adminLangSelect.addEventListener('change', (e) => {
-        applyTranslations(e.target.value);
-    });
-}
+// Bind all language selection dropdowns (Header, Agent Menu, Superadmin Menu)
+['admin-lang-select', 'agent-menu-lang-select', 'super-menu-lang-select'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel) {
+        sel.addEventListener('click', (e) => e.stopPropagation());
+        sel.addEventListener('mousedown', (e) => e.stopPropagation());
+        sel.addEventListener('change', (e) => {
+            e.stopPropagation();
+            applyTranslations(e.target.value);
+        });
+    }
+});
 
 
 // Bind visitor detail language select dropdown
@@ -1133,6 +1236,22 @@ document.addEventListener('click', (e) => {
         }
     }
 });
+
+settingsDropdownMenu?.addEventListener('click', (e) => {
+    if (e.target.closest('.sdm-item')) {
+        settingsDropdownMenu.classList.add('hide');
+        settingsTriggerBtn?.classList.remove('open');
+    }
+});
+
+function closeSettingsDropdown() {
+    const sdm = document.getElementById('settings-dropdown-menu');
+    const trigger = document.getElementById('settings-trigger-btn');
+    if (sdm) sdm.classList.add('hide');
+    if (trigger) trigger.classList.remove('open');
+}
+window.closeSettingsDropdown = closeSettingsDropdown;
+
 
 
 // --- AI KNOWLEDGE BASE ---
@@ -2471,10 +2590,26 @@ document.getElementById('superadmin-report-modal-btn')?.addEventListener('click'
 });
 
 // Nút Tải lại ứng dụng trong Menu Quản trị
-document.getElementById('app-reload-super-btn')?.addEventListener('click', (event) => {
+document.getElementById('app-reload-super-btn')?.addEventListener('click', async (event) => {
     event.stopPropagation();
     closeSettingsDropdown();
-    window.location.reload(true);
+    const splash = document.getElementById('app-boot-splash');
+    if (splash) {
+        splash.style.visibility = 'visible';
+        splash.style.opacity = '1';
+        splash.style.pointerEvents = 'auto';
+    }
+    if ('caches' in window) {
+        try {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        } catch (_) {}
+    }
+    if (typeof reloadApp === 'function') {
+        void reloadApp();
+    } else {
+        window.location.href = window.location.pathname + '?r=' + Date.now();
+    }
 });
 
 // --- MỞ KHÓA & QUẢN LÝ GIỚI HẠN OTP ---

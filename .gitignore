@@ -40,6 +40,11 @@ scratch/
 # Local development scripts
 scripts/
 
-#md file
-*.md
+# Local AI Rules & Docs (Do not commit to git)
+.cursorrules
+AGENTS.md
+GEMINI.md
+CLAUDE.md
+docs/
 PLAN_AGENT_SALE_QR.md
+*.md

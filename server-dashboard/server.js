@@ -3785,6 +3785,63 @@ app.post('/api/chats/session/language', async (req, res) => {
   }
 });
 
+// Endpoint dịch hàng loạt bằng Gemini AI kèm bộ nhớ đệm (LRU / Memory Cache) tốc độ cao
+const aiBatchTranslationCache = new Map();
+app.post('/api/ai/translate-batch', async (req, res) => {
+  const { texts, targetLang, sourceLang } = req.body;
+  if (!Array.isArray(texts) || !targetLang) {
+    return res.status(400).json({ error: 'texts (mảng chuỗi) và targetLang là bắt buộc.' });
+  }
+  const cleanTarget = String(targetLang).trim().toLowerCase().slice(0, 2);
+  const cleanSource = sourceLang ? String(sourceLang).trim().toLowerCase().slice(0, 2) : 'vi';
+  if (cleanTarget === cleanSource || texts.length === 0) {
+    return res.json({ translations: texts });
+  }
+
+  const results = new Array(texts.length);
+  const missingIndices = [];
+  const missingTexts = [];
+
+  texts.forEach((txt, idx) => {
+    const raw = String(txt || '').trim();
+    if (!raw) {
+      results[idx] = '';
+      return;
+    }
+    const cacheKey = `${cleanSource}:${cleanTarget}:${raw}`;
+    if (aiBatchTranslationCache.has(cacheKey)) {
+      results[idx] = aiBatchTranslationCache.get(cacheKey);
+    } else {
+      missingIndices.push(idx);
+      missingTexts.push(raw);
+    }
+  });
+
+  if (missingTexts.length > 0) {
+    try {
+      const outputs = await gemini.translateTexts(missingTexts, cleanTarget, { sourceLang: cleanSource });
+      outputs.forEach((out, i) => {
+        const origIndex = missingIndices[i];
+        const translated = out?.translatedText || missingTexts[i];
+        results[origIndex] = translated;
+        const cacheKey = `${cleanSource}:${cleanTarget}:${missingTexts[i]}`;
+        aiBatchTranslationCache.set(cacheKey, translated);
+        if (aiBatchTranslationCache.size > 10000) {
+          const firstKey = aiBatchTranslationCache.keys().next().value;
+          aiBatchTranslationCache.delete(firstKey);
+        }
+      });
+    } catch (err) {
+      console.error('[AI Translate Batch] Lỗi dịch batch:', err.message);
+      missingIndices.forEach((idx, i) => {
+        results[idx] = missingTexts[i];
+      });
+    }
+  }
+
+  return res.json({ translations: results });
+});
+
 /**
  * @openapi
  * /api/chats/{sessionId}/visitor-language:
@@ -5668,10 +5725,14 @@ app.post('/api/chats/:sessionId/order/payment-method', async (req, res) => {
     // đơn nào sẽ khiến Sale thu tiền nhầm tờ bill.
     const text = `[Thanh toán] Đơn ${order.order_code || ''} — khách chọn trả bằng ${label}.`.replace('  ', ' ');
     // Cau nay noi VE khach, voi nhan vien - khach khong can doc lai chinh minh.
+    // system_kind + system_params: các mảnh rời để giao diện dựng lại câu theo
+    // ngôn ngữ người đang đọc. Gửi MÃ cách trả ('cash') chứ không phải nhãn đã
+    // dịch ('Tiền mặt') — nhãn là việc của phía hiển thị.
     const msgRes = await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
-       VALUES ($1, 'system', $2, $2, 'vi', 'staff') RETURNING id`,
-      [req.params.sessionId, text]
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to,
+                             system_kind, system_params)
+       VALUES ($1, 'system', $2, $2, 'vi', 'staff', 'payment_method_selected', $3) RETURNING id`,
+      [req.params.sessionId, text, JSON.stringify({ orderCode: order.order_code || '', method })]
     );
     await sendOrderThankYou(req.params.sessionId, method, { autoSelected: false, orderCode: order.order_code });
     if (session) {
@@ -5870,6 +5931,10 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
     const bo = (trang - 1) * soMoiTrang;
     // Lọc theo mã QR (mã của bàn/phòng). 'all' hoặc để trống là không lọc.
     const locQr = String(req.query.qr || '').trim();
+    // Lọc theo ngày: 'today' (hôm nay), 'yesterday' (hôm qua), 'all' (tất cả), 'custom' (từ ngày đến ngày), hoặc 'YYYY-MM-DD'
+    const locDate = String(req.query.date || '').trim();
+    const fromDate = String(req.query.from || req.query.fromDate || '').trim();
+    const toDate = String(req.query.to || req.query.toDate || '').trim();
 
     const where = ['o.status NOT IN ($1, $2)'];
     const params = ['rejected', 'superseded'];
@@ -5910,9 +5975,33 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
       where.push(`q.code = $${params.length}`);
     }
 
+    if (locDate === 'today') {
+      where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date`);
+    } else if (locDate === 'yesterday') {
+      where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh') - INTERVAL '1 day')::date`);
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(locDate)) {
+      params.push(locDate);
+      where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = $${params.length}::date`);
+    } else if (locDate === 'custom' || locDate === 'range' || fromDate || toDate) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(fromDate) && /^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+        const f = fromDate <= toDate ? fromDate : toDate;
+        const t = fromDate <= toDate ? toDate : fromDate;
+        params.push(f);
+        where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= $${params.length}::date`);
+        params.push(t);
+        where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= $${params.length}::date`);
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(fromDate)) {
+        params.push(fromDate);
+        where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= $${params.length}::date`);
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+        params.push(toDate);
+        where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= $${params.length}::date`);
+      }
+    }
+
     const [demRes, qrRes] = await Promise.all([
       db.query(
-        `SELECT COUNT(*)::int AS n
+        `SELECT COUNT(*)::int AS n, COALESCE(SUM(o.total_amount), 0)::numeric AS tong_tien
            FROM chat_orders o
            JOIN sessions s ON s.id = o.session_id
            LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
@@ -5920,7 +6009,7 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
            LEFT JOIN admins sale ON sale.id = s.claimed_by_admin_id
           WHERE ${where.join(' AND ')}`,
         params
-      ).catch(() => ({ rows: [{ n: 0 }] })),
+      ).catch(() => ({ rows: [{ n: 0, tong_tien: 0 }] })),
       db.query(
         `SELECT DISTINCT q.code, q.label
            FROM chat_orders o
@@ -5934,6 +6023,7 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
       ).catch(() => ({ rows: [] })),
     ]);
     const tong = demRes.rows[0]?.n || 0;
+    const tongTien = Number(demRes.rows[0]?.tong_tien || 0);
 
     params.push(soMoiTrang, bo);
     const rows = await db.query(
@@ -5972,14 +6062,19 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
       // Sale không được xác nhận thu tiền. Chỉ Agent quản lý và Superadmin được xác nhận.
       canMarkPaid: isSuperAdmin(req.admin) || isAgentManager(req.admin),
       total: tong,
+      totalAmount: tongTien,
       page: trang,
       pageSize: soMoiTrang,
       totalPages: Math.max(1, Math.ceil(tong / soMoiTrang)),
       hasMore: bo + rows.rows.length < tong,
       qr: locQr && locQr !== 'all' ? locQr : '',
+      date: locDate,
+      from: fromDate,
+      to: toDate,
       // Danh sách mã QR trong phạm vi người đang xem, để đổ vào ô lọc.
       qrOptions: qrRes.rows.map((r) => ({ code: r.code, label: r.label || r.code })),
     });
+
   } catch (error) {
     console.error('Order cart error:', error);
     res.status(500).json({ error: 'Không tải được giỏ hàng.' });
@@ -6170,9 +6265,11 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
     ? ` bằng ${invoiceHelper.paymentMethodLabel(finalMethod, 'vi')}` : '';
   const staffText = `[Thanh toán] Đã thu đủ tiền${method} (mã đơn ${order.order_code}).`;
   const paidMsg = await db.query(
-    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id, system_kind, visible_to)
-     VALUES ($1, 'agent', $2, $2, 'vi', $3, 'order_paid', 'staff') RETURNING id`,
-    [order.session_id, staffText, req.admin.id]
+    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, sender_admin_id,
+                           system_kind, visible_to, system_params)
+     VALUES ($1, 'agent', $2, $2, 'vi', $3, 'order_paid', 'staff', $4) RETURNING id`,
+    [order.session_id, staffText, req.admin.id,
+     JSON.stringify({ orderCode: order.order_code || '', method: finalMethod || '' })]
   ).catch((error) => { console.error('[Đơn] Không gửi được tin đã thanh toán:', error.message); return { rows: [] }; });
 
   const guestText = `Cửa hàng đã nhận đủ tiền${method}. Cảm ơn quý khách! (mã đơn ${order.order_code})`;
@@ -6435,19 +6532,30 @@ async function resolveAdminUserAndLogin({ email, name, avatarUrl }, req = null, 
 
 // 1. POST Google OAuth Sign-In
 app.post('/api/admin/auth/google', limitLoginIp, async (req, res) => {
-  const { credential } = req.body;
-  if (!credential) {
-    return res.status(400).json({ error: 'Thiếu Google credential token.' });
+  const { credential, accessToken } = req.body || {};
+  if (!credential && !accessToken) {
+    return res.status(400).json({ error: 'Thiếu Google credential token hoặc access token.' });
   }
 
   try {
-    // Verify token with Google TokenInfo API
-    const googleVerifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
-    if (!googleVerifyRes.ok) {
-      return res.status(401).json({ error: 'Token Google không hợp lệ hoặc đã hết hạn.' });
+    let payload = null;
+    if (credential) {
+      // Verify id_token with Google TokenInfo API
+      const googleVerifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+      if (!googleVerifyRes.ok) {
+        return res.status(401).json({ error: 'Token Google không hợp lệ hoặc đã hết hạn.' });
+      }
+      payload = await googleVerifyRes.json();
+    } else if (accessToken) {
+      // Verify access_token with Google UserInfo API
+      const googleUserRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (!googleUserRes.ok) {
+        return res.status(401).json({ error: 'Access token Google không hợp lệ hoặc đã hết hạn.' });
+      }
+      payload = await googleUserRes.json();
     }
-
-    const payload = await googleVerifyRes.json();
     if (!payload.email || (payload.email_verified !== 'true' && payload.email_verified !== true)) {
       return res.status(401).json({ error: 'Email Google chưa được xác thực.' });
     }
@@ -7083,13 +7191,22 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
 });
 
 app.post('/api/qr-chat/google', async (req, res) => {
-  const { credential, projectId = 'qr-concierge', qrCode } = req.body || {};
-  if (!credential || !qrCode) return res.status(400).json({ error: 'Thiếu thông tin đăng nhập Google hoặc mã QR.' });
+  const { credential, accessToken, projectId = 'qr-concierge', qrCode } = req.body || {};
+  if ((!credential && !accessToken) || !qrCode) return res.status(400).json({ error: 'Thiếu thông tin đăng nhập Google hoặc mã QR.' });
   try {
-    const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
-    if (!googleRes.ok) return res.status(401).json({ error: 'Google credential không hợp lệ hoặc đã hết hạn.' });
-    const profile = await googleRes.json();
-    if (!profile.email || (profile.email_verified !== 'true' && profile.email_verified !== true)) return res.status(401).json({ error: 'Email Google chưa được xác thực.' });
+    let profile = null;
+    if (credential) {
+      const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+      if (!googleRes.ok) return res.status(401).json({ error: 'Google credential không hợp lệ hoặc đã hết hạn.' });
+      profile = await googleRes.json();
+    } else if (accessToken) {
+      const googleUserRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (!googleUserRes.ok) return res.status(401).json({ error: 'Access token Google không hợp lệ hoặc đã hết hạn.' });
+      profile = await googleUserRes.json();
+    }
+    if (!profile || !profile.email || (profile.email_verified !== 'true' && profile.email_verified !== true)) return res.status(401).json({ error: 'Email Google chưa được xác thực.' });
     const account = await resolveQrChatAccount(projectId, qrCode);
     if (!account) return res.status(404).json({ error: 'Mã QR không hợp lệ hoặc đã bị vô hiệu hóa.' });
     const { browser, device } = parseUserAgent(req.headers['user-agent'] || '');
@@ -7252,7 +7369,8 @@ app.post('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
     `INSERT INTO qr_chat_accounts (project_id, owner_admin_id, code, label) VALUES ($1, $2, $3, $4) RETURNING *`,
     [projectId, ownerAdminId, code, cleanLabel]
   );
-  void pretranslateQrText(cleanLabel);
+  // Chờ tối đa 9 giây: gần như lúc nào cũng kịp, quá hạn thì chạy tiếp ở nền.
+  await choCoHan(pretranslateQrText(cleanLabel), 9000);
   res.status(201).json({ success: true, account: created.rows[0], chat_url: qrCustomerChatUrl(req, code) });
 });
 
@@ -7496,11 +7614,18 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
     const rawDeferred = req.body?.deferred_payment_mode || req.body?.deferredPaymentMode;
     const deferredMode = (effectiveRole === 'agent' && ['room_charge', 'pay_later'].includes(rawDeferred)) ? rawDeferred : 'none';
 
+    const rawProper = req.body?.proper_name || req.body?.properName;
+    const rawVenue = req.body?.venue_type || req.body?.venueType || req.body?.common_name || req.body?.commonName;
+    const rawOrder = req.body?.name_order || req.body?.nameOrder;
+    const cleanProper = rawProper ? String(rawProper).trim().slice(0, 255) : null;
+    const cleanVenue = rawVenue ? String(rawVenue).trim().slice(0, 255) : null;
+    const cleanOrder = rawOrder === 'proper_first' ? 'proper_first' : 'common_first';
+
     const insertRes = await db.query(
-      `INSERT INTO admins (username, password_hash, full_name, role, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, deferred_payment_mode, allow_room_charge)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9::varchar, ($9::text = 'room_charge'))
-       RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, deferred_payment_mode, allow_room_charge, created_at`,
-      [username, passwordHash, full_name.trim(), effectiveRole, avatar, scope, creatorId, saleLimit, deferredMode]
+      `INSERT INTO admins (username, password_hash, full_name, role, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, deferred_payment_mode, allow_room_charge, proper_name, common_name, name_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9::varchar, ($9::text = 'room_charge'), $10, $11, $12)
+       RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, deferred_payment_mode, allow_room_charge, proper_name, common_name, name_order, created_at`,
+      [username, passwordHash, full_name.trim(), effectiveRole, avatar, scope, creatorId, saleLimit, deferredMode, cleanProper, cleanVenue, cleanOrder]
     );
 
     if (effectiveRole === 'agent' && full_name?.trim()) {
@@ -7606,13 +7731,22 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
       return res.status(400).json({ error: 'Bạn không thể tự vô hiệu hóa tài khoản của chính mình.' });
     }
 
+    const rawProper = req.body?.proper_name !== undefined ? req.body?.proper_name : req.body?.properName;
+    const rawVenue = req.body?.venue_type !== undefined ? req.body?.venue_type : (req.body?.venueType !== undefined ? req.body?.venueType : (req.body?.common_name !== undefined ? req.body?.common_name : req.body?.commonName));
+    const rawOrder = req.body?.name_order !== undefined ? req.body?.name_order : req.body?.nameOrder;
+
+    const updatedProper = rawProper !== undefined ? (String(rawProper || '').trim().slice(0, 255) || null) : currentAdmin.proper_name;
+    const updatedVenue = rawVenue !== undefined ? (String(rawVenue || '').trim().slice(0, 255) || null) : currentAdmin.common_name;
+    const updatedOrder = rawOrder !== undefined ? (rawOrder === 'proper_first' ? 'proper_first' : 'common_first') : (currentAdmin.name_order || 'common_first');
+
     const updateRes = await db.query(
       `UPDATE admins
        SET username = $1, full_name = $2, role = $3, avatar_url = $4, is_active = $5, project_id = $6, sale_limit = $7,
-           deferred_payment_mode = $8::varchar, allow_room_charge = ($8::text = 'room_charge')
+           deferred_payment_mode = $8::varchar, allow_room_charge = ($8::text = 'room_charge'),
+           proper_name = $10, common_name = $11, name_order = $12
        WHERE id = $9 
-       RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, deferred_payment_mode, allow_room_charge, created_at`,
-      [updatedUsername, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, updatedProject, updatedSaleLimit, updatedDeferred, id]
+       RETURNING id, username, role, full_name, avatar_url, project_id, created_by_admin_id, is_active, sale_limit, deferred_payment_mode, allow_room_charge, proper_name, common_name, name_order, created_at`,
+      [updatedUsername, updatedFullName, updatedRole, updatedAvatar, updatedIsActive, updatedProject, updatedSaleLimit, updatedDeferred, id, updatedProper, updatedVenue, updatedOrder]
     );
 
     if (doiEmail) await dongPhienSauKhiDoiEmail(id, currentAdmin.username, username);
@@ -7963,6 +8097,14 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
         mstat.message_count,
         mstat.last_message_at,
         mlast.original_text as last_message_preview,
+        -- Dòng xem trước phải nói CÙNG THỨ TIẾNG với bong bóng chat.
+        --
+        -- Bong bóng đã dựng lại câu theo ngôn ngữ người đang xem, còn dòng xem
+        -- trước thì vẫn lấy nguyên câu tiếng Việt đã lưu — nên danh sách bên
+        -- trái và khung chat bên phải nói hai thứ tiếng khác nhau cho cùng một
+        -- tin. Gửi kèm loại tin và tham số để giao diện dựng lại y hệt.
+        mlast.system_kind as last_message_kind,
+        mlast.system_params as last_message_params,
         mlast.sender as last_message_sender,
         latest_order.id as latest_order_id,
         latest_order.order_code as latest_order_code,
@@ -7997,7 +8139,7 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
       -- danh sách vẫn lấy tin cuối cùng bất kể loại — nên một phiên khách chưa
       -- nhắn gì vẫn hiện nguyên câu chào như thể khách vừa nói câu đó.
       LEFT JOIN LATERAL (
-        SELECT original_text, sender FROM messages
+        SELECT original_text, sender, system_kind, system_params FROM messages
          WHERE session_id = s.id
            AND COALESCE(system_kind, '') NOT IN ('guest_only', 'guest_welcome')
          ORDER BY created_at DESC LIMIT 1
@@ -8062,7 +8204,41 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
     params.push(chatLimit);
 
     const result = await db.query(queryText, params);
-    
+
+    // ── TÊN NHÓM VÀ TÊN QR PHẢI DỊCH THEO NGƯỜI ĐANG XEM ───────────────────
+    //
+    // Hai cột này trả về nguyên văn Agent đã đặt ("Tầng trệt", "Bàn 3"), nên
+    // Sale đổi giao diện sang tiếng Trung vẫn thấy tấm thẻ trên đầu khung chat
+    // ghi tiếng Việt — trong khi chính tờ hoá đơn của phiên đó đã là tiếng
+    // Trung. Dịch ĐỘNG qua localizeQrText (AI + cache theo nội dung), không
+    // phải tra một bảng từ cố định: nhãn do Agent tự gõ nên không liệt kê trước
+    // được.
+    const tiengXem = String(req.query.adminLang || '').toLowerCase().slice(0, 2);
+    if (tiengXem && tiengXem !== 'vi') {
+      // Gom theo nội dung: mười bàn cùng nhóm "Tầng trệt" chỉ dịch một lần.
+      const daDich = new Map();
+      const dich = async (chu, agentId) => {
+        const nguon = String(chu || '').trim();
+        if (!nguon) return chu;
+        const khoa = `${nguon}|${agentId || ''}`;
+        if (!daDich.has(khoa)) daDich.set(khoa, localizeQrText(nguon, tiengXem, agentId));
+        return daDich.get(khoa);
+      };
+      await Promise.all(result.rows.map(async (row) => {
+        try {
+          const [nhom, nhan] = await Promise.all([
+            dich(row.group_name, row.agent_id),
+            dich(row.qr_label, row.agent_id),
+          ]);
+          row.group_name = nhom;
+          row.qr_label = nhan;
+        } catch (error) {
+          // Dịch hỏng thì giữ nguyên văn — thà tiếng Việt còn hơn thẻ trống.
+          console.error('[Chat] Không dịch được tên nhóm/QR:', error.message);
+        }
+      }));
+    }
+
     res.json(result.rows);
   } catch (error) {
     console.error('Fetch sessions error:', error);
@@ -8131,6 +8307,40 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
           ORDER BY m.created_at ASC`,
         [sessionId]
       );
+      // ── DỊCH TIN NHẮN NỘI BỘ ────────────────────────────────────────────
+      //
+      // Nhánh này từng trả thẳng msgs.rows, KHÔNG hề đi qua bộ dịch — trong khi
+      // nhánh chat khách ngay bên dưới thì có. Hệ quả: Sale người Trung đổi giao
+      // diện sang tiếng Trung, khung chat và ô nhập ra tiếng Trung, nhưng mọi
+      // câu đồng nghiệp nhắn cho mình vẫn nguyên tiếng Việt — kể cả tin cũ.
+      //
+      // Dùng đúng đường của chat khách (cache bản dịch + giữ tên riêng), nên
+      // tin cũ cũng được dịch, và dịch một lần rồi nhớ.
+      const tinDich = msgs.rows.filter((m) => {
+        // Tin chuyển hoá đơn mang dấu máy đọc [[bill:<id>]]. Dịch nó là phá dấu,
+        // giao diện hết nhận ra hoá đơn và in thẳng chuỗi đó ra màn hình.
+        if (m.system_kind === 'order_forward') return false;
+        return Boolean(m.original_text);
+      });
+      if (tinDich.length > 0) {
+        try {
+          const cacheDich = await preloadTranslations(tinDich, adminLang);
+          await Promise.all(tinDich.map(async (msg) => {
+            msg.translated_text = await getOrTranslateMessage(msg, adminLang, cacheDich, []);
+          }));
+        } catch (error) {
+          // Dịch hỏng thì vẫn phải trả được tin nhắn: thà đọc tiếng Việt còn hơn
+          // khung chat trống.
+          console.error('[Nội bộ] Không dịch được tin nhắn:', error.message);
+        }
+      }
+
+      await Promise.all(msgs.rows.map(async (msg) => {
+        if (msg.attachment_key) {
+          msg.attachment_url = await cachedPresignedUrl(msg.attachment_key).catch(() => msg.attachment_url);
+        }
+      }));
+
       return res.json(msgs.rows);
     }
 
@@ -10929,7 +11139,8 @@ app.post('/api/agent/groups', checkAdminAuth, async (req, res) => {
       }
     }
 
-    if (group.name) void pretranslateQrText(group.name);
+    // Chờ tối đa 9 giây: gần như lúc nào cũng kịp, quá hạn thì chạy tiếp ở nền.
+    if (group.name) await choCoHan(pretranslateQrText(group.name), 9000);
     res.status(201).json({ success: true, group });
   } catch (error) {
     console.error('Create group error:', error);
@@ -10951,7 +11162,7 @@ app.put('/api/agent/groups/:groupId', checkAdminAuth, async (req, res) => {
        description !== undefined ? String(description || '').trim() : null,
        typeof isActive === 'boolean' ? isActive : null]
     );
-    if (name) void pretranslateQrText(String(name).trim());
+    if (name) await choCoHan(pretranslateQrText(String(name).trim()), 9000);
     res.json({ success: true, group: updated.rows[0] });
   } catch (error) {
     console.error('Update group error:', error);
@@ -11104,7 +11315,7 @@ app.post('/api/agent/qr-accounts', checkAdminAuth, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $2) RETURNING *`,
       [group.project_id, group.agent_id, code, cleanLabel, group.id]
     );
-    void pretranslateQrText(cleanLabel);
+    await choCoHan(pretranslateQrText(cleanLabel), 9000);
     res.status(201).json({ success: true, account: created.rows[0], chat_url: qrCustomerChatUrl(req, code) });
   } catch (error) {
     console.error('Create agent QR error:', error);
@@ -11135,7 +11346,7 @@ app.put('/api/agent/qr-accounts/:qrId', checkAdminAuth, async (req, res) => {
         WHERE id = $1 RETURNING *`,
       [qr.rows[0].id, cleanLabel, nextGroupId]
     );
-    if (cleanLabel) void pretranslateQrText(cleanLabel);
+    if (cleanLabel) await choCoHan(pretranslateQrText(cleanLabel), 9000);
     res.json({ success: true, account: updated.rows[0] });
   } catch (error) {
     console.error('Update agent QR error:', error);
@@ -11597,6 +11808,23 @@ async function orderItemsForStaffSummary(items, sourceLanguage) {
   }
 }
 
+// CHỜ CÓ HẠN.
+//
+// Dịch lúc lưu trước đây gọi bằng `void`: bắn đi rồi quên. Nếu bộ dịch hỏng hay
+// hết quota thì món nằm lại vĩnh viễn ở tiếng Việt và KHÔNG AI BIẾT — người
+// dùng chỉ phát hiện ra khi khách nước ngoài mở thực đơn. Nhưng chờ hẳn 4 lượt
+// gọi AI thì nút Lưu đứng hình.
+//
+// Chờ có hạn: gần như lúc nào cũng kịp (vài giây), nên lưu xong là đã có bản
+// dịch ngay; quá hạn thì lượt dịch vẫn chạy tiếp ở nền, chỉ là không chặn phản
+// hồi. Trả về true/false để nơi gọi biết đã kịp hay chưa.
+function choCoHan(viec, hanMs) {
+  let xong = false;
+  const cong = viec.then(() => { xong = true; return true; }).catch(() => { xong = true; return false; });
+  const hetGio = new Promise((giai) => setTimeout(() => giai(false), hanMs));
+  return Promise.race([cong, hetGio]).then((ra) => ra && xong);
+}
+
 async function translateMenuItemToLanguage(itemId, name, description, lang, protect) {
   const target = String(lang || '').toLowerCase();
   if (!MENU_LANGS.includes(target) || target === MENU_SOURCE_LANG) {
@@ -11790,9 +12018,13 @@ async function translateMenuCategoryToLanguage(categoryId, name, lang, protect) 
 //
 // Bản dịch Agent đã tự sửa (is_manual = TRUE) KHÔNG bị ghi đè — nếu không thì
 // mỗi lần sửa giá là xoá sạch công sức sửa tay.
-async function translateMenuItem(itemId, name, description, agentId) {
+async function translateMenuItem(itemId, name, description, agentId, properName) {
   const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
-  const protect = await venueNamesForAgent(agentId);
+  // Tên riêng của MÓN cũng phải được giữ nguyên, không chỉ tên riêng của quán.
+  // Giao diện hứa với Agent rằng "Tên riêng: Không dịch" — trước đây lời hứa đó
+  // chỉ đúng với tên quán, còn "Wagyu A5" hay "Matcha Uji" vẫn bị dịch.
+  const rieng = String(properName || '').trim();
+  const protect = [...(await venueNamesForAgent(agentId)), ...(rieng.length >= 2 ? [rieng] : [])];
   await Promise.all(targets.map(async (lang) => {
     try {
       await translateMenuItemToLanguage(itemId, name, description, lang, protect);
@@ -11805,7 +12037,7 @@ async function translateMenuItem(itemId, name, description, agentId) {
 
 // Kiểm tra xem món đã có đủ 4 ngôn ngữ (en, ru, zh, ko) chưa. Nếu thiếu ngôn ngữ
 // nào thì tự động dịch bù ngôn ngữ đó, bảo đảm mọi thứ tiếng đều có bản dịch.
-async function ensureMenuItemTranslations(itemId, name, description, agentId) {
+async function ensureMenuItemTranslations(itemId, name, description, agentId, properName) {
   const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
   try {
     const existing = await db.query(
@@ -11815,7 +12047,8 @@ async function ensureMenuItemTranslations(itemId, name, description, agentId) {
     const existingLangs = new Set(existing.rows.map((r) => r.lang));
     const missing = targets.filter((lang) => !existingLangs.has(lang));
     if (missing.length === 0) return;
-    const protect = await venueNamesForAgent(agentId);
+    const rieng = String(properName || '').trim();
+    const protect = [...(await venueNamesForAgent(agentId)), ...(rieng.length >= 2 ? [rieng] : [])];
     await Promise.all(missing.map(async (lang) => {
       try {
         await translateMenuItemToLanguage(itemId, name, description, lang, protect);
@@ -11932,7 +12165,7 @@ app.post('/api/agent/menu/categories', checkAdminAuth, async (req, res) => {
        RETURNING *`,
       [req.admin.id, req.admin.project_id, name]
     );
-    void translateMenuCategory(created.rows[0].id, name, req.admin.id);
+    await choCoHan(translateMenuCategory(created.rows[0].id, name, req.admin.id), 9000);
     res.status(201).json({ success: true, category: created.rows[0] });
   } catch (error) {
     console.error('Create menu category error:', error);
@@ -11956,7 +12189,7 @@ app.put('/api/agent/menu/categories/:id', checkAdminAuth, async (req, res) => {
     if (!updated.rows[0]) return res.status(404).json({ error: 'Không tìm thấy danh mục.' });
     // Chỉ dịch lại khi TÊN đổi. Đổi thứ tự hay bật/tắt nhóm mà cũng gọi AI thì
     // mỗi lần kéo thả sắp xếp là một loạt lượt gọi vô ích.
-    if (name && String(name).trim()) void translateMenuCategory(updated.rows[0].id, updated.rows[0].name, req.admin.id);
+    if (name && String(name).trim()) await choCoHan(translateMenuCategory(updated.rows[0].id, updated.rows[0].name, req.admin.id), 9000);
     res.json({ success: true, category: updated.rows[0] });
   } catch (error) {
     console.error('Update menu category error:', error);
@@ -12022,8 +12255,16 @@ app.get('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 
 app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
-  const { categoryId, name, description, price, hideWhenOut, vatRate } = req.body || {};
-  const cleanName = String(name || '').trim().slice(0, 255);
+  const { categoryId, name, description, price, hideWhenOut, vatRate, properName, commonName, nameOrder } = req.body || {};
+  const cleanProper = properName ? String(properName).trim().slice(0, 255) : null;
+  const cleanCommon = commonName ? String(commonName).trim().slice(0, 255) : null;
+  const cleanOrder = nameOrder === 'proper_first' ? 'proper_first' : 'common_first';
+  let cleanName = String(name || '').trim().slice(0, 255);
+  if (!cleanName && (cleanProper || cleanCommon)) {
+    cleanName = cleanOrder === 'proper_first'
+      ? [cleanProper, cleanCommon].filter(Boolean).join(' ')
+      : [cleanCommon, cleanProper].filter(Boolean).join(' ');
+  }
   const cleanPrice = Math.max(0, Math.round(Number(price)));
   if (!cleanName) return res.status(400).json({ error: 'Cần tên món.' });
   if (!Number.isFinite(cleanPrice)) return res.status(400).json({ error: 'Giá không hợp lệ.' });
@@ -12048,18 +12289,21 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 
     const created = await db.query(
       `INSERT INTO qr_menu_items (category_id, agent_id, project_id, name, description, price,
-                                 stock_quantity, hide_when_out, vat_rate, sort_order)
+                                 stock_quantity, hide_when_out, vat_rate, sort_order, proper_name, common_name, name_order)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-               COALESCE((SELECT MAX(sort_order) + 1 FROM qr_menu_items WHERE agent_id = $2), 0))
+               COALESCE((SELECT MAX(sort_order) + 1 FROM qr_menu_items WHERE agent_id = $2), 0),
+               $10, $11, $12)
        RETURNING *`,
       [categoryId ? Number(categoryId) : null, req.admin.id, req.admin.project_id,
        cleanName, String(description || '').trim() || null, cleanPrice,
-       stock.value, hideWhenOut === false ? false : true, cleanVat]
+       stock.value, hideWhenOut === false ? false : true, cleanVat,
+       cleanProper, cleanCommon, cleanOrder]
     );
     const item = created.rows[0];
 
     const cleanDesc = String(description || '').trim() || null;
-    void translateMenuItem(item.id, cleanName, cleanDesc, req.admin.id);
+    // Chờ tối đa 9 giây: gần như lúc nào cũng kịp, quá hạn thì chạy tiếp ở nền.
+    await choCoHan(translateMenuItem(item.id, cleanName, cleanDesc, req.admin.id, cleanProper), 9000);
 
     res.status(201).json({ success: true, item });
   } catch (error) {
@@ -12070,7 +12314,7 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
 
 app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
-  const { categoryId, name, description, price, isAvailable, sortOrder, hideWhenOut, vatRate } = req.body || {};
+  const { categoryId, name, description, price, isAvailable, sortOrder, hideWhenOut, vatRate, properName, commonName, nameOrder } = req.body || {};
   const stock = parseStockInput(req.body?.stockQuantity);
   if (stock.invalid) return res.status(400).json({ error: 'Số lượng tồn phải là số không âm, hoặc để trống nếu không giới hạn.' });
   // Như trên: không nhận VAT theo món nữa.
@@ -12091,7 +12335,17 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
       if (!own.rows[0]) return res.status(400).json({ error: 'Danh mục không thuộc thực đơn của bạn.' });
     }
 
-    const cleanName = name !== undefined ? String(name).trim().slice(0, 255) : null;
+    const cleanProper = properName !== undefined ? (String(properName || '').trim().slice(0, 255) || null) : current.rows[0].proper_name;
+    const cleanCommon = commonName !== undefined ? (String(commonName || '').trim().slice(0, 255) || null) : current.rows[0].common_name;
+    const cleanOrder = nameOrder !== undefined ? (nameOrder === 'proper_first' ? 'proper_first' : 'common_first') : (current.rows[0].name_order || 'common_first');
+
+    let cleanName = name !== undefined ? String(name).trim().slice(0, 255) : null;
+    if (!cleanName && (properName !== undefined || commonName !== undefined)) {
+      cleanName = cleanOrder === 'proper_first'
+        ? [cleanProper, cleanCommon].filter(Boolean).join(' ')
+        : [cleanCommon, cleanProper].filter(Boolean).join(' ');
+    }
+
     const updated = await db.query(
       `UPDATE qr_menu_items
           SET category_id = COALESCE($3, category_id),
@@ -12105,6 +12359,9 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
               stock_quantity = CASE WHEN $10::boolean THEN $11 ELSE stock_quantity END,
               hide_when_out = COALESCE($12, hide_when_out),
               vat_rate = CASE WHEN $13::boolean THEN $14 ELSE vat_rate END,
+              proper_name = $15,
+              common_name = $16,
+              name_order = $17,
               updated_at = NOW()
         WHERE id = $1 AND agent_id = $2 RETURNING *`,
       [current.rows[0].id, req.admin.id,
@@ -12116,7 +12373,8 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
        Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : null,
        stock.provided, stock.value,
        typeof hideWhenOut === 'boolean' ? hideWhenOut : null,
-       hasVat, cleanVat]
+       hasVat, cleanVat,
+       cleanProper, cleanCommon, cleanOrder]
     );
     const item = updated.rows[0];
 
@@ -12125,9 +12383,9 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
     const textChanged = (cleanName && cleanName !== current.rows[0].name)
       || (description !== undefined && String(description || '') !== String(current.rows[0].description || ''));
     if (textChanged) {
-      void translateMenuItem(item.id, item.name, item.description, req.admin.id);
+      await choCoHan(translateMenuItem(item.id, item.name, item.description, req.admin.id, item.proper_name), 9000);
     } else {
-      void ensureMenuItemTranslations(item.id, item.name, item.description, req.admin.id);
+      await choCoHan(ensureMenuItemTranslations(item.id, item.name, item.description, req.admin.id, item.proper_name), 9000);
     }
 
     res.json({ success: true, item, retranslated: textChanged });
@@ -12851,10 +13109,13 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
     const staffItems = await orderItemsForStaffSummary(items, owner.detected_language);
     const summary = staffItems.map((item) => `${item.name} x${item.quantity}${item.note ? ` (${item.note})` : ''}`).join(', ');
     const text = `[Đặt món] Khách vừa đặt: ${summary}. Tạm tính ${formatVnd(totalAmount)}.`;
+    // total đi ở dạng SỐ, không phải chuỗi đã định dạng: mỗi ngôn ngữ có cách
+    // viết dấu phân cách hàng nghìn riêng, ghép sẵn là khoá cứng lối Việt Nam.
     const msgRes = await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
-       VALUES ($1, 'system', $2, $2, 'vi', 'staff') RETURNING id`,
-      [sessionId, text]
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to,
+                             system_kind, system_params)
+       VALUES ($1, 'system', $2, $2, 'vi', 'staff', 'order_placed', $3) RETURNING id`,
+      [sessionId, text, JSON.stringify({ summary, total: Number(totalAmount) || 0 })]
     );
     const sessionRow = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
     if (sessionRow.rows[0]) {
@@ -13030,9 +13291,12 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
     const staffItems = await orderItemsForStaffSummary(items, session.detected_language);
     const text = `[Đặt món] Khách đã cập nhật đơn (${staffItems.map((item) => `${item.name} x${item.quantity}${item.note ? ` (${item.note})` : ''}`).join(', ')}). Vui lòng xác nhận lại.`;
     const editMsgRes = await db.query(
-      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
-       VALUES ($1, 'system', $2, $2, 'vi', 'staff') RETURNING id`,
-      [sessionId, text]
+      `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to,
+                             system_kind, system_params)
+       VALUES ($1, 'system', $2, $2, 'vi', 'staff', 'order_updated', $3) RETURNING id`,
+      [sessionId, text, JSON.stringify({
+        summary: staffItems.map((item) => `${item.name} x${item.quantity}${item.note ? ` (${item.note})` : ''}`).join(', '),
+      })]
     );
     notifyAdminRealtime('new_message', { sessionId, projectId: session.project_id, sender: 'system', messageId: editMsgRes.rows[0]?.id });
     // Gửi lại đơn là khách đã xong việc sửa -> đồng hồ chạy tiếp ngay tại đây,
@@ -14500,9 +14764,10 @@ async function maybeAutoSelectDeferredPayment(order) {
   });
   const text = `[Thanh toán] Sau 2 phút chưa có lựa chọn, hệ thống đã chọn mặc định: ${label}.`;
   const autoMsgRes = await db.query(
-    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to)
-     VALUES ($1, 'system', $2, $2, 'vi', 'staff') RETURNING id`,
-    [order.session_id, text]
+    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to,
+                           system_kind, system_params)
+     VALUES ($1, 'system', $2, $2, 'vi', 'staff', 'payment_auto_selected', $3) RETURNING id`,
+    [order.session_id, text, JSON.stringify({ method, minutes: Math.round(PAYMENT_WINDOW_MS / 60000) })]
   ).catch(() => null);
   await sendOrderThankYou(order.session_id, method, { autoSelected: true, orderCode: order.order_code });
   notifyAdminRealtime('new_message', {

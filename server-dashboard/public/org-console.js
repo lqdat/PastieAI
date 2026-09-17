@@ -1385,22 +1385,31 @@ async function loadOrgSales(isSilent = false) {
         window._ORG_CACHE_TIMESTAMP['sales'] = Date.now();
         window._ORG_TAB_LOADED['sales'] = true;
 
+        const currentAdminLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+        const dict = (window.TRANSLATIONS && window.TRANSLATIONS[currentAdminLang]) || {};
+
         const count = window.ORG_SALES.length;
-        if (badge) badge.textContent = `${count} Sale`;
+        const saleUnit = dict.orgTabSales || 'Sale';
+        if (badge) badge.textContent = `${count} ${saleUnit}`;
         if (quotaCount) {
             // Trước đây khi không có trần thì hiện "Hạn mức: 2 (Không giới hạn)" —
             // đọc như thể trần là 2, trong khi 2 là SỐ ĐÃ TẠO. Luôn nói rõ con số
             // nào là gì.
             const limit = CURRENT_ADMIN?.sale_limit;
             const hasLimit = limit !== null && limit !== undefined && limit !== '' && Number.isFinite(Number(limit));
+            const usedLabel = dict.orgQuotaUsed || 'Đã tạo';
+            const remLabel = dict.orgQuotaRemaining || 'còn';
+            const fullLabel = dict.orgQuotaFull || 'đã hết suất';
+            const unlimitedLabel = dict.orgQuotaUnlimited || 'không giới hạn';
+
             if (hasLimit) {
                 const left = Math.max(0, Number(limit) - count);
                 quotaCount.textContent = left > 0
-                    ? `Đã tạo ${count}/${limit} Sale · còn ${left} suất`
-                    : `Đã tạo ${count}/${limit} Sale · đã hết suất`;
+                    ? `${usedLabel} ${count}/${limit} ${saleUnit} · ${remLabel} ${left}`
+                    : `${usedLabel} ${count}/${limit} ${saleUnit} · ${fullLabel}`;
                 quotaCount.classList.toggle('is-full', left <= 0);
             } else {
-                quotaCount.textContent = `Đã tạo ${count} Sale · không giới hạn`;
+                quotaCount.textContent = `${usedLabel} ${count} ${saleUnit} · ${unlimitedLabel}`;
                 quotaCount.classList.remove('is-full');
             }
         }
@@ -1409,7 +1418,7 @@ async function loadOrgSales(isSilent = false) {
         renderSalePicker(window.ORG_SALES);
 
         // Render Guard: tránh hủy và dựng lại toàn bộ DOM thẻ Sale nếu dữ liệu không đổi
-        const salesHash = JSON.stringify(window.ORG_SALES.map(s => [s.id, s.full_name, s.username, s.avatar_url, s.group_id, s.on_shift, s.work_shift, s.is_active]));
+        const salesHash = `${currentAdminLang}_${JSON.stringify(window.ORG_SALES.map(s => [s.id, s.full_name, s.username, s.avatar_url, s.group_id, s.on_shift, s.work_shift, s.is_active]))}`;
         if (box.dataset.renderedHash === salesHash && box.children.length > 0) {
             return;
         }
@@ -1425,30 +1434,32 @@ async function loadOrgSales(isSilent = false) {
                     <div class="sale-info">
                         <div class="sale-name-row">
                             <strong class="sale-name">${escapeHtml(sale.full_name || sale.username)}</strong>
-                            <span class="org-shift ${sale.on_shift ? 'is-on' : ''}">${sale.on_shift ? 'Trong ca' : 'Ngoài ca'}</span>
+                            <span class="org-shift ${sale.on_shift ? 'is-on' : ''}">${sale.on_shift ? (dict.orgOnShift || 'Trong ca') : (dict.orgOffShift || 'Ngoài ca')}</span>
                         </div>
                         <span class="sale-email">${escapeHtml(sale.username)}</span>
                     </div>
                 </div>
                 <div class="sale-tags">
                     <span class="sale-tag"><i class="ri-time-line"></i> ${escapeHtml(formatHourWindows(sale.access_hours))}</span>
-                    <span class="sale-tag"><i class="ri-team-line"></i> ${(sale.groups || []).map((g) => escapeHtml(g.name)).join(', ') || 'Chưa gán nhóm'}</span>
+                    <span class="sale-tag"><i class="ri-team-line"></i> ${(sale.groups || []).map((g) => escapeHtml(g.name)).join(', ') || (dict.orgUnassignedGroup || 'Chưa gán nhóm')}</span>
                 </div>
                 <div class="sale-actions">
-                    <button type="button" class="sale-btn-edit" data-sale-edit="${sale.id}" title="Sửa thông tin Sale">
-                        <i class="ri-edit-line"></i> Sửa
+                    <button type="button" class="sale-btn-edit" data-sale-edit="${sale.id}" title="${dict.editBtn || 'Sửa'}">
+                        <i class="ri-edit-line"></i> ${dict.editBtn || 'Sửa'}
                     </button>
                     <button type="button" class="org-toggle sale-btn-toggle ${sale.is_active ? 'is-active' : 'is-locked'}" data-sale-toggle="${sale.id}" data-active="${sale.is_active}">
                         <i class="${sale.is_active ? 'ri-checkbox-circle-line' : 'ri-lock-line'}"></i>
-                        <span>${sale.is_active ? 'Hoạt động' : 'Đã khóa'}</span>
+                        <span>${sale.is_active ? (dict.orgActive || 'Hoạt động') : (dict.orgLocked || 'Đã khóa')}</span>
                     </button>
-                    <button type="button" class="org-remove sale-btn-delete" data-sale-delete="${sale.id}" title="Xóa tài khoản Sale">
+                    <button type="button" class="org-remove sale-btn-delete" data-sale-delete="${sale.id}" title="${dict.orgDeleteSale || 'Xóa tài khoản Sale'}">
                         <i class="ri-delete-bin-line"></i>
                     </button>
                 </div>
-            </article>`).join('') : '<p class="org-empty">Chưa có tài khoản Sale nào.</p>';
+            </article>`).join('') : `<p class="org-empty">${dict.orgNoSales || 'Chưa có tài khoản Sale nào.'}</p>`;
     } catch (error) {
-        if (badge) badge.textContent = '0 Sale';
+        const currentAdminLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+        const dict = (window.TRANSLATIONS && window.TRANSLATIONS[currentAdminLang]) || {};
+        if (badge) badge.textContent = `0 ${dict.orgTabSales || 'Sale'}`;
         box.innerHTML = `<p class="org-empty">${escapeHtml(error.message)}</p>`;
     }
 }
@@ -1459,6 +1470,9 @@ async function loadOrgSales(isSilent = false) {
 async function loadOrgGroups(quiet, isSilent = false) {
     const box = document.getElementById('org-group-list');
     const badge = document.getElementById('org-group-count-badge');
+    const currentAdminLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+    const dict = (window.TRANSLATIONS && window.TRANSLATIONS[currentAdminLang]) || {};
+
     if (!quiet && !isSilent && box && (!window.ORG_GROUPS || window.ORG_GROUPS.length === 0)) {
         box.innerHTML = '<p class="org-empty"><i class="ri-loader-4-line ri-spin"></i> Đang tải…</p>';
     }
@@ -1469,14 +1483,14 @@ async function loadOrgGroups(quiet, isSilent = false) {
         window.ORG_GROUPS = await orgFetch('/api/agent/groups');
         window._ORG_CACHE_TIMESTAMP['groups'] = Date.now();
         window._ORG_TAB_LOADED['groups'] = true;
-        if (badge) badge.textContent = `${window.ORG_GROUPS.length} Nhóm`;
+        if (badge) badge.textContent = `${window.ORG_GROUPS.length} ${dict.orgGroupCount || 'Nhóm'}`;
 
         // Cập nhật select Sale trong Form Tạo Nhóm
         renderSalePicker(window.ORG_SALES || []);
 
         if (box && !quiet) {
             // Render Guard: tránh dựng lại DOM nhóm nếu dữ liệu không đổi
-            const groupsHash = JSON.stringify(window.ORG_GROUPS.map(g => [g.id, g.name, g.description, (g.sales || []).map(s => s.sale_id)]));
+            const groupsHash = `${currentAdminLang}_${JSON.stringify(window.ORG_GROUPS.map(g => [g.id, g.name, g.description, (g.sales || []).map(s => s.sale_id)]))}`;
             if (box.dataset.renderedHash === groupsHash && box.children.length > 0) {
                 // Giữ nguyên DOM
             } else {
@@ -1491,7 +1505,7 @@ async function loadOrgGroups(quiet, isSilent = false) {
                             <i class="ri-user-line" style="color:#6366f1;"></i> ${escapeHtml(s.sale_name || s.sale_username)}
                             <button type="button" data-remove-sale="${s.sale_id}" data-from-group="${group.id}" title="Gỡ Sale khỏi nhóm" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:0;display:flex;align-items:center;font-size:13px;line-height:1;"><i class="ri-close-circle-fill"></i></button>
                         </span>
-                    `).join('') : '<span style="font-size:11px;color:var(--text-secondary);font-style:italic;">Chưa có Sale nào trong nhóm</span>';
+                    `).join('') : `<span style="font-size:11px;color:var(--text-secondary);font-style:italic;">${dict.orgNoSalesInGroup || 'Chưa có Sale nào trong nhóm'}</span>`;
 
                     const addSaleOptions = notInGroupSales.map(s => `<option value="${s.id}">${escapeHtml(s.full_name || s.username)}</option>`).join('');
 
@@ -1500,32 +1514,32 @@ async function loadOrgGroups(quiet, isSilent = false) {
                         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                             <div>
                                 <strong style="font-size:13.5px;"><i class="ri-team-line" style="color:var(--accent-color);margin-right:4px;"></i>${escapeHtml(group.name)}</strong>
-                                <small style="margin-left:8px;color:var(--text-secondary);">${group.waiting_count} chờ / ${group.active_count} đang chat</small>
+                                <small style="margin-left:8px;color:var(--text-secondary);">${group.waiting_count} ${dict.orgWaiting || 'chờ'} / ${group.active_count} ${dict.orgChatting || 'đang chat'}</small>
                                 ${group.description ? `<p style="margin:2px 0 0 0;font-size:11.5px;color:var(--text-secondary);">${escapeHtml(group.description)}</p>` : ''}
                             </div>
                             <div style="display:flex;gap:6px;align-items:center;">
-                                <button type="button" class="org-btn-edit" data-group-edit="${group.id}" title="Sửa tên nhóm" style="background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:4px 8px;font-size:11.5px;cursor:pointer;font-weight:600;"><i class="ri-edit-line"></i> Sửa</button>
-                                <button type="button" class="org-remove" data-group-delete="${group.id}" title="Xóa nhóm"><i class="ri-delete-bin-line"></i></button>
+                                <button type="button" class="org-btn-edit" data-group-edit="${group.id}" title="${dict.editBtn || 'Sửa'}" style="background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:4px 8px;font-size:11.5px;cursor:pointer;font-weight:600;"><i class="ri-edit-line"></i> ${dict.editBtn || 'Sửa'}</button>
+                                <button type="button" class="org-remove" data-group-delete="${group.id}" title="${dict.deleteBtn || 'Xóa'}"><i class="ri-delete-bin-line"></i></button>
                             </div>
                         </div>
 
                         <!-- Quản lý thành viên Sale trong nhóm -->
                         <div style="background:rgba(0,0,0,0.025);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;">
                             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                                <span style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;">Thành viên (${groupSales.length})</span>
+                                <span style="font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;">${dict.orgMembers || 'Thành viên'} (${groupSales.length})</span>
                                 ${notInGroupSales.length ? `
                                     <select class="org-add-sale-to-group-select" data-group-id="${group.id}" style="font-size:11px;padding:2px 6px;border-radius:5px;background:var(--panel-bg);border:1px solid var(--panel-border);color:var(--text-primary);cursor:pointer;">
-                                        <option value="">+ Thêm Sale vào nhóm...</option>
+                                        <option value="">+ ${dict.orgAddSaleToGroup || 'Thêm Sale vào nhóm...'}</option>
                                         ${addSaleOptions}
                                     </select>
-                                ` : '<span style="font-size:10.5px;color:var(--text-secondary);">(Đã đủ tất cả Sale)</span>'}
+                                ` : `<span style="font-size:10.5px;color:var(--text-secondary);">${dict.orgAllSalesAdded || '(Đã đủ tất cả Sale)'}</span>`}
                             </div>
                             <div style="display:flex;flex-wrap:wrap;gap:6px;">
                                 ${chipsHtml}
                             </div>
                         </div>
                     </article>`;
-                }).join('') : '<p class="org-empty">Chưa có nhóm nào.</p>';
+                }).join('') : `<p class="org-empty">${dict.orgNoGroups || 'Chưa có nhóm nào.'}</p>`;
             }
         }
 
@@ -1579,6 +1593,9 @@ function renderOrgQrList() {
     const filterSelect = document.getElementById('org-qr-group-filter');
     if (!box) return;
 
+    const currentAdminLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+    const dict = (window.TRANSLATIONS && window.TRANSLATIONS[currentAdminLang]) || {};
+
     const selectedGroupId = filterSelect ? filterSelect.value : '';
     const allQr = window.CURRENT_QR_ACCOUNTS || [];
     const filtered = selectedGroupId
@@ -1588,7 +1605,7 @@ function renderOrgQrList() {
     if (badge) badge.textContent = `${filtered.length} QR`;
 
     // Render Guard: tránh tải lại hàng loạt ảnh QR quickchart nếu dữ liệu không đổi
-    const qrHash = `${selectedGroupId}_${JSON.stringify(filtered.map(a => [a.id, a.label, a.group_id, a.chat_url]))}`;
+    const qrHash = `${currentAdminLang}_${selectedGroupId}_${JSON.stringify(filtered.map(a => [a.id, a.label, a.group_id, a.chat_url]))}`;
     if (box.dataset.renderedHash === qrHash && box.children.length > 0) {
         return;
     }
@@ -1600,26 +1617,26 @@ function renderOrgQrList() {
         return `
         <article class="qr-card">
             <div class="qr-card-top">
-                <div class="qr-thumb-box" data-qr-poster="${account.id}" title="Bấm để xem và tải mã QR">
+                <div class="qr-thumb-box" data-qr-poster="${account.id}" title="${dict.orgViewQr || 'Xem mã'}">
                     <img src="${qrThumb}" alt="QR" class="qr-thumb-img" loading="lazy">
                 </div>
                 <div class="qr-card-main">
                     <div class="qr-card-title-row">
                         <strong class="qr-card-title">${escapeHtml(account.label)}</strong>
-                        <span class="qr-card-group"><i class="ri-team-line"></i> ${escapeHtml(account.group_name || 'Chưa gán nhóm')}</span>
+                        <span class="qr-card-group"><i class="ri-team-line"></i> ${escapeHtml(account.group_name || (dict.orgUnassignedGroup || 'Chưa gán nhóm'))}</span>
                     </div>
                     <small class="qr-card-link-preview">${escapeHtml(account.chat_url)}</small>
                 </div>
             </div>
             <div class="qr-card-actions">
-                <button type="button" class="qr-btn-view" data-qr-poster="${account.id}" title="Xem và tải ảnh mã QR">
-                    <i class="ri-qr-code-line"></i> <span>Xem mã</span>
+                <button type="button" class="qr-btn-view" data-qr-poster="${account.id}" title="${dict.orgViewQr || 'Xem mã'}">
+                    <i class="ri-qr-code-line"></i> <span>${dict.orgViewQr || 'Xem mã'}</span>
                 </button>
-                <button type="button" class="qr-btn-edit" data-qr-edit="${account.id}" title="Sửa thông tin mã QR">
-                    <i class="ri-edit-line"></i> <span>Sửa</span>
+                <button type="button" class="qr-btn-edit" data-qr-edit="${account.id}" title="${dict.editBtn || 'Sửa'}">
+                    <i class="ri-edit-line"></i> <span>${dict.editBtn || 'Sửa'}</span>
                 </button>
-                <button type="button" class="qr-btn-delete" data-qr-revoke="${account.id}" title="Xóa mã QR này">
-                    <i class="ri-delete-bin-line"></i> <span>Xóa</span>
+                <button type="button" class="qr-btn-delete" data-qr-revoke="${account.id}" title="${dict.deleteBtn || 'Xóa'}">
+                    <i class="ri-delete-bin-line"></i> <span>${dict.deleteBtn || 'Xóa'}</span>
                 </button>
             </div>
         </article>`;
@@ -1819,4 +1836,19 @@ async function saveAgentMenuSettings() {
 }
 
 document.getElementById('agent-menu-save-btn')?.addEventListener('click', saveAgentMenuSettings);
+
+window.addEventListener('pastie:lang-changed', () => {
+    const modal = document.getElementById('org-modal');
+    if (modal && !modal.classList.contains('hide')) {
+        const saleBox = document.getElementById('org-sale-list');
+        if (saleBox) saleBox.dataset.renderedHash = '';
+        const groupBox = document.getElementById('org-group-list');
+        if (groupBox) groupBox.dataset.renderedHash = '';
+        const qrBox = document.getElementById('org-qr-list');
+        if (qrBox) qrBox.dataset.renderedHash = '';
+        if (window.ORG_SALES) loadOrgSales(true);
+        if (window.ORG_GROUPS) loadOrgGroups(false, true);
+        if (window.CURRENT_QR_ACCOUNTS) renderOrgQrList();
+    }
+});
 

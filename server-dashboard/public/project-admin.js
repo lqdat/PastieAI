@@ -1148,6 +1148,10 @@ async function handleCreateUserSubmit(e) {
         ? [proper, formattedCommon].filter(Boolean).join(' ')
         : [formattedCommon, proper].filter(Boolean).join(' ');
     payload.full_name = computed || proper || common || document.getElementById('admin-create-fullname')?.value.trim();
+    payload.proper_name = proper || null;
+    payload.venue_type = common || null;
+    payload.common_name = common || null;
+    payload.name_order = order;
 
     const submitBtn = document.getElementById('admin-create-submit-btn');
     if (submitBtn) {
@@ -1403,6 +1407,10 @@ async function handleEditUserSubmit(e) {
         ? [proper, formattedCommon].filter(Boolean).join(' ')
         : [formattedCommon, proper].filter(Boolean).join(' ');
     payload.full_name = computed || proper || common || document.getElementById('admin-edit-fullname')?.value.trim();
+    payload.proper_name = proper || null;
+    payload.venue_type = common || null;
+    payload.common_name = common || null;
+    payload.name_order = order;
 
     // Đổi email đăng nhập là việc không quay lui được bằng một cú bấm: tài khoản
     // bị đăng xuất ngay, và từ đó chỉ hộp thư MỚI nhận được mã OTP. Gõ nhầm một
