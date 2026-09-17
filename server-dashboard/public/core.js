@@ -9,6 +9,27 @@
 // chỉ chứa khai báo, không tự chạy gì.
 
 // ----------------------------------------------------
+// TRANSLATION HELPER (i18n)
+// ----------------------------------------------------
+
+function t(key, params, fallback) {
+    if (typeof window.t === 'function' && window.t !== t) {
+        return window.t(key, params, fallback);
+    }
+    if (!key) return fallback || '';
+    const lang = (typeof currentLang !== 'undefined' && currentLang) || (typeof localStorage !== 'undefined' && localStorage.getItem('pastie_admin_lang')) || 'vi';
+    const dict = (window.TRANSLATIONS && (window.TRANSLATIONS[lang] || window.TRANSLATIONS.vi)) || {};
+    let str = dict[key] !== undefined ? dict[key] : (window.TRANSLATIONS?.vi?.[key] !== undefined ? window.TRANSLATIONS.vi[key] : (fallback !== undefined ? fallback : key));
+    if (params && typeof params === 'object' && typeof str === 'string') {
+        for (const [k, v] of Object.entries(params)) {
+            str = str.split(`{${k}}`).join(String(v));
+        }
+    }
+    return str;
+}
+window.t = t;
+
+// ----------------------------------------------------
 // AUTHENTICATION LOGIC
 // ----------------------------------------------------
 

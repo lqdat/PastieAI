@@ -4510,3 +4510,18 @@ window.PASTIE_MENU_DISH_DICT = {
     "ru": "Завтрак по-фукуокски"
   }
 };
+
+window.t = function t(key, params, fallback) {
+  if (!key) return fallback || '';
+  var lang = (typeof currentLang !== 'undefined' && currentLang) || (typeof localStorage !== 'undefined' && localStorage.getItem('pastie_admin_lang')) || 'vi';
+  var dict = (window.TRANSLATIONS && (window.TRANSLATIONS[lang] || window.TRANSLATIONS.vi)) || {};
+  var str = dict[key] !== undefined ? dict[key] : (window.TRANSLATIONS && window.TRANSLATIONS.vi && window.TRANSLATIONS.vi[key] !== undefined ? window.TRANSLATIONS.vi[key] : (fallback !== undefined ? fallback : key));
+  if (params && typeof params === 'object' && typeof str === 'string') {
+    for (var k in params) {
+      if (Object.prototype.hasOwnProperty.call(params, k)) {
+        str = str.split('{' + k + '}').join(String(params[k]));
+      }
+    }
+  }
+  return str;
+};
