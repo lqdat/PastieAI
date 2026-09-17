@@ -42,7 +42,9 @@ pool.on('error', (err) => {
 const { encryptText, decryptText, isEncrypted, ENABLED: ENCRYPTION_ON } = require('./crypto-helper');
 
 // GHI: chỉ những CỘT thật sự chứa nội dung tin nhắn.
-const ENCRYPTED_COLUMNS = new Set(['original_text', 'translated_text']);
+// system_params: tham số dựng câu của tin hệ thống, có tên món và ghi chú của
+// khách. Là nội dung tin nhắn thật, nên mã hoá như hai cột kia.
+const ENCRYPTED_COLUMNS = new Set(['original_text', 'translated_text', 'system_params']);
 
 // ĐỌC: giải mã theo TIỀN TỐ, không theo tên trường.
 //
@@ -474,6 +476,26 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     await query(`CREATE INDEX IF NOT EXISTS idx_messages_system_kind
                    ON messages(session_id, system_kind, created_at DESC)
                  WHERE system_kind IS NOT NULL;`);
+
+    // THAM SỐ CỦA TIN HỆ THỐNG — để dựng lại câu theo NGÔN NGỮ NGƯỜI ĐANG ĐỌC.
+    //
+    // Tin hệ thống trước nay được lưu thành một câu tiếng Việt đã ghép sẵn:
+    // "[Đặt món] Khách vừa đặt: Phở x1. Tạm tính 65.000 ₫." Sale người Hàn mở
+    // khung chat ra vẫn đọc đúng câu tiếng Việt đó, vì không còn cách nào dựng
+    // lại nó bằng tiếng khác — chữ đã dính liền với số.
+    //
+    // Cột này giữ các mảnh rời (mã đơn, cách trả, danh sách món, tổng tiền) để
+    // giao diện tự ghép câu theo ngôn ngữ của người đang xem. Câu tiếng Việt
+    // vẫn được lưu nguyên ở original_text làm đường lui cho mọi tin cũ.
+    //
+    // KIỂU TEXT CHỨ KHÔNG PHẢI JSONB — vì nội dung này PHẢI ĐƯỢC MÃ HOÁ.
+    //
+    // Tham số ở đây có tên món và ghi chú của khách, tức là nội dung tin nhắn
+    // thật. original_text đã được mã hoá khi lưu; để tham số nằm plaintext bên
+    // cạnh là mở lại đúng cánh cửa vừa đóng, mà lại kín đáo hơn nên khó phát
+    // hiện hơn. Cột jsonb không nhận được chuỗi đã mã hoá, nên dùng text và để
+    // lớp mã hoá tập trung ở trên xử lý — đọc ra tự giải mã theo tiền tố.
+    await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS system_params TEXT;`);
 
     // Migration: Add message status tracking (sent, delivered, seen)
     await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'sent';`);
