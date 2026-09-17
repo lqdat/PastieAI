@@ -121,6 +121,7 @@ const GEMINI_TRANSLATE_TIMEOUT_MS = Number(process.env.GEMINI_TRANSLATE_TIMEOUT_
 
 const LANGUAGE_NAMES = {
   vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese (Simplified)', ko: 'Korean',
+  kk: 'Kazakh (Cyrillic script)',
 };
 
 const normalizeLangCode = (value) => String(value || '').trim().toLowerCase().slice(0, 2);
@@ -184,20 +185,17 @@ const VENUE_PREFIXES = [
  */
 function splitVenueName(name) {
   const raw = String(name || '').trim();
-  if (!raw) return { prefix: '', propel: '', order: 'prefix_first' };
+  if (!raw) return { prefix: '', propel: '' };
   const lower = raw.toLowerCase();
   // Loại hình dài khớp trước: "công ty tnhh" phải thắng "công ty".
   for (const prefix of [...VENUE_PREFIXES].sort((a, b) => b.length - a.length)) {
     if (lower.startsWith(prefix + ' ')) {
-      return { prefix: raw.slice(0, prefix.length), propel: raw.slice(prefix.length).trim(), order: 'prefix_first' };
-    }
-    if (lower.endsWith(' ' + prefix)) {
-      return { prefix: raw.slice(raw.length - prefix.length), propel: raw.slice(0, raw.length - prefix.length).trim(), order: 'propel_first' };
+      return { prefix: raw.slice(0, prefix.length), propel: raw.slice(prefix.length).trim() };
     }
   }
   // Không nhận ra loại hình thì giữ nguyên CẢ tên — thà không dịch gì còn hơn
   // cắt nhầm một cái tên thành hai nửa vô nghĩa.
-  return { prefix: '', propel: raw, order: 'propel_first' };
+  return { prefix: '', propel: raw };
 }
 
 /**
@@ -607,13 +605,17 @@ async function generateChatbotResponse(systemInstruction, history, userMessage, 
 }
 
 
-const SUPPORTED_LANGS = ['vi', 'en', 'ru', 'zh'];
+// 'ko' thiếu ở đây từ lâu: khách nhắn tiếng Hàn thì detectLanguage trả 'en',
+// nên hệ thống tưởng họ nói tiếng Anh. Thêm luôn cùng đợt Kazakh.
+const SUPPORTED_LANGS = ['vi', 'en', 'ru', 'zh', 'ko', 'kk'];
 
 async function detectLanguage(text) {
   if (!text?.trim()) return 'en';
   try {
     if (ai) {
-      const prompt = `Detect the language of the following text. Return ONLY a 2-letter ISO 639-1 language code (e.g. "vi", "en", "ru", "zh"). No explanation, just the code.\n\nText: "${text.substring(0, 200)}"`;
+      // Nêu đích danh "kk" trong ví dụ: tiếng Kazakh viết bằng chữ Kirin nên
+      // rất dễ bị nhận nhầm thành "ru" nếu không nhắc mã này tồn tại.
+      const prompt = `Detect the language of the following text. Return ONLY a 2-letter ISO 639-1 language code (e.g. "vi", "en", "ru", "zh", "ko", "kk" for Kazakh). Kazakh uses Cyrillic but is NOT Russian — look for the letters ә ғ қ ң ө ұ ү һ і. No explanation, just the code.\n\nText: "${text.substring(0, 200)}"`;
       const result = await runGemini(model => model.generateContent(prompt));
       const lang = result.response.text().trim().toLowerCase().replace(/[^a-z]/g, '');
       return SUPPORTED_LANGS.includes(lang) ? lang : 'en';
@@ -635,3 +637,20 @@ module.exports = {
   generateChatbotResponse,
   detectLanguage
 };
+
+// CHỈ DÙNG TRONG BÀI KIỂM. Bật cờ này thì mọi lượt dịch trả về một bản "dịch"
+// giả có dấu nhận biết, để bài kiểm chứng minh được câu nào ĐÃ đi qua máy dịch
+// và câu nào thì không. Không có cờ, file này chạy y như bản thật.
+if (process.env.TEST_FAKE_TRANSLATE === '1') {
+  module.exports.translateText = async (text, targetLang) => ({
+    translatedText: `«MAYDICH→${String(targetLang || '').toLowerCase()}»${text}`,
+    detectedLang: 'vi',
+    provider: 'nmt',
+  });
+  module.exports.translateTexts = async (texts, targetLang) =>
+    (Array.isArray(texts) ? texts : [texts]).map((t) => ({
+      translatedText: `«MAYDICH→${String(targetLang || '').toLowerCase()}»${t}`,
+      detectedLang: 'vi',
+      provider: 'nmt',
+    }));
+}

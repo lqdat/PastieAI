@@ -3356,6 +3356,7 @@ app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req,
           ru: 'Соединяем вас с оператором поддержки, подождите ⏳',
           zh: '正在为您连接客服人员，请稍候 ⏳',
           ko: '상담원과 연결 중입니다. 잠시만 기다려 주세요 ⏳',
+          kk: 'Сізді қолдау қызметінің маманына қосудамыз, сәл күте тұрыңыз ⏳',
         };
         const transferMsg = transferMsgs[visitorLang] || transferMsgs['vi'];
         const aiMsgRes = await db.query(
@@ -3378,6 +3379,7 @@ app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req,
             ru: 'Оператор уже принимает вашу заявку, подождите ⏳',
             zh: '客服人员正在接待中，请稍候 ⏳',
             ko: '상담원이 확인 중입니다. 잠시만 기다려 주세요 ⏳',
+            kk: 'Маман сұрауыңызды қабылдауда, сәл күте тұрыңыз ⏳',
           };
           const waitMsg = waitMsgs[visitorLang] || waitMsgs['vi'];
           const aiMsgRes = await db.query(
@@ -3433,7 +3435,7 @@ app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req,
             ? `${websiteKb}\n\n=== TRI THỨC TỪ HỘI THOẠI THỰC TẾ ===\n${chatKb}`
             : websiteKb;
           const knowledgeContext = rawKb.substring(0, 10000);
-          const langNameMap = { vi: 'Tiếng Việt', en: 'English', ru: 'Русский (Russian)', zh: '中文 (Chinese)', ko: '한국어 (Korean)' };
+          const langNameMap = { vi: 'Tiếng Việt', en: 'English', ru: 'Русский (Russian)', zh: '中文 (Chinese)', ko: '한국어 (Korean)', kk: 'Қазақша (Kazakh)' };
           const replyLangName = langNameMap[visitorLang] || 'Tiếng Việt';
 
           const systemInstruction = `
@@ -3758,7 +3760,7 @@ app.post('/api/chats/session/language', async (req, res) => {
   }
 
   try {
-    const validLangs = ['vi', 'en', 'ru', 'zh', 'ko', 'unknown'];
+    const validLangs = ['vi', 'en', 'ru', 'zh', 'ko', 'kk', 'unknown'];
     const updateLang = validLangs.includes(language.toLowerCase()) ? language.toLowerCase() : 'unknown';
 
     const existing = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
@@ -3872,7 +3874,7 @@ app.post('/api/ai/translate-batch', async (req, res) => {
 app.post('/api/chats/:sessionId/visitor-language', async (req, res) => {
   const sessionId = req.params.sessionId;
   const language = String(req.body?.language || '').toLowerCase();
-  const validLanguages = new Set(['vi', 'en', 'ru', 'zh', 'ko']);
+  const validLanguages = new Set(['vi', 'en', 'ru', 'zh', 'ko', 'kk']);
   if (!validLanguages.has(language)) {
     return res.status(400).json({ error: 'Ngôn ngữ không hợp lệ.' });
   }
@@ -4015,6 +4017,7 @@ app.post('/api/chats/session/close', async (req, res) => {
       ru: 'Оператор завершил. Pat снова с вами! 🌴',
       zh: '客服已结束，Pat 回来继续陪伴您！🌴',
       ko: '상담이 종료되었습니다. Pat이 계속 도와드릴게요! 🌴',
+      kk: 'Маман әңгімені аяқтады. Pat қайта оралды, көмектесуге дайынмын! 🌴',
     };
     const backMsg = backMsgs[lang] || backMsgs.vi;
     await db.query(
@@ -4239,7 +4242,7 @@ app.post('/api/chats/session/request-agent-direct', async (req, res) => {
 
     await db.query('UPDATE sessions SET requested_agent = TRUE WHERE id = $1', [sessionId]);
     const lang = session.detected_language || 'vi';
-    const waitMsgs = { vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳', en: 'Connecting you with a support agent, please hold on ⏳', ru: 'Соединяем вас с оператором, подождите ⏳', zh: '正在为您连接客服，请稍候 ⏳', ko: '상담원과 연결 중입니다. 잠시만 기다려 주세요 ⏳' };
+    const waitMsgs = { vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳', en: 'Connecting you with a support agent, please hold on ⏳', ru: 'Соединяем вас с оператором, подождите ⏳', zh: '正在为您连接客服，请稍候 ⏳', ko: '상담원과 연결 중입니다. 잠시만 기다려 주세요 ⏳', kk: 'Сізді қолдау қызметінің маманына қосудамыз, сәл күте тұрыңыз ⏳' };
     await db.query(
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3)`,
       [sessionId, waitMsgs[lang] || waitMsgs['vi'], lang]
@@ -4272,7 +4275,7 @@ app.post('/api/chats/session/request-agent', async (req, res) => {
       [email, finalName, sessionId]
     );
     const lang = (await db.query('SELECT detected_language FROM sessions WHERE id = $1', [sessionId])).rows[0]?.detected_language || 'vi';
-    const waitMsgs = { vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳', en: 'Connecting you with a support agent, please hold on ⏳', ru: 'Соединяем вас с оператором, подождите ⏳', zh: '正在为您连接客服，请稍候 ⏳', ko: '상담원과 연결 중입니다. 잠시만 기다려 주세요 ⏳' };
+    const waitMsgs = { vi: 'Đang kết nối bạn với nhân viên hỗ trợ, vui lòng chờ trong giây lát ⏳', en: 'Connecting you with a support agent, please hold on ⏳', ru: 'Соединяем вас с оператором, подождите ⏳', zh: '正在为您连接客服，请稍候 ⏳', ko: '상담원과 연결 중입니다. 잠시만 기다려 주세요 ⏳', kk: 'Сізді қолдау қызметінің маманына қосудамыз, сәл күте тұрыңыз ⏳' };
     await db.query(
       `INSERT INTO messages (session_id, sender, original_text, translated_text, language) VALUES ($1, 'system', $2, $2, $3)`,
       [sessionId, waitMsgs[lang] || waitMsgs['vi'], lang]
@@ -7107,7 +7110,7 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
     // Ngôn ngữ khách đang xem. Trước đây chỗ này viết cứng 'vi', nên khách quét
     // mã ở bàn khác trong lúc đang đọc tiếng Anh vẫn bị chào bằng tiếng Việt và
     // cả phiên mới cũng bị ghi là tiếng Việt.
-    const resumeLang = ['vi', 'en', 'ru', 'zh', 'ko']
+    const resumeLang = ['vi', 'en', 'ru', 'zh', 'ko', 'kk']
       .includes(String(req.body?.language || '').toLowerCase().slice(0, 2))
       ? String(req.body.language).toLowerCase().slice(0, 2) : 'vi';
 
@@ -9428,7 +9431,7 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
     const knowledgeContext = chatKb
       ? `${websiteKb}\n\n=== TRI THỨC TỪ HỘI THOẠI THỰC TẾ ===\n${chatKb}`.substring(0, 10000)
       : websiteKb.substring(0, 8000);
-    const langNameMap = { vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese', ko: 'Korean' };
+    const langNameMap = { vi: 'Vietnamese', en: 'English', ru: 'Russian', zh: 'Chinese', ko: 'Korean', kk: 'Kazakh' };
     const replyLangName = langNameMap[finalLang] || 'the same language as the customer';
 
     const systemInstruction = `You are a professional and friendly customer support assistant for Pastie brand.
@@ -11785,7 +11788,7 @@ app.get('/api/superadmin/license/suspicious', checkAdminAuth, async (req, res) =
 // đơn 0 đồng bằng một dòng lệnh.
 // ============================================================================
 
-const MENU_LANGS = ['vi', 'en', 'ru', 'zh', 'ko'];
+const MENU_LANGS = ['vi', 'en', 'ru', 'zh', 'ko', 'kk'];
 const MENU_SOURCE_LANG = 'vi'; // Agent nhập tiếng Việt, các thứ tiếng còn lại dịch máy
 
 async function orderItemsForStaffSummary(items, sourceLanguage) {

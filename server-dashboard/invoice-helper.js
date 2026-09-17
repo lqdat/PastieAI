@@ -104,6 +104,17 @@ const INVOICE_I18N = {
     thanks: '이용해 주셔서 감사합니다!', note: '본 영수증은 Pastie Chat 시스템에서 자동 발행되었습니다.', paidStamp: '결제 완료',
     serviceFee: '서비스 요금', vatIncluded: '상품 가격에는 VAT가 포함되어 있습니다.'
   },
+  // Tiếng Kazakh viết bằng chữ Kirin. DejaVuSans đã có đủ 18 chữ riêng của
+  // Kazakh (Ә Ғ Қ Ң Ө Ұ Ү Һ І và chữ thường) nên KHÔNG cần font bổ sung —
+  // đã dựng thử PDF thật rồi trích chữ ra kiểm, không mất ký tự nào.
+  kk: {
+    title: 'САТУ ЕСЕП-ШОТЫ', invoiceNo: 'Есеп-шот №', date: 'Күні', customer: 'Клиент', email: 'Электрондық пошта', table: 'Үстел', openedAt: 'Келген уақыты', printedAt: 'Басып шығарылды', sale: 'Қызмет көрсетті',
+    phone: 'Телефон', address: 'Мекенжай', item: 'Атауы', unitPrice: 'Бағасы', quantity: 'Саны',
+    discount: 'Жеңілдік', lineTotal: 'Сомасы', subtotal: 'Тауарлар жиыны',
+    totalDiscount: 'Жеңілдік', vat: 'ҚҚС', grandTotal: 'ЖАЛПЫ СОМА', paymentMethod: 'Төлем',
+    thanks: 'Сатып алғаныңыз үшін рахмет!', note: 'Бұл есеп-шот Pastie Chat жүйесінде автоматты түрде жасалды.', paidStamp: 'ТӨЛЕНДІ',
+    serviceFee: 'Қызмет ақысы', vatIncluded: 'Барлық бағалар ҚҚС-ты қамтиды.'
+  },
 };
 
 // room_charge / pay_later chỉ xuất hiện theo cấu hình của Superadmin; nhãn vẫn
@@ -114,6 +125,7 @@ const PAYMENT_METHOD_I18N = {
   ru: { cash: 'Наличные', bank_qr: 'Перевод по QR', card: 'Карта', room_charge: 'На счёт номера', pay_later: 'Оплатить позже' },
   zh: { cash: '现金', bank_qr: '扫码转账', card: '刷卡', room_charge: '记入房账', pay_later: '稍后付款' },
   ko: { cash: '현금', bank_qr: 'QR 계좌이체', card: '카드', room_charge: '객실 요금에 청구', pay_later: '나중에 결제' },
+  kk: { cash: 'Қолма-қол ақша', bank_qr: 'QR арқылы аударым', card: 'Карта', room_charge: 'Нөмір шотына жазу', pay_later: 'Кейін төлеу' },
 };
 
 function normalizeLanguage(language) {
@@ -259,7 +271,7 @@ const INVOICE_TIMEZONE = process.env.INVOICE_TIMEZONE || process.env.WORK_TIMEZO
 function formatIssuedAt(issuedAt, language) {
   const date = new Date(issuedAt);
   if (Number.isNaN(date.getTime())) return '';
-  const locale = { vi: 'vi-VN', en: 'en-GB', ru: 'ru-RU', zh: 'zh-CN', ko: 'ko-KR' }[normalizeLanguage(language)] || 'vi-VN';
+  const locale = { vi: 'vi-VN', en: 'en-GB', ru: 'ru-RU', zh: 'zh-CN', ko: 'ko-KR', kk: 'kk-KZ' }[normalizeLanguage(language)] || 'vi-VN';
   try {
     return date.toLocaleString(locale, {
       timeZone: INVOICE_TIMEZONE,

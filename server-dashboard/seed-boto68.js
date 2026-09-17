@@ -10,6 +10,7 @@
  *   node seed-boto68.js --agent <email> --khong-anh # bỏ bước tải ảnh món
  *   node seed-boto68.js --agent <email> --anh <thư mục>   # đổi chỗ để ảnh
  *   node seed-boto68.js --agent <email> --anh-chung-lau   # dùng chung ảnh cho lẩu 32-37
+ *   node seed-boto68.js --agent <email> --giu-anh   # KHÔNG xoá ảnh dưới máy sau khi đẩy lên
  *
  * ── HAI ĐIỀU PHẢI ĐỌC TRƯỚC KHI CHẠY ────────────────────────────────────────
  *
@@ -40,7 +41,7 @@ const gemini = require(path.join(__dirname, 'gemini-helper.js'));
 const s3 = require(path.join(__dirname, 's3-helper.js'));
 
 const SEED_TAG = '[boto68]';
-const NGON_NGU_DICH = ['zh', 'ko', 'ru'];
+const NGON_NGU_DICH = ['zh', 'ko', 'ru', 'kk'];
 
 // Tên riêng không được dịch sang bất cứ thứ tiếng nào.
 const TEN_RIENG = ['Bò Tơ 68', 'Phú Quốc', 'Kiên Giang', 'Phú Quốc', 'BBQ', 'Bò Úc'];
@@ -62,6 +63,9 @@ const GIU_TRUNG = co('giu-trung');
 const KHONG_ANH = co('khong-anh');
 const ANH_CHUNG_LAU = co('anh-chung-lau');
 const THU_MUC_ANH = path.resolve(giaTri('anh', path.join(__dirname, 'anh-mon')));
+// Mặc định: đẩy ảnh lên S3 xong thì XOÁ bản dưới máy. --giu-anh để giữ lại.
+const GIU_ANH = co('giu-anh');
+const TEP_MANIFEST = path.join(__dirname, 'boto68-s3-manifest.json');
 
 // ── THỰC ĐƠN ────────────────────────────────────────────────────────────────
 // Mỗi món: [số trên menu, tên Việt, tên Anh (của quán), giá in, mô tả]
@@ -228,7 +232,7 @@ function tepAnhCho(so) {
 // trên điện thoại thì đường dẫn đó vô nghĩa.
 async function taiAnhLen(monId, duongTep, agent) {
   const fs = require('fs');
-  if (!fs.existsSync(duongTep)) return { ok: false, vi: 'không thấy tệp' };
+  if (!fs.existsSync(duongTep)) throw new Error('không thấy tệp');
   const buf = fs.readFileSync(duongTep);
   const key = s3.buildMenuImageKey(agent.project_id, agent.id, path.basename(duongTep));
   await s3.uploadBuffer(key, buf, 'image/jpeg');
@@ -238,7 +242,7 @@ async function taiAnhLen(monId, duongTep, agent) {
     'UPDATE qr_menu_items SET image_key = $2, image_url = $3, image_url_expires_at = $4, updated_at = NOW() WHERE id = $1',
     [monId, key, url, hetHan]
   );
-  return { ok: true };
+  return key;
 }
 
 // ── Giá ─────────────────────────────────────────────────────────────────────
@@ -351,30 +355,172 @@ async function dichSangCacTiengConLai(monDaTao, nhomDaTao) {
   }
 }
 
+// ── SỔ GHI KHOÁ S3 ──────────────────────────────────────────────────────────
+//
+// Lần đầu: đọc tệp dưới máy, đẩy lên S3, ghi lại khoá S3 của từng món vào
+// boto68-s3-manifest.json, rồi XOÁ tệp dưới máy.
+// Các lần sau: không cần tệp nữa — đọc khoá trong sổ, xin URL mới, gắn vào món.
+//
+// Sổ này là thứ DUY NHẤT nối món với ảnh sau khi đã xoá bản dưới máy. Mất sổ mà
+// ảnh vẫn nằm trên S3 thì không còn đường nào biết tấm nào của món nào — phải
+// bóc lại từ menu in. Vì vậy nó nằm cạnh script, trong repo, chứ không nằm
+// trong thư mục ảnh (thư mục đó sẽ bị xoá).
+function docSo() {
+  const fs = require('fs');
+  try {
+    if (!fs.existsSync(TEP_MANIFEST)) return {};
+    const j = JSON.parse(fs.readFileSync(TEP_MANIFEST, 'utf8'));
+    return (j && j.khoaTheoMon) || {};
+  } catch (e) {
+    console.log(`⚠  Sổ ${path.basename(TEP_MANIFEST)} hỏng, bỏ qua: ${e.message}`);
+    return {};
+  }
+}
+
+function ghiSo(khoaTheoMon, agent) {
+  const fs = require('fs');
+  fs.writeFileSync(TEP_MANIFEST, JSON.stringify({
+    ghiChu: 'Khoá S3 của ảnh món Bò Tơ 68. Mất tệp này là mất đường nối món ↔ ảnh.',
+    capNhatLuc: new Date().toISOString(),
+    agentDaTai: agent.username,
+    khoaTheoMon,
+  }, null, 2) + '\n', 'utf8');
+}
+
+// ẢNH CÓ THẬT SỰ NẰM TRÊN BUCKET NÀY KHÔNG?
+//
+// getMenuImageUrl() chỉ KÝ một URL — nó không hỏi S3 xem object có tồn tại hay
+// không. Nên khoá trong sổ mà trỏ vào bucket khác (máy dev một bucket, máy
+// production một bucket) thì script vẫn chạy trơn tru, vẫn in "40/40 món gắn
+// lại xong", mà khách mở thực đơn ra thì mọi ảnh đều 404. Hỏng kiểu đó không ai
+// phát hiện cho tới khi khách phàn nàn.
+//
+// Một lượt HEAD không tải nội dung, rất rẻ. Chạy song song theo lô.
+async function anhConTrenBucket(url) {
+  try {
+    const r = await fetch(url, { method: 'HEAD' });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function taiToanBoAnh(monDaTao, agent) {
-  const canTai = monDaTao.filter((m) => m.anh);
+  const fs = require('fs');
+  const canAnh = monDaTao.filter((m) => m.anh);
   if (KHONG_ANH) { console.log(''); console.log('Bỏ bước ảnh (--khong-anh).'); return; }
-  if (canTai.length === 0) { console.log(''); console.log('Không có ảnh nào để tải.'); return; }
+  if (canAnh.length === 0) { console.log(''); console.log('Không có ảnh nào để tải.'); return; }
   console.log('');
-  if (!s3.isConfigured) {
-    console.log('⚠  S3 CHƯA CẤU HÌNH (thiếu biến môi trường AWS_*) — bỏ qua toàn bộ ảnh.');
-    console.log(`   ${canTai.length} món đã sẵn ảnh trong ${THU_MUC_ANH}`);
-    console.log('   Cấu hình AWS_* xong chạy lại script là ảnh được gắn vào, không cần sinh lại món.');
+
+  const so = docSo();
+  // Đã có khoá trên S3 thì DÙNG LẠI, khỏi cần tệp dưới máy và khỏi tải lại.
+  const dungLai = canAnh.filter((m) => so[String(m.so)]);
+  const conLai = canAnh.filter((m) => !so[String(m.so)]);
+  const coTep = conLai.filter((m) => fs.existsSync(m.anh));
+
+  if (dungLai.length === 0 && coTep.length === 0) {
+    if (!fs.existsSync(THU_MUC_ANH)) {
+      console.log('⚠  KHÔNG CÓ THƯ MỤC ẢNH, cũng chưa có khoá S3 nào trong sổ.');
+      console.log(`   Đang tìm tệp ở : ${THU_MUC_ANH}`);
+      console.log(`   Đang tìm sổ ở  : ${TEP_MANIFEST}`);
+      console.log('   Chép ảnh vào thư mục trên rồi chạy lại, hoặc --anh <thư mục>.');
+    } else {
+      console.log(`⚠  Thư mục ${THU_MUC_ANH} không có tệp mon-XX.jpg nào, sổ S3 cũng trống.`);
+      console.log('   Thường do giải nén bị lồng thêm một cấp: anh-mon\\anh-mon\\mon-01.jpg');
+    }
     return;
   }
-  console.log(`Đang tải ${canTai.length} ảnh lên S3…`);
-  let ok = 0; const hong = [];
-  for (const m of canTai) {
-    try {
-      const r = await taiAnhLen(m.id, m.anh, agent);
-      if (r.ok) ok++; else hong.push(`#${m.so} ${m.ten}: ${r.vi}`);
-    } catch (e) {
-      hong.push(`#${m.so} ${m.ten}: ${e.message}`);
+
+  if (!s3.isConfigured) {
+    console.log('⚠  S3 CHƯA CẤU HÌNH (thiếu biến môi trường AWS_*) — bỏ qua toàn bộ ảnh.');
+    console.log(`   ${coTep.length} tệp sẵn sàng dưới máy, ${dungLai.length} món đã có khoá trên S3.`);
+    console.log('   Cấu hình AWS_* xong chạy lại là ảnh được gắn vào, không cần sinh lại món.');
+    return;
+  }
+
+  // ── 1. Món đã có trên S3: chỉ xin URL mới rồi gắn lại ────────────────────
+  let okDungLai = 0; const hong = []; const matTrenBucket = [];
+  if (dungLai.length > 0) {
+    console.log(`Đang đối chiếu ${dungLai.length} khoá trong sổ với bucket đang dùng…`);
+    const LO = 8;
+    for (let i = 0; i < dungLai.length; i += LO) {
+      await Promise.all(dungLai.slice(i, i + LO).map(async (m) => {
+        const key = so[String(m.so)];
+        try {
+          const url = await s3.getMenuImageUrl(key);
+          if (!(await anhConTrenBucket(url))) { matTrenBucket.push(m); return; }
+          await db.query(
+            'UPDATE qr_menu_items SET image_key = $2, image_url = $3, image_url_expires_at = $4, updated_at = NOW() WHERE id = $1',
+            [m.id, key, url, new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000)]
+          );
+          okDungLai++;
+        } catch (e) { hong.push(`#${m.so} ${m.ten}: ${e.message}`); }
+      }));
+    }
+    console.log(`  ${okDungLai}/${dungLai.length} món gắn lại xong (không tải lại tệp nào).`);
+
+    if (matTrenBucket.length > 0) {
+      console.log(`⚠  ${matTrenBucket.length} khoá trong sổ KHÔNG có trên bucket đang dùng.`);
+      console.log('   Gần như chắc chắn: sổ được ghi khi đẩy lên MỘT BUCKET KHÁC');
+      console.log('   (máy dev một bucket, production một bucket), hoặc object đã bị xoá.');
+      // Còn tệp dưới máy thì tải lên bucket hiện tại; không còn thì phải nói ra,
+      // tuyệt đối không để món mang URL 404 mà vẫn báo thành công.
+      const cuuDuoc = matTrenBucket.filter((m) => fs.existsSync(m.anh));
+      for (const m of cuuDuoc) conLai.push(m);
+      const chiu = matTrenBucket.length - cuuDuoc.length;
+      if (cuuDuoc.length > 0) console.log(`   ${cuuDuoc.length} món còn tệp dưới máy — sẽ tải lên bucket này.`);
+      if (chiu > 0) {
+        console.log(`   ${chiu} món KHÔNG cứu được: không có tệp dưới máy, cũng không có trên bucket.`);
+        console.log('   → Lấy lại ảnh (giải nén bản sao lưu) rồi chạy lại, hoặc copy object sang bucket này.');
+      }
     }
   }
-  console.log(`  ${ok}/${canTai.length} ảnh đã lên.`);
+  // Tính lại danh sách cần tải: gồm cả món vừa phát hiện mất trên bucket.
+  const coTepLai = conLai.filter((m) => fs.existsSync(m.anh));
+
+  // ── 2. Món chưa có trên S3: tải tệp dưới máy lên ─────────────────────────
+  let okTai = 0; const daTai = [];
+  if (coTepLai.length > 0) {
+    console.log(`Đang tải ${coTepLai.length} ảnh mới lên S3…`);
+    for (const m of coTepLai) {
+      try {
+        const key = await taiAnhLen(m.id, m.anh, agent);
+        so[String(m.so)] = key;
+        daTai.push(m);
+        okTai++;
+      } catch (e) { hong.push(`#${m.so} ${m.ten}: ${e.message}`); }
+    }
+    console.log(`  ${okTai}/${coTepLai.length} ảnh đã lên.`);
+    ghiSo(so, agent);
+    console.log(`  Đã ghi khoá vào ${path.basename(TEP_MANIFEST)}`);
+  }
+
+  const thieuHan = conLai.filter((m) => !fs.existsSync(m.anh));
+  if (thieuHan.length > 0) {
+    console.log(`⚠  ${thieuHan.length} món chưa có ảnh ở cả hai nơi: ${thieuHan.slice(0, 10).map((m) => '#' + m.so).join(' ')}` +
+      (thieuHan.length > 10 ? ` … còn ${thieuHan.length - 10}` : ''));
+  }
   for (const h of hong.slice(0, 8)) console.log('  ⚠ ' + h);
   if (hong.length > 8) console.log(`  ⚠ … còn ${hong.length - 8} lỗi nữa`);
+
+  // ── 3. Xoá bản dưới máy ──────────────────────────────────────────────────
+  // CHỈ xoá tệp đã lên S3 THÀNH CÔNG và đã có khoá nằm trong sổ vừa ghi ra đĩa.
+  // Tải hỏng mà vẫn xoá là mất luôn tấm ảnh đó.
+  if (GIU_ANH || daTai.length === 0) return;
+  const soDaGhi = docSo();
+  let daXoa = 0;
+  for (const m of daTai) {
+    if (!soDaGhi[String(m.so)]) continue;
+    try { fs.unlinkSync(m.anh); daXoa++; } catch { /* đã bị xoá, hoặc đang bị khoá */ }
+  }
+  console.log(`  Đã xoá ${daXoa} tệp ảnh dưới máy (ảnh nằm trên S3, khoá nằm trong sổ).`);
+  try {
+    if (fs.readdirSync(THU_MUC_ANH).length === 0) {
+      fs.rmdirSync(THU_MUC_ANH);
+      console.log(`  Thư mục ${path.basename(THU_MUC_ANH)} đã rỗng, đã xoá luôn.`);
+    }
+  } catch { /* còn tệp khác, để nguyên */ }
+  console.log('  Lần sau chạy script không cần thư mục ảnh nữa — GIỮ KỸ ' + path.basename(TEP_MANIFEST) + '.');
 }
 
 async function main() {
@@ -400,7 +546,7 @@ async function main() {
   if (CHI_DON) {
     const ra = await donThucDon(agent);
     console.log(`Đã xoá   : ${ra.mon} món, ${ra.nhom} nhóm.`);
-    await db.pool.end();
+    await dongPoolNeuLaChuNhan();
     return;
   }
 
@@ -535,7 +681,18 @@ async function main() {
   console.log('');
   console.log(`Dọn sạch : node seed-boto68.js --agent ${agent.username} --clean`);
 
-  await db.pool.end();
+  await dongPoolNeuLaChuNhan();
+}
+
+// ĐÓNG POOL LÀ VIỆC CỦA NGƯỜI SỞ HỮU POOL.
+//
+// db.pool dùng chung cả tiến trình. Chạy thẳng từ dòng lệnh thì script này là
+// người cuối cùng, đóng lại là đúng. Nhưng khi bị require vào (bài đo chạy nhiều
+// lượt trong một tiến trình) mà vẫn đóng thì lượt thứ hai chết ngay với
+// "Cannot use a pool after calling end on the pool".
+const LA_DONG_LENH = require.main === module;
+async function dongPoolNeuLaChuNhan() {
+  if (LA_DONG_LENH) await db.pool.end();
 }
 
 // Chạy thẳng từ dòng lệnh thì tự thực thi. Được require vào (bài đo cắm
