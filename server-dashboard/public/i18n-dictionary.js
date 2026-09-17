@@ -4525,3 +4525,42 @@ window.t = function t(key, params, fallback) {
   }
   return str;
 };
+
+window.pastieLang = function pastieLang() {
+  return (typeof currentLang !== 'undefined' && currentLang) || (typeof localStorage !== 'undefined' && localStorage.getItem('pastie_admin_lang')) || 'vi';
+};
+
+window.tMoney = function tMoney(value) {
+  var num = Number(value) || 0;
+  var lang = window.pastieLang ? window.pastieLang() : 'vi';
+  var localeMap = { vi: 'vi-VN', en: 'en-US', zh: 'zh-CN', ko: 'ko-KR', ru: 'ru-RU' };
+  var locale = localeMap[lang] || 'vi-VN';
+  try {
+    return num.toLocaleString(locale) + ' ₫';
+  } catch (e) {
+    return num.toLocaleString('vi-VN') + ' ₫';
+  }
+};
+
+window.tDate = function tDate(value, options) {
+  if (!value) return '—';
+  var lang = window.pastieLang ? window.pastieLang() : 'vi';
+  var localeMap = { vi: 'vi-VN', en: 'en-US', zh: 'zh-CN', ko: 'ko-KR', ru: 'ru-RU' };
+  var locale = localeMap[lang] || 'vi-VN';
+  try {
+    var d = (value instanceof Date) ? value : new Date(value);
+    if (isNaN(d.getTime())) return String(value);
+    if (options && typeof options === 'object') {
+      return d.toLocaleString(locale, options);
+    }
+    return d.toLocaleString(locale, {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  } catch (e) {
+    return String(value);
+  }
+};
