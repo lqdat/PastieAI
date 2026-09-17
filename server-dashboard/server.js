@@ -7369,7 +7369,8 @@ app.post('/api/admin/qr-accounts', checkAdminAuth, async (req, res) => {
     `INSERT INTO qr_chat_accounts (project_id, owner_admin_id, code, label) VALUES ($1, $2, $3, $4) RETURNING *`,
     [projectId, ownerAdminId, code, cleanLabel]
   );
-  void pretranslateQrText(cleanLabel);
+  // Chờ tối đa 9 giây: gần như lúc nào cũng kịp, quá hạn thì chạy tiếp ở nền.
+  await choCoHan(pretranslateQrText(cleanLabel), 9000);
   res.status(201).json({ success: true, account: created.rows[0], chat_url: qrCustomerChatUrl(req, code) });
 });
 
@@ -8203,7 +8204,41 @@ app.get('/api/admin/chats', checkAdminAuth, requireWorkingHours, async (req, res
     params.push(chatLimit);
 
     const result = await db.query(queryText, params);
-    
+
+    // ── TÊN NHÓM VÀ TÊN QR PHẢI DỊCH THEO NGƯỜI ĐANG XEM ───────────────────
+    //
+    // Hai cột này trả về nguyên văn Agent đã đặt ("Tầng trệt", "Bàn 3"), nên
+    // Sale đổi giao diện sang tiếng Trung vẫn thấy tấm thẻ trên đầu khung chat
+    // ghi tiếng Việt — trong khi chính tờ hoá đơn của phiên đó đã là tiếng
+    // Trung. Dịch ĐỘNG qua localizeQrText (AI + cache theo nội dung), không
+    // phải tra một bảng từ cố định: nhãn do Agent tự gõ nên không liệt kê trước
+    // được.
+    const tiengXem = String(req.query.adminLang || '').toLowerCase().slice(0, 2);
+    if (tiengXem && tiengXem !== 'vi') {
+      // Gom theo nội dung: mười bàn cùng nhóm "Tầng trệt" chỉ dịch một lần.
+      const daDich = new Map();
+      const dich = async (chu, agentId) => {
+        const nguon = String(chu || '').trim();
+        if (!nguon) return chu;
+        const khoa = `${nguon}|${agentId || ''}`;
+        if (!daDich.has(khoa)) daDich.set(khoa, localizeQrText(nguon, tiengXem, agentId));
+        return daDich.get(khoa);
+      };
+      await Promise.all(result.rows.map(async (row) => {
+        try {
+          const [nhom, nhan] = await Promise.all([
+            dich(row.group_name, row.agent_id),
+            dich(row.qr_label, row.agent_id),
+          ]);
+          row.group_name = nhom;
+          row.qr_label = nhan;
+        } catch (error) {
+          // Dịch hỏng thì giữ nguyên văn — thà tiếng Việt còn hơn thẻ trống.
+          console.error('[Chat] Không dịch được tên nhóm/QR:', error.message);
+        }
+      }));
+    }
+
     res.json(result.rows);
   } catch (error) {
     console.error('Fetch sessions error:', error);
@@ -8272,6 +8307,40 @@ app.get('/api/admin/chats/:sessionId/messages', checkAdminAuth, requireWorkingHo
           ORDER BY m.created_at ASC`,
         [sessionId]
       );
+      // ── DỊCH TIN NHẮN NỘI BỘ ────────────────────────────────────────────
+      //
+      // Nhánh này từng trả thẳng msgs.rows, KHÔNG hề đi qua bộ dịch — trong khi
+      // nhánh chat khách ngay bên dưới thì có. Hệ quả: Sale người Trung đổi giao
+      // diện sang tiếng Trung, khung chat và ô nhập ra tiếng Trung, nhưng mọi
+      // câu đồng nghiệp nhắn cho mình vẫn nguyên tiếng Việt — kể cả tin cũ.
+      //
+      // Dùng đúng đường của chat khách (cache bản dịch + giữ tên riêng), nên
+      // tin cũ cũng được dịch, và dịch một lần rồi nhớ.
+      const tinDich = msgs.rows.filter((m) => {
+        // Tin chuyển hoá đơn mang dấu máy đọc [[bill:<id>]]. Dịch nó là phá dấu,
+        // giao diện hết nhận ra hoá đơn và in thẳng chuỗi đó ra màn hình.
+        if (m.system_kind === 'order_forward') return false;
+        return Boolean(m.original_text);
+      });
+      if (tinDich.length > 0) {
+        try {
+          const cacheDich = await preloadTranslations(tinDich, adminLang);
+          await Promise.all(tinDich.map(async (msg) => {
+            msg.translated_text = await getOrTranslateMessage(msg, adminLang, cacheDich, []);
+          }));
+        } catch (error) {
+          // Dịch hỏng thì vẫn phải trả được tin nhắn: thà đọc tiếng Việt còn hơn
+          // khung chat trống.
+          console.error('[Nội bộ] Không dịch được tin nhắn:', error.message);
+        }
+      }
+
+      await Promise.all(msgs.rows.map(async (msg) => {
+        if (msg.attachment_key) {
+          msg.attachment_url = await cachedPresignedUrl(msg.attachment_key).catch(() => msg.attachment_url);
+        }
+      }));
+
       return res.json(msgs.rows);
     }
 
@@ -11070,7 +11139,8 @@ app.post('/api/agent/groups', checkAdminAuth, async (req, res) => {
       }
     }
 
-    if (group.name) void pretranslateQrText(group.name);
+    // Chờ tối đa 9 giây: gần như lúc nào cũng kịp, quá hạn thì chạy tiếp ở nền.
+    if (group.name) await choCoHan(pretranslateQrText(group.name), 9000);
     res.status(201).json({ success: true, group });
   } catch (error) {
     console.error('Create group error:', error);
@@ -11092,7 +11162,7 @@ app.put('/api/agent/groups/:groupId', checkAdminAuth, async (req, res) => {
        description !== undefined ? String(description || '').trim() : null,
        typeof isActive === 'boolean' ? isActive : null]
     );
-    if (name) void pretranslateQrText(String(name).trim());
+    if (name) await choCoHan(pretranslateQrText(String(name).trim()), 9000);
     res.json({ success: true, group: updated.rows[0] });
   } catch (error) {
     console.error('Update group error:', error);
@@ -11245,7 +11315,7 @@ app.post('/api/agent/qr-accounts', checkAdminAuth, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $2) RETURNING *`,
       [group.project_id, group.agent_id, code, cleanLabel, group.id]
     );
-    void pretranslateQrText(cleanLabel);
+    await choCoHan(pretranslateQrText(cleanLabel), 9000);
     res.status(201).json({ success: true, account: created.rows[0], chat_url: qrCustomerChatUrl(req, code) });
   } catch (error) {
     console.error('Create agent QR error:', error);
@@ -11276,7 +11346,7 @@ app.put('/api/agent/qr-accounts/:qrId', checkAdminAuth, async (req, res) => {
         WHERE id = $1 RETURNING *`,
       [qr.rows[0].id, cleanLabel, nextGroupId]
     );
-    if (cleanLabel) void pretranslateQrText(cleanLabel);
+    if (cleanLabel) await choCoHan(pretranslateQrText(cleanLabel), 9000);
     res.json({ success: true, account: updated.rows[0] });
   } catch (error) {
     console.error('Update agent QR error:', error);
@@ -11738,6 +11808,23 @@ async function orderItemsForStaffSummary(items, sourceLanguage) {
   }
 }
 
+// CHỜ CÓ HẠN.
+//
+// Dịch lúc lưu trước đây gọi bằng `void`: bắn đi rồi quên. Nếu bộ dịch hỏng hay
+// hết quota thì món nằm lại vĩnh viễn ở tiếng Việt và KHÔNG AI BIẾT — người
+// dùng chỉ phát hiện ra khi khách nước ngoài mở thực đơn. Nhưng chờ hẳn 4 lượt
+// gọi AI thì nút Lưu đứng hình.
+//
+// Chờ có hạn: gần như lúc nào cũng kịp (vài giây), nên lưu xong là đã có bản
+// dịch ngay; quá hạn thì lượt dịch vẫn chạy tiếp ở nền, chỉ là không chặn phản
+// hồi. Trả về true/false để nơi gọi biết đã kịp hay chưa.
+function choCoHan(viec, hanMs) {
+  let xong = false;
+  const cong = viec.then(() => { xong = true; return true; }).catch(() => { xong = true; return false; });
+  const hetGio = new Promise((giai) => setTimeout(() => giai(false), hanMs));
+  return Promise.race([cong, hetGio]).then((ra) => ra && xong);
+}
+
 async function translateMenuItemToLanguage(itemId, name, description, lang, protect) {
   const target = String(lang || '').toLowerCase();
   if (!MENU_LANGS.includes(target) || target === MENU_SOURCE_LANG) {
@@ -11931,9 +12018,13 @@ async function translateMenuCategoryToLanguage(categoryId, name, lang, protect) 
 //
 // Bản dịch Agent đã tự sửa (is_manual = TRUE) KHÔNG bị ghi đè — nếu không thì
 // mỗi lần sửa giá là xoá sạch công sức sửa tay.
-async function translateMenuItem(itemId, name, description, agentId) {
+async function translateMenuItem(itemId, name, description, agentId, properName) {
   const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
-  const protect = await venueNamesForAgent(agentId);
+  // Tên riêng của MÓN cũng phải được giữ nguyên, không chỉ tên riêng của quán.
+  // Giao diện hứa với Agent rằng "Tên riêng: Không dịch" — trước đây lời hứa đó
+  // chỉ đúng với tên quán, còn "Wagyu A5" hay "Matcha Uji" vẫn bị dịch.
+  const rieng = String(properName || '').trim();
+  const protect = [...(await venueNamesForAgent(agentId)), ...(rieng.length >= 2 ? [rieng] : [])];
   await Promise.all(targets.map(async (lang) => {
     try {
       await translateMenuItemToLanguage(itemId, name, description, lang, protect);
@@ -11946,7 +12037,7 @@ async function translateMenuItem(itemId, name, description, agentId) {
 
 // Kiểm tra xem món đã có đủ 4 ngôn ngữ (en, ru, zh, ko) chưa. Nếu thiếu ngôn ngữ
 // nào thì tự động dịch bù ngôn ngữ đó, bảo đảm mọi thứ tiếng đều có bản dịch.
-async function ensureMenuItemTranslations(itemId, name, description, agentId) {
+async function ensureMenuItemTranslations(itemId, name, description, agentId, properName) {
   const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
   try {
     const existing = await db.query(
@@ -11956,7 +12047,8 @@ async function ensureMenuItemTranslations(itemId, name, description, agentId) {
     const existingLangs = new Set(existing.rows.map((r) => r.lang));
     const missing = targets.filter((lang) => !existingLangs.has(lang));
     if (missing.length === 0) return;
-    const protect = await venueNamesForAgent(agentId);
+    const rieng = String(properName || '').trim();
+    const protect = [...(await venueNamesForAgent(agentId)), ...(rieng.length >= 2 ? [rieng] : [])];
     await Promise.all(missing.map(async (lang) => {
       try {
         await translateMenuItemToLanguage(itemId, name, description, lang, protect);
@@ -12073,7 +12165,7 @@ app.post('/api/agent/menu/categories', checkAdminAuth, async (req, res) => {
        RETURNING *`,
       [req.admin.id, req.admin.project_id, name]
     );
-    void translateMenuCategory(created.rows[0].id, name, req.admin.id);
+    await choCoHan(translateMenuCategory(created.rows[0].id, name, req.admin.id), 9000);
     res.status(201).json({ success: true, category: created.rows[0] });
   } catch (error) {
     console.error('Create menu category error:', error);
@@ -12097,7 +12189,7 @@ app.put('/api/agent/menu/categories/:id', checkAdminAuth, async (req, res) => {
     if (!updated.rows[0]) return res.status(404).json({ error: 'Không tìm thấy danh mục.' });
     // Chỉ dịch lại khi TÊN đổi. Đổi thứ tự hay bật/tắt nhóm mà cũng gọi AI thì
     // mỗi lần kéo thả sắp xếp là một loạt lượt gọi vô ích.
-    if (name && String(name).trim()) void translateMenuCategory(updated.rows[0].id, updated.rows[0].name, req.admin.id);
+    if (name && String(name).trim()) await choCoHan(translateMenuCategory(updated.rows[0].id, updated.rows[0].name, req.admin.id), 9000);
     res.json({ success: true, category: updated.rows[0] });
   } catch (error) {
     console.error('Update menu category error:', error);
@@ -12210,7 +12302,8 @@ app.post('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
     const item = created.rows[0];
 
     const cleanDesc = String(description || '').trim() || null;
-    void translateMenuItem(item.id, cleanName, cleanDesc, req.admin.id);
+    // Chờ tối đa 9 giây: gần như lúc nào cũng kịp, quá hạn thì chạy tiếp ở nền.
+    await choCoHan(translateMenuItem(item.id, cleanName, cleanDesc, req.admin.id, cleanProper), 9000);
 
     res.status(201).json({ success: true, item });
   } catch (error) {
@@ -12290,9 +12383,9 @@ app.put('/api/agent/menu/items/:id', checkAdminAuth, async (req, res) => {
     const textChanged = (cleanName && cleanName !== current.rows[0].name)
       || (description !== undefined && String(description || '') !== String(current.rows[0].description || ''));
     if (textChanged) {
-      void translateMenuItem(item.id, item.name, item.description, req.admin.id);
+      await choCoHan(translateMenuItem(item.id, item.name, item.description, req.admin.id, item.proper_name), 9000);
     } else {
-      void ensureMenuItemTranslations(item.id, item.name, item.description, req.admin.id);
+      await choCoHan(ensureMenuItemTranslations(item.id, item.name, item.description, req.admin.id, item.proper_name), 9000);
     }
 
     res.json({ success: true, item, retranslated: textChanged });

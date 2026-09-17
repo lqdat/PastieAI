@@ -4948,20 +4948,105 @@ window.translateCategoryName = function translateCategoryName(catName, lang) {
   return catName;
 };
 
+window.translateGroupName = function translateGroupName(name, lang) {
+  if (!name) return '';
+  var curLang = lang || (window.pastieLang ? window.pastieLang() : 'vi');
+  if (curLang === 'vi') return name;
+
+  var groupMap = {
+    'tầng trệt': { en: 'Ground floor', zh: '一楼/大堂', ko: '1층', ru: 'Первый этаж' },
+    'tang tret': { en: 'Ground floor', zh: '一楼/大堂', ko: '1층', ru: 'Первый этаж' },
+    'tầng lửng': { en: 'Mezzanine', zh: '夹层', ko: '중층', ru: 'Антресоль' },
+    'sân thượng': { en: 'Rooftop', zh: '顶楼/天台', ko: '루프탑', ru: 'Крыша' },
+    'tầng thượng': { en: 'Rooftop', zh: '顶楼/天台', ko: '루프탑', ru: 'Крыша' },
+    'rooftop': { en: 'Rooftop', zh: '天台', ko: '루프탑', ru: 'Руфтоп' },
+    'hồ bơi': { en: 'Poolside', zh: '泳池区', ko: '수영장', ru: 'Зона бассейна' },
+    'bể bơi': { en: 'Poolside', zh: '泳池区', ko: '수영장', ru: 'Зona бассейна' },
+    'poolside': { en: 'Poolside', zh: '泳池区', ko: '수영장', ru: 'У бассейна' },
+    'sân vườn': { en: 'Garden area', zh: '花园庭院', ko: '정원 구역', ru: 'Садовая зона' },
+    'khu vườn': { en: 'Garden area', zh: '花园庭院', ko: '정원 구역', ru: 'Садовая зона' },
+    'garden': { en: 'Garden area', zh: '花园庭院', ko: '정원 구역', ru: 'Садовая зона' },
+    'bãi biển': { en: 'Beach area', zh: '海滩区', ko: '해변 구역', ru: 'Пляжная зона' },
+    'bờ biển': { en: 'Beach area', zh: '海滩区', ko: '해변 구역', ru: 'Пляжная зона' },
+    'beach': { en: 'Beach area', zh: '海滩区', ko: '해변 구역', ru: 'Пляжная зона' },
+    'sảnh chính': { en: 'Main Lobby', zh: '大堂', ko: '메인 로비', ru: 'Главный вестибюль' },
+    'lobby': { en: 'Main Lobby', zh: '大堂', ko: '메인 로비', ru: 'Главный вестибюль' },
+    'quầy bar': { en: 'Bar counter', zh: '吧台', ko: '바 카운터', ru: 'Барная стойка' },
+    'bar': { en: 'Bar counter', zh: '吧台', ko: '바 카운터', ru: 'Барная стойка' },
+    'ngoài trời': { en: 'Outdoor area', zh: '户外区', ko: '야외 구역', ru: 'На открытом воздухе' },
+    'outdoor': { en: 'Outdoor area', zh: '户外区', ko: '야외 구역', ru: 'На открытом воздухе' },
+    'trong nhà': { en: 'Indoor area', zh: '室内区', ko: '실내 구역', ru: 'В помещении' },
+    'indoor': { en: 'Indoor area', zh: '室内区', ko: '실내 구역', ru: 'В помещении' },
+    'khu vip': { en: 'VIP Area', zh: 'VIP包厢区', ko: 'VIP 구역', ru: 'VIP зона' },
+    'phòng vip': { en: 'VIP Room', zh: 'VIP包厢', ko: 'VIP 룸', ru: 'VIP зал' }
+  };
+
+  var lower = String(name).trim().toLowerCase();
+  for (var k in groupMap) {
+    if (lower === k || lower.indexOf(k) !== -1) {
+      return groupMap[k][curLang] || name;
+    }
+  }
+
+  var floorMatch = String(name).match(/(?:tầng|lầu)\s*(\d+)/i);
+  if (floorMatch) {
+    var fn = floorMatch[1];
+    if (curLang === 'zh') return fn + '楼';
+    if (curLang === 'ko') return fn + '층';
+    if (curLang === 'ru') return fn + '-й этаж';
+    return 'Floor ' + fn;
+  }
+
+  var areaMatch = String(name).match(/khu\s*([a-zA-Z0-9]+)/i);
+  if (areaMatch) {
+    var an = areaMatch[1];
+    if (curLang === 'zh') return an + '区';
+    if (curLang === 'ko') return an + '구역';
+    if (curLang === 'ru') return 'Зона ' + an;
+    return 'Area ' + an;
+  }
+
+  return name;
+};
+
 window.translateQrLabel = function translateQrLabel(label, lang) {
   if (!label) return '';
   var curLang = lang || (window.pastieLang ? window.pastieLang() : 'vi');
   if (curLang === 'vi') return label;
+
   var tableWord = { en: 'Table', zh: '号桌', ko: '번 테이블', ru: 'Стол' }[curLang] || 'Table';
+  var roomWord = { en: 'Room', zh: '号房', ko: '호실', ru: 'Номер' }[curLang] || 'Room';
+  var seatWord = { en: 'Seat', zh: '号座', ko: '번 좌석', ru: 'Место' }[curLang] || 'Seat';
   var floorWord = { en: 'Ground floor', zh: '一楼/大堂', ko: '1층', ru: 'Первый этаж' }[curLang] || 'Ground floor';
+
   var res = String(label);
   res = res.replace(/Tầng trệt/gi, floorWord);
-  if (curLang === 'zh') {
-    res = res.replace(/Bàn\s*(\d+)/gi, '$1' + tableWord);
-  } else if (curLang === 'ko') {
-    res = res.replace(/Bàn\s*(\d+)/gi, '$1' + tableWord);
+  res = res.replace(/Tang tret/gi, floorWord);
+
+  res = res.replace(/(?:Tầng|Lầu)\s*(\d+)/gi, function(match, num) {
+    if (curLang === 'zh') return num + '楼';
+    if (curLang === 'ko') return num + '층';
+    if (curLang === 'ru') return num + '-й этаж';
+    return 'Floor ' + num;
+  });
+
+  if (curLang === 'zh' || curLang === 'ko') {
+    res = res.replace(/(?:Bàn|Ban)\s*(\d+)/gi, '$1' + tableWord);
   } else {
-    res = res.replace(/Bàn\s*(\d+)/gi, tableWord + ' $1');
+    res = res.replace(/(?:Bàn|Ban)\s*(\d+)/gi, tableWord + ' $1');
   }
+
+  if (curLang === 'zh' || curLang === 'ko') {
+    res = res.replace(/(?:Phòng|Phong)\s*(\d+)/gi, '$1' + roomWord);
+  } else {
+    res = res.replace(/(?:Phòng|Phong)\s*(\d+)/gi, roomWord + ' $1');
+  }
+
+  if (curLang === 'zh' || curLang === 'ko') {
+    res = res.replace(/(?:Ghế|Ghe)\s*(\d+)/gi, '$1' + seatWord);
+  } else {
+    res = res.replace(/(?:Ghế|Ghe)\s*(\d+)/gi, seatWord + ' $1');
+  }
+
   return res;
 };
