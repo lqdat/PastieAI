@@ -6332,8 +6332,8 @@ button:focus-visible {
     padding: 0 !important;
     margin: 0 !important;
     background: #ffffff !important;
-    border: 2px solid rgba(255, 255, 255, 0.95) !important;
-    box-shadow: 0 4px 14px rgba(171, 22, 111, 0.18) !important;
+    border: 2px solid rgba(239, 43, 157, 0.35) !important;
+    box-shadow: 0 2px 8px rgba(239, 43, 157, 0.15) !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -6341,16 +6341,20 @@ button:focus-visible {
     cursor: default;
 }
 
-/* ẢNH PHẢI PHỦ KÍN KHUNG TRÒN. */
+/* ẢNH HIỂN THỊ CHUẨN XÁC NHƯ PREVIEW TÀI KHOẢN */
 .agent-avatar-badge img {
     width: 100% !important;
     height: 100% !important;
-    object-fit: cover !important;
-    object-position: center !important;
+    object-fit: contain !important;
+    padding: 2px !important;
+    box-sizing: border-box !important;
     border-radius: 50% !important;
     display: block !important;
     margin: 0 !important;
+}
+.agent-avatar-badge img.is-fallback {
     padding: 0 !important;
+    object-fit: cover !important;
 }
 .agent-avatar-edit-icon {
     position: absolute;
@@ -6421,16 +6425,19 @@ button:focus-visible {
     gap: 11px;
 }
 .dashboard-header.sale-header .agent-avatar-badge {
+    position: relative;
+    flex: 0 0 44px !important;
     width: 44px !important;
     height: 44px !important;
     min-width: 44px !important;
     min-height: 44px !important;
     border-radius: 50% !important;
     overflow: hidden !important;
-    background: linear-gradient(140deg, #f472b6, #c026a4) !important;
-    border: 2px solid rgba(255, 255, 255, 0.95) !important;
-    box-shadow: 0 4px 14px rgba(171, 22, 111, .18) !important;
+    background: #ffffff !important;
+    border: 2px solid rgba(239, 43, 157, 0.35) !important;
+    box-shadow: 0 2px 8px rgba(239, 43, 157, 0.15) !important;
     padding: 0 !important;
+    margin: 0 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -6439,10 +6446,15 @@ button:focus-visible {
 .dashboard-header.sale-header .agent-avatar-badge img {
     width: 100% !important;
     height: 100% !important;
-    padding: 0 !important;
+    padding: 2px !important;
+    box-sizing: border-box !important;
     border-radius: 50% !important;
-    object-fit: cover !important;
+    object-fit: contain !important;
     display: block !important;
+}
+.dashboard-header.sale-header .agent-avatar-badge img.is-fallback {
+    padding: 0 !important;
+    object-fit: cover !important;
 }
 .dashboard-header.sale-header .agent-identity-text {
     flex: 1 1 auto;
@@ -6809,8 +6821,9 @@ button:focus-visible {
 .staff-only-label { display: inline-flex; padding: 0; margin-bottom: 2px; font-size: 12px; }
 .staff-only-label i { margin: 0; }
 
-/* Ảnh cơ sở lấp đầy ô avatar; nền gradient chỉ còn là lớp lót khi chưa có ảnh. */
-.agent-avatar-badge img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; display: block; }
+/* Ảnh cơ sở lấp đầy ô avatar; nền trắng sang trọng như preview tài khoản. */
+.agent-avatar-badge img { width: 100%; height: 100%; border-radius: inherit; object-fit: contain; padding: 2px; box-sizing: border-box; display: block; }
+.agent-avatar-badge img.is-fallback { padding: 0; object-fit: cover; }
 
 
 /* ── Lịch sử chỉnh sửa của một tờ hoá đơn ─────────────────────────────────

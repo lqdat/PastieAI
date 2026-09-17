@@ -3061,9 +3061,89 @@ function translateSystemMessage(rawText, lang) {
     if (!rawText || !lang || lang === 'vi') return rawText;
     let text = String(rawText);
 
-    // 1. [Đặt món] Khách vừa đặt: ... Tạm tính ...
-    if (text.includes('[Đặt món]') || text.includes('Khách vừa đặt') || text.includes('Khách đã cập nhật đơn')) {
-        const tPrefix = { en: '[Order placed]', zh: '[下单通知]', ko: '[주문 접수]', ru: '[Заказ оформлен]' }[lang] || '[Order]';
+    // Helper to translate payment methods
+    const translatePayMethod = (m) => {
+        const clean = String(m || '').trim();
+        if (/chuyển khoản qr|qr transfer/i.test(clean)) {
+            return { en: 'Bank transfer (QR)', zh: 'QR转账', ko: 'QR 계좌이체', ru: 'Перевод по QR' }[lang] || clean;
+        }
+        if (/tiền mặt|cash/i.test(clean)) {
+            return { en: 'Cash', zh: '现金', ko: '현금', ru: 'Наличные' }[lang] || clean;
+        }
+        if (/thẻ ngân hàng|card|pos/i.test(clean)) {
+            return { en: 'Card (POS)', zh: '刷卡 (POS)', ko: '카드 (POS)', ru: 'Карта (POS)' }[lang] || clean;
+        }
+        if (/cộng vào tiền phòng|room charge/i.test(clean)) {
+            return { en: 'Room charge', zh: '计入房费', ko: '객실 청구', ru: 'В счет номера' }[lang] || clean;
+        }
+        if (/thanh toán sau|pay later/i.test(clean)) {
+            return { en: 'Pay later', zh: '稍后支付', ko: '후불', ru: 'Оплата позже' }[lang] || clean;
+        }
+        return clean;
+    };
+
+    // Helper to translate dish names using PASTIE_MENU_DISH_DICT
+    const translateDishesInText = (str) => {
+        const dishDict = window.PASTIE_MENU_DISH_DICT || {};
+        const viNames = Object.keys(dishDict).sort((a, b) => b.length - a.length);
+        for (const vi of viNames) {
+            if (str.includes(vi)) {
+                const trans = dishDict[vi]?.[lang];
+                if (trans) {
+                    str = str.split(vi).join(trans);
+                }
+            }
+        }
+        return str;
+    };
+
+    // 1. [Thanh toán]
+    if (text.includes('[Thanh toán]')) {
+        // Match 1: [Thanh toán] Đơn BILL-xxx – khách chọn trả bằng Yyy.
+        const m1 = text.match(/\[Thanh toán\]\s*Đơn\s+([^\s—–-]+)\s*[—–-]\s*khách chọn trả bằng\s+([^.]+)\.?/i);
+        if (m1) {
+            const billCode = m1[1];
+            const method = translatePayMethod(m1[2]);
+            return {
+                en: `[Payment] Bill ${billCode} – customer selected ${method}.`,
+                zh: `[支付通知] 订单 ${billCode} – 客户选择 ${method}。`,
+                ko: `[결제 안내] 주문 ${billCode} – 고객 결제 방식: ${method}.`,
+                ru: `[Оплата] Заказ ${billCode} – клиент выбрал ${method}.`
+            }[lang] || text;
+        }
+
+        // Match 2: [Thanh toán] Sau 2 phút chưa có lựa chọn, hệ thống đã chọn mặc định: Yyy.
+        const m2 = text.match(/\[Thanh toán\]\s*Sau 2 phút chưa có lựa chọn,\s*hệ thống đã chọn mặc định:\s*([^.]+)\.?/i);
+        if (m2) {
+            const method = translatePayMethod(m2[1]);
+            return {
+                en: `[Payment] No option selected after 2 mins, auto-selected: ${method}.`,
+                zh: `[支付通知] 2分钟未选择，系统已默认选择：${method}。`,
+                ko: `[결제 안내] 2분 동안 선택이 없어 자동 선택됨: ${method}.`,
+                ru: `[Оплата] Через 2 минуты не выбрано, автоматически выбрано: ${method}.`
+            }[lang] || text;
+        }
+
+        // Match 3: [Thanh toán] Đã thu đủ tiền Yyy (mã đơn Xxx).
+        const m3 = text.match(/\[Thanh toán\]\s*Đã thu đủ tiền\s*([^(]+)\s*\(mã đơn\s+([^)]+)\)\.?/i);
+        if (m3) {
+            const method = translatePayMethod(m3[1]);
+            const code = m3[2];
+            return {
+                en: `[Payment] Fully collected ${method} (Order ${code}).`,
+                zh: `[支付通知] 已结清 ${method} (订单 ${code})。`,
+                ko: `[결제 안내] ${method} 결제 완료 (주문 ${code}).`,
+                ru: `[Оплата] Оплата ${method} получена (Заказ ${code}).`
+            }[lang] || text;
+        }
+
+        const tPayment = { en: '[Payment]', zh: '[支付通知]', ko: '[결제 안내]', ru: '[Оплата]' }[lang] || '[Payment]';
+        return text.replace(/\[Thanh toán\]/g, tPayment);
+    }
+
+    // 2. [Đặt món] Khách vừa đặt: ... Tạm tính ...
+    if (text.includes('[Đặt món]') || text.includes('Khách vừa đặt') || text.includes('Khách đã cập nhật đơn') || text.includes('chưa thực hiện được')) {
+        const tPrefix = { en: '[Order placed]', zh: '[下单通知]', ko: '[주문 접수]', ru: '[Заказ оформлен]' }[lang] || '[Order placed]';
         const tOrdered = { en: 'Customer ordered:', zh: '客户刚点单：', ko: '고객 주문:', ru: 'Клиент заказал:' }[lang] || 'Customer ordered:';
         const tUpdated = { en: 'Customer updated order', zh: '客户已修改订单', ko: '고객이 주문을 수정함', ru: 'Клиент изменил заказ' }[lang] || 'Customer updated order';
         const tSubtotal = { en: 'Estimated total', zh: '小计', ko: '예상 금액', ru: 'Итого' }[lang] || 'Estimated total';
@@ -3074,38 +3154,41 @@ function translateSystemMessage(rawText, lang) {
                    .replace(/Khách đã cập nhật đơn/g, tUpdated)
                    .replace(/Tạm tính/g, tSubtotal)
                    .replace(/Vui lòng xác nhận lại\./g, tPleaseConfirm);
+
+        // Dịch tên các món ăn trong thông báo
+        text = translateDishesInText(text);
         return text;
     }
 
-    // 2. Kết thúc cuộc trò chuyện
+    // 3. Kết thúc cuộc trò chuyện
     if (text.includes('Cuộc trò chuyện đã kết thúc') || text.includes('kết thúc cuộc trò chuyện')) {
         return { en: 'This conversation has ended.', zh: '此对话已结束。', ko: '대화가 종료되었습니다.', ru: 'Этот диалог завершен.' }[lang] || text;
     }
 
-    // 3. Tiếp nhận cuộc trò chuyện
+    // 4. Tiếp nhận cuộc trò chuyện
     if (text.includes('đã tiếp nhận cuộc trò chuyện') || text.includes('tiếp nhận cuộc trò chuyện')) {
         const tClaim = { en: 'claimed the conversation', zh: '已接待此会话', ko: '채팅을 접수했습니다', ru: 'принял этот диалог' }[lang] || 'claimed the conversation';
         return text.replace(/đã tiếp nhận cuộc trò chuyện/g, tClaim).replace(/tiếp nhận cuộc trò chuyện/g, tClaim);
     }
 
-    // 4. Bàn giao ca trực
+    // 5. Bàn giao ca trực
     if (text.includes('đã bàn giao ca') || text.includes('bàn giao ca')) {
         const tHandover = { en: 'handed over the shift', zh: '已交接班', ko: '교대 인계 완료', ru: 'сдал смену' }[lang] || 'handed over the shift';
         return text.replace(/đã bàn giao ca/g, tHandover).replace(/bàn giao ca/g, tHandover);
     }
 
-    // 5. Khách rời bàn
+    // 6. Khách rời bàn
     if (text.includes('đã rời bàn') || text.includes('rời bàn')) {
         return { en: 'Customer has left the table.', zh: '客户已离桌。', ko: '고객이 퇴장했습니다.', ru: 'Клиент покинул столик.' }[lang] || text;
     }
 
-    // 6. Yêu cầu gọi món / phục vụ
+    // 7. Yêu cầu gọi món / phục vụ
     if (text.includes('yêu cầu gọi món') || text.includes('Yêu cầu gọi món')) {
         const tService = { en: 'requested service/order', zh: '请求点单/服务', ko: '주문/서비스 요청', ru: 'запросил обслуживание' }[lang] || 'requested service/order';
         return text.replace(/yêu cầu gọi món/gi, tService);
     }
 
-    // 7. Chuyển cuộc trò chuyện
+    // 8. Chuyển cuộc trò chuyện
     if (text.includes('đã chuyển cuộc trò chuyện') || text.includes('chuyển cuộc trò chuyện')) {
         const tTransfer = { en: 'transferred the conversation', zh: '转接了会话', ko: '대화를 전달했습니다', ru: 'перевел диалог' }[lang] || 'transferred the conversation';
         return text.replace(/đã chuyển cuộc trò chuyện/g, tTransfer).replace(/chuyển cuộc trò chuyện/g, tTransfer);

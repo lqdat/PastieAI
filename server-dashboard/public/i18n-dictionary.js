@@ -183,7 +183,6 @@ window.TRANSLATIONS = {
     "claimedStatus": "Đã tiếp nhận",
     "msgStatusSent": "Đã gửi",
     "operationsGroup": "Vận hành & Đội ngũ",
-    "ticketTitle": "Ticket hỗ trợ",
     "ticketSubtitle": "Toàn hệ thống & kỹ thuật",
     "manageTeamTitle": "Quản lý đội ngũ",
     "manageTeamSubtitle": "Nhân viên & phân quyền",
@@ -224,7 +223,57 @@ window.TRANSLATIONS = {
     "editBtn": "Chỉnh sửa",
     "confirmBtn": "Xác nhận",
     "doneBtn": "Xong",
-    "subtotalLabel": "Tạm tính"
+    "subtotalLabel": "Tạm tính",
+    "agentSalesStaffCount": "nhân viên Sale",
+    "orgModalTitle": "Quản lý Sale, nhóm, QR và sản phẩm",
+    "orgTabAgent": "Agent",
+    "orgTabGroups": "Nhóm",
+    "orgTabSales": "Sale",
+    "orgTabQr": "Mã QR",
+    "orgTabProducts": "Sản phẩm",
+    "orgGroupsTitle": "Danh sách nhóm & Thành viên",
+    "orgAddGroupBtn": "Thêm nhóm",
+    "orgSalesTitle": "Danh sách Sale",
+    "orgAddSaleBtn": "Thêm Sale",
+    "orgQuotaLabel": "Hạn mức:",
+    "orgQuotaUsed": "Đã tạo",
+    "orgQuotaRemaining": "còn",
+    "orgQuotaFull": "đã hết suất",
+    "orgQuotaUnlimited": "không giới hạn",
+    "orgOnShift": "Trong ca",
+    "orgOffShift": "Ngoài ca",
+    "orgUnassignedGroup": "Chưa gán nhóm",
+    "orgActive": "Hoạt động",
+    "orgLocked": "Đã khóa",
+    "orgDeleteSale": "Xóa tài khoản Sale",
+    "orgNoSales": "Chưa có tài khoản Sale nào.",
+    "orgGroupCount": "Nhóm",
+    "orgNoGroups": "Chưa có nhóm nào.",
+    "orgWaiting": "chờ",
+    "orgChatting": "đang chat",
+    "orgMembers": "Thành viên",
+    "orgAddSaleToGroup": "Thêm Sale vào nhóm...",
+    "orgAllSalesAdded": "(Đã đủ tất cả Sale)",
+    "orgNoSalesInGroup": "Chưa có Sale nào trong nhóm",
+    "orgQrTitle": "Mã QR hoạt động",
+    "orgAddQrBtn": "Tạo mã QR",
+    "orgQrAllGroups": "— Tất cả nhóm —",
+    "orgNoQr": "Chưa có mã QR nào.",
+    "orgViewQr": "Xem mã",
+    "deleteBtn": "Xóa",
+    "orgMenuModeTitle": "Chế độ hiển thị cho khách quét QR",
+    "orgShowMenu": "Hiển thị Sản phẩm",
+    "orgShowBanner": "Hiển thị Banner",
+    "orderPaymentSelectedNotice": "[Thanh toán] Đơn {code} – khách chọn trả bằng {method}.",
+    "orderPaymentAutoNotice": "[Thanh toán] Sau 2 phút chưa có lựa chọn, hệ thống đã chọn mặc định: {method}.",
+    "paymentMethodCash": "Tiền mặt",
+    "paymentMethodQr": "Chuyển khoản QR",
+    "paymentMethodCard": "Thẻ ngân hàng",
+    "paymentMethodRoom": "Cộng vào tiền phòng",
+    "paymentMethodLater": "Thanh toán sau",
+    "tablePrefix": "Bàn",
+    "roomPrefix": "Phòng",
+    "floorGround": "Tầng trệt"
   },
   "en": {
     "loginTitle": "No Language Barrier\nUnderstand Every Customer",
@@ -401,7 +450,6 @@ window.TRANSLATIONS = {
     "claimedStatus": "Claimed",
     "msgStatusSent": "Sent",
     "operationsGroup": "Operations & Team",
-    "ticketTitle": "Support Tickets",
     "ticketSubtitle": "System & technical issues",
     "manageTeamTitle": "Team Management",
     "manageTeamSubtitle": "Staff & permissions",
@@ -442,7 +490,57 @@ window.TRANSLATIONS = {
     "editBtn": "Edit",
     "confirmBtn": "Confirm",
     "doneBtn": "Done",
-    "subtotalLabel": "Estimated total"
+    "subtotalLabel": "Estimated total",
+    "agentSalesStaffCount": "Sales Staff",
+    "orgModalTitle": "Manage Sales, Groups, QR and Products",
+    "orgTabAgent": "Agent",
+    "orgTabGroups": "Groups",
+    "orgTabSales": "Sales",
+    "orgTabQr": "QR Codes",
+    "orgTabProducts": "Products",
+    "orgGroupsTitle": "Groups & Members List",
+    "orgAddGroupBtn": "Add Group",
+    "orgSalesTitle": "Sales Staff List",
+    "orgAddSaleBtn": "Add Sale",
+    "orgQuotaLabel": "Quota:",
+    "orgQuotaUsed": "Created",
+    "orgQuotaRemaining": "remaining",
+    "orgQuotaFull": "limit reached",
+    "orgQuotaUnlimited": "unlimited",
+    "orgOnShift": "On duty",
+    "orgOffShift": "Off duty",
+    "orgUnassignedGroup": "Unassigned group",
+    "orgActive": "Active",
+    "orgLocked": "Locked",
+    "orgDeleteSale": "Delete Sales account",
+    "orgNoSales": "No Sales accounts yet.",
+    "orgGroupCount": "Groups",
+    "orgNoGroups": "No groups yet.",
+    "orgWaiting": "waiting",
+    "orgChatting": "chatting",
+    "orgMembers": "Members",
+    "orgAddSaleToGroup": "Add Sale to group...",
+    "orgAllSalesAdded": "(All Sales assigned)",
+    "orgNoSalesInGroup": "No Sales in this group",
+    "orgQrTitle": "Active QR Codes",
+    "orgAddQrBtn": "Create QR Code",
+    "orgQrAllGroups": "— All groups —",
+    "orgNoQr": "No QR codes yet.",
+    "orgViewQr": "View QR",
+    "deleteBtn": "Delete",
+    "orgMenuModeTitle": "Display mode for QR guests",
+    "orgShowMenu": "Show Products",
+    "orgShowBanner": "Show Banner",
+    "orderPaymentSelectedNotice": "[Payment] Bill {code} – customer selected {method}.",
+    "orderPaymentAutoNotice": "[Payment] No option selected after 2 mins, auto-selected: {method}.",
+    "paymentMethodCash": "Cash",
+    "paymentMethodQr": "Bank transfer (QR)",
+    "paymentMethodCard": "Card (POS)",
+    "paymentMethodRoom": "Room charge",
+    "paymentMethodLater": "Pay later",
+    "tablePrefix": "Table",
+    "roomPrefix": "Room",
+    "floorGround": "Ground floor"
   },
   "zh": {
     "loginTitle": "跨越语言障碍\n理解每一位顾客",
@@ -570,7 +668,7 @@ window.TRANSLATIONS = {
     "totalChats": "总对话数",
     "totalRevenue": "菜品营收",
     "exportExcel": "导出 Excel",
-    "ticketTitle": "工单技术支持",
+    "ticketTitle": "支持工单",
     "createTicket": "新建工单",
     "priorityLow": "普通",
     "priorityNormal": "中等",
@@ -619,7 +717,6 @@ window.TRANSLATIONS = {
     "claimedStatus": "已接待",
     "msgStatusSent": "已发送",
     "operationsGroup": "运营与团队",
-    "ticketTitle": "支持工单",
     "ticketSubtitle": "全系统与技术支持",
     "manageTeamTitle": "团队管理",
     "manageTeamSubtitle": "员工与权限分配",
@@ -660,7 +757,57 @@ window.TRANSLATIONS = {
     "editBtn": "编辑",
     "confirmBtn": "确认",
     "doneBtn": "完成",
-    "subtotalLabel": "小计"
+    "subtotalLabel": "小计",
+    "agentSalesStaffCount": "名销售人员",
+    "orgModalTitle": "管理销售、分组、二维码和产品",
+    "orgTabAgent": "代理",
+    "orgTabGroups": "分组",
+    "orgTabSales": "销售",
+    "orgTabQr": "二维码",
+    "orgTabProducts": "产品",
+    "orgGroupsTitle": "分组及成员列表",
+    "orgAddGroupBtn": "添加分组",
+    "orgSalesTitle": "销售人员列表",
+    "orgAddSaleBtn": "添加销售",
+    "orgQuotaLabel": "配额：",
+    "orgQuotaUsed": "已创建",
+    "orgQuotaRemaining": "剩余",
+    "orgQuotaFull": "配额已满",
+    "orgQuotaUnlimited": "无限制",
+    "orgOnShift": "值班中",
+    "orgOffShift": "下班",
+    "orgUnassignedGroup": "未分配分组",
+    "orgActive": "正常",
+    "orgLocked": "已锁定",
+    "orgDeleteSale": "删除销售账户",
+    "orgNoSales": "暂无销售人员账户。",
+    "orgGroupCount": "分组",
+    "orgNoGroups": "暂无分组。",
+    "orgWaiting": "等待",
+    "orgChatting": "咨询中",
+    "orgMembers": "成员",
+    "orgAddSaleToGroup": "添加销售至分组...",
+    "orgAllSalesAdded": "(所有销售均已加入)",
+    "orgNoSalesInGroup": "分组内暂无销售",
+    "orgQrTitle": "活动二维码",
+    "orgAddQrBtn": "创建二维码",
+    "orgQrAllGroups": "— 全部分组 —",
+    "orgNoQr": "暂无二维码。",
+    "orgViewQr": "查看二维码",
+    "deleteBtn": "删除",
+    "orgMenuModeTitle": "扫码访客显示模式",
+    "orgShowMenu": "显示产品",
+    "orgShowBanner": "显示横幅",
+    "orderPaymentSelectedNotice": "[支付通知] 订单 {code} – 客户选择 {method}。",
+    "orderPaymentAutoNotice": "[支付通知] 2分钟未选择，系统已默认选择：{method}。",
+    "paymentMethodCash": "现金",
+    "paymentMethodQr": "QR转账",
+    "paymentMethodCard": "刷卡 (POS)",
+    "paymentMethodRoom": "计入房费",
+    "paymentMethodLater": "稍后支付",
+    "tablePrefix": "桌",
+    "roomPrefix": "房",
+    "floorGround": "一楼"
   },
   "ko": {
     "loginTitle": "언어 장벽 없는 소통\n모든 고객을 이해합니다",
@@ -837,7 +984,6 @@ window.TRANSLATIONS = {
     "claimedStatus": "접수 완료",
     "msgStatusSent": "전송완료",
     "operationsGroup": "운영 및 팀",
-    "ticketTitle": "지원 티켓",
     "ticketSubtitle": "전체 시스템 및 기술 지원",
     "manageTeamTitle": "팀 관리",
     "manageTeamSubtitle": "직원 및 권한 관리",
@@ -878,7 +1024,57 @@ window.TRANSLATIONS = {
     "editBtn": "수정",
     "confirmBtn": "확인",
     "doneBtn": "완료",
-    "subtotalLabel": "예상 금액"
+    "subtotalLabel": "예상 금액",
+    "agentSalesStaffCount": "명의 세일즈 직원",
+    "orgModalTitle": "세일즈, 그룹, QR 및 상품 관리",
+    "orgTabAgent": "에이전트",
+    "orgTabGroups": "그룹",
+    "orgTabSales": "세일즈",
+    "orgTabQr": "QR 코드",
+    "orgTabProducts": "상품",
+    "orgGroupsTitle": "그룹 및 구성원 목록",
+    "orgAddGroupBtn": "그룹 추가",
+    "orgSalesTitle": "세일즈 직원 목록",
+    "orgAddSaleBtn": "세일즈 추가",
+    "orgQuotaLabel": "한도:",
+    "orgQuotaUsed": "생성됨",
+    "orgQuotaRemaining": "남음",
+    "orgQuotaFull": "한도 초과",
+    "orgQuotaUnlimited": "무제한",
+    "orgOnShift": "근무 중",
+    "orgOffShift": "근무 외",
+    "orgUnassignedGroup": "미지정 그룹",
+    "orgActive": "활성",
+    "orgLocked": "잠김",
+    "orgDeleteSale": "세일즈 계정 삭제",
+    "orgNoSales": "세일즈 계정이 없습니다.",
+    "orgGroupCount": "그룹",
+    "orgNoGroups": "그룹이 없습니다.",
+    "orgWaiting": "대기",
+    "orgChatting": "채팅 중",
+    "orgMembers": "구성원",
+    "orgAddSaleToGroup": "그룹에 세일즈 추가...",
+    "orgAllSalesAdded": "(모든 세일즈 배정됨)",
+    "orgNoSalesInGroup": "그룹 내 세일즈 없음",
+    "orgQrTitle": "활성 QR 코드",
+    "orgAddQrBtn": "QR 코드 생성",
+    "orgQrAllGroups": "— 전체 그룹 —",
+    "orgNoQr": "QR 코드가 없습니다.",
+    "orgViewQr": "QR 보기",
+    "deleteBtn": "삭제",
+    "orgMenuModeTitle": "QR 방문자 표시 모드",
+    "orgShowMenu": "상품 표시",
+    "orgShowBanner": "배너 표시",
+    "orderPaymentSelectedNotice": "[결제 안내] 주문 {code} – 고객 결제 방식: {method}.",
+    "orderPaymentAutoNotice": "[결제 안내] 2분 동안 선택이 없어 자동 선택됨: {method}.",
+    "paymentMethodCash": "현금",
+    "paymentMethodQr": "QR 계좌이체",
+    "paymentMethodCard": "카드 (POS)",
+    "paymentMethodRoom": "객실 청구",
+    "paymentMethodLater": "후불",
+    "tablePrefix": "테이블",
+    "roomPrefix": "객실",
+    "floorGround": "1층"
   },
   "ru": {
     "loginTitle": "Без языковых барьеров\nПонимание каждого клиента",
@@ -1055,7 +1251,6 @@ window.TRANSLATIONS = {
     "claimedStatus": "Принято",
     "msgStatusSent": "Отправлено",
     "operationsGroup": "Операции и команда",
-    "ticketTitle": "Тикеты поддержки",
     "ticketSubtitle": "Вся система и техподдержка",
     "manageTeamTitle": "Управление командой",
     "manageTeamSubtitle": "Персонал и права доступа",
@@ -1096,7 +1291,57 @@ window.TRANSLATIONS = {
     "editBtn": "Изменить",
     "confirmBtn": "Подтвердить",
     "doneBtn": "Готово",
-    "subtotalLabel": "Итого"
+    "subtotalLabel": "Итого",
+    "agentSalesStaffCount": "сотрудников продаж",
+    "orgModalTitle": "Управление продажами, группами, QR и товарами",
+    "orgTabAgent": "Агент",
+    "orgTabGroups": "Группы",
+    "orgTabSales": "Продажи",
+    "orgTabQr": "QR-коды",
+    "orgTabProducts": "Товары",
+    "orgGroupsTitle": "Список групп и участников",
+    "orgAddGroupBtn": "Добавить группу",
+    "orgSalesTitle": "Список сотрудников",
+    "orgAddSaleBtn": "Добавить сотрудника",
+    "orgQuotaLabel": "Лимит:",
+    "orgQuotaUsed": "Создано",
+    "orgQuotaRemaining": "осталось",
+    "orgQuotaFull": "лимит исчерпан",
+    "orgQuotaUnlimited": "без ограничений",
+    "orgOnShift": "На смене",
+    "orgOffShift": "Вне смены",
+    "orgUnassignedGroup": "Без группы",
+    "orgActive": "Активен",
+    "orgLocked": "Заблокирован",
+    "orgDeleteSale": "Удалить аккаунт",
+    "orgNoSales": "Нет сотрудников.",
+    "orgGroupCount": "Групп",
+    "orgNoGroups": "Нет групп.",
+    "orgWaiting": "ожидание",
+    "orgChatting": "в чате",
+    "orgMembers": "Участники",
+    "orgAddSaleToGroup": "Добавить в группу...",
+    "orgAllSalesAdded": "(Все добавлены)",
+    "orgNoSalesInGroup": "В группе нет сотрудников",
+    "orgQrTitle": "Активные QR-коды",
+    "orgAddQrBtn": "Создать QR-код",
+    "orgQrAllGroups": "— Все группы —",
+    "orgNoQr": "Нет QR-кодов.",
+    "orgViewQr": "Просмотр QR",
+    "deleteBtn": "Удалить",
+    "orgMenuModeTitle": "Режим отображения для гостей",
+    "orgShowMenu": "Показывать товары",
+    "orgShowBanner": "Показывать баннер",
+    "orderPaymentSelectedNotice": "[Оплата] Заказ {code} – клиент выбрал {method}.",
+    "orderPaymentAutoNotice": "[Оплата] Через 2 минуты не выбрано, автоматически выбрано: {method}.",
+    "paymentMethodCash": "Наличные",
+    "paymentMethodQr": "Перевод по QR",
+    "paymentMethodCard": "Карта (POS)",
+    "paymentMethodRoom": "В счет номера",
+    "paymentMethodLater": "Оплата позже",
+    "tablePrefix": "Стол",
+    "roomPrefix": "Номер",
+    "floorGround": "Первый этаж"
   }
 };
 
@@ -1221,4 +1466,265 @@ window.tDynamic = async function(text, targetLang) {
         }
     } catch (e) {}
     return text;
+};
+
+window.PASTIE_MENU_DISH_DICT = {
+  "Nước dừa tươi": {
+    "en": "Fresh coconut water",
+    "zh": "新鲜椰青",
+    "ru": "Свежий молодой кокос",
+    "ko": "신선한 코코넛 워터"
+  },
+  "Bia Tiger lon": {
+    "zh": "虎牌啤酒（易拉罐）",
+    "ko": "타이거 맥주 (캔)",
+    "en": "Bia Tiger lon",
+    "ru": "Биа Тайгер лон"
+  },
+  "Mì xào giòn hải sản": {
+    "zh": "海鲜脆皮炒面",
+    "ru": "Хрустящая жареная лапша с морепродуктами",
+    "en": "Crispy fried noodles with seafood",
+    "ko": "해산물 바삭한 볶음면"
+  },
+  "Trà đá": {
+    "ko": "아이스 티",
+    "zh": "冰茶",
+    "ru": "Холодный чай",
+    "en": "Iced tea"
+  },
+  "Cơm trắng": {
+    "zh": "白米饭",
+    "en": "White rice",
+    "ko": "공깃밥",
+    "ru": "Белый рис"
+  },
+  "Ưu đãi giờ vàng 14h–17h: giảm 30% đồ uống": {
+    "ru": "Счастливые часы 14:00–17:00: скидка 30% на напитки",
+    "en": "Happy Hour 14:00–17:00: 30% off drinks",
+    "zh": "黄金时段特惠 14:00–17:00：饮品享7折",
+    "ko": "해피아워 14:00–17:00: 음료 30% 할인"
+  },
+  "Chả giò hải sản (6 cuốn)": {
+    "en": "Seafood spring rolls (6 rolls)",
+    "ru": "Весенние роллы с морепродуктами (6 штук)",
+    "ko": "해산물 스프링롤 (6개)",
+    "zh": "海鲜炸春卷（6条）"
+  },
+  "Cơm chiên hải sản": {
+    "zh": "海鲜炒饭",
+    "en": "Seafood fried rice",
+    "ru": "Жареный рис с морепродуктами",
+    "ko": "해산물 볶음밥"
+  },
+  "Vang đỏ Đà Lạt (chai)": {
+    "ko": "달랏 레드 와인 (병)",
+    "ru": "Красное вино Далат (бутылка)",
+    "zh": "大叻红葡萄酒（瓶）",
+    "en": "Dalat Red Wine (bottle)"
+  },
+  "Combo hải sản nướng cho hai người ăn thả ga": {
+    "zh": "双人海鲜烧烤畅享套餐",
+    "ru": "Комбо из морепродуктов на гриле на двоих",
+    "ko": "2인 모둠 해산물 구이 콤보",
+    "en": "Grilled seafood combo for two"
+  },
+  "Bún quậy Kiên Giang": {
+    "en": "Kien Giang stirred noodle soup (Bun Quay)",
+    "ru": "Суп с рисовой лапшой Бун Куай",
+    "zh": "坚江现做搅拌米粉（Bun Quay）",
+    "ko": "끼엔장 분꿔이"
+  },
+  "Nước suối Lavie 500ml": {
+    "en": "Lavie bottled water 500ml",
+    "ko": "라비에 생수 500ml",
+    "ru": "Бутилированная вода Lavie 500 мл",
+    "zh": "Lavie 矿泉水 500ml"
+  },
+  "Bánh flan": {
+    "ru": "Флан",
+    "ko": "카라멜 플랑",
+    "zh": "焦糖布丁",
+    "en": "Flan"
+  },
+  "Trái cây theo mùa": {
+    "ru": "Сезонные фрукты",
+    "ko": "계절 과일 모둠",
+    "en": "Seasonal fruits",
+    "zh": "时令水果拼盘"
+  },
+  "Gỏi cá trích": {
+    "ko": "푸꾸옥 청어 샐러드",
+    "ru": "Салат из сельди по-фукуокски",
+    "en": "Phu Quoc herring salad",
+    "zh": "富国岛生鲱鱼沙拉"
+  },
+  "Hàu Thái Bình Dương nướng phô mai (6 con)": {
+    "ru": "Тихоокеанские устрицы на гриле с сыром (6 устриц)",
+    "ko": "치즈 구이 태평양 굴 (6개)",
+    "en": "Grilled Pacific Oysters with Cheese (6 oysters)",
+    "zh": "芝士焗太平洋生蚝（6只）"
+  },
+  "Sò huyết rang me": {
+    "zh": "酸豆炒血蛤",
+    "en": "Blood cockles stir-fried with tamarind",
+    "ru": "Кровавые моллюски в тамариндовом соусе",
+    "ko": "타마린드 소스 피조개 볶음"
+  },
+  "Ốc hương rang muối": {
+    "en": "Salted stir-fried snails",
+    "ru": "Улитки Бабилония с солью на гриле",
+    "zh": "椒盐炒花螺",
+    "ko": "소금구이 바빌로니아 소라"
+  },
+  "Đậu bắp nướng mỡ hành": {
+    "ru": "Бамия на гриле с зеленым луком",
+    "zh": "葱油烤秋葵",
+    "ko": "파기름 오크라 구이",
+    "en": "Grilled okra with scallion oil"
+  },
+  "Cua huỳnh đế hấp — theo giá thị trường trong ngày": {
+    "ko": "찐 닭게 (당일 시가)",
+    "zh": "清蒸旭蟹（按当日市价）",
+    "en": "Steamed King crab (market price)",
+    "ru": "Королевский краб на пару (рыночная цена)"
+  },
+  "Thịt kho hột vịt": {
+    "zh": "卤肉炖鸭蛋",
+    "ru": "Тушеная свинина с утиными яйцами в карамели",
+    "ko": "오리알 돼지고기 조림",
+    "en": "Braised pork with duck eggs"
+  },
+  "Salad rau rừng trộn dầu giấm": {
+    "zh": "油醋汁森林野菜沙拉",
+    "en": "Wild vegetable salad with vinaigrette dressing",
+    "ru": "Салат из дикорастущих трав с винегретной заправкой",
+    "ko": "비네그레트 드레싱 야생 채소 샐러드"
+  },
+  "Lẩu cá bớp măng chua (nồi cho 3–4 người)": {
+    "ru": "Горячий горшок с кислыми побегами бамбука и рыбой групер (на 3-4 персоны)",
+    "zh": "酸笋军曹鱼火锅（3-4人份）",
+    "ko": "죽순 코비아 생선 전골 (3–4인용)",
+    "en": "Sour bamboo shoot and grouper fish hot pot (pot for 3-4 people)"
+  },
+  "Cá bớp nướng nguyên con (từ 1,5kg)": {
+    "zh": "原条碳烤军曹鱼（1.5公斤起）",
+    "ru": "Запеченная рыба кобия целиком (от 1.5 кг)",
+    "en": "Whole grilled cobia (from 1.5kg)",
+    "ko": "통 코비아 구이 (1.5kg 이상)"
+  },
+  "Cà Phê Đá": {
+    "ko": "아이스 커피",
+    "en": "Iced Coffee",
+    "zh": "冰咖啡",
+    "ru": "Кофе со льдом"
+  },
+  "Rau muống xào tỏi": {
+    "ru": "Водяной шпинат, обжаренный с чесноком",
+    "ko": "모닝글로리 마늘 볶음",
+    "zh": "蒜炒空心菜",
+    "en": "Stir-fried water spinach with garlic"
+  },
+  "Gỏi xoài khô cá đuối": {
+    "ru": "Салат из сушеного манго со скатом",
+    "ko": "말린 가오리 그린망고 샐러드",
+    "en": "Dried mango salad with stingray",
+    "zh": "青芒凉拌魔鬼鱼干"
+  },
+  "Combo gia đình 4 người — cơm, canh, ba món mặn": {
+    "ko": "4인 가족 콤보 — 밥, 국, 세 가지 반찬",
+    "en": "Family combo for 4 — rice, soup, three savory dishes",
+    "zh": "四人家庭套餐 —— 米饭、热汤、三道荤菜",
+    "ru": "Семейное комбо на 4 персоны — рис, суп, три горячих блюда"
+  },
+  "Canh chua cá lóc": {
+    "en": "Sour fish soup with snakehead fish",
+    "ru": "Кислый рыбный суп с рыбой змееголов",
+    "ko": "가물치 신맛 탕",
+    "zh": "酸汤黑鱼"
+  },
+  "Tôm sú nướng muối ớt": {
+    "ru": "Креветки на гриле с солью и чили",
+    "ko": "칠리 솔트 블랙타이거 새우 구이",
+    "en": "Grilled prawns with salt and chili",
+    "zh": "盐辣椒烤黑虎虾"
+  },
+  "Bia Sài Gòn lon": {
+    "ru": "Пиво Saigon (банка)",
+    "en": "Saigon Beer in a can",
+    "ko": "사이공 맥주 (캔)",
+    "zh": "西贡啤酒（易拉罐）"
+  },
+  "Chè hạt sen long nhãn": {
+    "ru": "Сладкий суп из семян лотоса и лонгана",
+    "zh": "莲子龙眼清甜糖水",
+    "ko": "연꽃씨 롱안 달콤한 수프",
+    "en": "Lotus seed and longan sweet soup"
+  },
+  "Nộm sứa hoa chuối": {
+    "en": "Jellyfish salad with banana blossoms",
+    "ru": "Салат из медузы с цветками банана",
+    "ko": "바나나꽃 해파리 무침",
+    "zh": "香蕉花凉拌海蜇"
+  },
+  "Ghẹ hấp bia": {
+    "ru": "Голубой краб на пару с пивом",
+    "ko": "맥주 찜 꽃게",
+    "zh": "啤酒蒸花蟹",
+    "en": "Steamed blue crab with beer"
+  },
+  "Cà phê sữa đá": {
+    "ko": "베트남 연유 아이스 커피",
+    "ru": "холодный кофе с молоком",
+    "zh": "越南冰奶咖啡",
+    "en": "Iced milk coffee"
+  },
+  "Mực một nắng nướng": {
+    "ru": "Кальмар на гриле по-фукуокски",
+    "zh": "炭烤一晒鱿鱼",
+    "ko": "반건조 오징어 구이",
+    "en": "Grilled sun-dried squid"
+  },
+  "Bánh canh chả cá": {
+    "ko": "어묵 반깐 (굵은 쌀국수)",
+    "ru": "Суп с толстой лапшой и рыбными котлетами",
+    "zh": "鱼饼粗米粉汤",
+    "en": "Fish cake noodle soup"
+  },
+  "Kem dừa": {
+    "en": "Coconut ice cream",
+    "ru": "Кокосовое мороженое",
+    "ko": "코코넛 아이스크림",
+    "zh": "椰子冰淇淋"
+  },
+  "Rượu sim Phú Quốc (ly)": {
+    "en": "Phu Quoc Sim wine (glass)",
+    "ko": "푸꾸옥 심 와인 (잔)",
+    "ru": "Вино из мирта Фукуок (бокал)",
+    "zh": "富国岛稔子甜酒（杯）"
+  },
+  "Sinh tố bơ": {
+    "en": "Avocado Smoothie",
+    "ru": "Смузи из авокадо",
+    "ko": "아보카도 스무디",
+    "zh": "牛油果奶昔"
+  },
+  "Tôm tít hấp": {
+    "ko": "찐 갯가재",
+    "zh": "清蒸皮皮虾",
+    "ru": "Раки-богомолы на пару",
+    "en": "Steamed mantis shrimp"
+  },
+  "Nhum biển nướng mỡ hành": {
+    "en": "Grilled sea urchin with scallion oil",
+    "zh": "葱油烤海胆",
+    "ko": "파기름 성게 구이",
+    "ru": "Морской еж на гриле с зеленым луком"
+  },
+  "Set ăn sáng Phú Quốc": {
+    "en": "Phu Quoc breakfast set",
+    "zh": "富国岛早餐套餐",
+    "ko": "푸꾸옥 조식 세트",
+    "ru": "Завтрак по-фукуокски"
+  }
 };

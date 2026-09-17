@@ -1293,9 +1293,9 @@ function updateAgentHeaderUI() {
 
     if (badge) {
         if (avatarUrl) {
-            badge.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:50%;" onerror="this.onerror=null;this.src='${fallbackAvatarDataUrl}';">`;
+            badge.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="" class="agent-avatar-img" style="width:100%;height:100%;object-fit:contain;padding:2px;box-sizing:border-box;display:block;border-radius:50%;" onerror="this.onerror=null;this.src='${fallbackAvatarDataUrl}';this.style.objectFit='cover';this.style.padding='0';this.classList.add('is-fallback');">`;
         } else {
-            badge.innerHTML = `<img src="${fallbackAvatarDataUrl}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:50%;">`;
+            badge.innerHTML = `<img src="${fallbackAvatarDataUrl}" alt="" class="agent-avatar-img is-fallback" style="width:100%;height:100%;object-fit:cover;padding:0;box-sizing:border-box;display:block;border-radius:50%;">`;
         }
         badge.classList.toggle('hide', !visibleName);
     }
@@ -1338,7 +1338,10 @@ async function refreshAgentSaleCount(force) {
         const data = await res.json();
         const n = Array.isArray(data) ? data.length : 0;
         agentSaleCountLoaded = true;
-        subEl.innerHTML = `<i class="ri-user-shared-line"></i> ${n} nhân viên Sale`;
+        const currentAdminLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+        const dict = (window.TRANSLATIONS && window.TRANSLATIONS[currentAdminLang]) || {};
+        const staffUnit = dict.agentSalesStaffCount || 'nhân viên Sale';
+        subEl.innerHTML = `<i class="ri-user-shared-line"></i> ${n} ${escapeHtml(staffUnit)}`;
         subEl.classList.remove('hide');
     } catch (e) {
         // Không có số thì thôi, không hiện dòng rỗng.
@@ -1657,16 +1660,23 @@ async function handleSelfDisplayNameSubmit(event) {
 
 // Trạng thái rỗng nói rõ bước tiếp theo, thay vì chỉ báo "không có gì".
 function tableEmptyBlock(selectedGroupId) {
+    const currentAdminLang = (typeof currentLang !== 'undefined' && currentLang) || localStorage.getItem('pastie_admin_lang') || 'vi';
+    const dict = (window.TRANSLATIONS && window.TRANSLATIONS[currentAdminLang]) || {};
+    const titleGroupEmpty = dict.orgNoQrInGroup || 'Nhóm này chưa có mã QR';
+    const descGroupEmpty = dict.orgNoQrInGroupDesc || 'Chọn “— Tất cả nhóm —” để xem toàn bộ, hoặc tạo mã QR mới cho nhóm này ở form phía trên.';
+    const titleAllEmpty = dict.orgNoQr || 'Chưa có mã QR nào';
+    const descAllEmpty = dict.orgNoQrDesc || 'Tạo mã QR đầu tiên ở form phía trên. Mỗi vị trí một mã — Bàn 1, Phòng 101, Quầy Bar — khách quét mã nào thì chat vào đúng nhóm tiếp nhận của mã đó.';
+
     return selectedGroupId
         ? `<div class="empty-state">
                <span class="empty-state-icon"><i class="ri-qr-scan-2-line"></i></span>
-               <h5>Nhóm này chưa có mã QR</h5>
-               <p>Chọn “— Tất cả nhóm —” để xem toàn bộ, hoặc tạo mã QR mới cho nhóm này ở form phía trên.</p>
+               <h5>${escapeHtml(titleGroupEmpty)}</h5>
+               <p>${escapeHtml(descGroupEmpty)}</p>
            </div>`
         : `<div class="empty-state">
                <span class="empty-state-icon"><i class="ri-qr-scan-2-line"></i></span>
-               <h5>Chưa có mã QR nào</h5>
-               <p>Tạo mã QR đầu tiên ở form phía trên. Mỗi vị trí một mã — Bàn 1, Phòng 101, Quầy Bar — khách quét mã nào thì chat vào đúng nhóm tiếp nhận của mã đó.</p>
+               <h5>${escapeHtml(titleAllEmpty)}</h5>
+               <p>${escapeHtml(descAllEmpty)}</p>
            </div>`;
 }
 

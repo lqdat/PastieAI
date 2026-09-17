@@ -63,10 +63,12 @@
                     const key = line.menuItemId != null ? String(line.menuItemId) : String(index);
                     const draft = draftKey(order.id, key);
                     const note = noteDraft.has(draft) ? noteDraft.get(draft) : (line.note || '');
+                    const dishDict = window.PASTIE_MENU_DISH_DICT || {};
+                    const lineDisplayName = (curLang !== 'vi' && dishDict[line.name]?.[curLang]) || line.name || '';
                     return `
                     <div class="order-line" data-line="${escapeHtml(key)}">
                         <div class="order-line-main">
-                            <strong>${escapeHtml(line.name || '')}</strong>
+                            <strong>${escapeHtml(lineDisplayName)}</strong>
                             <span class="order-qty">×${Number(line.quantity || 0)}</span>
                             <span class="order-line-total">${money(line.lineTotal)}</span>
                         </div>

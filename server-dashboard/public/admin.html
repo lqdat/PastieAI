@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r152">
-    <link rel="stylesheet" href="menu-console.css?v=r152">
+    <link rel="stylesheet" href="admin.css?v=r160">
+    <link rel="stylesheet" href="menu-console.css?v=r160">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -455,7 +455,7 @@
             </div>
             <div class="org-card">
                 <header class="org-head">
-                    <h2 id="org-title"><i class="ri-team-line" style="color:var(--accent-color);margin-right:6px;"></i>Quản lý Sale, nhóm, QR và sản phẩm</h2>
+                    <h2 id="org-title"><i class="ri-team-line" style="color:var(--accent-color);margin-right:6px;"></i><span data-i18n="orgModalTitle">Quản lý Sale, nhóm, QR và sản phẩm</span></h2>
                     <div style="display:flex;align-items:center;gap:8px;">
                         <button type="button" class="icon-btn" id="org-guide-btn" title="Xem sổ tay hướng dẫn sử dụng" aria-label="Hướng dẫn sử dụng">
                             <i class="ri-question-line"></i>
@@ -465,11 +465,11 @@
                 </header>
 
                 <nav class="org-tabs" id="org-tabs">
-                    <button type="button" class="org-tab hide" data-org-tab="agents"><i class="ri-user-star-line"></i> <span>Agent</span></button>
-                    <button type="button" class="org-tab is-active" data-org-tab="groups"><i class="ri-team-line"></i> <span>Nhóm</span></button>
-                    <button type="button" class="org-tab" data-org-tab="sales"><i class="ri-user-shared-line"></i> <span>Sale</span></button>
-                    <button type="button" class="org-tab" data-org-tab="qr"><i class="ri-qr-code-line"></i> <span>Mã QR</span></button>
-                    <button type="button" class="org-tab" data-org-tab="menu"><i class="ri-shopping-bag-3-line"></i> <span>Sản phẩm</span></button>
+                    <button type="button" class="org-tab hide" data-org-tab="agents"><i class="ri-user-star-line"></i> <span data-i18n="orgTabAgent">Agent</span></button>
+                    <button type="button" class="org-tab is-active" data-org-tab="groups"><i class="ri-team-line"></i> <span data-i18n="orgTabGroups">Nhóm</span></button>
+                    <button type="button" class="org-tab" data-org-tab="sales"><i class="ri-user-shared-line"></i> <span data-i18n="orgTabSales">Sale</span></button>
+                    <button type="button" class="org-tab" data-org-tab="qr"><i class="ri-qr-code-line"></i> <span data-i18n="orgTabQr">Mã QR</span></button>
+                    <button type="button" class="org-tab" data-org-tab="menu"><i class="ri-shopping-bag-3-line"></i> <span data-i18n="orgTabProducts">Sản phẩm</span></button>
                 </nav>
 
                 <p class="org-status hide" id="org-status"></p>
@@ -511,10 +511,10 @@
                 <!-- Nhóm (Groups) -->
                 <section class="org-pane" data-org-pane="groups">
                     <div class="org-list-header">
-                        <h4>Danh sách nhóm &amp; Thành viên</h4>
+                        <h4 data-i18n="orgGroupsTitle">Danh sách nhóm &amp; Thành viên</h4>
                         <span id="org-group-count-badge" class="org-count-badge">0 Nhóm</span>
                     
-                        <button type="button" class="pane-add" data-addbox-toggle="groups"><i class="ri-add-line"></i> <span>Thêm nhóm</span></button>
+                        <button type="button" class="pane-add" data-addbox-toggle="groups"><i class="ri-add-line"></i> <span data-i18n="orgAddGroupBtn">Thêm nhóm</span></button>
                     </div>
                     <div class="addbox hide" data-addbox="groups">
                     <form class="org-form" id="org-group-form">
@@ -543,10 +543,10 @@
                 <!-- Sale -->
                 <section class="org-pane hide" data-org-pane="sales">
                     <div class="org-list-header">
-                        <h4>Danh sách Sale</h4>
+                        <h4 data-i18n="orgSalesTitle">Danh sách Sale</h4>
                         <span id="org-sale-count-badge" class="org-count-badge">0 Sale</span>
                     
-                        <button type="button" class="pane-add" data-addbox-toggle="sales"><i class="ri-user-add-line"></i> <span>Thêm Sale</span></button>
+                        <button type="button" class="pane-add" data-addbox-toggle="sales"><i class="ri-user-add-line"></i> <span data-i18n="orgAddSaleBtn">Thêm Sale</span></button>
                     </div>
                     <div class="addbox hide" data-addbox="sales">
                     <form class="org-form" id="org-sale-form">
@@ -589,7 +589,7 @@
                     <div class="org-quota-banner" id="org-sale-quota-banner">
                         <div class="org-quota-info">
                             <i class="ri-team-line"></i>
-                            <strong>Hạn mức: <span id="org-quota-count">—</span></strong>
+                            <strong><span data-i18n="orgQuotaLabel">Hạn mức:</span> <span id="org-quota-count">—</span></strong>
                         </div>
                     </div>
                     
@@ -599,14 +599,14 @@
                 <!-- QR -->
                 <section class="org-pane hide" data-org-pane="qr">
                     <div class="org-list-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:14px; margin-bottom:8px;">
-                        <h4>Mã QR hoạt động</h4>
+                        <h4 data-i18n="orgQrTitle">Mã QR hoạt động</h4>
                         <div style="display:flex; gap:8px; align-items:center;">
                             <select id="org-qr-group-filter" style="font-size:11.5px; padding:3px 8px; border-radius:6px; border:1px solid var(--panel-border); background:var(--panel-bg); color:var(--text-primary);">
-                                <option value="">— Tất cả nhóm —</option>
+                                <option value="" data-i18n="orgQrAllGroups">— Tất cả nhóm —</option>
                             </select>
                             <span id="org-qr-count-badge" class="org-count-badge">0 QR</span>
                         
-                        <button type="button" class="pane-add" data-addbox-toggle="qr"><i class="ri-qr-code-line"></i> <span>Tạo mã QR</span></button>
+                        <button type="button" class="pane-add" data-addbox-toggle="qr"><i class="ri-qr-code-line"></i> <span data-i18n="orgAddQrBtn">Tạo mã QR</span></button>
                         </div>
                     </div>
                     <div class="addbox hide" data-addbox="qr">
@@ -641,16 +641,16 @@
                         <!-- 2 LỰA CHỌN: THỰC ĐƠN HOẶC BANNER -->
                         <div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--panel-border);">
                             <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                                <i class="ri-dashboard-line"></i> Chế độ hiển thị cho khách quét QR
+                                <i class="ri-dashboard-line"></i> <span data-i18n="orgMenuModeTitle">Chế độ hiển thị cho khách quét QR</span>
                             </div>
                             <div style="display:flex;gap:12px;flex-wrap:wrap;">
                                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:rgba(255,255,255,0.04);padding:8px 14px;border-radius:8px;border:1px solid var(--panel-border);font-size:13px;font-weight:600;">
                                     <input type="radio" name="showcase_mode" value="menu" id="showcase-mode-menu" checked style="accent-color:var(--accent-color);">
-                                    <span><i class="ri-shopping-bag-3-line" style="color:var(--accent-color);"></i> Hiển thị Sản phẩm</span>
+                                    <span><i class="ri-shopping-bag-3-line" style="color:var(--accent-color);"></i> <span data-i18n="orgShowMenu">Hiển thị Sản phẩm</span></span>
                                 </label>
                                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:rgba(255,255,255,0.04);padding:8px 14px;border-radius:8px;border:1px solid var(--panel-border);font-size:13px;font-weight:600;">
-                                    <input type="radio" name="showcase_mode" value="banner" id="showcase-mode-banner" style="accent-color:#f59e0b;">
-                                    <span><i class="ri-slideshow-3-line" style="color:#f59e0b;"></i> Hiển thị Banner &amp; Bài viết</span>
+                                    <input type="radio" name="showcase_mode" value="banner" id="showcase-mode-banner" style="accent-color:var(--accent-color);">
+                                    <span><i class="ri-image-line" style="color:var(--accent-color);"></i> <span data-i18n="orgShowBanner">Hiển thị Banner</span></span>
                                 </label>
                             </div>
                         </div>
@@ -2399,17 +2399,17 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="i18n-dictionary.js?v=r152"></script>
-    <script src="config.js?v=r153"></script>
-    <script src="core.js?v=r152"></script>
-    <script src="chat.js?v=r152"></script>
-    <script src="qrcode.bundle.js?v=r152"></script>
-    <script src="org-console.js?v=r152"></script>
-    <script src="project-admin.js?v=r152"></script>
-    <script src="menu-console.js?v=r152"></script>
-    <script src="order-console.js?v=r152"></script>
-    <script src="cart-console.js?v=r152"></script>
-    <script src="ticket-console.js?v=r152"></script>
-    <script src="admin.js?v=r152"></script>
+    <script src="i18n-dictionary.js?v=r160"></script>
+    <script src="config.js?v=r160"></script>
+    <script src="core.js?v=r160"></script>
+    <script src="chat.js?v=r160"></script>
+    <script src="qrcode.bundle.js?v=r160"></script>
+    <script src="org-console.js?v=r160"></script>
+    <script src="project-admin.js?v=r160"></script>
+    <script src="menu-console.js?v=r160"></script>
+    <script src="order-console.js?v=r160"></script>
+    <script src="cart-console.js?v=r160"></script>
+    <script src="ticket-console.js?v=r160"></script>
+    <script src="admin.js?v=r160"></script>
 </body>
 </html>
