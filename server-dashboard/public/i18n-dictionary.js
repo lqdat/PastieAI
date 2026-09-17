@@ -4,6 +4,15 @@
 
 window.TRANSLATIONS = {
   "vi": {
+    "goToConversation": "Chuyển đến hội thoại",
+    "deviceInUse": "đang dùng",
+    "statusOn": "Đang bật",
+    "pushEnabled": "Đang bật",
+    "pushBlocked": "Bị chặn trong cài đặt trình duyệt",
+    "pushUnavailable": "Máy chủ chưa cấu hình",
+    "pushNotEnabled": "Chưa bật",
+    "mnAddCategory": "Thêm danh mục",
+    "saleForwardedInvoice": "Sale đã chuyển một hóa đơn",
     "categoryWord": "Danh mục",
     "enterCategoryName": "Nhập tên danh mục...",
     "uncategorizedOpt": "— Không thuộc danh mục —",
@@ -899,6 +908,61 @@ window.TRANSLATIONS = {
     "internalInputPlaceholder": "Nhập tin nhắn nội bộ..."
   },
   "en": {
+    "categoryWord": "Categories",
+    "enterCategoryName": "Enter category name...",
+    "uncategorizedOpt": "— Uncategorized —",
+    "categoryFormNote": "Group items for easier browsing. Optional — uncategorized products will still display.",
+    "enableMenuButtonInChat": "Enable Products button in chat",
+    "menuButtonPlaceholder": "Enter button label...",
+    "serviceFeeTitle": "Service charge on invoice",
+    "serviceFeeDesc": "Product prices are customer-facing and VAT-inclusive. Invoices will add this exact percentage. Set to 0 if no service charge.",
+    "saveConfigWord": "Save configuration",
+    "bannerSectionTitle": "Banner & Featured Posts",
+    "addNewPost": "Add new post",
+    "productListTitle": "Product List",
+    "priceWithVat": "Price (VAT included)",
+    "stockQuantityWord": "Stock quantity",
+    "whenOutOfStock": "When out of stock",
+    "hideWhenOutOpt": "Hide from list",
+    "showWhenOutOpt": "Keep showing, mark \"sold out\"",
+    "descriptionWord": "Description",
+    "imageWord": "Image",
+    "orderCommonFirst": "Common name first",
+    "orderProperFirst": "Proper name first",
+    "swapPositionBtn": "Swap position",
+    "properFieldLabel": "Field 01: Product proper name",
+    "properFieldHint": "(Not automatically translated)",
+    "properFieldHelp": "Proper names are kept untranslated across all languages.",
+    "commonFieldLabel": "Field 02: Common / General name",
+    "commonFieldHint": "(Automatically translated to other languages)",
+    "commonFieldHelp": "General description of the item, automatically translated into other languages.",
+    "previewNameTitle": "Product Name Preview",
+    "previewChipProper": "Proper name: Not translated",
+    "previewChipCommon": "Common name: Auto-translated",
+    "accountTitle": "Account Management",
+    "accountSubtitle": "Personal information and logged-in devices",
+    "accountAgentNameManagedByTech": "Agent display name is managed by Technical Support.",
+    "accountSaleNameManagedByAgent": "Sales staff display name is configured by the Manager (Agent).",
+    "loginEmailWord": "Login Email",
+    "roleWord": "Role",
+    "roleAdminAgent": "Admin Agent",
+    "roleSaleStaff": "Sales Staff",
+    "roleProjectAdmin": "Project Admin",
+    "techPastieTitle": "Pastie Technical",
+    "techSupportTitle": "Technical Support",
+    "superadminRole": "Superadmin",
+    "agentManagerRole": "Agent Manager",
+    "agentManagerPinned": "📌 Agent Manager",
+    "techReadySupport247": "Ready for 24/7 support · Instant response",
+    "goToConversation": "Go to conversation",
+    "deviceInUse": "in use",
+    "statusOn": "Enabled",
+    "pushEnabled": "Enabled",
+    "pushBlocked": "Blocked in browser settings",
+    "pushUnavailable": "Server not configured",
+    "pushNotEnabled": "Not enabled",
+    "mnAddCategory": "Add category",
+    "saleForwardedInvoice": "Sale forwarded an invoice",
     "loginTitle": "No Language Barrier\nUnderstand Every Customer",
     "loginSubtitle": "Enter email to log in to Pastie Chat",
     "googleLoginBtn": "Sign in with Google",
@@ -1748,6 +1812,61 @@ window.TRANSLATIONS = {
     "internalInputPlaceholder": "Type an internal message..."
   },
   "zh": {
+    "categoryWord": "分类",
+    "enterCategoryName": "输入分类名称...",
+    "uncategorizedOpt": "— 未分类 —",
+    "categoryFormNote": "对商品进行分组以便顾客浏览。选填 — 未分类商品仍会显示。",
+    "enableMenuButtonInChat": "在聊天中启用“商品”按钮",
+    "menuButtonPlaceholder": "输入按钮显示文本...",
+    "serviceFeeTitle": "账单服务费",
+    "serviceFeeDesc": "输入的商品价格为顾客实付价（已含增值税）。账单将额外增加该百分比。如不收服务费请设为 0。",
+    "saveConfigWord": "保存配置",
+    "bannerSectionTitle": "横幅与特色文章",
+    "addNewPost": "添加新文章",
+    "productListTitle": "商品列表",
+    "priceWithVat": "售价（已含增值税）",
+    "stockQuantityWord": "库存数量",
+    "whenOutOfStock": "缺货时",
+    "hideWhenOutOpt": "从列表隐藏",
+    "showWhenOutOpt": "继续显示并标记“已售罄”",
+    "descriptionWord": "描述",
+    "imageWord": "图片",
+    "orderCommonFirst": "通用名称在前",
+    "orderProperFirst": "专有名称在前",
+    "swapPositionBtn": "交换位置",
+    "properFieldLabel": "字段 01：商品专有名称",
+    "properFieldHint": "(不自动翻译)",
+    "properFieldHelp": "专有名称在任何语言下均保持原样，不自动翻译。",
+    "commonFieldLabel": "字段 02：通用名称",
+    "commonFieldHint": "(自动翻译为其他语言)",
+    "commonFieldHelp": "商品的通用描述部分，将自动翻译为顾客所选语言。",
+    "previewNameTitle": "商品名称预览 (Preview)",
+    "previewChipProper": "专有名称：不翻译",
+    "previewChipCommon": "通用名称：自动翻译",
+    "accountTitle": "账户管理",
+    "accountSubtitle": "个人信息与已登录设备",
+    "accountAgentNameManagedByTech": "代理名称由技术支持统一管理。",
+    "accountSaleNameManagedByAgent": "销售人员显示名称由管理员 (Agent) 设置。",
+    "loginEmailWord": "登录邮箱",
+    "roleWord": "角色",
+    "roleAdminAgent": "管理代理 (Admin Agent)",
+    "roleSaleStaff": "销售人员",
+    "roleProjectAdmin": "项目管理",
+    "techPastieTitle": "Pastie 技术支持",
+    "techSupportTitle": "技术支持",
+    "superadminRole": "总管理员",
+    "agentManagerRole": "代理主管",
+    "agentManagerPinned": "📌 代理主管",
+    "techReadySupport247": "24/7 全天候支持 · 即时响应",
+    "goToConversation": "前往对话",
+    "deviceInUse": "使用中",
+    "statusOn": "已开启",
+    "pushEnabled": "已开启",
+    "pushBlocked": "在浏览器设置中被拦截",
+    "pushUnavailable": "服务器未配置",
+    "pushNotEnabled": "未开启",
+    "mnAddCategory": "添加分类",
+    "saleForwardedInvoice": "销售已转发一张账单",
     "loginTitle": "跨越语言障碍\n理解每一位顾客",
     "loginSubtitle": "输入邮箱登录 Pastie Chat",
     "googleLoginBtn": "使用谷歌登录",
@@ -2597,6 +2716,61 @@ window.TRANSLATIONS = {
     "internalInputPlaceholder": "输入内部消息..."
   },
   "ko": {
+    "categoryWord": "카테고리",
+    "enterCategoryName": "카테고리 이름 입력...",
+    "uncategorizedOpt": "— 미분류 —",
+    "categoryFormNote": "손님이 보기 쉽게 그룹화합니다. 선택 사항 — 분류되지 않은 상품도 계속 표시됩니다.",
+    "enableMenuButtonInChat": "채팅에서 상품 버튼 활성화",
+    "menuButtonPlaceholder": "버튼에 표시할 텍스트 입력...",
+    "serviceFeeTitle": "청구서 서비스 요금",
+    "serviceFeeDesc": "입력된 상품 가격은 부가세 포함 고객 결제 금액입니다. 청구서에 이 요율이 추가됩니다. 서비스 요금이 없으면 0으로 설정하세요.",
+    "saveConfigWord": "설정 저장",
+    "bannerSectionTitle": "배너 & 소개 게시글",
+    "addNewPost": "새 글 작성",
+    "productListTitle": "상품 목록",
+    "priceWithVat": "판매가 (VAT 포함)",
+    "stockQuantityWord": "재고 수량",
+    "whenOutOfStock": "품절 시",
+    "hideWhenOutOpt": "목록에서 숨기기",
+    "showWhenOutOpt": "계속 표시하고 '품절' 표기",
+    "descriptionWord": "설명",
+    "imageWord": "이미지",
+    "orderCommonFirst": "일반 명칭 먼저",
+    "orderProperFirst": "고유 명칭 먼저",
+    "swapPositionBtn": "위치 변경",
+    "properFieldLabel": "항목 01: 상품 고유 명칭",
+    "properFieldHint": "(자동 번역 안 됨)",
+    "properFieldHelp": "고유 명칭은 모든 언어에서 번역되지 않고 그대로 유지됩니다.",
+    "commonFieldLabel": "항목 02: 일반 명칭",
+    "commonFieldHint": "(다른 언어로 자동 번역됨)",
+    "commonFieldHelp": "상품의 일반적인 명칭 부분으로, 다른 언어로 자동 번역됩니다.",
+    "previewNameTitle": "상품 이름 미리보기",
+    "previewChipProper": "고유 명칭: 번역 안 함",
+    "previewChipCommon": "일반 명칭: 자동 번역",
+    "accountTitle": "계정 관리",
+    "accountSubtitle": "개인 정보 및 로그인된 기기",
+    "accountAgentNameManagedByTech": "에이전트 이름은 기술 지원팀에서 관리합니다.",
+    "accountSaleNameManagedByAgent": "세일즈 표시 이름은 관리자(Agent)가 설정합니다.",
+    "loginEmailWord": "로그인 이메일",
+    "roleWord": "역할",
+    "roleAdminAgent": "관리자 에이전트",
+    "roleSaleStaff": "세일즈 직원",
+    "roleProjectAdmin": "프로젝트 관리자",
+    "techPastieTitle": "Pastie 기술팀",
+    "techSupportTitle": "기술 지원",
+    "superadminRole": "총괄 관리자",
+    "agentManagerRole": "에이전트 관리자",
+    "agentManagerPinned": "📌 에이전트 관리자",
+    "techReadySupport247": "24/7 지원 준비 완료 · 즉각적인 응답",
+    "goToConversation": "대화로 이동",
+    "deviceInUse": "사용 중",
+    "statusOn": "켜짐",
+    "pushEnabled": "켜짐",
+    "pushBlocked": "브라우저 설정에서 차단됨",
+    "pushUnavailable": "서버가 설정되지 않음",
+    "pushNotEnabled": "꺼짐",
+    "mnAddCategory": "카테고리 추가",
+    "saleForwardedInvoice": "세일즈가 청구서를 전달했습니다",
     "loginTitle": "언어 장벽 없는 소통\n모든 고객을 이해합니다",
     "loginSubtitle": "이메일을 입력하여 Pastie Chat에 로그인하세요",
     "googleLoginBtn": "Google 계정으로 로그인",
@@ -3446,6 +3620,63 @@ window.TRANSLATIONS = {
     "internalInputPlaceholder": "내부 메시지를 입력하세요..."
   },
   "ru": {
+    "categoryWord": "Категории",
+    "enterCategoryName": "Введите название категории...",
+    "uncategorizedOpt": "— Без категории —",
+    "categoryFormNote": "Группировка для удобства гостей. Необязательно — товары без категории тоже отображаются.",
+    "enableMenuButtonInChat": "Включить кнопку «Товары» в чате",
+    "menuButtonPlaceholder": "Введите текст на кнопке...",
+    "serviceFeeTitle": "Сервисный сбор в счете",
+    "serviceFeeDesc": "Цены товаров уже включают НДС. Счет добавит этот процент. Укажите 0, если сбор не взимается.",
+    "saveConfigWord": "Сохранить настройки",
+    "bannerSectionTitle": "Баннеры и статьи",
+    "addNewPost": "Добавить статью",
+    "productListTitle": "Список товаров",
+    "priceWithVat": "Цена (с НДС)",
+    "stockQuantityWord": "Количество на складе",
+    "whenOutOfStock": "При отсутствии",
+    "hideWhenOutOpt": "Скрыть из списка",
+    "showWhenOutOpt": "Показывать с пометкой «нет в наличии»",
+    "descriptionWord": "Описание",
+    "imageWord": "Изображение",
+    "orderCommonFirst": "Сначала общее название",
+    "orderProperFirst": "Сначала собственное название",
+    "swapPositionBtn": "Поменять местами",
+    "properFieldLabel": "Поле 01: Собственное название",
+    "properFieldHint": "(Не переводится автоматически)",
+    "properFieldHelp": "Собственные названия сохраняются без перевода на все языки.",
+    "commonFieldLabel": "Поле 02: Общее название",
+    "commonFieldHint": "(Автоматически переводится)",
+    "commonFieldHelp": "Общая часть названия, которая переводится на другие языки.",
+    "previewNameTitle": "Предпросмотр названия товара",
+    "previewChipProper": "Собственное имя: без перевода",
+    "previewChipCommon": "Общее название: автоперевод",
+    "accountTitle": "Управление аккаунтом",
+    "accountSubtitle": "Личная информация и устройства",
+    "accountAgentNameManagedByTech": "Имя агента управляется технической поддержкой.",
+    "accountSaleNameManagedByAgent": "Имя продавца настраивается управляющим (Agent).",
+    "loginEmailWord": "Email для входа",
+    "roleWord": "Роль",
+    "roleAdminAgent": "Администратор-агент",
+    "roleSaleStaff": "Сотрудник продаж",
+    "roleProjectAdmin": "Администратор проекта",
+    "techPastieTitle": "Техподдержка Pastie",
+    "techSupportTitle": "Техническая поддержка",
+    "superadminRole": "Суперадминистратор",
+    "agentManagerRole": "Агент-управляющий",
+    "agentManagerPinned": "📌 Агент-управляющий",
+    "techReadySupport247": "Готовы помочь 24/7 · Мгновенный ответ",
+    "goToConversation": "Перейти к диалогу",
+    "deviceInUse": "используется",
+    "statusOn": "Включено",
+    "pushEnabled": "Включено",
+    "pushBlocked": "Заблокировано в браузере",
+    "pushUnavailable": "Сервер не настроен",
+    "pushNotEnabled": "Не включено",
+    "mnAddCategory": "Добавить категорию",
+    "saleForwardedInvoice": "Продавец переслал счет",
+    "techPriorityChannel": "Приоритетный техканал 24/7",
+    "internalChatTag": "Внутренний чат",
     "loginTitle": "Без языковых барьеров\nПонимание каждого клиента",
     "loginSubtitle": "Введите email для входа в Pastie Chat",
     "googleLoginBtn": "Войти через Google",
@@ -4297,6 +4528,48 @@ window.TRANSLATIONS = {
 };
 
 window.PASTIE_MENU_DISH_DICT = {
+  "Khô cá đuối nướng xé sợi trộn xoài chua giòn": {
+      "en": "Grilled shredded stingray with crunchy green mango",
+      "zh": "烤魔鬼鱼干丝拌香脆青芒",
+      "ko": "구운 가오리채와 아삭한 그린 망고 무침",
+      "ru": "Жареный сушеный скат с хрустящим зеленым манго"
+  },
+  "Sứa biển giòn sần sật trộn hoa chuối thơm ngon": {
+      "en": "Crispy jellyfish salad with fragrant banana blossom",
+      "zh": "爽脆海蜇拌芭蕉花",
+      "ko": "아삭한 해파리와 바나나 꽃 샐러드",
+      "ru": "Хрустящая медуза с цветками банана"
+  },
+  "Vỏ giòn rụm, nhân tôm cua đầy đặn": {
+      "en": "Crispy wrapper filled with savory shrimp & crab",
+      "zh": "外皮金黄酥脆，虾蟹馅料饱满",
+      "ko": "바삭한 피에 새우와 게살이 듬뿍 찬 롤",
+      "ru": "Хрустящая корочка, щедрая начинка из креветок и краба"
+  },
+  "Ghẹ, tôm sú, mực một nắng nướng than hoa, kèm rau rừng và bánh tráng.": {
+      "en": "Flower crab, tiger prawns, sun-dried squid grilled over charcoal with wild herbs & rice paper.",
+      "zh": "木炭烤花蟹、黑虎虾、半干鱿鱼，配野生时蔬与米纸。",
+      "ko": "꽃게, 블랙타이거 새우, 반건조 오징어 숯불구이와 야생 채소, 라이스페이퍼.",
+      "ru": "Цветочный краб, тигровые креветки и кальмар на углях с травами и рисовой бумагой."
+  },
+  "Đủ cơm trắng, canh chua cá, tôm rang, thịt kho và rau luộc.": {
+      "en": "Includes white rice, sweet & sour fish soup, roasted prawns, braised pork & boiled greens.",
+      "zh": "配白米饭、酸鱼汤、香炒大虾、红烧肉及白灼青菜。",
+      "ko": "흰쌀밥, 생선 신맛 탕, 새우 볶음, 돼지고기 조림, 데친 채소 포함.",
+      "ru": "Белый рис, кисло-сладкий рыбный суп, жареные креветки, тушеная свинина и овощи."
+  },
+  "Bánh canh chả cá hoặc bún quậy, kèm cà phê hoặc trà.": {
+      "en": "Fish cake noodle soup or stirred noodles, with coffee or tea.",
+      "zh": "鱼饼汤粉或坚江搅拌米粉，附赠咖啡或茶饮。",
+      "ko": "어묵 국수 또는 분꿔이, 커피 또는 차 포함.",
+      "ru": "Суп с рыбными котлетами или лапша Бун Куай, с кофе или чаем."
+  },
+  "Áp dụng cho toàn bộ nhóm Đồ uống, trừ rượu vang.": {
+      "en": "Applies to all drinks, excluding wine.",
+      "zh": "适用于所有饮品，葡萄酒除外。",
+      "ko": "와인을 제외한 모든 음료에 적용됩니다.",
+      "ru": "Действует на все напитки, кроме вина."
+  },
   "Nước dừa tươi": {
     "en": "Fresh coconut water",
     "zh": "新鲜椰青",
@@ -4609,4 +4882,86 @@ window.tDate = function tDate(value, options) {
   } catch (e) {
     return String(value);
   }
+};
+
+window.translateDishName = function translateDishName(name, lang) {
+  if (!name) return '';
+  var curLang = lang || (window.pastieLang ? window.pastieLang() : 'vi');
+  if (curLang === 'vi') return name;
+  var dict = window.PASTIE_MENU_DISH_DICT || {};
+  if (dict[name] && dict[name][curLang]) return dict[name][curLang];
+  var viKeys = Object.keys(dict).sort(function(a, b) { return b.length - a.length; });
+  for (var i = 0; i < viKeys.length; i++) {
+    var k = viKeys[i];
+    if (name.indexOf(k) !== -1 && dict[k] && dict[k][curLang]) {
+      return name.split(k).join(dict[k][curLang]);
+    }
+  }
+  return name;
+};
+
+window.translateDishDescription = function translateDishDescription(desc, lang) {
+  if (!desc) return '';
+  var curLang = lang || (window.pastieLang ? window.pastieLang() : 'vi');
+  if (curLang === 'vi') return desc;
+  var dict = window.PASTIE_MENU_DISH_DICT || {};
+  if (dict[desc] && dict[desc][curLang]) return dict[desc][curLang];
+  var viKeys = Object.keys(dict).sort(function(a, b) { return b.length - a.length; });
+  for (var i = 0; i < viKeys.length; i++) {
+    var k = viKeys[i];
+    if (desc.indexOf(k) !== -1 && dict[k] && dict[k][curLang]) {
+      return desc.split(k).join(dict[k][curLang]);
+    }
+  }
+  return desc;
+};
+
+window.translateCategoryName = function translateCategoryName(catName, lang) {
+  if (!catName) return '';
+  var curLang = lang || (window.pastieLang ? window.pastieLang() : 'vi');
+  if (curLang === 'vi') return catName;
+  var catMap = {
+    'món chính': { en: 'Main Dishes', zh: '主菜', ko: '메인 요리', ru: 'Основные блюда' },
+    'khai vị': { en: 'Appetizers', zh: '开胃菜', ko: '에피타이저', ru: 'Закуски' },
+    'gỏi & khai vị': { en: 'Salads & Appetizers', zh: '凉拌与开胃菜', ko: '샐러드 & 에피타이저', ru: 'Салаты и закуски' },
+    'gỏi': { en: 'Salads', zh: '凉拌菜', ko: '샐러드', ru: 'Салаты' },
+    'đồ uống': { en: 'Beverages', zh: '饮品', ko: '음료', ru: 'Напитки' },
+    'nước': { en: 'Beverages', zh: '饮品', ko: '음료', ru: 'Напитки' },
+    'hải sản tươi sống': { en: 'Fresh Seafood', zh: '海鲜', ko: '신선한 해산물', ru: 'Свежие морепродукты' },
+    'hải sản': { en: 'Seafood', zh: '海鲜', ko: '해산물', ru: 'Морепродукты' },
+    'tráng miệng': { en: 'Desserts', zh: '甜点', ko: '디저트', ru: 'Десерты' },
+    'combo': { en: 'Combos & Sets', zh: '套餐', ko: '세트 메뉴', ru: 'Комбо' },
+    'ưu đãi': { en: 'Special Offers', zh: '特惠', ko: '특별 할인', ru: 'Акции' },
+    'lẩu': { en: 'Hotpot', zh: '火锅', ko: '전골', ru: 'Хот-пот' },
+    'nướng': { en: 'BBQ & Grilled', zh: '烧烤', ko: '바베큐 / 구이', ru: 'Барбекю и гриль' },
+    'cơm': { en: 'Rice Dishes', zh: '米饭类', ko: '밥류', ru: 'Блюда с рисом' },
+    'mì': { en: 'Noodles', zh: '面食', ko: '면류', ru: 'Лапша' },
+    'rượu': { en: 'Alcohol & Wine', zh: '酒类', ko: '주류', ru: 'Алкоголь' },
+    'bia': { en: 'Beer', zh: '啤酒', ko: '맥주', ru: 'Пиво' }
+  };
+  var lower = String(catName).trim().toLowerCase();
+  for (var k in catMap) {
+    if (lower.indexOf(k) !== -1) {
+      return catMap[k][curLang] || catName;
+    }
+  }
+  return catName;
+};
+
+window.translateQrLabel = function translateQrLabel(label, lang) {
+  if (!label) return '';
+  var curLang = lang || (window.pastieLang ? window.pastieLang() : 'vi');
+  if (curLang === 'vi') return label;
+  var tableWord = { en: 'Table', zh: '号桌', ko: '번 테이블', ru: 'Стол' }[curLang] || 'Table';
+  var floorWord = { en: 'Ground floor', zh: '一楼/大堂', ko: '1층', ru: 'Первый этаж' }[curLang] || 'Ground floor';
+  var res = String(label);
+  res = res.replace(/Tầng trệt/gi, floorWord);
+  if (curLang === 'zh') {
+    res = res.replace(/Bàn\s*(\d+)/gi, '$1' + tableWord);
+  } else if (curLang === 'ko') {
+    res = res.replace(/Bàn\s*(\d+)/gi, '$1' + tableWord);
+  } else {
+    res = res.replace(/Bàn\s*(\d+)/gi, tableWord + ' $1');
+  }
+  return res;
 };
