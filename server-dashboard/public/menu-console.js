@@ -16,6 +16,7 @@
         { code: 'ru', label: 'Русский', short: 'RU' },
         { code: 'zh', label: '中文', short: 'ZH' },
         { code: 'ko', label: '한국어', short: 'KO' },
+        { code: 'kk', label: 'Қазақша', short: 'KK' },
     ];
 
     let CATEGORIES = [];
@@ -63,9 +64,10 @@
             window._ORG_TAB_LOADED = window._ORG_TAB_LOADED || {};
             window._ORG_TAB_LOADED['menu'] = true;
 
-            // Sản phẩm nào đã có đủ bản dịch cả 4 ngôn ngữ (en, ru, zh, ko) thì thôi chờ.
+            // Sản phẩm nào đã có đủ bản dịch cả 5 ngôn ngữ (en, ru, zh, ko, kk) thì thôi chờ.
+            const targetLangCount = LANGS.filter((l) => l.code !== 'vi').length;
             for (const item of ITEMS) {
-                if (pendingTranslation.has(item.id) && translatedCount(item) >= 4) {
+                if (pendingTranslation.has(item.id) && translatedCount(item) >= targetLangCount) {
                     pendingTranslation.delete(item.id);
                 }
             }
@@ -245,7 +247,12 @@
                     <strong>${escapeHtml(itemName)}</strong>
                     <span class="menu-price">${money(item.price)}</span>
                 </div>
-                ${stockBadge(item)}
+                <div class="menu-item-meta">
+                    <span class="menu-visibility ${item.is_available ? 'is-visible' : 'is-hidden'}">
+                        <i class="ri-${item.is_available ? 'eye-line' : 'eye-off-line'}"></i> ${item.is_available ? 'Đang hiển thị' : 'Đang ẩn'}
+                    </span>
+                    ${stockBadge(item)}
+                </div>
                 ${itemDesc ? `<p class="menu-desc">${escapeHtml(itemDesc)}</p>` : ''}
                 <div class="menu-langs">
                     ${waiting && done === 0
@@ -255,9 +262,9 @@
             </div>
 
             <div class="menu-item-actions">
-                <button type="button" class="menu-act" data-item-availability="${item.id}"
-                        title="${item.is_available ? 'Còn bán — bấm để tạm hết' : 'Đang tạm hết — bấm để bán lại'}">
-                    <i class="ri-${item.is_available ? 'checkbox-circle-line' : 'indeterminate-circle-line'}"></i>
+                <button type="button" class="menu-act menu-act-avail ${item.is_available ? 'is-visible' : 'is-hidden'}" data-item-availability="${item.id}"
+                        title="${item.is_available ? 'Đang hiển thị — Bấm để ẩn món' : 'Đang ẩn — Bấm để hiển thị món'}">
+                    <i class="ri-${item.is_available ? 'eye-line' : 'eye-off-line'}"></i>
                 </button>
                 <button type="button" class="menu-act" data-item-edit="${item.id}" title="Sửa sản phẩm"><i class="ri-pencil-line"></i></button>
                 <button type="button" class="menu-act is-danger" data-item-delete="${item.id}" title="Xoá sản phẩm"><i class="ri-delete-bin-line"></i></button>
@@ -504,7 +511,13 @@
             hideWhenOut: $('menu-item-hide').value !== 'false',
         };
         const editing = editingItemId;
+        const submitBtn = $('menu-item-submit');
         try {
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang lưu & dịch đa ngôn ngữ…';
+            }
+
             const result = editing
                 ? await fetchMenu(`/items/${editing}`, {
                     method: 'PUT',
@@ -534,10 +547,19 @@
             }
 
             fillItemForm(null);
-            showToast(editing ? 'Đã lưu thay đổi.' : `Đã thêm "${name}". Đang dịch sang 4 ngôn ngữ…`, 'success');
+            showToast(editing ? 'Đã lưu thay đổi.' : `Đã thêm "${name}". Đang dịch sang 5 ngôn ngữ…`, 'success');
             await load(true);
         } catch (error) {
             showToast(error.message, 'error');
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                if (editingItemId) {
+                    submitBtn.innerHTML = '<i class="ri-save-line"></i> Lưu thay đổi';
+                } else {
+                    submitBtn.innerHTML = '<i class="ri-add-circle-line"></i> Thêm sản phẩm';
+                }
+            }
         }
     }
 
