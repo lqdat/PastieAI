@@ -5933,15 +5933,32 @@ app.get('/api/admin/menu/view', checkAdminAuth, async (req, res) => {
     }
     if (!agentId) return res.json({ categories: [], items: [] });
 
+    // BẢN DỊCH LẤY TỪ DATABASE, KHÔNG DỊCH Ở TRÌNH DUYỆT.
+    //
+    // Tên và mô tả sản phẩm đã được dịch sẵn và lưu vào qr_menu_item_translations
+    // ngay lúc Agent bấm Lưu. Trước đây endpoint này chỉ trả bản tiếng Việt, nên
+    // bảng điều khiển buộc phải tự dịch lấy bằng một TỪ ĐIỂN MÓN VIẾT CỨNG nằm
+    // trong i18n-dictionary.js — sản phẩm nào không có trong từ điển đó thì nhân
+    // viên xem bằng tiếng Hàn vẫn thấy tên tiếng Việt, và từ điển thì không bao
+    // giờ theo kịp thực đơn thật.
+    //
+    // Trả kèm ở đây thì trình duyệt chỉ việc đọc, đúng một nguồn sự thật với
+    // những gì khách nhìn thấy.
+    const langXem = ngonNguKhachHopLe(req.query.lang) || 'vi';
     const items = await db.query(
       `SELECT i.id, i.category_id, i.name, i.description, i.price, i.currency,
               i.image_url, i.image_key, i.image_url_expires_at,
               i.is_available,
+              i.proper_name, i.common_name, i.name_order,
+              NULLIF(t.name, '') AS name_translated,
+              NULLIF(t.description, '') AS description_translated,
               (i.stock_quantity IS NOT NULL AND i.stock_quantity <= 0) AS sold_out
          FROM qr_menu_items i
+         LEFT JOIN qr_menu_item_translations t
+                ON t.item_id = i.id AND t.lang = $2
         WHERE i.agent_id = $1
         ORDER BY i.sort_order, i.id`,
-      [agentId]
+      [agentId, langXem]
     );
     // Ảnh món ký 7 ngày. Không gia hạn ở đây thì thực đơn của Sale hiện toàn ô
     // trống trong khi thực đơn của khách vẫn có ảnh — cùng một món, hai bên
@@ -5949,10 +5966,16 @@ app.get('/api/admin/menu/view', checkAdminAuth, async (req, res) => {
     const withImages = await Promise.all(items.rows.map((item) => refreshMenuImageUrl(item)));
     // image_key là chuyện nội bộ của kho ảnh, không đẩy ra ngoài.
     items.rows = withImages.map(({ image_key, image_url_expires_at, ...rest }) => rest);
+    // Tên NHÓM cũng lấy bản dịch từ database, cùng lý do như tên sản phẩm —
+    // nửa Việt nửa Hàn trên cùng một màn hình là chuyện đã từng xảy ra.
     const categories = await db.query(
-      `SELECT id, name, sort_order, is_promo, is_active FROM qr_menu_categories
-        WHERE agent_id = $1 ORDER BY is_promo DESC, sort_order, id`,
-      [agentId]
+      `SELECT c.id, c.name, c.sort_order, c.is_promo, c.is_active,
+              NULLIF(ct.name, '') AS name_translated
+         FROM qr_menu_categories c
+         LEFT JOIN qr_menu_category_translations ct
+                ON ct.category_id = c.id AND ct.lang = $2
+        WHERE c.agent_id = $1 ORDER BY c.is_promo DESC, c.sort_order, c.id`,
+      [agentId, langXem]
     );
     const agentRow = (await db.query('SELECT menu_custom_label FROM admins WHERE id = $1', [agentId])).rows[0];
     res.json({
@@ -12260,10 +12283,21 @@ app.get('/api/agent/menu/categories', checkAdminAuth, async (req, res) => {
     // năng này cũng tự có nhóm Ưu đãi mà không cần chạy script vá dữ liệu.
     await ensurePromoCategory(req.admin.id, req.admin.project_id);
     const result = await db.query(
+      // Trả kèm BẢN DỊCH ĐÃ LƯU, cùng hình dạng với endpoint sản phẩm.
+      //
+      // Thiếu nó thì bảng điều khiển phải tự dịch tên nhóm bằng một từ điển
+      // viết cứng trong mã — nhóm nào Agent tự đặt tên thì không có trong từ
+      // điển đó, và nhân viên xem bằng tiếng khác vẫn thấy tên tiếng Việt.
       `SELECT c.id, c.name, c.sort_order, c.is_active, c.is_promo,
-              (SELECT COUNT(*)::int FROM qr_menu_items i WHERE i.category_id = c.id) AS item_count
+              (SELECT COUNT(*)::int FROM qr_menu_items i WHERE i.category_id = c.id) AS item_count,
+              COALESCE(json_agg(json_build_object(
+                'lang', ct.lang, 'name', ct.name, 'is_manual', ct.is_manual
+              )) FILTER (WHERE ct.lang IS NOT NULL), '[]') AS translations
          FROM qr_menu_categories c
-        WHERE c.agent_id = $1 ORDER BY c.sort_order, c.id`,
+         LEFT JOIN qr_menu_category_translations ct ON ct.category_id = c.id
+        WHERE c.agent_id = $1
+        GROUP BY c.id
+        ORDER BY c.sort_order, c.id`,
       [req.admin.id]
     );
     res.json(result.rows);
