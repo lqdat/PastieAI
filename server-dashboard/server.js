@@ -2237,27 +2237,27 @@ function buildQrGreeting({ lang, guestName, venueName, placeLabel }) {
     vi: {
       hi: name ? `Xin chào ${name}!` : 'Xin chào!',
       at: place ? ` tại ${place}` : '',
-      body: (v, at) => `${v ? v + ' r' : 'R'}ất vui được đón bạn${at}. Chúng tôi có thể giúp gì được cho bạn? Chat ngay nhé! :)))`,
+      body: (v, at) => `${v ? v + ' r' : 'R'}ất vui được đón bạn${at}. Chúng tôi có thể giúp gì được cho bạn? Chat ngay nhé! 😊`,
     },
     en: {
       hi: name ? `Hi ${name}!` : 'Hello!',
       at: place ? ` You're at ${place}.` : '',
-      body: (v, at) => `Welcome to ${v || 'our place'}.${at} How can we help you? Chat with us right here! :)))`,
+      body: (v, at) => `Welcome to ${v || 'our place'}.${at} How can we help you? Chat with us right here! 😊`,
     },
     ru: {
       hi: name ? `Здравствуйте, ${name}!` : 'Здравствуйте!',
       at: place ? ` Вы за столиком ${place}.` : '',
-      body: (v, at) => `Добро пожаловать в ${v || 'наше заведение'}.${at} Чем мы можем помочь? Напишите нам прямо здесь! :)))`,
+      body: (v, at) => `Добро пожаловать в ${v || 'наше заведение'}.${at} Чем мы можем помочь? Напишите нам прямо здесь! 😊`,
     },
     zh: {
       hi: name ? `${name}，您好！` : '您好！',
       at: place ? `您在${place}。` : '',
-      body: (v, at) => `欢迎光临${v || '本店'}。${at}有什么可以帮您的吗？现在就在这里聊聊吧！:)))`,
+      body: (v, at) => `欢迎光临${v || '本店'}。${at}有什么可以帮您的吗？现在就在这里聊聊吧！😊`,
     },
     ko: {
       hi: name ? `${name}님, 안녕하세요!` : '안녕하세요!',
       at: place ? ` ${place} 좌석입니다.` : '',
-      body: (v, at) => `${v || '저희 매장'}에 오신 것을 환영합니다.${at} 무엇을 도와드릴까요? 지금 바로 여기서 채팅해 보세요! :)))`,
+      body: (v, at) => `${v || '저희 매장'}에 오신 것을 환영합니다.${at} 무엇을 도와드릴까요? 지금 바로 여기서 채팅해 보세요! 😊`,
     },
     // Tên quán không chia cách được trong tiếng Kazakh (nó là tên nước ngoài),
     // nên đặt "Қош келдіңіз" lên trước rồi mới nêu tên — thay vì ghép tên vào
@@ -2265,7 +2265,7 @@ function buildQrGreeting({ lang, guestName, venueName, placeLabel }) {
     kk: {
       hi: name ? `Сәлеметсіз бе, ${name}!` : 'Сәлеметсіз бе!',
       at: place ? ` Орныңыз: ${place}.` : '',
-      body: (v, at) => `Қош келдіңіз — ${v || 'біздің мекеме'}.${at} Сізге қалай көмектесе аламыз? Осы жерден жаза беріңіз! :)))`,
+      body: (v, at) => `Қош келдіңіз — ${v || 'біздің мекеме'}.${at} Сізге қалай көмектесе аламыз? Осы жерден жаза беріңіз! 😊`,
     },
   };
   const t = T[String(lang || 'vi').toLowerCase()] || T.vi;
