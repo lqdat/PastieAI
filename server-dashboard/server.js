@@ -146,6 +146,26 @@ const AI_RATE_MAX = 10;        // max AI responses per window
 const AI_RATE_WINDOW = 2 * 60 * 1000; // 2-minute window
 const AI_TEXT_MAX_LEN = 500;   // max chars sent to Gemini
 
+// ─── NGÔN NGỮ KHÁCH ĐƯỢC PHÉP CHỌN ──────────────────────────────────────────
+//
+// MỘT danh sách duy nhất, dùng chung cho mọi đường vào. Trước đây nó bị chép ra
+// ba bản giống hệt nhau nằm rải rác (đường đổi ngôn ngữ, đường nhận diện ngôn
+// ngữ, đường nối lại phiên) — và thêm tiếng Kazakh vào thì phải nhớ sửa đủ cả
+// ba. Quên một chỗ là khách chọn được ngôn ngữ ở màn này nhưng đường kia lại
+// coi là không hợp lệ và lặng lẽ đẩy về tiếng Việt.
+//
+// Thêm ngôn ngữ mới thì sửa ĐÚNG MỘT DÒNG này.
+const NGON_NGU_KHACH = new Set(['vi', 'en', 'ru', 'zh', 'ko', 'kk']);
+
+// Ngôn ngữ khách gửi lên -> mã hợp lệ. Trả null khi không nhận ra, để nơi gọi
+// tự quyết định lấy gì làm mặc định (có chỗ lấy ngôn ngữ của phiên cũ, có chỗ
+// mới lấy tiếng Việt) — hàm này KHÔNG tự ý trả 'vi', vì đó đúng là cái lỗi
+// "âm thầm về tiếng Việt" cần tránh.
+function ngonNguKhachHopLe(value) {
+  const ma = String(value || '').trim().toLowerCase().slice(0, 2);
+  return NGON_NGU_KHACH.has(ma) ? ma : null;
+}
+
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
 const rawVapidSubject = (process.env.VAPID_SUBJECT || 'mailto:pastiephuquoc@pastie.vn').trim();
@@ -2239,6 +2259,14 @@ function buildQrGreeting({ lang, guestName, venueName, placeLabel }) {
       at: place ? ` ${place} 좌석입니다.` : '',
       body: (v, at) => `${v || '저희 매장'}에 오신 것을 환영합니다.${at} 무엇을 도와드릴까요? 지금 바로 여기서 채팅해 보세요! :)))`,
     },
+    // Tên quán không chia cách được trong tiếng Kazakh (nó là tên nước ngoài),
+    // nên đặt "Қош келдіңіз" lên trước rồi mới nêu tên — thay vì ghép tên vào
+    // giữa câu như bản Nga, sẽ ra một dạng cách sai.
+    kk: {
+      hi: name ? `Сәлеметсіз бе, ${name}!` : 'Сәлеметсіз бе!',
+      at: place ? ` Орныңыз: ${place}.` : '',
+      body: (v, at) => `Қош келдіңіз — ${v || 'біздің мекеме'}.${at} Сізге қалай көмектесе аламыз? Осы жерден жаза беріңіз! :)))`,
+    },
   };
   const t = T[String(lang || 'vi').toLowerCase()] || T.vi;
   return `${t.hi} ${t.body(venue, t.at)}`.replace(/\s+/g, ' ').trim();
@@ -2915,6 +2943,7 @@ app.post('/api/otp/verify', limitOtpVerifyIp, limitOtpVerifyEmail, async (req, r
       ru: `Привет, ${finalName}! 👋 Я Pat из Pastie 🌴 Чем могу помочь?`,
       zh: `您好，${finalName}！👋 我是 Pastie 的小助手 Pat 🌴 有什么可以帮您？`,
       ko: `${finalName}님, 안녕하세요! 👋 Pastie의 도우미 Pat입니다 🌴 무엇을 도와드릴까요?`,
+      kk: `Сәлеметсіз бе, ${finalName}! 👋 Мен Pat, Pastie көмекшісімін 🌴 Сізге қалай көмектесе аламын?`,
     };
     if (qrAccount) {
       // Khách quét mã ở bàn của quán thì người chào phải là QUÁN, không phải một
@@ -3412,6 +3441,7 @@ app.post('/api/chats/message', limitChatMessageIp, limitChatMessage, async (req,
                 ru: `Спасибо! Соединяю вас с оператором ⏳`,
                 zh: `谢谢！正在为您转接客服人员 ⏳`,
                 ko: `감사합니다! 지금 상담원에게 연결해 드리겠습니다 ⏳`,
+                kk: `Рахмет! Сізді қазір қолдау маманына қосамын ⏳`,
               };
               const transferMsg = transferMsgs[visitorLang] || transferMsgs['vi'];
               await db.query(`UPDATE sessions SET requested_agent = true WHERE id = $1`, [sessionId]);
@@ -3760,8 +3790,9 @@ app.post('/api/chats/session/language', async (req, res) => {
   }
 
   try {
-    const validLangs = ['vi', 'en', 'ru', 'zh', 'ko', 'kk', 'unknown'];
-    const updateLang = validLangs.includes(language.toLowerCase()) ? language.toLowerCase() : 'unknown';
+    // 'unknown' là giá trị riêng của đường này (nhận diện ngôn ngữ có thể
+    // không ra kết quả), nên xét thêm bên cạnh danh sách chung.
+    const updateLang = ngonNguKhachHopLe(language) || 'unknown';
 
     const existing = await db.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
     if (existing.rows.length === 0) {
@@ -3874,8 +3905,7 @@ app.post('/api/ai/translate-batch', async (req, res) => {
 app.post('/api/chats/:sessionId/visitor-language', async (req, res) => {
   const sessionId = req.params.sessionId;
   const language = String(req.body?.language || '').toLowerCase();
-  const validLanguages = new Set(['vi', 'en', 'ru', 'zh', 'ko', 'kk']);
-  if (!validLanguages.has(language)) {
+  if (!NGON_NGU_KHACH.has(language)) {
     return res.status(400).json({ error: 'Ngôn ngữ không hợp lệ.' });
   }
 
@@ -4381,7 +4411,8 @@ async function protectedNamesForSession(sessionId) {
   let names = [];
   try {
     const result = await db.query(
-      `SELECT owner.full_name AS venue_name, q.label AS qr_label, g.name AS group_name,
+      `SELECT owner.full_name AS venue_name, owner.proper_name AS venue_proper,
+              q.label AS qr_label, g.name AS group_name,
               sale.full_name AS sale_name
          FROM sessions s
          LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
@@ -4398,7 +4429,9 @@ async function protectedNamesForSession(sessionId) {
     // chúng là chữ MÔ TẢ chứ không phải tên riêng, và đó chính là thứ khách
     // nước ngoài cần đọc hiểu nhất — giữ nguyên là họ không biết mình đang ngồi
     // ở đâu. Chỉ tên riêng của cơ sở và tên người mới được giữ.
-    const venue = gemini.splitVenueName(row.venue_name).propel;
+    // Tên riêng Agent tự khai là nguồn đúng nhất; chỉ đoán khi chưa khai.
+    const venue = String(row.venue_proper || '').trim()
+      || gemini.splitVenueName(row.venue_name).propel;
     names = [venue, row.sale_name]
       .map((name) => String(name || '').trim())
       .filter((name) => name.length >= 2);
@@ -5547,6 +5580,11 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
   let order = await getChatOrderForVisitor(targetSessionId);
   if (!order) return res.status(404).json({ error: 'Chưa có đơn hàng đang hoạt động.' });
 
+  // Cổng khách hỏi endpoint này liên tục khi đang mở, nên đây là chỗ đơn quá
+  // hạn bị bắt sớm nhất — trước cả vòng quét định kỳ.
+  const quaHan = await maybeExpirePendingOrder(order);
+  if (quaHan) order = quaHan;
+
   if (order.status === 'awaiting_payment' && !order.payment_method) {
     const autoSelected = await maybeAutoSelectDeferredPayment(order);
     if (autoSelected) order = autoSelected;
@@ -5670,6 +5708,12 @@ app.get('/api/chats/:sessionId/order', async (req, res) => {
     autoPaymentAt: paymentDueAt(order) ? new Date(paymentDueAt(order)).toISOString() : null,
     autoPaymentPaused: !!order.payment_paused_at,
     autoPaymentSeconds: PAYMENT_WINDOW_MS / 1000,
+    // Hạn Sale phải xác nhận. Máy chủ gửi MỐC THỜI ĐIỂM chứ không gửi số giây
+    // còn lại: đồng hồ trên máy khách chạy lệch, và khách khoá màn hình rồi mở
+    // lại thì số giây đếm lùi cục bộ sai hẳn — mốc thời điểm thì không.
+    // null khi đơn không còn ở bước chờ xác nhận.
+    confirmDueAt: confirmDueAt(order) ? new Date(confirmDueAt(order)).toISOString() : null,
+    confirmSeconds: CONFIRM_WINDOW_MS / 1000,
     language,
   });
 });
@@ -7110,9 +7154,7 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
     // Ngôn ngữ khách đang xem. Trước đây chỗ này viết cứng 'vi', nên khách quét
     // mã ở bàn khác trong lúc đang đọc tiếng Anh vẫn bị chào bằng tiếng Việt và
     // cả phiên mới cũng bị ghi là tiếng Việt.
-    const resumeLang = ['vi', 'en', 'ru', 'zh', 'ko', 'kk']
-      .includes(String(req.body?.language || '').toLowerCase().slice(0, 2))
-      ? String(req.body.language).toLowerCase().slice(0, 2) : 'vi';
+    const resumeLang = ngonNguKhachHopLe(req.body?.language) || 'vi';
 
     const { browser, device } = parseUserAgent(req.headers['user-agent'] || '');
     const clientIp = getClientIp(req);
@@ -7195,6 +7237,16 @@ app.post('/api/qr-chat/:code/resume', limitChatMessageIp, limitChatMessage, asyn
 
 app.post('/api/qr-chat/google', async (req, res) => {
   const { credential, accessToken, projectId = 'qr-concierge', qrCode } = req.body || {};
+  // NGÔN NGỮ KHÁCH ĐANG CHỌN, lấy từ chính lượt gọi này.
+  //
+  // Chỗ này trước đây viết cứng 'vi' ở HAI nơi bên dưới: cột detected_language
+  // của phiên mới, và ngôn ngữ của lời chào. Hậu quả không dừng ở câu chào —
+  // detected_language là ngôn ngữ mà MỌI tin nhắn sau đó được dịch sang, và là
+  // ngôn ngữ in trên hoá đơn. Khách chọn tiếng Kazakh rồi đăng nhập bằng
+  // Google thì toàn bộ cuộc trò chuyện chạy bằng tiếng Việt, im lặng.
+  //
+  // Lối đăng nhập OTP không dính lỗi này vì nó vẫn nhận `language` từ client.
+  const ngonNgu = ngonNguKhachHopLe(req.body?.language) || 'vi';
   if ((!credential && !accessToken) || !qrCode) return res.status(400).json({ error: 'Thiếu thông tin đăng nhập Google hoặc mã QR.' });
   try {
     let profile = null;
@@ -7253,9 +7305,9 @@ app.post('/api/qr-chat/google', async (req, res) => {
     const sessionId = randomUUID();
     await db.query(
       `INSERT INTO sessions (id, project_id, visitor_name, visitor_email, detected_language, is_verified, status, browser, device, client_ip, assigned_admin_id, qr_account_id, expires_at, group_id, routing_status, active_identity_token)
-       VALUES ($1, $2, $3, $4, 'vi', TRUE, 'active', $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+       VALUES ($1, $2, $3, $4, $14, TRUE, 'active', $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [sessionId, projectId, profile.name || 'Khách hàng', profile.email, browser, device, clientIp, account.owner_admin_id, account.id, new Date(Date.now() + QR_CHAT_SESSION_MS),
-       account.group_id || null, account.group_id ? 'waiting' : null, newIdentity?.token || null]
+       account.group_id || null, account.group_id ? 'waiting' : null, newIdentity?.token || null, ngonNgu]
     );
     await upsertCustomer({
       projectId,
@@ -7266,7 +7318,7 @@ app.post('/api/qr-chat/google', async (req, res) => {
     }).catch((error) => console.error('Customer profile save failed after Google login:', error.message));
     await sendQrWelcome({
       sessionId,
-      lang: 'vi',
+      lang: ngonNgu,
       guestName: profile.name && profile.name !== 'Khách hàng' ? profile.name : nameFromEmail(profile.email),
       venueName: account.owner_name,
       placeLabel: account.label || account.group_name,
@@ -7631,9 +7683,16 @@ app.post('/api/admin/users', checkAdminAuth, async (req, res) => {
       [username, passwordHash, full_name.trim(), effectiveRole, avatar, scope, creatorId, saleLimit, deferredMode, cleanProper, cleanVenue, cleanOrder]
     );
 
-    if (effectiveRole === 'agent' && full_name?.trim()) {
-      const { prefix } = gemini.splitVenueName(full_name.trim());
-      if (prefix) void pretranslateVenuePrefix(prefix);
+    // DỊCH LOẠI HÌNH NGAY LÚC BẤM LƯU, không đợi lúc khách mở chat.
+    //
+    // Loại hình là text tự do nên không thể dịch sẵn theo danh sách được. Dịch
+    // ở đây thì lúc khách nước ngoài vào, tên quán đã có sẵn bản dịch trong
+    // cache — không phải chờ một lượt gọi mạng ngay giữa lúc đang đọc.
+    //
+    // Lấy chính chữ Agent vừa nhập (cleanVenue), KHÔNG đoán lại từ full_name.
+    if (effectiveRole === 'agent') {
+      const loaiHinh = cleanVenue || gemini.splitVenueName(String(full_name || '').trim()).prefix;
+      if (loaiHinh) void pretranslateVenuePrefix(loaiHinh);
     }
 
     const activationLoginUrl = effectiveRole === 'sale'
@@ -7754,9 +7813,10 @@ app.put('/api/admin/users/:id', checkAdminAuth, async (req, res) => {
 
     if (doiEmail) await dongPhienSauKhiDoiEmail(id, currentAdmin.username, username);
 
-    if (updatedRole === 'agent' && updatedFullName) {
-      const { prefix } = gemini.splitVenueName(updatedFullName);
-      if (prefix) void pretranslateVenuePrefix(prefix);
+    // Sửa tên thì dịch lại loại hình mới, cùng lý do như lúc tạo.
+    if (updatedRole === 'agent') {
+      const loaiHinh = updatedVenue || gemini.splitVenueName(String(updatedFullName || '')).prefix;
+      if (loaiHinh) void pretranslateVenuePrefix(loaiHinh);
     }
 
     res.json({
@@ -7941,6 +8001,7 @@ app.post('/api/admin/chats/:sessionId/claim', checkAdminAuth, requireWorkingHour
         ru: `Оператор №${operatorNo} подключился. Рад помочь вам! 👋`,
         zh: `${operatorNo}号客服已接入，很高兴为您服务！👋`,
         ko: `상담원 ${operatorNo}번이 연결되었습니다. 반갑습니다! 👋`,
+        kk: `№${operatorNo} оператор қосылды. Көмектесуге қуаныштымын! 👋`,
       };
       const msg = msgs[lang] || msgs.vi;
       await db.query(
@@ -10892,6 +10953,19 @@ app.put('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
     const newMenuEnabled = (updated.rows[0].superadmin_menu_disabled !== true) && (updated.rows[0].agent_menu_enabled !== false);
     const newShowcaseMode = updated.rows[0].showcase_mode || 'menu';
 
+    // DỊCH NHÃN THỰC ĐƠN NGAY LÚC BẤM LƯU.
+    //
+    // Nhãn này do Agent tự đặt ("Thực đơn", "Đồ uống", "Bảng giá dịch vụ"...)
+    // nên là text tự do, không tra được từ bảng nào — phải dịch.
+    //
+    // Nó vốn đã được dịch, nhưng là LÚC KHÁCH MỞ mã QR: khách nước ngoài đầu
+    // tiên của mỗi ngôn ngữ phải chờ một lượt gọi máy dịch ngay giữa lúc đang
+    // đọc, và nếu lượt đó hỏng thì họ thấy nguyên tiếng Việt. Dịch sẵn ở đây
+    // thì lúc khách vào đã là một lượt đọc cache — cùng cách làm với loại hình
+    // trong tên cơ sở.
+    const nhanMoi = String(updated.rows[0].menu_custom_label || '').trim();
+    if (nhanMoi) void pretranslateQrText(nhanMoi);
+
     // Bắn thông báo SSE tới các phiên chat đang hoạt động của Agent để client phản ứng lập tức
     db.query(
       `SELECT s.id FROM sessions s
@@ -11972,6 +12046,39 @@ async function localizeVenueName(name, lang, agentId) {
   const target = String(lang || '').toLowerCase().slice(0, 2);
   if (!raw || !target || target === MENU_SOURCE_LANG || !MENU_LANGS.includes(target)) return raw;
 
+  // ƯU TIÊN HAI TRƯỜNG AGENT TỰ KHAI.
+  //
+  // Agent nhập tay Trường 01 (tên riêng, không dịch) và Trường 02 (loại hình,
+  // dịch được) — LOẠI HÌNH LÀ TEXT TỰ DO, Agent gõ gì cũng được, không phải
+  // chọn từ một danh sách.
+  //
+  // Trước đây hàm này bỏ qua cả hai trường đó và tự đoán từ full_name theo một
+  // danh sách loại hình viết cứng. Đoán chỉ trúng khi loại hình đứng ĐẦU tên và
+  // đúng chữ trong danh sách: "Nhà hàng Bò Tơ 68" thì trúng, nhưng "Đan Trinh
+  // Villa" (loại hình đứng sau) và "Pastie Coffee" (loại hình tiếng Anh) đều
+  // trượt — khách nước ngoài mất hẳn phần loại hình đã dịch.
+  if (agentId) {
+    const khai = (await db.query(
+      'SELECT proper_name, common_name, name_order FROM admins WHERE id = $1', [agentId]
+    ).catch(() => ({ rows: [] }))).rows[0];
+    const rieng = String(khai?.proper_name || '').trim();
+    const chung = String(khai?.common_name || '').trim();
+    if (rieng || chung) {
+      // Tên riêng: không dịch, chỉ bỏ dấu để khách nước ngoài đọc và gõ lại được.
+      const riengSach = rieng ? gemini.removeVietnameseTones(rieng) : '';
+      // Loại hình: đã được dịch sẵn lúc Agent bấm Lưu, nên đây gần như luôn là
+      // một lượt đọc cache. Dịch hỏng thì translateNoteText trả nguyên văn —
+      // thà hiện tiếng Việt còn hơn mất chữ.
+      const chungDich = chung ? await translateNoteText(chung, target) : '';
+      const xuoi = khai.name_order === 'proper_first'
+        ? [riengSach, chungDich]
+        : [chungDich, riengSach];
+      return xuoi.filter(Boolean).join(' ');
+    }
+  }
+
+  // CHƯA KHAI thì mới rơi về cách đoán cũ — giữ nguyên hành vi cho những Agent
+  // tạo từ trước khi có hai trường này.
   const { prefix, propel } = gemini.splitVenueName(raw);
   const cleanPropel = propel ? gemini.removeVietnameseTones(propel) : '';
 
@@ -13021,12 +13128,19 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
     // Một phiên chỉ có một đơn đang chờ (chưa chốt phương thức thanh toán).
     // Nếu đơn cũ đã chọn thanh toán xong, khách được phép đặt lượt order mới.
     const pending = await db.query(
-      `SELECT id FROM chat_orders
+      `SELECT * FROM chat_orders
         WHERE session_id = $1 AND (status = 'pending_confirm' OR (status = 'awaiting_payment' AND payment_method IS NULL)) LIMIT 1`,
       [sessionId]
     );
     if (pending.rows[0]) {
-      return res.status(409).json({ error: 'Bạn đang có một đơn chờ xử lý. Vui lòng đợi tư vấn viên xác nhận.' });
+      // Đơn cũ vừa quá hạn nhưng vòng quét chưa tới lượt: huỷ nó ngay tại đây
+      // rồi cho khách đặt tiếp. Không làm vậy thì khách vừa đọc "đơn đã hết
+      // hạn, vui lòng đặt đơn mới" xong bấm đặt lại lại bị chặn vì "đang có
+      // đơn chờ xử lý" — hai câu đá nhau, lỗi của hệ thống mà khách chịu.
+      const vuaHuy = await maybeExpirePendingOrder(pending.rows[0]);
+      if (!vuaHuy) {
+        return res.status(409).json({ error: 'Bạn đang có một đơn chờ xử lý. Vui lòng đợi tư vấn viên xác nhận.' });
+      }
     }
 
     const wanted = new Map();
@@ -13081,8 +13195,8 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
     let created;
     try {
       created = await db.query(
-        `INSERT INTO chat_orders (id, order_code, session_id, project_id, total_amount, items, charges, status, placed_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending_confirm', 'customer') RETURNING *`,
+        `INSERT INTO chat_orders (id, order_code, session_id, project_id, total_amount, items, charges, status, placed_by, pending_since)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending_confirm', 'customer', NOW()) RETURNING *`,
         [orderId, orderCode, sessionId, owner.project_id, totalAmount, JSON.stringify(items), JSON.stringify(charges)]
       );
     } catch (error) {
@@ -13138,9 +13252,24 @@ app.post('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessag
   }
 });
 
-// Khách mở lại menu từ bill và xác nhận danh sách mới. Nếu bill cũ đã được
-// Sale xác nhận thì hoàn tồn cũ trong cùng transaction trước khi đưa đơn về
-// trạng thái chờ xác nhận; Sale luôn phải duyệt lại bản mới.
+// KHÁCH CHỈ SỬA ĐƯỢC ĐƠN SAU KHI SALE ĐÃ XÁC NHẬN VÀ BILL ĐÃ RA.
+//
+// Luật nghiệp vụ hiện hành, hai vế:
+//
+//   · Đơn đang CHỜ XÁC NHẬN (pending_confirm) — KHOÁ. Sale đang cầm đơn trên
+//     tay để duyệt; sửa được lúc này thì giữa lúc Sale đọc đơn trên màn hình
+//     và lúc bấm xác nhận, nội dung đã khác — Sale xác nhận một đằng, bếp làm
+//     một nẻo.
+//   · Đơn ĐÃ CÓ BILL và khách CHƯA chốt cách trả (awaiting_payment, chưa có
+//     payment_method) — MỞ. Khách cầm tờ bill trên tay, thấy thiếu món hay
+//     nhầm số lượng thì sửa ngay tại đó là đúng lẽ.
+//
+// Sửa xong đơn quay lại pending_confirm và Sale phải duyệt lại — nên vế thứ
+// nhất vẫn được giữ: lúc Sale duyệt thì đơn lại bất biến.
+//
+// Đồng hồ 5 phút đếm lại TỪ ĐẦU ở mỗi lần quay lại pending_confirm (đặt lại
+// pending_since bên dưới). Không đặt lại thì đơn vừa sửa đã quá hạn sẵn theo
+// mốc cũ và bị huỷ ngay, có khi trước cả khi Sale kịp nhìn thấy nó.
 app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage, async (req, res) => {
   const sessionId = req.params.sessionId;
   const lines = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -13171,6 +13300,20 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
     if (!order) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Không tìm thấy đơn đang chỉnh sửa.' });
+    }
+
+    // ĐANG CHỜ SALE XÁC NHẬN THÌ KHOÁ.
+    //
+    // Vẫn SELECT cả 'pending_confirm' ở trên rồi mới từ chối ở đây, thay vì lọc
+    // ngay trong câu truy vấn: lọc trong truy vấn thì không tìm thấy dòng nào
+    // và khách nhận 404 "không tìm thấy đơn" — sai hẳn, đơn vẫn còn đó, chỉ là
+    // chưa tới lúc sửa được.
+    if (order.status === 'pending_confirm') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'Đơn đang chờ tư vấn viên xác nhận nên chưa sửa được. Bạn sửa lại sau khi nhận hoá đơn nhé.',
+        code: 'order_pending_confirm',
+      });
     }
     // CHỐT CÁCH TRẢ LÀ ĐƠN XONG — KHÔNG SỬA ĐÈ ĐƯỢC NỮA.
     //
@@ -13271,7 +13414,12 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
               invoice = '{}'::jsonb, invoice_render = '{}'::jsonb,
               payment_method = NULL, payment_reference = NULL, payment_selected_at = NULL,
               payment_auto_selected_at = NULL, bill_sent_at = NULL, confirmed_at = NULL,
-              confirmed_by_admin_id = NULL, version = version + 1, updated_at = NOW()
+              confirmed_by_admin_id = NULL, version = version + 1,
+              -- Đồng hồ 5 phút đếm LẠI TỪ ĐẦU: đơn vừa đổi món là một đơn khác,
+              -- Sale cần đủ 5 phút để xem lại. Không đặt lại thì đơn mang mốc cũ
+              -- nên quá hạn sẵn và bị huỷ ngay sau khi khách bấm gửi.
+              pending_since = NOW(),
+              expired_at = NULL, updated_at = NOW()
         WHERE id = $1 RETURNING *`,
       [order.id, JSON.stringify(items), total, JSON.stringify(charges)]
     );
@@ -13325,8 +13473,15 @@ app.put('/api/chats/:sessionId/menu/order', limitChatMessageIp, limitChatMessage
 app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHours, async (req, res) => {
   try {
     const orderRes = await db.query('SELECT * FROM chat_orders WHERE id = $1', [req.params.orderId]);
-    const order = orderRes.rows[0];
+    let order = orderRes.rows[0];
     if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+    // Kiểm hạn NGAY TẠI ĐÂY, không chờ vòng quét 30 giây. Giữa hai lượt quét,
+    // Sale vẫn nhìn thấy nút Xác nhận trên một đơn đã quá 5 phút — bấm được là
+    // bếp làm một đơn mà khách đã được báo là hết hạn.
+    order = (await maybeExpirePendingOrder(order)) || order;
+    if (order.status === 'expired') {
+      return res.status(409).json({ error: 'Đơn đã quá hạn xác nhận.', code: 'order_expired' });
+    }
     if (order.status !== 'pending_confirm') {
       return res.status(409).json({ error: 'Đơn này không ở trạng thái chờ xác nhận.' });
     }
@@ -13447,9 +13602,9 @@ app.post('/api/admin/orders/:orderId/confirm', checkAdminAuth, requireWorkingHou
     //
     // Trước đây có một tin "Đơn của bạn đã được xác nhận, bếp đang chuẩn bị".
     // Nó vừa thừa (tấm bill xuất hiện ngay bên dưới đã nói đúng điều đó) vừa
-    // SAI THỜI ĐIỂM: lúc này khách còn chưa chọn phương thức thanh toán và vẫn
-    // có thể sửa đơn, nên nói "bếp đang chuẩn bị" là nói sớm. Câu đó chuyển
-    // xuống bước khách chọn xong phương thức.
+    // SAI THỜI ĐIỂM: lúc này khách còn chưa chọn phương thức thanh toán, nên
+    // nói "bếp đang chuẩn bị" là nói sớm. Câu đó chuyển xuống bước khách chọn
+    // xong phương thức.
     await saveOrderBill({ ...updated, session_id: order.session_id }, updated.invoice, req.admin.id);
 
     notifyAdminRealtime('order_update', { sessionId: order.session_id, orderId: order.id, status: 'awaiting_payment', projectId: order.project_id });
@@ -13468,8 +13623,14 @@ app.post('/api/admin/orders/:orderId/reject', checkAdminAuth, requireWorkingHour
   const reason = String(req.body?.reason || '').trim().slice(0, 500);
   try {
     const orderRes = await db.query('SELECT * FROM chat_orders WHERE id = $1', [req.params.orderId]);
-    const order = orderRes.rows[0];
+    let order = orderRes.rows[0];
     if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+    // Đơn đã tự huỷ rồi thì không từ chối lại được: ghi đè 'expired' thành
+    // 'rejected' là xoá mất dấu vết ai/cái gì đã đóng đơn.
+    order = (await maybeExpirePendingOrder(order)) || order;
+    if (order.status === 'expired') {
+      return res.status(409).json({ error: 'Đơn đã quá hạn xác nhận.', code: 'order_expired' });
+    }
     if (order.status !== 'pending_confirm') {
       return res.status(409).json({ error: 'Đơn này không ở trạng thái chờ xác nhận.' });
     }
@@ -13519,8 +13680,12 @@ app.put('/api/admin/orders/:orderId/notes', checkAdminAuth, requireWorkingHours,
   if (!notes || typeof notes !== 'object') return res.status(400).json({ error: 'Cần danh sách ghi chú.' });
   try {
     const orderRes = await db.query('SELECT * FROM chat_orders WHERE id = $1', [req.params.orderId]);
-    const order = orderRes.rows[0];
+    let order = orderRes.rows[0];
     if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
+    order = (await maybeExpirePendingOrder(order)) || order;
+    if (order.status === 'expired') {
+      return res.status(409).json({ error: 'Đơn đã quá hạn xác nhận.', code: 'order_expired' });
+    }
     if (order.status !== 'pending_confirm') {
       return res.status(409).json({ error: 'Chỉ ghi chú được khi đơn còn chờ xác nhận.' });
     }
@@ -14651,6 +14816,36 @@ function paymentDueAt(order) {
   return Number.isFinite(due) ? due : null;
 }
 
+// ─── HẠN XÁC NHẬN ĐƠN: 5 PHÚT ───────────────────────────────────────────────
+//
+// Khách gửi đơn xong mà không ai xác nhận trong 5 phút thì đơn tự huỷ. Lý do
+// không để đơn treo vô hạn: khách ngồi chờ không biết bao giờ mới có người,
+// còn quán thì giữ một đơn "đang chờ" chặn mất suất đặt tiếp theo của chính
+// bàn đó (mỗi phiên chỉ được một đơn đang chờ).
+//
+// Mốc đếm là pending_since — LẦN GẦN NHẤT đơn bước vào bước chờ xác nhận.
+//
+// KHÔNG dùng created_at: khách sửa đơn trên bill thì đơn quay lại chờ xác nhận
+// mà created_at giữ nguyên mốc cũ, nên đơn vừa sửa xong đã quá hạn sẵn và bị
+// huỷ ngay, có khi trước cả khi Sale kịp nhìn thấy nó.
+//
+// KHÔNG dùng updated_at: cột đó nhúc nhích theo mọi lần ghi, kể cả lần Sale
+// thêm ghi chú. Đếm theo nó thì mỗi lần Sale gõ một chữ là đồng hồ lùi về đầu,
+// và đơn không bao giờ hết hạn.
+//
+// Không có cơ chế tạm dừng như đồng hồ thanh toán: khách sửa đơn là đồng hồ
+// đếm LẠI TỪ ĐẦU (pending_since được đặt lại), không phải dừng rồi chạy tiếp —
+// đơn vừa đổi món là một đơn khác, Sale cần đủ 5 phút để xem lại.
+const CONFIRM_WINDOW_MS = 5 * 60 * 1000;
+
+function confirmDueAt(order) {
+  if (!order || order.status !== 'pending_confirm') return null;
+  const placedAt = order.pending_since || order.created_at;
+  if (!placedAt) return null;
+  const due = new Date(placedAt).getTime() + CONFIRM_WINDOW_MS;
+  return Number.isFinite(due) ? due : null;
+}
+
 async function logOrderEvent(order, eventType, { admin = null, actorRole = '', actorName = '', changes = [] } = {}, runner = db) {
   if (!order?.id || !order?.session_id) throw new Error('Không thể ghi lịch sử cho đơn không hợp lệ.');
   const role = actorRole || admin?.role || 'system';
@@ -14790,6 +14985,141 @@ async function maybeAutoSelectDeferredPayment(order) {
   void deliverPosEvent(order.id, 'payment.selected');
   return updated.rows[0];
 }
+
+// ─── TỰ HUỶ ĐƠN QUÁ HẠN XÁC NHẬN ────────────────────────────────────────────
+//
+// Đổi trạng thái bằng MỘT câu UPDATE có điều kiện status = 'pending_confirm'.
+// Đây là hàng rào chống chạy hai lần: quét định kỳ và một request của khách có
+// thể vào đúng cùng lúc, nhưng chỉ một trong hai đổi được dòng — bên kia thấy
+// rowCount = 0 và im lặng rút. Nếu kiểm tra trước rồi mới ghi thì khách nhận
+// hai lần cùng một tin "đơn đã hết hạn".
+async function expirePendingOrder(order) {
+  if (!order?.id) return null;
+  const updated = await db.query(
+    `UPDATE chat_orders
+        SET status = 'expired', expired_at = NOW(), updated_at = NOW()
+      WHERE id = $1 AND status = 'pending_confirm'
+      RETURNING *`,
+    [order.id]
+  ).catch((error) => {
+    console.error('[Đơn] Không huỷ được đơn quá hạn:', error.message);
+    return { rows: [] };
+  });
+  const het = updated.rows[0];
+  if (!het) return null;
+
+  const phut = Math.round(CONFIRM_WINDOW_MS / 60000);
+  await logOrderEvent(het, 'order_expired', {
+    actorRole: 'system',
+    changes: [`Quá ${phut} phút không có ai xác nhận, hệ thống tự huỷ đơn.`],
+  }).catch((error) => console.error('[Đơn] Không ghi được nhật ký đơn quá hạn:', error.message));
+
+  // Hai tin, hai người đọc khác nhau — cùng cách chia như lúc thu đủ tiền.
+  //
+  // Khách cần biết PHẢI LÀM GÌ TIẾP: câu cho khách nói thẳng là đặt đơn mới.
+  // Sale cần biết ĐƠN ĐÓ GIỜ RA SAO: câu cho Sale nói đơn đã quá hạn xác nhận,
+  // kèm mã đơn để đối chiếu. Dùng chung một câu cho cả hai thì bên nào cũng
+  // đọc phải nửa câu viết cho người khác.
+  const chuoiMa = het.order_code ? ` (mã đơn ${het.order_code})` : '';
+  const tinNhanVien = `[Đặt món] Đơn đã quá hạn xác nhận — quá ${phut} phút không ai xác nhận nên hệ thống tự huỷ${chuoiMa}.`;
+
+  // CÂU CHO KHÁCH ĐƯỢC DỰNG SẴN THEO NGÔN NGỮ KHÁCH, không ghi tiếng Việt rồi
+  // nhờ máy dịch.
+  //
+  // Đây là câu khách buộc phải hiểu ngay thì mới biết đặt lại đơn. Để máy dịch
+  // lo thì nó phụ thuộc một lượt gọi mạng có thể chậm hoặc hỏng, và lúc hỏng
+  // thì khách đọc phải tiếng Việt — đúng cảnh cần tránh. Các tin hệ thống khác
+  // (lời chào, tin chuyển cho nhân viên, tin chờ) đều đã dựng sẵn như vậy.
+  const tinKhachTheoTieng = {
+    vi: 'Đơn của bạn đã hết hạn, vui lòng đặt đơn mới!',
+    en: 'Your order has expired — please place a new one!',
+    ru: 'Срок вашего заказа истёк — пожалуйста, оформите новый!',
+    zh: '您的订单已过期，请重新下单！',
+    ko: '주문이 만료되었습니다. 새로 주문해 주세요!',
+    kk: 'Тапсырысыңыздың мерзімі бітті, жаңа тапсырыс беріңіз!',
+  };
+  const tiengKhach = (await db.query(
+    'SELECT detected_language FROM sessions WHERE id = $1', [het.session_id]
+  ).catch(() => ({ rows: [] }))).rows[0]?.detected_language;
+  const maTieng = ngonNguKhachHopLe(tiengKhach) || 'vi';
+  const tinKhach = tinKhachTheoTieng[maTieng] || tinKhachTheoTieng.vi;
+
+  const nvRes = await db.query(
+    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, visible_to,
+                           system_kind, system_params)
+     VALUES ($1, 'system', $2, $2, 'vi', 'staff', 'order_expired', $3) RETURNING id`,
+    [het.session_id, tinNhanVien,
+     JSON.stringify({ orderCode: het.order_code || '', minutes: phut })]
+  ).catch((error) => { console.error('[Đơn] Không gửi được tin quá hạn cho nhân viên:', error.message); return { rows: [] }; });
+
+  // language = ngôn ngữ khách, và translated_text ghi luôn bằng chính nó: câu
+  // này đã đúng tiếng rồi, không được đem đi dịch lại lần nữa.
+  await db.query(
+    `INSERT INTO messages (session_id, sender, original_text, translated_text, language, system_kind)
+     VALUES ($1, 'system', $2, $2, $3, 'guest_only')`,
+    [het.session_id, tinKhach, maTieng]
+  ).catch((error) => console.error('[Đơn] Không gửi được tin quá hạn cho khách:', error.message));
+
+  notifyAdminRealtime('new_message', {
+    sessionId: het.session_id, projectId: het.project_id,
+    sender: 'system', messageId: nvRes.rows?.[0]?.id,
+  });
+  notifyAdminRealtime('order_update', {
+    sessionId: het.session_id, orderId: het.id, status: 'expired', projectId: het.project_id,
+  });
+  notifyVisitorRealtime(het.session_id, 'order_update', { orderId: het.id, status: 'expired' });
+  return het;
+}
+
+// Gọi được ở bất cứ chỗ nào vừa đọc đơn ra: rẻ (chỉ so hai con số) và chỉ chạm
+// database khi thật sự quá hạn.
+async function maybeExpirePendingOrder(order) {
+  if (!order || order.status !== 'pending_confirm') return null;
+  const dueAt = confirmDueAt(order);
+  if (dueAt === null || Date.now() < dueAt) return null;
+  return expirePendingOrder(order);
+}
+
+// QUÉT ĐỊNH KỲ — KHÔNG BỎ ĐƯỢC, dù đã có kiểm tra lười ở trên.
+//
+// Kiểm tra lười chỉ chạy khi có ai đó gọi API. Khách đóng trình duyệt xong đi
+// mất là không còn ai gọi nữa: đơn treo ở 'pending_confirm' vĩnh viễn, Sale
+// nhìn bảng vẫn thấy một đơn đang chờ không bao giờ hết hạn, và chính bàn đó
+// bị chặn không đặt được đơn mới (mỗi phiên chỉ một đơn đang chờ).
+//
+// 30 giây là đủ: sai số lớn nhất so với mốc 5 phút là 30 giây, mà câu truy vấn
+// thì đi thẳng vào chỉ mục một phần idx_chat_orders_pending_created.
+const CONFIRM_SWEEP_MS = 30000;
+let dangQuetDonQuaHan = false;
+
+async function quetDonQuaHan() {
+  // Lượt quét trước chưa xong thì bỏ lượt này. Máy chủ chậm một nhịp mà cứ
+  // chồng lượt lên nhau thì hai lượt cùng đọc một đơn.
+  if (dangQuetDonQuaHan) return;
+  dangQuetDonQuaHan = true;
+  try {
+    const quaHan = await db.query(
+      `SELECT * FROM chat_orders
+        WHERE status = 'pending_confirm'
+          AND COALESCE(pending_since, created_at) < NOW() - ($1::bigint * INTERVAL '1 millisecond')
+        ORDER BY COALESCE(pending_since, created_at)
+        LIMIT 200`,
+      [CONFIRM_WINDOW_MS]
+    );
+    for (const don of quaHan.rows) {
+      await expirePendingOrder(don);
+    }
+  } catch (error) {
+    console.error('[Đơn] Quét đơn quá hạn lỗi:', error.message);
+  } finally {
+    dangQuetDonQuaHan = false;
+  }
+}
+
+// unref(): vòng quét này không được giữ tiến trình sống. Thiếu nó thì lệnh
+// dừng máy chủ phải chờ tới 30 giây mới thoát, và các bài đo chạy xong thì
+// treo thay vì kết thúc.
+setInterval(quetDonQuaHan, CONFIRM_SWEEP_MS).unref();
 
 // Khách mở form sửa món thì dừng đồng hồ 2 phút; gửi lại đơn hoặc đóng form thì
 // chạy tiếp TỪ CHỖ DỪNG.

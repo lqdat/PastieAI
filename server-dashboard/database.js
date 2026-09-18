@@ -1393,6 +1393,38 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS payment_paused_at TIMESTAMP;`);
     await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS payment_paused_ms BIGINT NOT NULL DEFAULT 0;`);
 
+    // ── ĐƠN QUÁ HẠN XÁC NHẬN ──────────────────────────────────────────────
+    //
+    // Đơn khách gửi mà không ai xác nhận trong 5 phút thì tự huỷ. Ghi mốc huỷ
+    // ra cột riêng thay vì chỉ dựa vào updated_at: updated_at đổi theo mọi
+    // lần ghi, nên sau này không còn biết đơn hết hạn lúc nào.
+    //
+    // Trạng thái dùng 'expired', KHÔNG dùng lại 'rejected'. Sale chủ động từ
+    // chối và không ai kịp xác nhận là hai việc khác hẳn nhau về trách nhiệm;
+    // gộp chung thì báo cáo không tách được nữa.
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS expired_at TIMESTAMP;`);
+
+    // Mốc đồng hồ 5 phút: LẦN GẦN NHẤT đơn bước vào trạng thái chờ xác nhận.
+    //
+    // Không dùng created_at được, vì khách sửa đơn trên bill thì đơn quay lại
+    // chờ xác nhận mà created_at giữ nguyên mốc cũ — đơn vừa sửa xong sẽ bị
+    // huỷ ngay lập tức, có khi trước cả khi Sale kịp nhìn thấy nó.
+    //
+    // Cũng không dùng updated_at được: cột đó nhúc nhích theo MỌI lần ghi, kể
+    // cả lần Sale thêm một ghi chú. Đếm theo nó thì mỗi lần Sale gõ một chữ là
+    // đồng hồ lùi về đầu, và đơn không bao giờ hết hạn.
+    await query(`ALTER TABLE chat_orders ADD COLUMN IF NOT EXISTS pending_since TIMESTAMP;`);
+    // Đơn cũ chưa có mốc này: lấy tạm created_at. Chỉ chạy một lần, vì lần sau
+    // pending_since đã khác NULL.
+    await query(`UPDATE chat_orders SET pending_since = created_at
+                  WHERE pending_since IS NULL AND status = 'pending_confirm';`);
+
+    // Quét đơn quá hạn chạy mỗi 30 giây trên toàn bảng. Không có chỉ mục này
+    // thì nó quét tuần tự cả bảng đơn, mỗi 30 giây, mãi mãi.
+    await query(`DROP INDEX IF EXISTS idx_chat_orders_pending_created;`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_chat_orders_pending_since
+                   ON chat_orders(pending_since) WHERE status = 'pending_confirm';`);
+
     // ── Từng bản BILL, giữ lại hết ────────────────────────────────────────
     //
     // chat_orders chỉ có MỘT dòng cho mỗi đơn, và mỗi lần Sale xác nhận lại

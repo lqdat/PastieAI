@@ -88,13 +88,56 @@ const RIENG_HOA = 'ӘҒҚҢӨҰҮҺІ';
   const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   const CHO_PHAI_CO_KK = [
     ['MENU_LANGS (thực đơn dịch sẵn)', /const MENU_LANGS = \[[^\]]*'kk'[^\]]*\]/],
-    ['validLanguages (ngôn ngữ phiên)', /const validLanguages = new Set\(\[[^\]]*'kk'[^\]]*\]\)/],
-    ['validLangs (nhận diện ngôn ngữ)', /const validLangs = \[[^\]]*'kk'[^\]]*\]/],
-    ['resumeLang (khôi phục phiên cũ)', /const resumeLang = \[[^\]]*'kk'[^\]]*\]/],
+    // validLanguages và validLangs cũng đã gộp về danh sách chung — canh việc
+    // chúng DÙNG danh sách đó, không canh việc chúng tự khai lại một bản.
+    ['đường đổi ngôn ngữ dùng danh sách chung', /if \(!NGON_NGU_KHACH\.has\(language\)\)/],
+    ['đường nhận diện ngôn ngữ dùng danh sách chung', /const updateLang = ngonNguKhachHopLe\(/],
+    // resumeLang không còn khai mảng riêng: nó lấy từ danh sách chung
+    // NGON_NGU_KHACH. Canh theo danh sách chung thay vì theo hình dạng cũ —
+    // canh hình dạng cũ thì việc gộp ba bản chép lại thành một bị báo là hỏng.
+    ['NGON_NGU_KHACH (danh sách ngôn ngữ khách chọn)', /const NGON_NGU_KHACH = new Set\(\[[^\]]*'kk'[^\]]*\]\)/],
+    ['resumeLang (khôi phục phiên cũ) lấy từ danh sách chung', /const resumeLang = ngonNguKhachHopLe\(/],
   ];
   for (const [ten, re] of CHO_PHAI_CO_KK) {
     check('server.js — ' + ten + ' có "kk"', re.test(server));
   }
+
+  // ── 4b. QUÉT CẤU TRÚC: bảng ngôn ngữ nào có "ko" thì phải có "kk" ─────────
+  //
+  // Bốn danh sách ở trên là bốn chỗ ĐÃ BIẾT. Vấn đề là những chỗ CHƯA biết:
+  // câu chào khách, lời chào của chatbot, tin báo chuyển cho nhân viên, tin
+  // báo tổng đài viên tiếp nhận — bốn bảng viết tay nằm rải rác, không theo
+  // khuôn mẫu nào, nên lần thêm tiếng Kazakh đầu tiên bỏ sót cả bốn. Khách
+  // chọn tiếng Kazakh vẫn bị chào bằng tiếng Việt.
+  //
+  // Nên phép đo này không liệt kê chỗ nào cả: nó tìm MỌI khoá "ko:" trong
+  // server.js rồi đòi trong vòng vài dòng quanh đó phải có "kk:". Thêm một
+  // bảng ngôn ngữ mới sau này mà quên Kazakh thì chính phép đo này bắt được,
+  // không cần ai nhớ ra để bổ sung.
+  const dongServer = server.split('\n');
+  const bangThieuKk = [];
+  dongServer.forEach((dong, i) => {
+    if (!/(^|[^.\w])ko:\s/.test(dong)) return;
+    // Bảng ngôn ngữ viết theo lối mỗi mã một dòng, nên 8 dòng quanh đó là đủ
+    // rộng để chứa cả bảng dài nhất mà không trùm sang bảng kế bên.
+    const quanh = dongServer.slice(Math.max(0, i - 8), i + 9).join('\n');
+    if (!/(^|[^.\w])kk:\s/m.test(quanh)) {
+      bangThieuKk.push(`dòng ${i + 1}: ${dong.trim().slice(0, 70)}`);
+    }
+  });
+  check('server.js — mọi bảng ngôn ngữ có "ko" đều có "kk"',
+    bangThieuKk.length === 0,
+    bangThieuKk.join('\n      ') + '\n      (bảng nào chào/báo cho khách mà thiếu kk thì khách Kazakh đọc phải tiếng Việt)');
+
+  // Riêng câu chào khách quét mã QR: đây là câu ĐẦU TIÊN khách đọc, nên canh
+  // thẳng bằng tên hàm chứ không chỉ dựa vào phép quét chung ở trên.
+  const khoiChao = server.slice(server.indexOf('function buildQrGreeting'),
+                                server.indexOf('async function sendQrWelcome'));
+  check('câu chào khách quét mã QR có bản Kazakh',
+    /kk: \{/.test(khoiChao), 'thiếu nhánh kk trong buildQrGreeting');
+  check('câu chào Kazakh viết bằng chữ Kirin, không phải chép tiếng Anh',
+    /[\u0400-\u04FF]/.test((/kk: \{[\s\S]*?\n {4}\},/.exec(khoiChao) || [''])[0]),
+    khoiChao.slice(khoiChao.indexOf('kk: {'), khoiChao.indexOf('kk: {') + 120));
 
   const helper = fs.readFileSync(path.join(__dirname, '..', 'gemini-helper.js'), 'utf8');
   check('gemini-helper — SUPPORTED_LANGS có "kk"',
