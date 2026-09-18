@@ -1235,11 +1235,21 @@ async function validateVisitorDeviceToken(req, session) {
     [token]
   );
   if (idCheck.rows.length === 0) {
+    // MÃ RIÊNG, KHÔNG DÙNG CHUNG VỚI DEVICE_REPLACED.
+    //
+    // Hai chuyện khác hẳn nhau: nhánh trên là token của thiết bị này không còn
+    // khớp với token đang hiệu lực — tức có người đăng nhập ở máy khác. Nhánh
+    // này là token vẫn đúng nhưng đã hết hạn hoặc bị đăng xuất, chẳng liên quan
+    // gì tới thiết bị khác.
+    //
+    // Trả chung một mã thì cổng khách hiện "Tài khoản đã đăng nhập trên thiết
+    // bị khác" cho một người chỉ đơn giản là ngồi lâu quá hạn — vừa sai, vừa
+    // làm khách hoảng tưởng tài khoản mình bị người lạ dùng.
     return {
       valid: false,
       status: 409,
       error: 'Phiên đăng nhập đã hết hạn hoặc đã bị đăng xuất.',
-      code: 'DEVICE_REPLACED'
+      code: 'IDENTITY_EXPIRED'
     };
   }
 

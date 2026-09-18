@@ -26,7 +26,9 @@ if (!isConfigured) {
 
 // Whisper nhận mã ngôn ngữ ISO-639-1. Truyền đúng ngôn ngữ người nói giúp nhận
 // diện chính xác hơn hẳn so với để nó tự đoán, nhất là với câu ngắn.
-const SUPPORTED_HINTS = new Set(['vi', 'en', 'ru', 'zh', 'ko']);
+// Whisper có hỗ trợ tiếng Kazakh; thiếu nó ở đây thì khách nói tiếng Kazakh bị
+// để cho mô hình tự đoán — mà đoán sai ngôn ngữ là nguồn sinh ảo giác lớn nhất.
+const SUPPORTED_HINTS = new Set(['vi', 'en', 'ru', 'zh', 'ko', 'kk']);
 
 function normalizeLanguageHint(language) {
   const code = String(language || '').trim().toLowerCase().slice(0, 2);
@@ -83,20 +85,111 @@ async function transcribeAudio(buffer, fileName, mimeType, language) {
   }
 }
 
+// ── LỌC ẢO GIÁC CỦA WHISPER ───────────────────────────────────────────────
+//
+// Bấm ghi âm rồi KHÔNG NÓI GÌ, Whisper vẫn trả về một câu hoàn chỉnh. Không
+// phải lỗi ngẫu nhiên: mô hình được luyện trên phụ đề YouTube, nên khi không có
+// tiếng nói nó rơi về câu xuất hiện dày đặc nhất trong dữ liệu luyện — với
+// tiếng Việt đó là lời kêu gọi đăng ký kênh và câu chào cuối video.
+//
+// Khách thấy trong ô chat của mình dòng "Hãy subscribe cho kênh Ghiền Mì Gõ…"
+// — một câu họ chưa từng nói, mang tên một kênh không liên quan gì đến quán.
+//
+// Lọc chia làm HAI TẦNG, và ranh giới giữa chúng là cố ý:
+//
+//   Tầng A — DẤU HIỆU CHẮC CHẮN LÀ RÁC. Tên kênh, lời kêu gọi đăng ký, dòng ghi
+//   công phụ đề. Không một người khách nào đang ngồi trong quán lại nói những
+//   chữ này vào micro. Thấy ở BẤT KỲ ĐÂU trong câu là bỏ cả câu.
+//
+//   Tầng B — CÂU KẾT VIDEO. "Cảm ơn các bạn đã theo dõi và hẹn gặp lại" là ảo
+//   giác, nhưng "cảm ơn" thì lại là chữ khách nói thật mỗi ngày. Nên tầng này
+//   đòi TRÙNG KHỚP CẢ CÂU sau khi chuẩn hoá, không phải chứa. Nhờ vậy khách nói
+//   "cảm ơn bạn nhé" vẫn đi qua, còn đúng câu kết video thì bị chặn.
+//
+// Chuẩn hoá trước khi so: bỏ dấu tiếng Việt, hạ chữ thường, bỏ dấu câu, gộp
+// khoảng trắng — vì Whisper trả về cùng một câu với dấu câu và cách viết hoa
+// khác nhau tuỳ lần.
+function chuanHoaDeSo(text) {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')   // bỏ dấu thanh và dấu mũ
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ') // bỏ dấu câu, giữ chữ mọi bảng chữ cái
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Tầng A: thấy ở bất kỳ đâu trong câu là bỏ.
+const DAU_HIEU_RAC = [
+  'ghien mi go',            // tên kênh YouTube xuất hiện nhiều nhất trong ảo giác tiếng Việt
+  'subscribe',
+  'dang ky kenh',
+  'dang ky de khong bo lo',
+  'bam chuong thong bao',
+  'amara org',              // "Subtitles by the Amara.org community"
+  'subtitles by',
+  'phu de boi',
+];
+// Các bảng chữ cái không dùng dấu thanh kiểu tiếng Việt thì so thẳng trên chữ
+// gốc (đã hạ chữ thường). Lưu ý tiếng Nga: bước bỏ dấu ở trên biến "й" thành
+// "и" — "подписывайтесь" thành "подписываитесь" — nên chuỗi này phải nằm ở đây
+// chứ không nằm trong danh sách đã chuẩn hoá.
+const DAU_HIEU_RAC_NGUYEN_VAN = [
+  'подписывайтесь',
+  'подписываитесь',
+  '订阅',
+  '字幕',
+  '구독',
+];
+
+// Tầng B: phải trùng khớp CẢ CÂU sau chuẩn hoá.
+const CAU_KET_VIDEO = [
+  'cam on cac ban da theo doi va hen gap lai',
+  'cam on cac ban da theo doi',
+  'cam on cac ban da xem video',
+  'hen gap lai cac ban trong video tiep theo',
+  'hen gap lai cac ban',
+  'chuc cac ban xem video vui ve',
+  'xin chao cac ban',
+  'thank you for watching',
+  'thanks for watching',
+  'see you in the next video',
+  'thank you',
+  'bye',
+  'you',
+  // Các nhãn âm thanh mô hình tự chèn khi không có tiếng nói.
+  'am nhac', 'tieng tho', 'im lang', 'music', 'silence', 'applause',
+  'laughter', 'whispering', 'cough',
+  'spasibo za prosmotr',
+];
+
 function sanitizeTranscribedText(rawText) {
-  let text = String(rawText || '').trim();
+  const text = String(rawText || '').trim();
   if (!text) return '';
 
-  // Khi không có tiếng nói (im lặng hoặc tiếng ồn nhỏ), Whisper thường xuất hiện dấu ".", "...", "。", "!" hoặc ký tự vô nghĩa
+  // Im lặng hoàn toàn: Whisper hay trả về đúng một dấu chấm, "..." hoặc "。".
   const stripped = text.replace(/^[.\s,。!?…·\-_:;'"“”‘’`~]+|[.\s,。!?…·\-_:;'"“”‘’`~]+$/g, '').trim();
   if (!stripped) return '';
 
-  // Lọc các hallucination phổ biến của mô hình khi im lặng
-  const isHallucination = /^(\(|\[|\{).+(\)|\]|\})$/.test(text) ||
-    /^(am nhac|âm nhạc|tiếng thở|im lặng|music|silence|applause|laughter|whispering|cough|thank you for watching|thanks for watching|bye|subtitles by|chúc các bạn|hẹn gặp lại|you)$/i.test(stripped);
-  if (isHallucination) return '';
+  // Nhãn trong ngoặc: "(tiếng nhạc)", "[Applause]", "{音楽}".
+  if (/^(\(|\[|\{).+(\)|\]|\})$/.test(text)) return '';
+
+  const chuan = chuanHoaDeSo(stripped);
+  if (!chuan) return '';
+
+  if (DAU_HIEU_RAC.some((dau) => chuan.includes(dau))) return '';
+  const thuong = text.toLowerCase();
+  if (DAU_HIEU_RAC_NGUYEN_VAN.some((dau) => thuong.includes(dau))) return '';
+  if (CAU_KET_VIDEO.includes(chuan)) return '';
 
   return text;
 }
 
-module.exports = { isConfigured, transcribeAudio, normalizeLanguageHint, sanitizeTranscribedText };
+module.exports = {
+  isConfigured,
+  transcribeAudio,
+  normalizeLanguageHint,
+  sanitizeTranscribedText,
+  chuanHoaDeSo,
+};

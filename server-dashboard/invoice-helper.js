@@ -454,9 +454,11 @@ function createInvoicePdfDataUrl(invoice, language) {
     }
     summaryRow(copy.grandTotal, money(data.totalAmount), { bold: true });
 
+    // Giống bản SVG: dòng VAT là một hàng riêng, căn giữa cả trang, nằm giữa
+    // dòng tổng cộng và lời cảm ơn — không nép bên phải rồi dính vào chữ.
+    doc.moveDown(0.5);
     useRegular().fontSize(8).fillColor('#7b6c7a');
-    doc.text(copy.vatIncluded, summaryX, doc.y, { width: summaryW, align: 'right' });
-    doc.y += 4;
+    doc.text(copy.vatIncluded, left, doc.y, { width, align: 'center' });
 
     doc.moveDown(1.1);
     useBold().fontSize(10.5).fillColor('#b20c69').text(copy.thanks, left, doc.y, { width, align: 'center' });
@@ -723,8 +725,13 @@ function createInvoiceSvg(invoice, language) {
     const size = options.bold ? 14.5 : 12;
     const fill = options.bold ? '#b20c69' : '#4a3f52';
     if (options.bold) {
-      parts.push(`<line x1="${xSummaryStart}" y1="${y - 8}" x2="${xTotalEnd}" y2="${y - 8}" stroke="#e6cede" stroke-width="1"/>`);
-      y += 4;
+      // Gạch phân cách phải CÁCH XA chữ "TỔNG CỘNG".
+      //
+      // Trước đây gạch nằm ở y-8 rồi chữ vẽ ở y+4, tức chỉ cách chân chữ 12px
+      // trong khi chữ đậm 14,5px cao tới hơn 10px — gạch gần như dính vào đầu
+      // chữ, nhìn ra thành một dấu gạch đỏ đè lên dòng tổng cộng.
+      parts.push(`<line x1="${xSummaryStart}" y1="${y - 10}" x2="${xTotalEnd}" y2="${y - 10}" stroke="#e6cede" stroke-width="1"/>`);
+      y += 8;
     }
     text(label, xSummaryStart, y, { size, weight: options.bold ? 700 : 400, fill, anchor: 'start' });
     text(value, xTotalEnd, y, { size, weight: options.bold ? 700 : 400, fill, anchor: 'end' });
@@ -737,9 +744,15 @@ function createInvoiceSvg(invoice, language) {
   }
   summary(copy.grandTotal, money(data.totalAmount), { bold: true });
 
-  y += 4;
-  text(copy.vatIncluded, xTotalEnd, y, { size: 9.5, fill: '#7b6c7a', anchor: 'end' });
-  y += 12;
+  // Dòng "giá đã bao gồm VAT" đứng RIÊNG MỘT HÀNG, CĂN GIỮA.
+  //
+  // Trước đây nó căn phải và chỉ cách dòng "Cảm ơn quý khách!" 12px, mà dòng
+  // cảm ơn căn giữa cỡ 13px — hai chuỗi nằm chồng lên nhau ở giữa trang. Căn
+  // giữa và nới khoảng cách ra cho nó thành một dòng ghi chú độc lập nằm giữa
+  // tổng cộng và lời cảm ơn.
+  y += 10;
+  text(copy.vatIncluded, W / 2, y, { size: 9.5, fill: '#7b6c7a', anchor: 'middle' });
+  y += 24;
   text(copy.thanks, W / 2, y, { size: 13, weight: 700, fill: '#b20c69', anchor: 'middle' });
   y += 18;
   text(copy.note, W / 2, y, { size: 10, fill: '#9b8d9c', anchor: 'middle' });

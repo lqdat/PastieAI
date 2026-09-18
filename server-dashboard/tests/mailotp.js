@@ -87,8 +87,84 @@ const RIENG_KK = 'әғқңөұүһіӘҒҚҢӨҰҮҺІ';
   check('sendOTPEmail nhận tham số ngôn ngữ',
     /async function sendOTPEmail\(toEmail, otpCode, lang\)/.test(helper));
   check('tiêu đề thư cũng đổi theo ngôn ngữ, không riêng thân thư',
-    /subject: `\[OTP\] \$\{chu\.tieuDe\}/.test(helper),
+    /subject: `\[OTP\] \$\{otpCode\} - \$\{chu\.tieuDe\}`/.test(helper),
     'tiêu đề là dòng khách nhìn thấy trong hộp thư trước khi mở');
+
+
+  // ── 5. KHUNG HTML CỦA LÁ THƯ ────────────────────────────────────────────
+  //
+  // Khung thư từng bị thay bằng một mẫu chung chung (Arial, khung 600px, tiêu
+  // đề tím #4f46e5) — không phải màu của Pastie. Đây là thứ ĐẦU TIÊN khách nhận
+  // được, và một lá thư không mang màu của quán trông như thư giả mạo, đúng lúc
+  // khách đang phải tin tưởng để gõ mã vào.
+  //
+  // Dựng thư thật qua khungThuOtp chứ không đọc mã nguồn: thiếu một biến thì
+  // chỗ đó ra chữ "undefined" trong thư khách, mà đọc mã nguồn không thấy được.
+  check('khung thư được tách riêng để dựng thử mà không phải gửi thật',
+    typeof resend.khungThuOtp === 'function');
+
+  if (typeof resend.khungThuOtp === 'function') {
+    for (const ma of NGON_NGU) {
+      const thu = resend.khungThuOtp('482913', resend.chuOtp(ma), 'https://agent.pastiechat.com/pastie-chat-biz-compact.png', ma);
+      const chu = resend.chuOtp(ma);
+
+      check(`thư "${ma}" là HTML, không phải chữ trơn`, /^<!doctype html>/i.test(thu));
+      check(`thư "${ma}" không sót chỗ nào ra "undefined"`, !thu.includes('undefined'),
+        thu.slice(Math.max(0, thu.indexOf('undefined') - 60), thu.indexOf('undefined') + 20));
+      check(`thư "${ma}" có mã OTP`, thu.includes('482913'));
+      // Đủ CẢ NĂM chuỗi trong bảng chữ — thiếu một chuỗi là mất một đoạn thư.
+      for (const khoa of ['h1', 'khongPhanHoi', 'chao', 'moDau', 'nhanOtp', 'hieuLuc', 'hoTro', 'tranTrong', 'banQuyen']) {
+        check(`thư "${ma}" có đoạn "${khoa}"`, thu.includes(chu[khoa]),
+          `thiếu: ${chu[khoa]}`);
+      }
+    }
+
+    // Nhận diện Pastie: hồng #ec4899, khung 540px, font hệ thống — cùng bộ với
+    // mail OTP nhân viên (sendAdminOTPEmail), đừng để hai lá thư lệch nhau.
+    const mau = resend.khungThuOtp('000000', resend.chuOtp('vi'), 'https://x/logo.png', 'vi');
+    check('giữ đúng dải màu thương hiệu #F438A1 → #C90C6C',
+      mau.includes('#F438A1') && mau.includes('#C90C6C'));
+    check('giữ logo Pastie Chat', mau.includes('alt="Pastie Chat"'));
+    check('giữ khung thẻ 600px', mau.includes('max-width:600px'));
+    check('giữ chân thư: hotline, email, website',
+      mau.includes('0984 448 834') && mau.includes('ai@pastie.vn') && mau.includes('pastiechat.com'));
+    check('giữ bố cục bảng cho hộp thư cũ (Outlook không dựng được flex/grid)',
+      (mau.match(/<table/g) || []).length >= 2 && mau.includes('role="presentation"'));
+
+    // Thẻ <html lang> phải đổi theo tiếng: bộ lọc thư và trình đọc màn hình
+    // đều dựa vào nó, để cứng "vi" thì thư tiếng Hàn vẫn khai là tiếng Việt.
+    for (const ma of NGON_NGU) {
+      const thu = resend.khungThuOtp('1', resend.chuOtp(ma), 'https://x/l.png', ma);
+      check(`thẻ <html lang> của thư "${ma}" khai đúng tiếng`,
+        thu.includes(`<html lang="${ma}">`));
+    }
+  }
+
+
+  // ── 6. CÁC HÀM GỬI MAIL KHÁC KHÔNG ĐƯỢC BIẾN MẤT ───────────────────────
+  //
+  // Một lượt sửa trước đây đã làm rơi mất sendAccountActivationEmail khỏi tệp
+  // này, trong khi server.js gọi nó ở ba chỗ. Gọi một hàm không tồn tại thì
+  // lượt tạo tài khoản đổ ngay tại đó — mà không ai thấy cho tới khi có người
+  // tạo tài khoản mới.
+  //
+  // Đo bằng cách đối chiếu THẲNG với các lời gọi trong server.js, nên thêm một
+  // hàm gửi mail mới mà quên xuất ra cũng bị bắt.
+  {
+    const nguon = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    const duocGoi = [...new Set([...nguon.matchAll(/resend\.([a-zA-Z]+)\s*\(/g)].map((m) => m[1]))];
+    check('server.js có gọi hàm gửi mail nào đó', duocGoi.length > 0);
+    for (const ten of duocGoi) {
+      check(`resend-helper xuất ra "${ten}" như server.js đang gọi`,
+        typeof resend[ten] === 'function',
+        `server.js gọi resend.${ten}(...) mà tệp này không xuất ra — gọi là đổ ngay tại chỗ`);
+    }
+  }
+
+  // Chữ ký hàm phải khớp với cách server.js gọi.
+  check('sendAdminOTPEmail vẫn nhận tham số thứ tư (options: loginUrl, role)',
+    /async function sendAdminOTPEmail\(toEmail, otpCode, recipientName = '[^']*', options = \{\}\)/.test(helper),
+    'mất options thì nút đăng nhập trong thư nhân viên luôn trỏ về agent, kể cả với Sale');
 
   console.log('');
   console.log(failures.length ? `HỎNG ${failures.length}:\n  - ` + failures.join('\n  - ') : `ĐẠT ${passed}/${passed}`);
