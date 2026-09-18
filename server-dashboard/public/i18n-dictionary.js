@@ -4529,46 +4529,46 @@ window.TRANSLATIONS = {
 
 window.PASTIE_MENU_DISH_DICT = {
   "Khô cá đuối nướng xé sợi trộn xoài chua giòn": {
-      "en": "Grilled shredded stingray with crunchy green mango",
-      "zh": "烤魔鬼鱼干丝拌香脆青芒",
-      "ko": "구운 가오리채와 아삭한 그린 망고 무침",
-      "ru": "Жареный сушеный скат с хрустящим зеленым манго"
+    "en": "Grilled shredded stingray with crunchy green mango",
+    "zh": "烤魔鬼鱼干丝拌香脆青芒",
+    "ko": "구운 가오리채와 아삭한 그린 망고 무침",
+    "ru": "Жареный сушеный скат с хрустящим зеленым манго"
   },
   "Sứa biển giòn sần sật trộn hoa chuối thơm ngon": {
-      "en": "Crispy jellyfish salad with fragrant banana blossom",
-      "zh": "爽脆海蜇拌芭蕉花",
-      "ko": "아삭한 해파리와 바나나 꽃 샐러드",
-      "ru": "Хрустящая медуза с цветками банана"
+    "en": "Crispy jellyfish salad with fragrant banana blossom",
+    "zh": "爽脆海蜇拌芭蕉花",
+    "ko": "아삭한 해파리와 바나나 꽃 샐러드",
+    "ru": "Хрустящая медуза с цветками банана"
   },
   "Vỏ giòn rụm, nhân tôm cua đầy đặn": {
-      "en": "Crispy wrapper filled with savory shrimp & crab",
-      "zh": "外皮金黄酥脆，虾蟹馅料饱满",
-      "ko": "바삭한 피에 새우와 게살이 듬뿍 찬 롤",
-      "ru": "Хрустящая корочка, щедрая начинка из креветок и краба"
+    "en": "Crispy wrapper filled with savory shrimp & crab",
+    "zh": "外皮金黄酥脆，虾蟹馅料饱满",
+    "ko": "바삭한 피에 새우와 게살이 듬뿍 찬 롤",
+    "ru": "Хрустящая корочка, щедрая начинка из креветок и краба"
   },
   "Ghẹ, tôm sú, mực một nắng nướng than hoa, kèm rau rừng và bánh tráng.": {
-      "en": "Flower crab, tiger prawns, sun-dried squid grilled over charcoal with wild herbs & rice paper.",
-      "zh": "木炭烤花蟹、黑虎虾、半干鱿鱼，配野生时蔬与米纸。",
-      "ko": "꽃게, 블랙타이거 새우, 반건조 오징어 숯불구이와 야생 채소, 라이스페이퍼.",
-      "ru": "Цветочный краб, тигровые креветки и кальмар на углях с травами и рисовой бумагой."
+    "en": "Flower crab, tiger prawns, sun-dried squid grilled over charcoal with wild herbs & rice paper.",
+    "zh": "木炭烤花蟹、黑虎虾、半干鱿鱼，配野生时蔬与米纸。",
+    "ko": "꽃게, 블랙타이거 새우, 반건조 오징어 숯불구이와 야생 채소, 라이스페이퍼.",
+    "ru": "Цветочный краб, тигровые креветки и кальмар на углях с травами и рисовой бумагой."
   },
   "Đủ cơm trắng, canh chua cá, tôm rang, thịt kho và rau luộc.": {
-      "en": "Includes white rice, sweet & sour fish soup, roasted prawns, braised pork & boiled greens.",
-      "zh": "配白米饭、酸鱼汤、香炒大虾、红烧肉及白灼青菜。",
-      "ko": "흰쌀밥, 생선 신맛 탕, 새우 볶음, 돼지고기 조림, 데친 채소 포함.",
-      "ru": "Белый рис, кисло-сладкий рыбный суп, жареные креветки, тушеная свинина и овощи."
+    "en": "Includes white rice, sweet & sour fish soup, roasted prawns, braised pork & boiled greens.",
+    "zh": "配白米饭、酸鱼汤、香炒大虾、红烧肉及白灼青菜。",
+    "ko": "흰쌀밥, 생선 신맛 탕, 새우 볶음, 돼지고기 조림, 데친 채소 포함.",
+    "ru": "Белый рис, кисло-сладкий рыбный суп, жареные креветки, тушеная свинина и овощи."
   },
   "Bánh canh chả cá hoặc bún quậy, kèm cà phê hoặc trà.": {
-      "en": "Fish cake noodle soup or stirred noodles, with coffee or tea.",
-      "zh": "鱼饼汤粉或坚江搅拌米粉，附赠咖啡或茶饮。",
-      "ko": "어묵 국수 또는 분꿔이, 커피 또는 차 포함.",
-      "ru": "Суп с рыбными котлетами или лапша Бун Куай, с кофе или чаем."
+    "en": "Fish cake noodle soup or stirred noodles, with coffee or tea.",
+    "zh": "鱼饼汤粉或坚江搅拌米粉，附赠咖啡或茶饮。",
+    "ko": "어묵 국수 또는 분꿔이, 커피 또는 차 포함.",
+    "ru": "Суп с рыбными котлетами или лапша Бун Куай, с кофе или чаем."
   },
   "Áp dụng cho toàn bộ nhóm Đồ uống, trừ rượu vang.": {
-      "en": "Applies to all drinks, excluding wine.",
-      "zh": "适用于所有饮品，葡萄酒除外。",
-      "ko": "와인을 제외한 모든 음료에 적용됩니다.",
-      "ru": "Действует на все напитки, кроме вина."
+    "en": "Applies to all drinks, excluding wine.",
+    "zh": "适用于所有饮品，葡萄酒除外。",
+    "ko": "와인을 제외한 모든 음료에 적용됩니다.",
+    "ru": "Действует на все напитки, кроме вина."
   },
   "Nước dừa tươi": {
     "en": "Fresh coconut water",
