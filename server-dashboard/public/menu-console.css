@@ -344,6 +344,37 @@
     color: var(--text-secondary);
 }
 
+.menu-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.menu-visibility {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.menu-visibility.is-visible {
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.28);
+    color: #10b981;
+}
+
+.menu-visibility.is-hidden {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #ef4444;
+}
+
 /* --- Trạng thái bản dịch ------------------------------------------------- */
 
 .menu-langs {
@@ -423,6 +454,24 @@
 
 .menu-act:hover { background: var(--panel-hover, rgba(0, 0, 0, 0.05)); color: var(--accent-color); }
 .menu-act.is-danger:hover { background: var(--danger-glow, rgba(239, 68, 68, 0.12)); color: var(--danger-color, #ef4444); }
+
+/* Nút bật/tắt hiển thị món */
+.menu-act-avail.is-visible {
+    color: var(--success-color, #10b981);
+    background: rgba(16, 185, 129, 0.08);
+}
+.menu-act-avail.is-visible:hover {
+    color: #059669;
+    background: rgba(16, 185, 129, 0.2);
+}
+.menu-act-avail.is-hidden {
+    color: var(--text-muted, #94a3b8);
+    background: rgba(148, 163, 184, 0.12);
+}
+.menu-act-avail.is-hidden:hover {
+    color: var(--text-primary);
+    background: rgba(148, 163, 184, 0.22);
+}
 
 /* --- Trạng thái rỗng ----------------------------------------------------- */
 
