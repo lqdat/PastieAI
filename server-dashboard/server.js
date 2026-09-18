@@ -13838,19 +13838,15 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
       const discount = Math.max(0, Number(item.discount || 0));
       const lineTotal = Math.max(0, unitPrice * quantity - discount);
 
-      if (!prev) {
-        // Món mới
-        if (!note.toLowerCase().includes('thêm')) {
-          note = note ? `${actorTitle} thêm: ${note}` : `${actorTitle} thêm món`;
-        }
-      } else {
-        // Món cũ được sửa giá
-        const prevPrice = Math.max(0, Number(prev.unitPrice ?? prev.price ?? 0));
-        if (prevPrice !== unitPrice && !note.toLowerCase().includes('sửa giá')) {
-          const priceChange = `${actorTitle} sửa giá: ${prevPrice.toLocaleString('vi-VN')}₫ -> ${unitPrice.toLocaleString('vi-VN')}₫`;
-          note = note ? `${note} | ${priceChange}` : priceChange;
-        }
+      // Khi agent sửa, không tự động ghi vào hóa đơn phần note (như 'Agent thêm món', 'Agent sửa giá').
+      // Lọc bỏ vết ghi chú hệ thống/agent cũ nếu có để hóa đơn luôn sạch sẽ.
+      if (note) {
+        note = note
+          .replace(/\(?(?:SuperAdmin|Agent|Sale)[^|)]*(?:thêm món|thêm:|sửa giá:?)[^|)]*\)?/gi, '')
+          .replace(/^[\s|:\-]+|[\s|:\-]+$/g, '')
+          .trim();
       }
+
 
       // Không còn VAT theo món: giá nhân viên gõ vào là giá khách trả.
       const { vatRate: _boVat, vatAmount: _boVatAmount, ...conLai } = item;
