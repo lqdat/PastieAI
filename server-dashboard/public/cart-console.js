@@ -32,6 +32,10 @@
             overlay.classList.add('is-closing');
             const target = overlay;
             overlay = null;
+            document.documentElement.classList.remove('cart-modal-open');
+            document.body.classList.remove('cart-modal-open');
+            document.body.style.overflow = '';
+            document.body.style.touchAction = '';
             setTimeout(() => target.remove(), 180);
         }
     }
@@ -757,6 +761,7 @@
     let trangHienTai = 1;
     let tongSoTrang = 1;
     let locQr = '';
+    let locStatus = ''; // '', 'awaiting_payment', 'paid'
     let locDate = 'all'; // 'all', 'today', 'yesterday', 'custom'
     let locFrom = '';
     let locTo = '';
@@ -776,6 +781,7 @@
         try {
             const tham = new URLSearchParams({ limit: String(MOI_TRANG), page: String(trangHienTai) });
             if (locQr) tham.set('qr', locQr);
+            if (locStatus && locStatus !== 'all') tham.set('status', locStatus);
             if (locDate === 'custom') {
                 if (locFrom) tham.set('from', locFrom);
                 if (locTo) tham.set('to', locTo);
@@ -947,6 +953,11 @@
 
     async function openCart() {
         close();
+        document.documentElement.classList.add('cart-modal-open');
+        document.body.classList.add('cart-modal-open');
+        document.body.style.overflow = 'hidden';
+        document.body.style.touchAction = 'none';
+
         overlay = document.createElement('div');
         overlay.className = 'cart-overlay';
         overlay.innerHTML = `
@@ -963,7 +974,7 @@
                     <div class="cart-filter-row">
                         <div class="cart-filter-col cart-col-qr">
                             <label class="cart-filter-label" for="cart-qr-select">
-                                <i class="ri-qr-code-line"></i> Bàn / Mã QR
+                                <i class="ri-qr-code-line"></i> Bàn / Vị trí
                             </label>
                             <div class="cart-select-box">
                                 <select id="cart-qr-select" class="cart-qr-filter">
@@ -973,18 +984,28 @@
                                 <i class="ri-arrow-down-s-line cart-select-icon"></i>
                             </div>
                         </div>
-                        <div class="cart-filter-col cart-col-date">
-                            <label class="cart-filter-label">
-                                <i class="ri-calendar-event-line"></i> Thời gian
+                        <div class="cart-filter-col cart-col-status">
+                            <label class="cart-filter-label" for="cart-status-select">
+                                <i class="ri-checkbox-circle-line"></i> Trạng thái
                             </label>
-                            <div class="cart-date-pills">
-                                <button type="button" class="cart-pill-btn${locDate === 'all' ? ' is-active' : ''}" data-date-filter="all">Tất cả</button>
-                                <button type="button" class="cart-pill-btn${locDate === 'today' ? ' is-active' : ''}" data-date-filter="today">Hôm nay</button>
-                                <button type="button" class="cart-pill-btn${locDate === 'yesterday' ? ' is-active' : ''}" data-date-filter="yesterday">Hôm qua</button>
-                                <button type="button" class="cart-pill-btn${locDate === 'custom' ? ' is-active' : ''}" data-date-filter="custom">
-                                    <i class="ri-calendar-2-line"></i> Từ ngày…
-                                </button>
+                            <div class="cart-select-box">
+                                <select id="cart-status-select" class="cart-status-filter">
+                                    <option value="">— Tất cả —</option>
+                                    <option value="awaiting_payment"${locStatus === 'awaiting_payment' ? ' selected' : ''}>Chưa thu tiền</option>
+                                    <option value="paid"${locStatus === 'paid' ? ' selected' : ''}>Đã thu tiền</option>
+                                </select>
+                                <i class="ri-arrow-down-s-line cart-select-icon"></i>
                             </div>
+                        </div>
+                    </div>
+                    <div class="cart-date-row">
+                        <div class="cart-date-pills">
+                            <button type="button" class="cart-pill-btn${locDate === 'all' ? ' is-active' : ''}" data-date-filter="all">Tất cả thời gian</button>
+                            <button type="button" class="cart-pill-btn${locDate === 'today' ? ' is-active' : ''}" data-date-filter="today">Hôm nay</button>
+                            <button type="button" class="cart-pill-btn${locDate === 'yesterday' ? ' is-active' : ''}" data-date-filter="yesterday">Hôm qua</button>
+                            <button type="button" class="cart-pill-btn${locDate === 'custom' ? ' is-active' : ''}" data-date-filter="custom">
+                                <i class="ri-calendar-2-line"></i> Từ ngày…
+                            </button>
                         </div>
                     </div>
                     <div class="cart-range-row" id="cart-range-row" style="${locDate === 'custom' ? '' : 'display: none;'}">
@@ -1008,17 +1029,25 @@
         document.body.appendChild(overlay);
         const body = overlay.querySelector('.cart-body');
 
-        // Bắt sự kiện chọn bàn / mã QR
+        // Bắt sự kiện chọn bàn / mã QR và Trạng thái
         overlay.addEventListener('change', async (event) => {
-            const chon = event.target.closest('.cart-qr-filter');
-            if (chon) {
-                locQr = chon.value || '';
+            const qrChon = event.target.closest('.cart-qr-filter');
+            if (qrChon) {
+                locQr = qrChon.value || '';
                 trangHienTai = 1;
                 await load(body);
+                return;
+            }
+            const statusChon = event.target.closest('.cart-status-filter');
+            if (statusChon) {
+                locStatus = statusChon.value || '';
+                trangHienTai = 1;
+                await load(body);
+                return;
             }
         });
 
-        // Bắt phím Enter trong ô nhập ngày
+        // Bắt phím Enter trong ô nhập ngày và Escape để đóng modal
         overlay.addEventListener('keydown', async (event) => {
             if (event.key === 'Enter' && event.target.closest('.cart-date-input')) {
                 event.preventDefault();
@@ -1028,6 +1057,11 @@
                 locTo = toInp ? toInp.value : '';
                 trangHienTai = 1;
                 await load(body);
+                return;
+            }
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                close();
             }
         });
 

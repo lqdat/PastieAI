@@ -6059,6 +6059,12 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
       where.push(`q.code = $${params.length}`);
     }
 
+    const locStatus = String(req.query.status || '').trim();
+    if (locStatus && locStatus !== 'all') {
+      params.push(locStatus);
+      where.push(`o.status = $${params.length}`);
+    }
+
     if (locDate === 'today') {
       where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date`);
     } else if (locDate === 'yesterday') {
