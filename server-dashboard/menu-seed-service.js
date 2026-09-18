@@ -6,7 +6,7 @@ const db = require(path.join(__dirname, 'database.js'));
 const { CATEGORY_TRANSLATIONS, ITEM_TRANSLATIONS } = require(path.join(__dirname, 'scripts', 'seed-translations-data.js'));
 const gemini = require(path.join(__dirname, 'gemini-helper.js'));
 
-const NGON_NGU_DICH = ['en', 'ru', 'zh', 'ko'];
+const NGON_NGU_DICH = ['en', 'ru', 'zh', 'ko', 'kk'];
 
 // ── DỊCH ĐỘNG, KHÔNG TRA BẢNG CỐ ĐỊNH ───────────────────────────────────────
 //

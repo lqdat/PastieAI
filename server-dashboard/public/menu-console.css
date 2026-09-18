@@ -1324,6 +1324,15 @@
 .device-hint strong { color: var(--text-secondary); }
 
 
+/* ── Khóa cuộn toàn trang khi mở modal hóa đơn để trải nghiệm mượt mà không bị kéo lệch ── */
+html.cart-modal-open,
+body.cart-modal-open {
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+    touch-action: none !important;
+    height: 100% !important;
+}
+
 /* ── Giỏ hàng và thực đơn chỉ-xem ────────────────────────────────────────── */
 .cart-overlay {
     position: fixed; inset: 0; z-index: 1200;
@@ -1332,17 +1341,21 @@
     background: rgba(31, 20, 35, .58);
     -webkit-backdrop-filter: blur(5px);
     backdrop-filter: blur(5px);
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+    touch-action: none !important;
 }
 .cart-overlay .cart-box {
     width: min(840px, 100%);
     max-height: min(88dvh, 800px);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: hidden !important;
     padding: 0;
     border: 1px solid rgba(239, 43, 157, .16);
     border-radius: 24px;
     background: #fff;
+    touch-action: auto;
     color: var(--text-primary);
     box-shadow: 0 28px 80px rgba(42, 21, 38, .28);
 }
@@ -1399,8 +1412,11 @@
 .cart-overlay .cart-body {
     flex: 1 1 auto;
     min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
     padding: 14px;
     display: flex;
     flex-direction: column;
@@ -2832,9 +2848,14 @@
     gap: 5px;
 }
 .cart-col-qr {
-    flex: 1 1 210px;
-    min-width: 170px;
-    max-width: 300px;
+    flex: 1 1 180px;
+    min-width: 150px;
+    max-width: 280px;
+}
+.cart-col-status {
+    flex: 1 1 180px;
+    min-width: 150px;
+    max-width: 280px;
 }
 .cart-col-date {
     flex: 1 1 auto;
@@ -2861,7 +2882,8 @@
     position: relative;
     width: 100%;
 }
-.cart-qr-filter {
+.cart-qr-filter,
+.cart-status-filter {
     width: 100%;
     height: 38px;
     padding: 0 32px 0 11px;
@@ -2877,7 +2899,8 @@
     -webkit-appearance: none;
     transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
 }
-.cart-qr-filter:focus {
+.cart-qr-filter:focus,
+.cart-status-filter:focus {
     outline: none;
     border-color: var(--accent-color);
     background: #fff;
