@@ -7585,6 +7585,11 @@ app.get('/api/admin/users', checkAdminAuth, async (req, res) => {
       ? await db.query(`
         SELECT a.id, a.username, a.role, a.full_name, a.avatar_url, a.is_active, a.project_id, 
                a.created_by_admin_id, a.managed_by_admin_id, a.sale_limit, a.deferred_payment_mode, a.allow_room_charge, a.created_at,
+               -- Ba cột này PHẢI có mặt. Thiếu chúng thì form sửa bên bảng điều
+               -- khiển không còn gì để đọc và buộc phải đoán lại loại hình từ
+               -- full_name theo một danh sách cứng — Agent gõ "Biệt thự nghỉ
+               -- dưỡng" xong mở form sửa ra thấy ô trống, bấm Lưu là mất chữ.
+               a.proper_name, a.common_name, a.name_order,
                m.full_name AS manager_name, m.username AS manager_username,
                (SELECT COUNT(*)::int FROM admins s WHERE s.managed_by_admin_id = a.id AND s.role = 'sale') AS used_sales_count
         FROM admins a
