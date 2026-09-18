@@ -2635,6 +2635,10 @@ app.use('/api', (req, res, next) => {
 // 1. Generate and Send OTP to email
 app.post('/api/otp/send', limitOtpSendIp, limitOtpSendEmail, async (req, res) => {
   const { email, projectId } = req.body;
+  // Cổng khách VẪN LUÔN gửi kèm `language` ở lượt gọi này — chỗ này chỉ quên
+  // đọc nó, nên mail OTP đi ra bằng tiếng Việt cho mọi khách. Đây là thứ đầu
+  // tiên khách nhận được từ hệ thống, trước cả khi vào được khung chat.
+  const ngonNgu = ngonNguKhachHopLe(req.body?.language) || 'vi';
   if (projectId === 'dealphuquoc') {
     return res.status(403).json({
       code: 'LOGIN_REQUIRED',
@@ -2659,7 +2663,7 @@ app.post('/api/otp/send', limitOtpSendIp, limitOtpSendEmail, async (req, res) =>
     );
 
     // Send email via Resend
-    const sent = await resend.sendOTPEmail(email, code);
+    const sent = await resend.sendOTPEmail(email, code, ngonNgu);
     if (!sent.ok) {
       console.error('[OTP Send] Failed:', sent.reason);
       return res.status(500).json({ error: `Không thể gửi email OTP: ${sent.reason}` });
@@ -9433,7 +9437,7 @@ app.post('/api/multichannel/webhook', verifyMetaSignature, async (req, res) => {
          ON CONFLICT (email) DO UPDATE SET code = $2, expires_at = $3`,
         [email, code, expiresAt]
       );
-      await resend.sendOTPEmail(email, code);
+      await resend.sendOTPEmail(email, code, finalLang);
       await db.query(`UPDATE sessions SET mc_verify_state = 'awaiting_otp', visitor_email = $1 WHERE id = $2`, [email, sessionId]);
       await sendAndSave(getMsg('otp_sent', finalLang, email));
       return;
