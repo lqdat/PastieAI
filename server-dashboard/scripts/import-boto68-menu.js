@@ -266,13 +266,13 @@ const DANH_MUC_MENU = [
 
 // ── XỬ LÝ ĐỐI SỐ DÒNG LỆNH ──────────────────────────────────────────────────
 const args = process.argv.slice(2);
-const flag = (name) => args.includes(`--${name}`);
+const flag = (name) => args.includes(`--${name}`) || args.includes(`-${name}`);
 const value = (name) => {
-  const i = args.indexOf(`--${name}`);
-  return i >= 0 && args[i + 1] ? args[i + 1] : null;
+  const i = args.findIndex(a => a === `--${name}` || a === `-${name}`);
+  return i >= 0 && args[i + 1] && !args[i + 1].startsWith('-') ? args[i + 1] : null;
 };
 
-let agentInput = value('agent') || args.find(a => !a.startsWith('--')) || null;
+let agentInput = value('agent') || args.find(a => !a.startsWith('-')) || null;
 const isClean = flag('clean');
 const giuTrung = flag('giu-trung');
 
@@ -317,25 +317,45 @@ async function danhSachAgent() {
   return res.rows;
 }
 
-async function donThucDonBoto68(agentId) {
-  // Xóa các món Bò Tơ 68 theo danh sách tên món chính xác từ menu
-  const tenMonList = DANH_MUC_MENU.flatMap(g => g.mon.map(m => m[1]));
-  const xoaMon = await db.query(
-    `DELETE FROM qr_menu_items 
-      WHERE agent_id = $1 AND (name = ANY($2::text[]) OR description LIKE '%[boto68%')
-      RETURNING id`,
-    [agentId, tenMonList]
-  );
+async function donThucDonBoto68(agentId, xoaTatCa = false) {
+  let xoaMon;
+  if (xoaTatCa) {
+    // Xóa TOÀN BỘ món ăn của Agent này (bao gồm cả món tự nhập tay)
+    xoaMon = await db.query(
+      `DELETE FROM qr_menu_items WHERE agent_id = $1 RETURNING id`,
+      [agentId]
+    );
+  } else {
+    // Xóa các món Bò Tơ 68 theo danh sách tên món chính xác từ menu hoặc có tag [boto68]
+    const tenMonList = DANH_MUC_MENU.flatMap(g => g.mon.map(m => m[1]));
+    xoaMon = await db.query(
+      `DELETE FROM qr_menu_items 
+        WHERE agent_id = $1 AND (name = ANY($2::text[]) OR description LIKE '%[boto68%')
+        RETURNING id`,
+      [agentId, tenMonList]
+    );
+  }
 
   // Xóa các danh mục không phải nhóm ưu đãi mà rỗng món
-  const tenNhomList = DANH_MUC_MENU.map(n => n.ten);
-  const xoaNhom = await db.query(
-    `DELETE FROM qr_menu_categories c
-      WHERE c.agent_id = $1 AND NOT c.is_promo AND c.name = ANY($2::text[])
-        AND NOT EXISTS (SELECT 1 FROM qr_menu_items i WHERE i.category_id = c.id)
-      RETURNING id`,
-    [agentId, tenNhomList]
-  );
+  let xoaNhom;
+  if (xoaTatCa) {
+    xoaNhom = await db.query(
+      `DELETE FROM qr_menu_categories c
+        WHERE c.agent_id = $1 AND NOT c.is_promo
+          AND NOT EXISTS (SELECT 1 FROM qr_menu_items i WHERE i.category_id = c.id)
+        RETURNING id`,
+      [agentId]
+    );
+  } else {
+    const tenNhomList = DANH_MUC_MENU.map(n => n.ten);
+    xoaNhom = await db.query(
+      `DELETE FROM qr_menu_categories c
+        WHERE c.agent_id = $1 AND NOT c.is_promo AND c.name = ANY($2::text[])
+          AND NOT EXISTS (SELECT 1 FROM qr_menu_items i WHERE i.category_id = c.id)
+        RETURNING id`,
+      [agentId, tenNhomList]
+    );
+  }
 
   return { mon: xoaMon.rowCount || 0, nhom: xoaNhom.rowCount || 0 };
 }
@@ -425,9 +445,9 @@ async function main() {
   console.log(`\nAgent được chọn: ${agent.full_name || agent.username} (ID: ${agent.id}, Project: ${agent.project_id})`);
 
   if (isClean) {
-    console.log(`Đang dọn sạch thực đơn Bò Tơ 68 của Agent ${agent.username}...`);
-    const cleanRes = await donThucDonBoto68(agent.id);
-    console.log(`✓ Đã xóa ${cleanRes.mon} món và ${cleanRes.nhom} nhóm rỗng.`);
+    console.log(`Đang dọn sạch toàn bộ thực đơn của Agent ${agent.full_name || agent.username} (bao gồm cả món tự nhập)...`);
+    const cleanRes = await donThucDonBoto68(agent.id, true);
+    console.log(`✓ Đã xóa sạch ${cleanRes.mon} món (bao gồm cả món tự nhập) và ${cleanRes.nhom} nhóm.`);
     await db.pool.end();
     return;
   }

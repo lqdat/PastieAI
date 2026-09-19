@@ -69,40 +69,35 @@ const INVOICE_I18N = {
     phone: 'Điện thoại', address: 'Địa chỉ', item: 'Mặt hàng', unitPrice: 'Đơn giá', quantity: 'SL',
     discount: 'Chiết khấu', lineTotal: 'Thành tiền', subtotal: 'Tổng tiền hàng',
     totalDiscount: 'Chiết khấu', vat: 'VAT', grandTotal: 'TỔNG CỘNG', paymentMethod: 'Thanh toán',
-    thanks: 'Cảm ơn quý khách!', note: 'Hóa đơn được tạo tự động từ hệ thống Pastie Chat.', paidStamp: 'ĐÃ THANH TOÁN',
-    serviceFee: 'Phí dịch vụ', vatIncluded: 'Giá sản phẩm đã bao gồm VAT.'
+    thanks: 'Cảm ơn quý khách!', note: 'Hóa đơn được tạo tự động từ hệ thống Pastie Chat.', paidStamp: 'ĐÃ THANH TOÁN'
   },
   en: {
     title: 'SALES INVOICE', invoiceNo: 'Invoice No.', date: 'Date', customer: 'Customer', email: 'Email', table: 'Table', openedAt: 'Time in', printedAt: 'Printed', sale: 'Served by',
     phone: 'Phone', address: 'Address', item: 'Item', unitPrice: 'Unit price', quantity: 'Qty',
     discount: 'Discount', lineTotal: 'Amount', subtotal: 'Subtotal',
     totalDiscount: 'Discount', vat: 'VAT', grandTotal: 'TOTAL', paymentMethod: 'Payment',
-    thanks: 'Thank you!', note: 'This invoice was generated automatically by Pastie Chat.', paidStamp: 'PAID',
-    serviceFee: 'Service charge', vatIncluded: 'All prices include VAT.'
+    thanks: 'Thank you!', note: 'This invoice was generated automatically by Pastie Chat.', paidStamp: 'PAID'
   },
   ru: {
     title: 'СЧЁТ НА ОПЛАТУ', invoiceNo: 'Номер счёта', date: 'Дата', customer: 'Клиент', email: 'Электронная почта', table: 'Стол', openedAt: 'Время входа', printedAt: 'Напечатано', sale: 'Обслужил',
     phone: 'Телефон', address: 'Адрес', item: 'Наименование', unitPrice: 'Цена', quantity: 'Кол-во',
     discount: 'Скидка', lineTotal: 'Сумма', subtotal: 'Итого по товарам',
     totalDiscount: 'Скидка', vat: 'НДС', grandTotal: 'ИТОГО', paymentMethod: 'Оплата',
-    thanks: 'Спасибо за покупку!', note: 'Счёт сформирован автоматически системой Pastie Chat.', paidStamp: 'ОПЛАЧЕНО',
-    serviceFee: 'Сервисный сбор', vatIncluded: 'Все цены указаны с НДС.'
+    thanks: 'Спасибо за покупку!', note: 'Счёт сформирован автоматически системой Pastie Chat.', paidStamp: 'ОПЛАЧЕНО'
   },
   zh: {
     title: '销售发票', invoiceNo: '发票号', date: '日期', customer: '客户', email: '邮箱', table: '桌号', openedAt: '入座时间', printedAt: '打印时间', sale: '服务员',
     phone: '电话', address: '地址', item: '商品', unitPrice: '单价', quantity: '数量',
     discount: '折扣', lineTotal: '金额', subtotal: '商品合计',
     totalDiscount: '折扣', vat: '增值税', grandTotal: '总计', paymentMethod: '付款方式',
-    thanks: '感谢惠顾！', note: '本发票由 Pastie Chat 系统自动生成。', paidStamp: '已付款',
-    serviceFee: '服务费', vatIncluded: '商品价格均已含增值税。'
+    thanks: '感谢惠顾！', note: '本发票由 Pastie Chat 系统自动生成。', paidStamp: '已付款'
   },
   ko: {
     title: '판매 영수증', invoiceNo: '영수증 번호', date: '발행일', customer: '고객', email: '이메일', table: '테이블', openedAt: '입장 시간', printedAt: '출력 시간', sale: '담당 직원',
     phone: '전화번호', address: '주소', item: '품목', unitPrice: '단가', quantity: '수량',
     discount: '할인', lineTotal: '금액', subtotal: '상품 합계',
     totalDiscount: '할인', vat: 'VAT', grandTotal: '총 합계', paymentMethod: '결제 수단',
-    thanks: '이용해 주셔서 감사합니다!', note: '본 영수증은 Pastie Chat 시스템에서 자동 발행되었습니다.', paidStamp: '결제 완료',
-    serviceFee: '서비스 요금', vatIncluded: '상품 가격에는 VAT가 포함되어 있습니다.'
+    thanks: '이용해 주셔서 감사합니다!', note: '본 영수증은 Pastie Chat 시스템에서 자동 발행되었습니다.', paidStamp: '결제 완료'
   },
   // Tiếng Kazakh viết bằng chữ Kirin. DejaVuSans đã có đủ 18 chữ riêng của
   // Kazakh (Ә Ғ Қ Ң Ө Ұ Ү Һ І và chữ thường) nên KHÔNG cần font bổ sung —
@@ -112,8 +107,7 @@ const INVOICE_I18N = {
     phone: 'Телефон', address: 'Мекенжай', item: 'Атауы', unitPrice: 'Бағасы', quantity: 'Саны',
     discount: 'Жеңілдік', lineTotal: 'Сомасы', subtotal: 'Тауарлар жиыны',
     totalDiscount: 'Жеңілдік', vat: 'ҚҚС', grandTotal: 'ЖАЛПЫ СОМА', paymentMethod: 'Төлем',
-    thanks: 'Сатып алғаныңыз үшін рахмет!', note: 'Бұл есеп-шот Pastie Chat жүйесінде автоматты түрде жасалды.', paidStamp: 'ТӨЛЕНДІ',
-    serviceFee: 'Қызмет ақысы', vatIncluded: 'Барлық бағалар ҚҚС-ты қамтиды.'
+    thanks: 'Сатып алғаныңыз үшін рахмет!', note: 'Бұл есеп-шот Pastie Chat жүйесінде автоматты түрде жасалды.', paidStamp: 'ТӨЛЕНДІ'
   },
 };
 
@@ -207,9 +201,14 @@ function normalizeInvoiceItems(items) {
     const discount = toNumber(item.discount ?? item.discountAmount ?? item.discount_amount ?? 0);
     const lineTotal = item.lineTotal ?? item.line_total ?? item.total ?? (unitPrice * quantity - discount);
     const note = String(item.note ?? item.notes ?? '').trim();
-    const vatRate = item.vatRate != null ? toNumber(item.vatRate) : (item.vat_rate != null ? toNumber(item.vat_rate) : null);
-    const vatAmount = item.vatAmount != null ? toNumber(item.vatAmount) : (vatRate != null ? Math.round(toNumber(lineTotal) * vatRate / 100) : 0);
-    return { name, note, quantity, unitPrice, discount, lineTotal: toNumber(lineTotal), vatRate, vatAmount };
+    // KHÔNG còn VAT theo từng món. VAT là khoản của CẢ ĐƠN: một thuế suất của
+    // quán, tính trên tổng tiền hàng, in thành một dòng ngay trên TỔNG CỘNG.
+    //
+    // Hai trường vatRate/vatAmount của món trước đây được tính ở đây nhưng
+    // KHÔNG chỗ nào in ra — số chết. Giữ lại thì lần sau có người tưởng hóa đơn
+    // đang in thuế theo món và đi sửa nhầm chỗ. Máy chủ cũng đã vứt bỏ hai
+    // trường này khi lưu hóa đơn (xem agent-items trong server.js).
+    return { name, note, quantity, unitPrice, discount, lineTotal: toNumber(lineTotal) };
   });
 }
 
@@ -226,18 +225,26 @@ function buildInvoiceData(invoice, language) {
   const totalDiscount = invoice?.totalDiscount !== undefined
     ? toNumber(invoice.totalDiscount)
     : items.reduce((sum, item) => sum + item.discount, 0);
-  const totalAmount = invoice?.totalAmount !== undefined
-    ? toNumber(invoice.totalAmount)
-    : subtotal - totalDiscount;
-  // PHÍ DỊCH VỤ THAY CHO DÒNG VAT.
+  // DÒNG PHẦN TRĂM NÀY LÀ VAT.
   //
-  // Giá món giờ đã bao gồm VAT, nên tách VAT ra thành một dòng riêng chỉ làm
-  // khách tưởng bị thu thêm. Thay vào đó là phí dịch vụ — khoản quán thật sự
-  // cộng thêm — và một dòng chữ nhỏ dưới bill nói rõ giá đã gồm VAT.
+  // Giá sản phẩm CHƯA gồm VAT; thuế được cộng thành một dòng riêng ngay trên
+  // dòng TỔNG CỘNG. Tên cột trong CSDL vẫn là service_fee_rate — đổi tên cột
+  // là phải sửa hàng chục chỗ đọc nó, trong khi thứ thay đổi ở đây chỉ là ý
+  // nghĩa đối với khách.
   const serviceFeeRate = toNumber(invoice?.serviceFeeRate ?? invoice?.service_fee_rate ?? 0);
   const serviceFeeAmount = invoice?.serviceFeeAmount !== undefined
     ? toNumber(invoice.serviceFeeAmount)
     : (serviceFeeRate > 0 ? Math.round(subtotal * serviceFeeRate / 100) : 0);
+
+  // TỔNG CỘNG PHẢI CỘNG CẢ VAT.
+  //
+  // Đây là lỗi thật, phát hiện khi dựng thử một hóa đơn không truyền sẵn
+  // totalAmount: bill in ra "Tổng tiền hàng 850.000 / VAT 10% 85.000 / TỔNG
+  // CỘNG 850.000" — hiện một dòng thuế rồi không cộng nó vào. Nơi gọi nào
+  // truyền totalAmount sẵn thì vẫn dùng con số của nơi gọi, không đụng tới.
+  const totalAmount = invoice?.totalAmount !== undefined
+    ? toNumber(invoice.totalAmount)
+    : subtotal - totalDiscount + serviceFeeAmount;
 
   return {
     invoiceNo: invoice?.invoiceNo || invoice?.invoice_no || '',
@@ -449,16 +456,24 @@ function createInvoicePdfDataUrl(invoice, language) {
     };
     summaryRow(copy.subtotal, money(data.subtotal));
     if (data.totalDiscount > 0) summaryRow(copy.totalDiscount, `- ${money(data.totalDiscount)}`);
+    // DÒNG NÀY GIỜ LÀ VAT, KHÔNG PHẢI PHÍ DỊCH VỤ.
+    //
+    // Con số vẫn là service_fee_rate trong CSDL — đổi tên cột là phải sửa cả
+    // hàng chục chỗ đọc nó, trong khi thứ đổi ở đây chỉ là Ý NGHĨA đối với
+    // khách: phần trăm này giờ là thuế, không phải khoản quán tự thu thêm.
+    // Dùng lại khoá `copy.vat` vốn đã có sẵn đủ 6 thứ tiếng (VAT / НДС /
+    // 增值税 / ҚҚС), không viết thêm chuỗi mới để khỏi thiếu bản dịch nào.
     if (data.serviceFeeAmount > 0) {
-      summaryRow(`${copy.serviceFee} (${data.serviceFeeRate}%)`, money(data.serviceFeeAmount));
+      summaryRow(`${copy.vat} (${data.serviceFeeRate}%)`, money(data.serviceFeeAmount));
     }
     summaryRow(copy.grandTotal, money(data.totalAmount), { bold: true });
 
-    // Giống bản SVG: dòng VAT là một hàng riêng, căn giữa cả trang, nằm giữa
-    // dòng tổng cộng và lời cảm ơn — không nép bên phải rồi dính vào chữ.
-    doc.moveDown(0.5);
-    useRegular().fontSize(8).fillColor('#7b6c7a');
-    doc.text(copy.vatIncluded, left, doc.y, { width, align: 'center' });
+    // KHÔNG còn dòng "giá đã bao gồm VAT".
+    //
+    // Giá sản phẩm giờ CHƯA gồm VAT — VAT được cộng thành một dòng riêng ngay
+    // phía trên. Giữ lại câu đó là nói với khách rằng thuế đã nằm trong giá,
+    // trong khi hóa đơn vừa cộng thuế một lần nữa ở dòng trên: hai câu trên
+    // cùng một tờ giấy chọi nhau, và câu sai là câu khách đem đi khiếu nại.
 
     doc.moveDown(1.1);
     useBold().fontSize(10.5).fillColor('#b20c69').text(copy.thanks, left, doc.y, { width, align: 'center' });
@@ -739,20 +754,16 @@ function createInvoiceSvg(invoice, language) {
   };
   summary(copy.subtotal, money(data.subtotal));
   if (data.totalDiscount > 0) summary(copy.totalDiscount, `- ${money(data.totalDiscount)}`);
+  // Xem chú thích cùng chỗ ở bản PDFKit: dòng này giờ là VAT, không phải phí
+  // dịch vụ, và không còn dòng "giá đã bao gồm VAT" nữa.
   if (data.serviceFeeAmount > 0) {
-    summary(`${copy.serviceFee} (${data.serviceFeeRate}%)`, money(data.serviceFeeAmount));
+    summary(`${copy.vat} (${data.serviceFeeRate}%)`, money(data.serviceFeeAmount));
   }
   summary(copy.grandTotal, money(data.totalAmount), { bold: true });
 
-  // Dòng "giá đã bao gồm VAT" đứng RIÊNG MỘT HÀNG, CĂN GIỮA.
-  //
-  // Trước đây nó căn phải và chỉ cách dòng "Cảm ơn quý khách!" 12px, mà dòng
-  // cảm ơn căn giữa cỡ 13px — hai chuỗi nằm chồng lên nhau ở giữa trang. Căn
-  // giữa và nới khoảng cách ra cho nó thành một dòng ghi chú độc lập nằm giữa
-  // tổng cộng và lời cảm ơn.
-  y += 10;
-  text(copy.vatIncluded, W / 2, y, { size: 9.5, fill: '#7b6c7a', anchor: 'middle' });
-  y += 24;
+  // Gỡ dòng ghi chú VAT thì khoảng trống nó để lại cũng phải gỡ theo, không thì
+  // giữa TỔNG CỘNG và lời cảm ơn hở ra một mảng trắng vô cớ.
+  y += 14;
   text(copy.thanks, W / 2, y, { size: 13, weight: 700, fill: '#b20c69', anchor: 'middle' });
   y += 18;
   text(copy.note, W / 2, y, { size: 10, fill: '#9b8d9c', anchor: 'middle' });
