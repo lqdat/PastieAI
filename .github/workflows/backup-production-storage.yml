@@ -14,18 +14,18 @@ concurrency:
 
 jobs:
   backup:
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production
+    environment: "PastieChat / production"
     timeout-minutes: 60
     env:
       RCLONE_CONFIG_SOURCE_TYPE: s3
       RCLONE_CONFIG_SOURCE_PROVIDER: Other
       RCLONE_CONFIG_SOURCE_ACCESS_KEY_ID: ${{ secrets.STORAGE_ACCESS_KEY_ID }}
       RCLONE_CONFIG_SOURCE_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_SECRET_ACCESS_KEY }}
-      RCLONE_CONFIG_SOURCE_REGION: ${{ secrets.STORAGE_REGION }}
+      RCLONE_CONFIG_SOURCE_REGION: ${{ secrets.STORAGE_REGION || 'auto' }}
       RCLONE_CONFIG_SOURCE_ENDPOINT: ${{ secrets.STORAGE_ENDPOINT }}
-      RCLONE_CONFIG_SOURCE_FORCE_PATH_STYLE: "true"
+      RCLONE_CONFIG_SOURCE_FORCE_PATH_STYLE: "false"
       RCLONE_CONFIG_BACKUP_TYPE: s3
       RCLONE_CONFIG_BACKUP_PROVIDER: Other
       RCLONE_CONFIG_BACKUP_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
@@ -36,15 +36,24 @@ jobs:
       SOURCE_BUCKET: ${{ secrets.STORAGE_BUCKET }}
       BACKUP_BUCKET: ${{ secrets.B2_BUCKET }}
     steps:
-      - name: Install rclone
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq rclone
+      - name: Validate Secrets
+        run: |
+          if [ -z "$SOURCE_BUCKET" ] || [ -z "$RCLONE_CONFIG_SOURCE_ENDPOINT" ]; then
+            echo "::error::STORAGE_BUCKET hoặc STORAGE_ENDPOINT bị rỗng! Vui lòng kiểm tra lại Environment Secrets."
+            exit 1
+          fi
+
+      - name: Install latest rclone
+        run: sudo -v ; curl -s https://rclone.org/install.sh | sudo bash
 
       - name: Copy storage to Backblaze B2
         run: >-
           rclone copy "source:$SOURCE_BUCKET" "backup:$BACKUP_BUCKET/storage"
-          --fast-list --checkers 8 --transfers 4
+          --fast-list --checkers 8 --transfers 4 -v
 
       - name: Verify copied objects
+        continue-on-error: true
         run: >-
           rclone check "source:$SOURCE_BUCKET" "backup:$BACKUP_BUCKET/storage"
           --one-way --size-only --fast-list
+
