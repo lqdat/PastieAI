@@ -1064,6 +1064,51 @@ function invalidateOrgTabCache(name) {
 }
 window.invalidateOrgTabCache = invalidateOrgTabCache;
 
+// ─── DANH MỤC NHÃN SẢN PHẨM (chỉ Superadmin) ───────────────────────────────
+//
+// Hiện đủ CÁC BẢN DỊCH của từng nhãn, không chỉ nhãn tiếng Việt: nhãn được dịch
+// máy lúc lưu, nên người cấu hình phải nhìn thấy máy dịch ra cái gì. Không nhìn
+// được thì một bản dịch sai nằm trên góc ảnh sản phẩm suốt nhiều tháng.
+window.ORG_TAGS = [];
+
+async function loadOrgTags(silent = false) {
+    const box = document.getElementById('org-tag-list');
+    const badge = document.getElementById('org-tag-count-badge');
+    if (!box) return;
+    if (!silent && !box.children.length) box.innerHTML = '<p class="org-empty">Đang tải…</p>';
+    try {
+        const data = await orgFetch('/api/superadmin/menu-tags');
+        window.ORG_TAGS = data.tags || [];
+        if (badge) badge.textContent = String(window.ORG_TAGS.length);
+        box.innerHTML = window.ORG_TAGS.length ? window.ORG_TAGS.map((tag) => {
+            const dich = (tag.translations || []).filter((t) => t && t.lang && t.label);
+            return `
+            <article class="org-item tag-card${tag.is_active ? '' : ' is-off'}">
+                <div class="tag-card-head">
+                    <span class="tag-chip" style="background:${escapeHtml(tag.color_bg)};color:${escapeHtml(tag.color_text)}">${escapeHtml(tag.label)}</span>
+                    <span class="tag-code">${escapeHtml(tag.code)}</span>
+                    <span class="tag-usage">${Number(tag.item_count) || 0} sản phẩm</span>
+                </div>
+                <div class="tag-langs">
+                    ${dich.length
+                        ? dich.map((t) => `<span class="tag-lang${t.is_manual ? ' is-manual' : ''}" title="${t.is_manual ? 'Đã sửa tay — máy dịch không ghi đè' : 'Máy dịch'}"><b>${escapeHtml(t.lang)}</b> ${escapeHtml(t.label)}</span>`).join('')
+                        : '<span class="tag-lang is-missing">Chưa có bản dịch nào</span>'}
+                </div>
+                <div class="tag-actions">
+                    <button type="button" class="sale-btn-edit" data-tag-edit="${tag.id}"><i class="ri-edit-line"></i> Sửa</button>
+                    <button type="button" class="org-toggle ${tag.is_active ? 'is-active' : 'is-locked'}" data-tag-toggle="${tag.id}" data-active="${tag.is_active}">
+                        <i class="${tag.is_active ? 'ri-eye-line' : 'ri-eye-off-line'}"></i>
+                        <span>${tag.is_active ? 'Đang dùng' : 'Đã tắt'}</span>
+                    </button>
+                    <button type="button" class="org-remove" data-tag-delete="${tag.id}" title="Xoá nhãn"><i class="ri-delete-bin-line"></i></button>
+                </div>
+            </article>`;
+        }).join('') : '<p class="org-empty">Chưa có nhãn nào. Tạo nhãn đầu tiên ở form phía trên.</p>';
+    } catch (error) {
+        box.innerHTML = `<p class="org-empty">${escapeHtml(error.message)}</p>`;
+    }
+}
+
 function switchOrgTab(name) {
     window.closeAddBoxModal?.();
     document.querySelectorAll('[data-org-tab]').forEach((tab) => {
@@ -1088,6 +1133,7 @@ function switchOrgTab(name) {
     if (name === 'sales') void loadOrgSales(isSilent);
     if (name === 'groups') void loadOrgGroups(false, isSilent);
     if (name === 'qr') void loadOrgQr(isSilent);
+    if (name === 'tags') void loadOrgTags(isSilent);
     // Sản phẩm nằm ở menu-console.js — mảnh đầu tiên của QR Console tách riêng.
     if (name === 'menu') {
         void window.MenuConsole?.load(isSilent);
@@ -1105,6 +1151,9 @@ function openOrgModal() {
     // Superadmin cố tình KHÔNG thiết lập thay Agent; backend cũng trả 403.
     const isSuper = CURRENT_ADMIN?.role === 'superadmin';
     document.querySelector('[data-org-tab="agents"]')?.classList.toggle('hide', !isSuper);
+    // Danh mục nhãn dùng chung mọi cơ sở nên chỉ Superadmin thấy, cùng nhóm với
+    // tab Agent. Máy chủ cũng chặn (requireSuperAdmin) — ẩn tab chỉ là lớp ngoài.
+    document.querySelector('[data-org-tab="tags"]')?.classList.toggle('hide', !isSuper);
     ['sales', 'groups', 'qr', 'menu'].forEach((name) => {
         document.querySelector(`[data-org-tab="${name}"]`)?.classList.toggle('hide', isSuper);
     });

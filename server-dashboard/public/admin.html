@@ -470,6 +470,11 @@
                     <button type="button" class="org-tab" data-org-tab="sales"><i class="ri-user-shared-line"></i> <span data-i18n="orgTabSales">Sale</span></button>
                     <button type="button" class="org-tab" data-org-tab="qr"><i class="ri-qr-code-line"></i> <span data-i18n="orgTabQr">Mã QR</span></button>
                     <button type="button" class="org-tab" data-org-tab="menu"><i class="ri-shopping-bag-3-line"></i> <span data-i18n="orgTabProducts">Sản phẩm</span></button>
+                    <!-- Danh mục nhãn dùng chung cho MỌI cơ sở nên chỉ Superadmin
+                         cấu hình. Tab này thuộc console Superadmin
+                         (server-dashboard/public), KHÔNG nằm ở bảng điều khiển
+                         Agent/Sale — xem quy tắc 4 trong docs/CODEBASE.md. -->
+                    <button type="button" class="org-tab hide" data-org-tab="tags"><i class="ri-price-tag-3-line"></i> <span data-i18n="orgTabTags">Nhãn sản phẩm</span></button>
                 </nav>
 
                 <p class="org-status hide" id="org-status"></p>
@@ -630,6 +635,43 @@
                 </section>
 
                 <!-- Thực đơn: chỉ Agent quản lý dự án QR -->
+                <section class="org-pane hide" data-org-pane="tags">
+                    <div class="org-pane-head">
+                        <div>
+                            <h4 data-i18n="orgTagsTitle">Nhãn gắn góc sản phẩm</h4>
+                            <p class="org-pane-hint" data-i18n="orgTagsHint">Dùng chung cho mọi cơ sở. Agent chỉ chọn nhãn cho sản phẩm của mình, không tự đặt nhãn mới.</p>
+                        </div>
+                        <span id="org-tag-count-badge" class="org-count-badge">0</span>
+                    </div>
+                    <form id="org-tag-form" class="org-form org-tag-form">
+                        <input type="hidden" id="org-tag-id">
+                        <label class="org-field">
+                            <span data-i18n="orgTagLabel">Tên nhãn (tiếng Việt)</span>
+                            <input type="text" id="org-tag-label" maxlength="100" required placeholder="Bán chạy">
+                        </label>
+                        <label class="org-field org-field-color">
+                            <span data-i18n="orgTagColorBg">Nền</span>
+                            <input type="color" id="org-tag-color-bg" value="#e51a82">
+                        </label>
+                        <label class="org-field org-field-color">
+                            <span data-i18n="orgTagColorText">Chữ</span>
+                            <input type="color" id="org-tag-color-text" value="#ffffff">
+                        </label>
+                        <label class="org-field org-field-narrow">
+                            <span data-i18n="orgTagOrder">Thứ tự</span>
+                            <input type="number" id="org-tag-order" value="0" min="0" max="999">
+                        </label>
+                        <div class="org-form-actions">
+                            <button type="submit" class="primary-btn"><i class="ri-save-line"></i> <span data-i18n="orgTagSave">Lưu nhãn</span></button>
+                            <button type="button" class="secondary-btn hide" id="org-tag-cancel" data-i18n="orgTagCancel">Huỷ sửa</button>
+                        </div>
+                        <!-- Nói trước điều sẽ xảy ra: nhãn được dịch ngay lúc bấm Lưu,
+                             nên lượt lưu có thể mất vài giây. Không nói thì người dùng
+                             tưởng treo rồi bấm lại, và tạo ra hai nhãn trùng nội dung. -->
+                        <p class="org-form-note" data-i18n="orgTagTranslateNote">Nhãn được dịch sang 6 ngôn ngữ ngay khi lưu, nên bước lưu có thể mất vài giây.</p>
+                    </form>
+                    <div class="org-list" id="org-tag-list"></div>
+                </section>
                 <section class="org-pane hide" data-org-pane="menu">
                     <!-- Cấu hình hiển thị và tên nút Thực đơn phía Khách -->
                     <div id="agent-menu-settings-card" class="glass-panel" style="margin-bottom:14px;padding:14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--panel-border);">

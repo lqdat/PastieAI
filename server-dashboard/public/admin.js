@@ -2032,6 +2032,45 @@ document.getElementById('org-agent-form')?.addEventListener('submit', async (eve
 });
 
 
+function resetTagForm() {
+    document.getElementById('org-tag-form')?.reset();
+    document.getElementById('org-tag-id').value = '';
+    document.getElementById('org-tag-color-bg').value = '#e51a82';
+    document.getElementById('org-tag-color-text').value = '#ffffff';
+    document.getElementById('org-tag-cancel')?.classList.add('hide');
+}
+
+document.getElementById('org-tag-cancel')?.addEventListener('click', resetTagForm);
+
+document.getElementById('org-tag-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const id = document.getElementById('org-tag-id').value;
+    const than = {
+        label: document.getElementById('org-tag-label').value.trim(),
+        colorBg: document.getElementById('org-tag-color-bg').value,
+        colorText: document.getElementById('org-tag-color-text').value,
+        sortOrder: Number(document.getElementById('org-tag-order').value) || 0,
+    };
+    const nut = event.target.querySelector('button[type="submit"]');
+    // Lưu là DỊCH NGAY sang 6 thứ tiếng, nên lượt này mất vài giây. Khoá nút lại,
+    // nếu không người dùng bấm thêm lần nữa và tạo ra hai nhãn trùng nội dung.
+    if (nut) { nut.disabled = true; nut.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang lưu và dịch…'; }
+    try {
+        await orgFetch(id ? `/api/superadmin/menu-tags/${id}` : '/api/superadmin/menu-tags', {
+            method: id ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(than),
+        });
+        setOrgStatus(id ? 'Đã lưu nhãn và cập nhật bản dịch.' : 'Đã tạo nhãn và dịch sang 6 ngôn ngữ.');
+        resetTagForm();
+        await loadOrgTags();
+    } catch (error) {
+        setOrgStatus(error.message, 'error');
+    } finally {
+        if (nut) { nut.disabled = false; nut.innerHTML = '<i class="ri-save-line"></i> Lưu nhãn'; }
+    }
+});
+
 document.getElementById('org-sale-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const saleId = document.getElementById('org-sale-id')?.value;
@@ -2357,6 +2396,54 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
             setOrgStatus('Đã xóa tài khoản Sale thành công.');
             await loadOrgSales();
             await loadOrgGroups(true);
+        } catch (error) { setOrgStatus(error.message, 'error'); }
+        return;
+    }
+
+    // ── NHÃN SẢN PHẨM (Superadmin) ──────────────────────────────────────────
+    const tagEdit = event.target.closest('[data-tag-edit]');
+    if (tagEdit) {
+        const tag = (window.ORG_TAGS || []).find((x) => String(x.id) === tagEdit.dataset.tagEdit);
+        if (!tag) return;
+        document.getElementById('org-tag-id').value = tag.id;
+        document.getElementById('org-tag-label').value = tag.label || '';
+        document.getElementById('org-tag-color-bg').value = tag.color_bg || '#e51a82';
+        document.getElementById('org-tag-color-text').value = tag.color_text || '#ffffff';
+        document.getElementById('org-tag-order').value = tag.sort_order ?? 0;
+        document.getElementById('org-tag-cancel')?.classList.remove('hide');
+        document.getElementById('org-tag-label')?.focus();
+        return;
+    }
+
+    const tagToggle = event.target.closest('[data-tag-toggle]');
+    if (tagToggle) {
+        const dangBat = tagToggle.dataset.active === 'true';
+        try {
+            await orgFetch(`/api/superadmin/menu-tags/${tagToggle.dataset.tagToggle}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isActive: !dangBat }),
+            });
+            setOrgStatus(dangBat ? 'Đã tắt nhãn.' : 'Đã bật lại nhãn.');
+            await loadOrgTags();
+        } catch (error) { setOrgStatus(error.message, 'error'); }
+        return;
+    }
+
+    const tagDelete = event.target.closest('[data-tag-delete]');
+    if (tagDelete) {
+        const tag = (window.ORG_TAGS || []).find((x) => String(x.id) === tagDelete.dataset.tagDelete);
+        const dang = Number(tag?.item_count) || 0;
+        // Nói rõ số sản phẩm sẽ mất nhãn. Xoá một nhãn đang gắn trên hàng chục
+        // sản phẩm mà không báo trước là một việc không hoàn tác được.
+        const ok = await pastieConfirm(dang
+            ? `Xoá nhãn này? ${dang} sản phẩm đang gắn nhãn sẽ mất nhãn, và không hoàn tác được.`
+            : 'Xoá nhãn này?');
+        if (!ok) return;
+        try {
+            await orgFetch(`/api/superadmin/menu-tags/${tagDelete.dataset.tagDelete}`, { method: 'DELETE' });
+            setOrgStatus('Đã xoá nhãn.');
+            await loadOrgTags();
         } catch (error) { setOrgStatus(error.message, 'error'); }
         return;
     }
