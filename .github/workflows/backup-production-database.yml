@@ -36,7 +36,7 @@ jobs:
           docker run --rm \
             -e DATABASE_URL \
             -v "$PWD/backup:/backup" \
-            postgres:16-alpine \
+            postgres:18-alpine \
             sh -c 'pg_dump "$DATABASE_URL" --format=custom --compress=9 --file="/backup/'"$backup_file"'" && pg_restore --list "/backup/'"$backup_file"'" >/dev/null'
 
       - name: Upload dump to Backblaze B2
