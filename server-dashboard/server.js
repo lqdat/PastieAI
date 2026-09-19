@@ -1741,6 +1741,7 @@ async function checkAdminAuth(req, res, next) {
     // 1. Check if token exists in admin_sessions and joins admins
     const sessionRes = await db.query(
       `SELECT s.token, s.expires_at, a.id, a.username, a.full_name, a.full_name_en, a.role, a.avatar_url, a.is_active, a.project_id, a.sale_limit,
+              a.can_mark_paid,
               a.managed_by_admin_id,
               m.full_name AS manager_name, m.username AS manager_username,
               m.avatar_url AS manager_avatar_url
@@ -1815,6 +1816,10 @@ async function checkAdminAuth(req, res, next) {
       // về và giao diện luôn hiển thị "Không giới hạn" dù đã đặt hạn mức.
       sale_limit: adminSession.sale_limit,
       managed_by_admin_id: adminSession.managed_by_admin_id,
+      // Quyền xác nhận thu tiền Agent trao cho một Sale. PHẢI gắn vào req.admin,
+      // không chỉ truy vấn ra: duocXacNhanThuTien() đọc từ đây, thiếu nó thì
+      // Sale đã được trao quyền vẫn bị coi là chưa có.
+      can_mark_paid: adminSession.can_mark_paid === true,
       // Tên Agent quản lý — header của Sale hiển thị "Agent · Sale" để người trực
       // chat luôn biết mình đang trực dưới quyền ai.
       manager_name: adminSession.manager_name || adminSession.manager_username || null,
@@ -1887,6 +1892,28 @@ const isProjectAdmin = (admin) => admin?.role === 'project_admin';
 // người trực tiếp trả lời chat — vai trò mà 'agent' đảm nhiệm trước đây.
 const isAgentManager = (admin) => admin?.role === 'agent';
 const isSale = (admin) => admin?.role === 'sale';
+// AI ĐƯỢC BẤM "ĐÃ THANH TOÁN".
+//
+// Mặc định: Agent quản lý và Superadmin. Agent có thể trao quyền đó cho ĐÚNG MỘT
+// Sale cấp dưới — và khi đã trao thì CHÍNH AGENT KHÔNG CÒN thấy nút nữa. Tiền
+// chỉ một người chốt; hai người cùng bấm được là hai người cùng tưởng người kia
+// đã thu.
+//
+// Hàm này là NGUỒN SỰ THẬT DUY NHẤT cho cả cờ gửi xuống giao diện lẫn lượt chặn
+// ở endpoint. Tách làm hai chỗ là kiểu gì cũng có ngày lệch nhau: nút hiện lên
+// mà bấm vào báo 403, hoặc tệ hơn, nút ẩn đi mà endpoint vẫn cho qua.
+async function duocXacNhanThuTien(admin) {
+  if (isSuperAdmin(admin)) return true;
+  if (isSale(admin)) return admin?.can_mark_paid === true;
+  if (!isAgentManager(admin)) return false;
+  // Agent: còn quyền chừng nào CHƯA trao cho Sale nào.
+  const daTrao = await db.query(
+    "SELECT 1 FROM admins WHERE role = 'sale' AND managed_by_admin_id = $1 AND can_mark_paid LIMIT 1",
+    [admin.id]
+  );
+  return daTrao.rowCount === 0;
+}
+
 const isChatStaff = (admin) => isSuperAdmin(admin) || isProjectOwner(admin) || isProjectAdmin(admin) || isAgentManager(admin) || isSale(admin);
 
 function canAccessProject(admin, projectId) {
@@ -3700,7 +3727,7 @@ app.post('/api/chats/:sessionId/attachments', uploadAttachmentMiddleware, async 
       senderAdminId = sendingAdmin.id;
     }
 
-    const key = s3.buildAttachmentKey(session.project_id, sessionId, req.file.originalname);
+    const key = s3.buildChatFileKey(sessionId, null, req.file.originalname, req.file.mimetype);
     await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
     const url = await s3.getPresignedUrl(key, 6 * 3600);
 
@@ -5887,7 +5914,7 @@ app.post('/api/superadmin/accounts/:adminId/avatar', checkAdminAuth, uploadAttac
     const found = await db.query('SELECT id, project_id, avatar_key FROM admins WHERE id = $1', [adminId]);
     if (!found.rows[0]) return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
 
-    const key = s3.buildMenuImageKey(found.rows[0].project_id || 'system', adminId, req.file.originalname);
+    const key = s3.buildAvatarKey(adminId, req.file.originalname, req.file.mimetype);
     await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
     const url = await s3.getMenuImageUrl(key);
     const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
@@ -5896,7 +5923,10 @@ app.post('/api/superadmin/accounts/:adminId/avatar', checkAdminAuth, uploadAttac
       [adminId, key, url, expiresAt]
     );
     // Xoá ảnh cũ SAU khi ảnh mới đã lưu xong, không phải trước.
-    if (found.rows[0].avatar_key) void s3.deleteObject(found.rows[0].avatar_key).catch(() => {});
+    // Khoá mới có thể TRÙNG khoá cũ (tên avatar cố định theo id tài khoản, ảnh
+    // sản phẩm cố định theo id sản phẩm). Trùng thì ảnh mới đã đè lên ảnh cũ
+    // rồi — gọi xoá nữa là xoá chính ảnh vừa tải lên.
+    if (found.rows[0].avatar_key && found.rows[0].avatar_key !== key) void s3.deleteObject(found.rows[0].avatar_key).catch(() => {});
     res.json({ success: true, avatarUrl: url });
   } catch (error) {
     console.error('Upload avatar error:', error);
@@ -5915,7 +5945,7 @@ app.post('/api/admin/me/avatar', checkAdminAuth, uploadAttachmentMiddleware, asy
     const found = await db.query('SELECT id, project_id, avatar_key FROM admins WHERE id = $1', [adminId]);
     if (!found.rows[0]) return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
 
-    const key = s3.buildMenuImageKey(found.rows[0].project_id || 'system', adminId, req.file.originalname);
+    const key = s3.buildAvatarKey(adminId, req.file.originalname, req.file.mimetype);
     await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
     const url = await s3.getMenuImageUrl(key);
     const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
@@ -5923,7 +5953,10 @@ app.post('/api/admin/me/avatar', checkAdminAuth, uploadAttachmentMiddleware, asy
       'UPDATE admins SET avatar_key = $2, avatar_url = $3, avatar_url_expires_at = $4 WHERE id = $1',
       [adminId, key, url, expiresAt]
     );
-    if (found.rows[0].avatar_key) void s3.deleteObject(found.rows[0].avatar_key).catch(() => {});
+    // Khoá mới có thể TRÙNG khoá cũ (tên avatar cố định theo id tài khoản, ảnh
+    // sản phẩm cố định theo id sản phẩm). Trùng thì ảnh mới đã đè lên ảnh cũ
+    // rồi — gọi xoá nữa là xoá chính ảnh vừa tải lên.
+    if (found.rows[0].avatar_key && found.rows[0].avatar_key !== key) void s3.deleteObject(found.rows[0].avatar_key).catch(() => {});
     res.json({ success: true, avatarUrl: url });
   } catch (error) {
     console.error('Upload self avatar error:', error);
@@ -6059,12 +6092,6 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
       where.push(`q.code = $${params.length}`);
     }
 
-    const locStatus = String(req.query.status || '').trim();
-    if (locStatus && locStatus !== 'all') {
-      params.push(locStatus);
-      where.push(`o.status = $${params.length}`);
-    }
-
     if (locDate === 'today') {
       where.push(`(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Ho_Chi_Minh')::date`);
     } else if (locDate === 'yesterday') {
@@ -6149,8 +6176,9 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
     );
     res.json({
       orders: rows.rows,
-      // Sale không được xác nhận thu tiền. Chỉ Agent quản lý và Superadmin được xác nhận.
-      canMarkPaid: isSuperAdmin(req.admin) || isAgentManager(req.admin),
+      // Ai được xác nhận thu tiền — xem duocXacNhanThuTien(). Giao diện KHÔNG
+      // được tự suy từ vai trò: quyền này Agent trao được cho một Sale.
+      canMarkPaid: await duocXacNhanThuTien(req.admin),
       total: tong,
       totalAmount: tongTien,
       page: trang,
@@ -6265,7 +6293,13 @@ app.post('/api/admin/orders/:orderId/received-payment', checkAdminAuth, requireW
   const order = orderRes.rows[0];
   if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
   if (!canAccessProject(req.admin, order.project_id)) return res.status(403).json({ error: 'Bạn không có quyền xác nhận đơn này.' });
-  if (isSale(req.admin)) return res.status(403).json({ error: 'Nhân viên Sale không có quyền xác nhận thu tiền.' });
+  if (!(await duocXacNhanThuTien(req.admin))) {
+    return res.status(403).json({
+      error: isAgentManager(req.admin)
+        ? 'Bạn đã trao quyền xác nhận thu tiền cho một nhân viên Sale.'
+        : 'Bạn không có quyền xác nhận thu tiền.'
+    });
+  }
   if (order.status !== 'awaiting_payment') return res.status(409).json({ error: 'Đơn không ở trạng thái chờ thanh toán.' });
   const assignedMethod = req.body?.paymentMethod || order.payment_method || 'cash';
 
@@ -10692,6 +10726,7 @@ app.get('/api/agent/sales', checkAdminAuth, async (req, res) => {
   try {
     const result = await db.query(
       `SELECT a.id, a.username, a.full_name, a.avatar_url, a.is_active, a.project_id, a.created_at,
+              a.can_mark_paid,
               COALESCE(json_agg(DISTINCT jsonb_build_object(
                 'start_time', h.start_time, 'end_time', h.end_time, 'timezone', h.timezone
               )) FILTER (WHERE h.id IS NOT NULL), '[]') AS access_hours,
@@ -10905,6 +10940,53 @@ app.patch('/api/agent/sales/:saleId/status', checkAdminAuth, async (req, res) =>
   }
 });
 
+// Agent trao hoặc thu hồi quyền xác nhận thu tiền cho một Sale cấp dưới.
+//
+// Trao cho Sale B trong khi Sale A đang giữ thì CHUYỂN quyền sang B, không báo
+// lỗi: đó là điều Agent muốn khi đổi người trực quầy, và bắt họ phải nhớ thu hồi
+// của A trước chỉ tạo thêm một bước dễ quên.
+app.put('/api/agent/sales/:saleId/payment-permission', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const bat = req.body?.canMarkPaid === true;
+  try {
+    const sale = await loadOwnedSale(req, Number(req.params.saleId));
+    if (!sale) return res.status(404).json({ error: 'Không tìm thấy Sale trong phạm vi của bạn.' });
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      if (bat) {
+        // Thu của mọi Sale khác TRƯỚC rồi mới trao: chỉ mục duy nhất một phần
+        // sẽ từ chối nếu còn người khác đang giữ.
+        await client.query(
+          "UPDATE admins SET can_mark_paid = FALSE WHERE role = 'sale' AND managed_by_admin_id = $1 AND id <> $2",
+          [req.admin.id, sale.id]
+        );
+      }
+      await client.query('UPDATE admins SET can_mark_paid = $2 WHERE id = $1', [sale.id, bat]);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    // Mọi phiên đăng nhập đang mở của Sale đó phải thấy quyền mới ngay. Không
+    // cần đăng xuất: checkAdminAuth đọc cờ từ bảng admins mỗi lượt gọi.
+    res.json({
+      success: true,
+      saleId: sale.id,
+      canMarkPaid: bat,
+      // Nói luôn hệ quả cho Agent, đừng để họ tự phát hiện là nút của mình biến mất.
+      agentKeepsPermission: !bat,
+    });
+  } catch (error) {
+    console.error('Set sale payment permission error:', error);
+    res.status(500).json({ error: 'Không đổi được quyền xác nhận thu tiền.' });
+  }
+});
+
 app.post('/api/agent/sales/:saleId/avatar', checkAdminAuth, uploadAttachmentMiddleware, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
   const saleId = Number(req.params.saleId);
@@ -10916,7 +10998,7 @@ app.post('/api/agent/sales/:saleId/avatar', checkAdminAuth, uploadAttachmentMidd
     const sale = await loadOwnedSale(req, saleId);
     if (!sale) return res.status(404).json({ error: 'Không tìm thấy Sale trong phạm vi của bạn.' });
 
-    const key = s3.buildMenuImageKey(sale.project_id || 'qr-concierge', saleId, req.file.originalname);
+    const key = s3.buildAvatarKey(saleId, req.file.originalname, req.file.mimetype);
     await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
     const url = await s3.getMenuImageUrl(key);
     const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
@@ -10924,7 +11006,10 @@ app.post('/api/agent/sales/:saleId/avatar', checkAdminAuth, uploadAttachmentMidd
       'UPDATE admins SET avatar_key = $2, avatar_url = $3, avatar_url_expires_at = $4 WHERE id = $1',
       [saleId, key, url, expiresAt]
     );
-    if (sale.avatar_key) void s3.deleteObject(sale.avatar_key).catch(() => {});
+    // Khoá mới có thể TRÙNG khoá cũ (tên avatar cố định theo id tài khoản, ảnh
+    // sản phẩm cố định theo id sản phẩm). Trùng thì ảnh mới đã đè lên ảnh cũ
+    // rồi — gọi xoá nữa là xoá chính ảnh vừa tải lên.
+    if (sale.avatar_key && sale.avatar_key !== key) void s3.deleteObject(sale.avatar_key).catch(() => {});
     res.json({ success: true, avatarUrl: url });
   } catch (error) {
     console.error('Upload sale avatar error:', error);
@@ -10943,7 +11028,11 @@ app.get('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
     if (!agentId) return res.status(400).json({ error: 'Không xác định được cơ sở quản lý.' });
 
     const row = (await db.query(
-      'SELECT agent_menu_enabled, superadmin_menu_disabled, menu_custom_label, COALESCE(service_fee_rate, 0) AS service_fee_rate, COALESCE(showcase_mode, \'menu\') AS showcase_mode FROM admins WHERE id = $1',
+      `SELECT id, agent_menu_enabled, superadmin_menu_disabled, menu_custom_label,
+              COALESCE(service_fee_rate, 0) AS service_fee_rate,
+              COALESCE(showcase_mode, 'menu') AS showcase_mode,
+              hero_image_key, hero_image_url, hero_image_url_expires_at
+         FROM admins WHERE id = $1`,
       [agentId]
     )).rows[0];
     if (!row) return res.status(404).json({ error: 'Không tìm thấy thông tin cơ sở.' });
@@ -10955,6 +11044,10 @@ app.get('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
       // % phí dịch vụ cộng trên hóa đơn. 0 = không thu.
       service_fee_rate: Number(row.service_fee_rate || 0),
       showcase_mode: row.showcase_mode || 'menu',
+      // Ảnh bìa Agent ĐÃ TẢI LÊN. Cố ý KHÔNG rơi về ảnh sản phẩm ở đây: màn
+      // cấu hình phải cho Agent biết mình đã tải ảnh hay chưa. Đường rơi về chỉ
+      // nằm ở thực đơn khách.
+      hero_image_url: (await refreshHeroImageUrl(row))?.hero_image_url || null,
       is_active: (row.superadmin_menu_disabled !== true) && (row.agent_menu_enabled !== false)
     });
   } catch (error) {
@@ -11390,6 +11483,425 @@ app.put('/api/agent/groups/:groupId/sales/:saleId/hours', checkAdminAuth, async 
   } catch (error) {
     console.error('Update group sale hours error:', error);
     res.status(500).json({ error: 'Không cập nhật được giờ nhận chat.' });
+  }
+});
+
+// ─── AGENT: ẢNH BÌA THỰC ĐƠN (HERO) ────────────────────────────────────────
+//
+// Một ảnh cho mỗi Agent. Không có thì cổng khách rơi về ảnh sản phẩm đầu tiên —
+// xem heroChoThucDon() phía dưới.
+async function refreshHeroImageUrl(agent) {
+  if (!agent?.hero_image_key) return agent;
+  const expires = agent.hero_image_url_expires_at ? new Date(agent.hero_image_url_expires_at).getTime() : 0;
+  if (agent.hero_image_url && expires - Date.now() > 24 * 3600 * 1000) return agent;
+  try {
+    const url = await s3.getMenuImageUrl(agent.hero_image_key);
+    if (!url) return agent;
+    const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
+    await db.query('UPDATE admins SET hero_image_url = $2, hero_image_url_expires_at = $3 WHERE id = $1',
+      [agent.id, url, expiresAt]);
+    return { ...agent, hero_image_url: url, hero_image_url_expires_at: expiresAt };
+  } catch (error) {
+    console.error('[Menu] Không gia hạn được URL ảnh bìa:', error.message);
+    return agent;
+  }
+}
+
+app.post('/api/agent/menu/hero', checkAdminAuth, uploadAttachmentMiddleware, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  if (!req.file) return res.status(400).json({ error: 'Chưa chọn ảnh.' });
+  if (!String(req.file.mimetype || '').startsWith('image/')) {
+    return res.status(400).json({ error: 'Chỉ nhận tệp ảnh.' });
+  }
+  try {
+    const found = await db.query('SELECT id, hero_image_key FROM admins WHERE id = $1', [req.admin.id]);
+    const key = s3.buildMenuImageKey(req.admin.id, 'hero', req.file.originalname, req.file.mimetype);
+    await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
+    const url = await s3.getMenuImageUrl(key);
+    const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
+    await db.query(
+      'UPDATE admins SET hero_image_key = $2, hero_image_url = $3, hero_image_url_expires_at = $4 WHERE id = $1',
+      [req.admin.id, key, url, expiresAt]
+    );
+    // Khoá cố định theo id Agent nên tải lại ảnh CÙNG ĐUÔI ra đúng khoá cũ —
+    // gọi xoá khi ấy là xoá chính ảnh vừa tải lên.
+    if (found.rows[0]?.hero_image_key && found.rows[0].hero_image_key !== key) {
+      void s3.deleteObject(found.rows[0].hero_image_key).catch(() => {});
+    }
+    res.json({ success: true, heroUrl: url });
+  } catch (error) {
+    console.error('Upload hero image error:', error);
+    res.status(500).json({ error: 'Không tải được ảnh bìa.' });
+  }
+});
+
+app.delete('/api/agent/menu/hero', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    // Đọc khoá cũ TRƯỚC khi xoá trắng. RETURNING của UPDATE trả về giá trị SAU
+    // cập nhật, tức NULL — dùng nó thì không còn gì để xoá trong bucket, và ảnh
+    // bìa cũ nằm lại đó vĩnh viễn.
+    const truoc = await db.query('SELECT hero_image_key FROM admins WHERE id = $1', [req.admin.id]);
+    await db.query(
+      `UPDATE admins SET hero_image_key = NULL, hero_image_url = NULL, hero_image_url_expires_at = NULL
+        WHERE id = $1`, [req.admin.id]);
+    if (truoc.rows[0]?.hero_image_key) {
+      void s3.deleteObject(truoc.rows[0].hero_image_key).catch(() => {});
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete hero image error:', error);
+    res.status(500).json({ error: 'Không xoá được ảnh bìa.' });
+  }
+});
+
+// ─── AGENT: BANNER CHẠY TRÊN ĐẦU THỰC ĐƠN ──────────────────────────────────
+//
+// Khác tag ở chỗ: banner là ảnh quảng bá của RIÊNG từng cơ sở, nên Agent tự đặt.
+// Không có chữ nào trên banner do hệ thống sinh ra — chữ nằm trong chính tấm
+// ảnh Agent tải lên — nên ở đây không có gì để dịch. Thứ duy nhất khách đọc
+// được là tên sản phẩm mà banner trỏ tới, và tên đó đã dịch sẵn từ trước.
+const BANNER_TOI_DA = 8;
+
+// Gia hạn URL ký của ảnh banner, cùng lối với refreshMenuImageUrl của sản phẩm.
+// Không gia hạn thì sau 7 ngày banner biến thành ô trống mà không ai hay.
+async function refreshBannerImageUrl(banner) {
+  if (!banner?.image_key) return banner;
+  const expires = banner.image_url_expires_at ? new Date(banner.image_url_expires_at).getTime() : 0;
+  if (banner.image_url && expires - Date.now() > 24 * 3600 * 1000) return banner;
+  try {
+    const url = await s3.getMenuImageUrl(banner.image_key);
+    if (!url) return banner;
+    const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
+    await db.query('UPDATE qr_menu_banners SET image_url = $2, image_url_expires_at = $3 WHERE id = $1',
+      [banner.id, url, expiresAt]);
+    return { ...banner, image_url: url, image_url_expires_at: expiresAt };
+  } catch (error) {
+    console.error('[Menu] Không gia hạn được URL banner:', error.message);
+    return banner;
+  }
+}
+
+app.get('/api/agent/menu/banners', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const result = await db.query(
+      `SELECT b.*, i.name AS target_item_name
+         FROM qr_menu_banners b
+         LEFT JOIN qr_menu_items i ON i.id = b.target_item_id
+        WHERE b.agent_id = $1
+        ORDER BY b.sort_order, b.id`,
+      [req.admin.id]
+    );
+    const banners = await Promise.all(result.rows.map(refreshBannerImageUrl));
+    res.json({ banners, max: BANNER_TOI_DA });
+  } catch (error) {
+    console.error('List banners error:', error);
+    res.status(500).json({ error: 'Không tải được banner.' });
+  }
+});
+
+// Tạo banner RỖNG trước, rồi mới tải ảnh lên theo id của nó.
+//
+// Phải theo thứ tự này vì khoá ảnh là `menu/{id tài khoản}/banner-{id banner}` —
+// chưa có dòng thì chưa có id để đặt tên. Đây cũng là lý do đính kèm chat phải
+// tự sinh id riêng (xem s3-helper.js): ở đó không đảo được thứ tự, ở đây thì có.
+app.post('/api/agent/menu/banners', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const dem = await db.query('SELECT COUNT(*)::int AS n FROM qr_menu_banners WHERE agent_id = $1', [req.admin.id]);
+    if (dem.rows[0].n >= BANNER_TOI_DA) {
+      return res.status(409).json({ error: `Tối đa ${BANNER_TOI_DA} banner.` });
+    }
+    const created = await db.query(
+      `INSERT INTO qr_menu_banners (agent_id, project_id, sort_order, is_active)
+       VALUES ($1, $2, $3, TRUE) RETURNING *`,
+      [req.admin.id, req.admin.project_id, dem.rows[0].n]
+    );
+    res.json({ success: true, banner: created.rows[0] });
+  } catch (error) {
+    console.error('Create banner error:', error);
+    res.status(500).json({ error: 'Không tạo được banner.' });
+  }
+});
+
+app.post('/api/agent/menu/banners/:id/image', checkAdminAuth, uploadAttachmentMiddleware, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  if (!req.file) return res.status(400).json({ error: 'Chưa chọn ảnh.' });
+  if (!String(req.file.mimetype || '').startsWith('image/')) {
+    return res.status(400).json({ error: 'Chỉ nhận tệp ảnh.' });
+  }
+  try {
+    const found = await db.query('SELECT id, image_key FROM qr_menu_banners WHERE id = $1 AND agent_id = $2',
+      [Number(req.params.id), req.admin.id]);
+    if (!found.rows[0]) return res.status(404).json({ error: 'Không tìm thấy banner.' });
+
+    const key = s3.buildMenuImageKey(req.admin.id, `banner-${found.rows[0].id}`, req.file.originalname, req.file.mimetype);
+    await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
+    const url = await s3.getMenuImageUrl(key);
+    const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
+    await db.query(
+      'UPDATE qr_menu_banners SET image_key = $2, image_url = $3, image_url_expires_at = $4, updated_at = NOW() WHERE id = $1',
+      [found.rows[0].id, key, url, expiresAt]
+    );
+    // Khoá mới có thể TRÙNG khoá cũ (tên cố định theo id banner). Trùng thì ảnh
+    // mới đã đè lên ảnh cũ rồi — gọi xoá nữa là xoá chính ảnh vừa tải lên.
+    if (found.rows[0].image_key && found.rows[0].image_key !== key) {
+      void s3.deleteObject(found.rows[0].image_key).catch(() => {});
+    }
+    res.json({ success: true, imageUrl: url });
+  } catch (error) {
+    console.error('Upload banner image error:', error);
+    res.status(500).json({ error: 'Không tải được ảnh lên.' });
+  }
+});
+
+app.put('/api/agent/menu/banners/:id', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const id = Number(req.params.id);
+  try {
+    const found = await db.query('SELECT * FROM qr_menu_banners WHERE id = $1 AND agent_id = $2', [id, req.admin.id]);
+    if (!found.rows[0]) return res.status(404).json({ error: 'Không tìm thấy banner.' });
+
+    // Sản phẩm banner trỏ tới phải là sản phẩm CỦA CHÍNH Agent này. Không kiểm
+    // thì Agent gửi id sản phẩm của quán khác vào là banner mở ra một sản phẩm
+    // không có trong thực đơn của mình.
+    let targetId = found.rows[0].target_item_id;
+    if (req.body?.targetItemId !== undefined) {
+      const muon = Number(req.body.targetItemId) || null;
+      if (muon) {
+        const thuoc = await db.query('SELECT id FROM qr_menu_items WHERE id = $1 AND agent_id = $2', [muon, req.admin.id]);
+        if (!thuoc.rows[0]) return res.status(400).json({ error: 'Sản phẩm không thuộc thực đơn của bạn.' });
+      }
+      targetId = muon;
+    }
+
+    const updated = await db.query(
+      `UPDATE qr_menu_banners
+          SET target_item_id = $2, sort_order = $3, is_active = $4, updated_at = NOW()
+        WHERE id = $1 RETURNING *`,
+      [id, targetId,
+       req.body?.sortOrder === undefined ? found.rows[0].sort_order : Number(req.body.sortOrder) || 0,
+       req.body?.isActive === undefined ? found.rows[0].is_active : !!req.body.isActive]
+    );
+    res.json({ success: true, banner: updated.rows[0] });
+  } catch (error) {
+    console.error('Update banner error:', error);
+    res.status(500).json({ error: 'Không lưu được banner.' });
+  }
+});
+
+app.delete('/api/agent/menu/banners/:id', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const done = await db.query('DELETE FROM qr_menu_banners WHERE id = $1 AND agent_id = $2 RETURNING image_key',
+      [Number(req.params.id), req.admin.id]);
+    if (!done.rows[0]) return res.status(404).json({ error: 'Không tìm thấy banner.' });
+    // Xoá ảnh SAU khi dòng đã mất: xoá ảnh trước mà câu DELETE hỏng thì còn lại
+    // một banner trỏ vào ảnh không tồn tại.
+    if (done.rows[0].image_key) void s3.deleteObject(done.rows[0].image_key).catch(() => {});
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete banner error:', error);
+    res.status(500).json({ error: 'Không xoá được banner.' });
+  }
+});
+
+// ─── SUPERADMIN: DANH MỤC TAG SẢN PHẨM ─────────────────────────────────────
+//
+// Tag dùng chung cho MỌI cơ sở, nên chỉ superadmin được sửa. Agent chỉ chọn tag
+// nào gắn cho sản phẩm nào (xem PUT /api/agent/menu/items/:id/tags).
+
+function requireSuperAdmin(req, res) {
+  if (isSuperAdmin(req.admin)) return true;
+  res.status(403).json({ error: 'Chỉ quản trị hệ thống được cấu hình danh mục tag.' });
+  return false;
+}
+
+// Danh sách tag kèm TẤT CẢ bản dịch — màn cấu hình cần thấy đủ để biết thứ tiếng
+// nào còn thiếu hoặc đã bị sửa tay.
+app.get('/api/superadmin/menu-tags', checkAdminAuth, async (req, res) => {
+  if (!requireSuperAdmin(req, res)) return;
+  try {
+    const result = await db.query(
+      `SELECT g.*,
+              COALESCE(json_agg(json_build_object('lang', t.lang, 'label', t.label, 'is_manual', t.is_manual))
+                       FILTER (WHERE t.lang IS NOT NULL), '[]') AS translations,
+              (SELECT COUNT(*) FROM qr_menu_item_tags it WHERE it.tag_id = g.id) AS item_count
+         FROM qr_menu_tags g
+         LEFT JOIN qr_menu_tag_translations t ON t.tag_id = g.id
+        GROUP BY g.id
+        ORDER BY g.sort_order, g.id`
+    );
+    res.json({ tags: result.rows, langs: MENU_LANGS });
+  } catch (error) {
+    console.error('List menu tags error:', error);
+    res.status(500).json({ error: 'Không tải được danh mục tag.' });
+  }
+});
+
+// Mã tag dùng trong CSDL và trong mã nguồn, không phải chữ khách đọc — nên bỏ
+// dấu và chỉ giữ chữ thường, số, gạch ngang.
+function maTagHopLe(raw, label) {
+  const nguon = String(raw || label || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd');
+  const ma = nguon.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
+  return ma || null;
+}
+
+function mauHopLe(raw, macDinh) {
+  const mau = String(raw || '').trim();
+  return /^#[0-9a-fA-F]{3,8}$/.test(mau) ? mau : macDinh;
+}
+
+app.post('/api/superadmin/menu-tags', checkAdminAuth, async (req, res) => {
+  if (!requireSuperAdmin(req, res)) return;
+  const label = String(req.body?.label || '').trim();
+  if (!label) return res.status(400).json({ error: 'Chưa nhập tên tag.' });
+  const code = maTagHopLe(req.body?.code, label);
+  if (!code) return res.status(400).json({ error: 'Tên tag không tạo được mã hợp lệ.' });
+  try {
+    const created = await db.query(
+      `INSERT INTO qr_menu_tags (code, label, color_bg, color_text, sort_order, is_active)
+       VALUES ($1, $2, $3, $4, $5, TRUE)
+       ON CONFLICT (code) DO NOTHING RETURNING *`,
+      [code, label, mauHopLe(req.body?.colorBg, '#e51a82'), mauHopLe(req.body?.colorText, '#ffffff'),
+       Number(req.body?.sortOrder) || 0]
+    );
+    if (!created.rows[0]) return res.status(409).json({ error: 'Đã có tag dùng mã này.' });
+    // Dịch NGAY LÚC LƯU, cùng lối với tên sản phẩm. Có hạn chờ để màn cấu hình
+    // không treo khi máy dịch chậm — thiếu bản dịch nào thì lượt sửa sau bù.
+    await choCoHan(translateMenuTag(created.rows[0].id, label), 9000);
+    res.json({ success: true, tag: created.rows[0] });
+  } catch (error) {
+    console.error('Create menu tag error:', error);
+    res.status(500).json({ error: 'Không tạo được tag.' });
+  }
+});
+
+app.put('/api/superadmin/menu-tags/:id', checkAdminAuth, async (req, res) => {
+  if (!requireSuperAdmin(req, res)) return;
+  const id = Number(req.params.id);
+  try {
+    const found = await db.query('SELECT * FROM qr_menu_tags WHERE id = $1', [id]);
+    if (!found.rows[0]) return res.status(404).json({ error: 'Không tìm thấy tag.' });
+
+    const label = req.body?.label === undefined ? found.rows[0].label : String(req.body.label).trim();
+    if (!label) return res.status(400).json({ error: 'Chưa nhập tên tag.' });
+
+    const updated = await db.query(
+      `UPDATE qr_menu_tags
+          SET label = $2, color_bg = $3, color_text = $4, sort_order = $5, is_active = $6, updated_at = NOW()
+        WHERE id = $1 RETURNING *`,
+      [id, label,
+       mauHopLe(req.body?.colorBg, found.rows[0].color_bg),
+       mauHopLe(req.body?.colorText, found.rows[0].color_text),
+       req.body?.sortOrder === undefined ? found.rows[0].sort_order : Number(req.body.sortOrder) || 0,
+       req.body?.isActive === undefined ? found.rows[0].is_active : !!req.body.isActive]
+    );
+    // Chỉ dịch lại khi CHỮ đổi. Đổi màu hay đổi thứ tự mà cũng gọi máy dịch là
+    // tốn một lượt gọi AI cho một việc không liên quan gì tới chữ.
+    if (label !== found.rows[0].label) {
+      await choCoHan(translateMenuTag(id, label), 9000);
+    }
+    res.json({ success: true, tag: updated.rows[0] });
+  } catch (error) {
+    console.error('Update menu tag error:', error);
+    res.status(500).json({ error: 'Không lưu được tag.' });
+  }
+});
+
+// Sửa TAY một bản dịch của tag. Đánh dấu is_manual để máy dịch không ghi đè.
+app.put('/api/superadmin/menu-tags/:id/translations/:lang', checkAdminAuth, async (req, res) => {
+  if (!requireSuperAdmin(req, res)) return;
+  const id = Number(req.params.id);
+  const lang = String(req.params.lang || '').toLowerCase();
+  if (!MENU_LANGS.includes(lang) || lang === MENU_SOURCE_LANG) {
+    return res.status(400).json({ error: 'Ngôn ngữ không hợp lệ.' });
+  }
+  const label = String(req.body?.label || '').trim();
+  if (!label) return res.status(400).json({ error: 'Chưa nhập nhãn.' });
+  try {
+    await db.query(
+      `INSERT INTO qr_menu_tag_translations (tag_id, lang, label, is_manual, updated_at)
+       VALUES ($1, $2, $3, TRUE, NOW())
+       ON CONFLICT (tag_id, lang)
+       DO UPDATE SET label = EXCLUDED.label, is_manual = TRUE, updated_at = NOW()`,
+      [id, lang, label]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update tag translation error:', error);
+    res.status(500).json({ error: 'Không lưu được bản dịch.' });
+  }
+});
+
+app.delete('/api/superadmin/menu-tags/:id', checkAdminAuth, async (req, res) => {
+  if (!requireSuperAdmin(req, res)) return;
+  try {
+    // Liên kết sản phẩm–tag và bản dịch tự rụng theo ON DELETE CASCADE.
+    const done = await db.query('DELETE FROM qr_menu_tags WHERE id = $1 RETURNING id', [Number(req.params.id)]);
+    if (!done.rows[0]) return res.status(404).json({ error: 'Không tìm thấy tag.' });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete menu tag error:', error);
+    res.status(500).json({ error: 'Không xoá được tag.' });
+  }
+});
+
+// ─── AGENT: CHỌN TAG CHO SẢN PHẨM ──────────────────────────────────────────
+//
+// Agent thấy danh mục tag (chỉ các tag đang bật) nhưng không sửa được.
+app.get('/api/agent/menu-tags', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  try {
+    const result = await db.query(
+      'SELECT id, code, label, color_bg, color_text, sort_order FROM qr_menu_tags WHERE is_active ORDER BY sort_order, id'
+    );
+    res.json({ tags: result.rows });
+  } catch (error) {
+    console.error('List agent menu tags error:', error);
+    res.status(500).json({ error: 'Không tải được danh mục tag.' });
+  }
+});
+
+app.put('/api/agent/menu/items/:id/tags', checkAdminAuth, async (req, res) => {
+  if (!(await requireAgentManager(req, res))) return;
+  const itemId = Number(req.params.id);
+  try {
+    const item = await db.query('SELECT id FROM qr_menu_items WHERE id = $1 AND agent_id = $2',
+      [itemId, req.admin.id]);
+    if (!item.rows[0]) return res.status(404).json({ error: 'Không tìm thấy sản phẩm.' });
+
+    const muon = [...new Set((Array.isArray(req.body?.tagIds) ? req.body.tagIds : []).map(Number).filter(Boolean))];
+    // Chỉ nhận tag CÓ THẬT và đang bật. Không lọc thì client gửi id bừa vào là
+    // tạo ra dòng trỏ vào tag không tồn tại (khoá ngoại sẽ chặn, nhưng chặn bằng
+    // lỗi 500 thay vì một câu nói rõ).
+    const hopLe = muon.length === 0 ? { rows: [] } : await db.query(
+      'SELECT id FROM qr_menu_tags WHERE id = ANY($1::int[]) AND is_active', [muon]
+    );
+    const ids = hopLe.rows.map((r) => r.id);
+
+    // Thay trọn bộ trong MỘT giao dịch: nửa chừng hỏng thì sản phẩm không rơi
+    // vào trạng thái mất hết tag cũ mà chưa có tag mới.
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM qr_menu_item_tags WHERE item_id = $1', [itemId]);
+      for (const tagId of ids) {
+        await client.query('INSERT INTO qr_menu_item_tags (item_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [itemId, tagId]);
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    res.json({ success: true, tagIds: ids });
+  } catch (error) {
+    console.error('Set item tags error:', error);
+    res.status(500).json({ error: 'Không lưu được tag cho sản phẩm.' });
   }
 });
 
@@ -12219,6 +12731,78 @@ async function ensureMenuItemTranslations(itemId, name, description, agentId, pr
   }
 }
 
+// Dịch NHÃN TAG, cùng nguyên tắc với translateMenuItem và translateMenuCategory.
+//
+// Tag hiện ở góc ảnh sản phẩm trong cổng khách, nên nó cũng là chữ khách đọc —
+// để tiếng Việt thì khách Hàn thấy một nhãn "Bán chạy" nằm trên một sản phẩm đã
+// dịch hết sang tiếng Hàn.
+//
+// Tag do superadmin đặt nên KHÔNG có danh sách tên riêng cần giữ nguyên như tên
+// quán; truyền protect rỗng.
+async function translateMenuTagToLanguage(tagId, label, lang) {
+  const target = String(lang || '').toLowerCase();
+  if (!MENU_LANGS.includes(target) || target === MENU_SOURCE_LANG) return { label };
+
+  const manual = await db.query(
+    'SELECT label, is_manual FROM qr_menu_tag_translations WHERE tag_id = $1 AND lang = $2',
+    [tagId, target]
+  );
+  if (manual.rows[0]?.is_manual) return { label: manual.rows[0].label || label };
+
+  const out = await gemini.translateText(label, target, { sourceLang: MENU_SOURCE_LANG, protect: [] });
+  if (!out || out.provider === 'none') return null;
+  const translated = out.translatedText || label;
+  await db.query(
+    `INSERT INTO qr_menu_tag_translations (tag_id, lang, label, is_manual, updated_at)
+     VALUES ($1, $2, $3, FALSE, NOW())
+     ON CONFLICT (tag_id, lang)
+     DO UPDATE SET label = EXCLUDED.label, updated_at = NOW()
+       WHERE qr_menu_tag_translations.is_manual = FALSE`,
+    [tagId, target, translated]
+  );
+  return { label: translated };
+}
+
+// Dịch một tag sang toàn bộ ngôn ngữ còn lại, NGAY LÚC LƯU.
+async function translateMenuTag(tagId, label) {
+  const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
+  await Promise.all(targets.map(async (lang) => {
+    try {
+      await translateMenuTagToLanguage(tagId, label, lang);
+    } catch (error) {
+      console.error(`[Menu] Không dịch được tag ${tagId} sang ${lang}:`, error.message);
+    }
+  }));
+}
+
+// Đọc tag kèm bản dịch theo ngôn ngữ khách đang xem.
+//
+// Rơi về nhãn gốc khi chưa có bản dịch, KHÔNG dịch live: cùng quy tắc với tên
+// sản phẩm (mục 9.3 trong CODEBASE.md). Khách đang đói không nên phải chờ một
+// lượt gọi AI chỉ để đọc chữ "Món mới".
+async function tagsChoSanPham(itemIds, lang) {
+  const ids = [...new Set((itemIds || []).map(Number).filter(Boolean))];
+  if (ids.length === 0) return new Map();
+  const target = String(lang || MENU_SOURCE_LANG).toLowerCase().slice(0, 2);
+  const rows = await db.query(
+    `SELECT it.item_id, g.id, g.code, g.color_bg, g.color_text, g.sort_order,
+            COALESCE(NULLIF(t.label, ''), g.label) AS label
+       FROM qr_menu_item_tags it
+       JOIN qr_menu_tags g ON g.id = it.tag_id AND g.is_active
+       LEFT JOIN qr_menu_tag_translations t ON t.tag_id = g.id AND t.lang = $2
+      WHERE it.item_id = ANY($1::int[])
+      ORDER BY g.sort_order, g.id`,
+    [ids, target]
+  );
+  const theo = new Map();
+  for (const row of rows.rows) {
+    const { item_id, ...tag } = row;
+    if (!theo.has(item_id)) theo.set(item_id, []);
+    theo.get(item_id).push(tag);
+  }
+  return theo;
+}
+
 // Dịch TÊN NHÓM món, cùng nguyên tắc với translateMenuItem.
 //
 // Thiếu hàm này thì khách chọn tiếng Hàn sẽ thấy tên món đã dịch nằm dưới một
@@ -12402,7 +12986,12 @@ app.get('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
       `SELECT i.*, c.name AS category_name,
               COALESCE(json_agg(json_build_object(
                 'lang', t.lang, 'name', t.name, 'description', t.description, 'is_manual', t.is_manual
-              )) FILTER (WHERE t.lang IS NOT NULL), '[]') AS translations
+              )) FILTER (WHERE t.lang IS NOT NULL), '[]') AS translations,
+              -- Tag của sản phẩm phải đi kèm ra màn sửa. Thiếu nó thì form sửa
+              -- mở lên với ô tag trống, Agent bấm Lưu là xoá sạch tag đã chọn —
+              -- đúng lớp lỗi đã xảy ra với tên riêng / tên gọi (mục 9.3).
+              COALESCE((SELECT json_agg(it.tag_id ORDER BY it.tag_id)
+                          FROM qr_menu_item_tags it WHERE it.item_id = i.id), '[]') AS tag_ids
          FROM qr_menu_items i
          LEFT JOIN qr_menu_categories c ON c.id = i.category_id
          LEFT JOIN qr_menu_item_translations t ON t.item_id = i.id
@@ -12619,7 +13208,7 @@ app.post('/api/agent/menu/items/:id/image', checkAdminAuth, uploadAttachmentMidd
       [Number(req.params.id), req.admin.id]);
     if (!item.rows[0]) return res.status(404).json({ error: 'Không tìm thấy món.' });
 
-    const key = s3.buildMenuImageKey(req.admin.project_id, req.admin.id, req.file.originalname);
+    const key = s3.buildMenuImageKey(req.admin.id, item.rows[0].id, req.file.originalname, req.file.mimetype);
     await s3.uploadBuffer(key, req.file.buffer, req.file.mimetype);
     const url = await s3.getMenuImageUrl(key);
     const expiresAt = new Date(Date.now() + s3.MENU_IMAGE_URL_TTL_SECONDS * 1000);
@@ -12629,7 +13218,10 @@ app.post('/api/agent/menu/items/:id/image', checkAdminAuth, uploadAttachmentMidd
       [item.rows[0].id, key, url, expiresAt]
     );
     // Xoá ảnh cũ sau khi ảnh mới đã lưu thành công, không phải trước.
-    if (item.rows[0].image_key) void s3.deleteObject(item.rows[0].image_key).catch(() => {});
+    // Khoá mới có thể TRÙNG khoá cũ (tên avatar cố định theo id tài khoản, ảnh
+    // sản phẩm cố định theo id sản phẩm). Trùng thì ảnh mới đã đè lên ảnh cũ
+    // rồi — gọi xoá nữa là xoá chính ảnh vừa tải lên.
+    if (item.rows[0].image_key && item.rows[0].image_key !== key) void s3.deleteObject(item.rows[0].image_key).catch(() => {});
     res.json({ success: true, imageUrl: url });
   } catch (error) {
     console.error('Upload menu image error:', error);
@@ -13143,10 +13735,41 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
     }
 
     const withImages = await Promise.all(items.rows.map(refreshMenuImageUrl));
+
+    // Tag gắn góc sản phẩm. Nhãn đã dịch sẵn trong DB nên đây chỉ là một lượt
+    // JOIN cho TOÀN BỘ thực đơn, không phải mỗi sản phẩm một lượt truy vấn.
+    const tagTheoMon = await tagsChoSanPham(withImages.map((item) => item.id), useLang);
+
     const clean = withImages.map(({
       image_key, image_url_expires_at, source_name, source_description,
       translation_is_manual, name_translated, description_translated, ...item
-    }) => item);
+    }) => ({ ...item, tags: tagTheoMon.get(item.id) || [] }));
+
+    // Banner đầu thực đơn, chỉ lấy banner ĐANG BẬT và ĐÃ CÓ ẢNH: banner vừa tạo
+    // mà Agent chưa kịp tải ảnh lên thì ở cổng khách là một ô trống chạy qua.
+    const bannerRows = await db.query(
+      `SELECT id, image_url, image_key, image_url_expires_at, target_item_id, sort_order
+         FROM qr_menu_banners
+        WHERE agent_id = $1 AND is_active = TRUE AND image_key IS NOT NULL
+        ORDER BY sort_order, id`,
+      [owner.agent_id]
+    );
+    const banners = (await Promise.all(bannerRows.rows.map(refreshBannerImageUrl)))
+      .map(({ image_key, image_url_expires_at, ...banner }) => banner);
+
+    // ẢNH BÌA: ảnh Agent tự tải lên; KHÔNG có thì lấy ảnh của sản phẩm đầu tiên.
+    //
+    // Rơi về ảnh sản phẩm chứ không để trống: thực đơn vừa lập xong mà Agent
+    // chưa kịp làm ảnh bìa thì khách quét QR vẫn thấy một tấm ảnh đồ ăn thật,
+    // không phải một mảng màu trống trên nửa màn hình đầu tiên.
+    const chuQuan = await db.query(
+      'SELECT id, hero_image_key, hero_image_url, hero_image_url_expires_at FROM admins WHERE id = $1',
+      [owner.agent_id]
+    );
+    const daGiaHan = await refreshHeroImageUrl(chuQuan.rows[0]);
+    const heroImage = daGiaHan?.hero_image_url
+      || clean.find((item) => item.image_url)?.image_url
+      || null;
     let customMenuLabel = null;
     if (owner.menu_custom_label) {
       customMenuLabel = await localizeQrText(owner.menu_custom_label, useLang, owner.agent_id);
@@ -13161,6 +13784,8 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
       // Món ưu đãi tách riêng để cổng khách dựng slider đầu trang mà không phải
       // tự đoán nhóm nào là nhóm ưu đãi.
       promoItems: clean.filter((item) => item.is_promo),
+      banners,
+      heroImage,
       items: clean,
     });
   } catch (error) {
@@ -13838,15 +14463,19 @@ app.put('/api/admin/orders/:orderId/agent-items', checkAdminAuth, async (req, re
       const discount = Math.max(0, Number(item.discount || 0));
       const lineTotal = Math.max(0, unitPrice * quantity - discount);
 
-      // Khi agent sửa, không tự động ghi vào hóa đơn phần note (như 'Agent thêm món', 'Agent sửa giá').
-      // Lọc bỏ vết ghi chú hệ thống/agent cũ nếu có để hóa đơn luôn sạch sẽ.
-      if (note) {
-        note = note
-          .replace(/\(?(?:SuperAdmin|Agent|Sale)[^|)]*(?:thêm món|thêm:|sửa giá:?)[^|)]*\)?/gi, '')
-          .replace(/^[\s|:\-]+|[\s|:\-]+$/g, '')
-          .trim();
+      if (!prev) {
+        // Món mới
+        if (!note.toLowerCase().includes('thêm')) {
+          note = note ? `${actorTitle} thêm: ${note}` : `${actorTitle} thêm món`;
+        }
+      } else {
+        // Món cũ được sửa giá
+        const prevPrice = Math.max(0, Number(prev.unitPrice ?? prev.price ?? 0));
+        if (prevPrice !== unitPrice && !note.toLowerCase().includes('sửa giá')) {
+          const priceChange = `${actorTitle} sửa giá: ${prevPrice.toLocaleString('vi-VN')}₫ -> ${unitPrice.toLocaleString('vi-VN')}₫`;
+          note = note ? `${note} | ${priceChange}` : priceChange;
+        }
       }
-
 
       // Không còn VAT theo món: giá nhân viên gõ vào là giá khách trả.
       const { vatRate: _boVat, vatAmount: _boVatAmount, ...conLai } = item;

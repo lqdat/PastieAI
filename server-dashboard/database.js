@@ -717,6 +717,32 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     // tổ chức bên trong của Agent — mọi thứ còn lại Agent tự sắp xếp.
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS sale_limit INT;`);
 
+    // ── UỶ QUYỀN XÁC NHẬN THU TIỀN CHO MỘT SALE ────────────────────────────
+    //
+    // Mặc định chỉ Agent (và Superadmin) được bấm "Đã thanh toán". Agent có thể
+    // trao quyền đó cho ĐÚNG MỘT Sale cấp dưới của mình; khi đã trao, chính
+    // Agent không còn thấy nút nữa — tiền chỉ một người chốt, không hai người
+    // cùng bấm rồi đổ lỗi cho nhau.
+    //
+    // "Đúng một" được bảo đảm bằng CHỈ MỤC DUY NHẤT MỘT PHẦN ở dưới, không phải
+    // bằng đoạn mã kiểm tra trong endpoint: hai lượt bấm gần nhau thì đoạn mã
+    // kiểm tra không chặn được, chỉ chỉ mục mới chặn.
+    // ── ẢNH BÌA THỰC ĐƠN (HERO) ────────────────────────────────────────────
+    //
+    // Ảnh lớn trên đầu thực đơn khách. Agent tự tải lên; KHÔNG có thì cổng khách
+    // rơi về ảnh của sản phẩm đầu tiên — thực đơn mới lập vẫn có bìa tử tế thay
+    // vì một mảng màu trống.
+    //
+    // Nằm ở bảng admins chứ không tạo bảng riêng: mỗi Agent đúng một ảnh bìa,
+    // một bảng riêng cho quan hệ một-một chỉ thêm một lượt JOIN.
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS hero_image_key TEXT;`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS hero_image_url TEXT;`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS hero_image_url_expires_at TIMESTAMP;`);
+
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS can_mark_paid BOOLEAN NOT NULL DEFAULT FALSE;`);
+    await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_admins_one_paid_sale_per_agent
+                 ON admins(managed_by_admin_id) WHERE can_mark_paid AND managed_by_admin_id IS NOT NULL;`);
+
     // PHIÊN LÀM VIỆC KHÔNG TỰ HẾT HẠN — chỉ bật cho vài tài khoản nội bộ Pastie.
     //
     // Đây là ngoại lệ có chủ đích, không phải mặc định: mọi tài khoản khác vẫn
@@ -1148,6 +1174,81 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
         PRIMARY KEY (category_id, lang)
       );
     `);
+
+    // ── TAG GẮN GÓC SẢN PHẨM ────────────────────────────────────────────────
+    //
+    // Danh mục tag do SUPERADMIN cấu hình, dùng chung cho mọi cơ sở — "Món mới",
+    // "Bán chạy", "Cay", "Chay". Agent chỉ CHỌN tag cho sản phẩm của mình chứ
+    // không tự đặt tag mới.
+    //
+    // Vì sao dùng chung chứ không để mỗi Agent tự tạo: tag hiện lên góc ảnh sản
+    // phẩm ở cổng khách, nên nó là một phần bộ mặt của hệ thống. Để mỗi quán tự
+    // đặt thì mỗi quán một kiểu chữ, một màu, và không dịch được sang 6 thứ
+    // tiếng một cách nhất quán.
+    await query(`
+      CREATE TABLE IF NOT EXISTS qr_menu_tags (
+        id SERIAL PRIMARY KEY,
+        code VARCHAR(50) UNIQUE NOT NULL,
+        label VARCHAR(100) NOT NULL,
+        -- Màu nền và màu chữ của nhãn, để superadmin chỉnh mà không phải sửa mã.
+        color_bg VARCHAR(20) NOT NULL DEFAULT '#e51a82',
+        color_text VARCHAR(20) NOT NULL DEFAULT '#ffffff',
+        sort_order INT NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_menu_tags_active ON qr_menu_tags(is_active, sort_order);`);
+
+    // Chữ trên tag cũng phải dịch, cùng lối với tên sản phẩm và tên nhóm: dịch
+    // LÚC LƯU rồi cất vào đây, cổng khách chỉ đọc. Không dịch live.
+    await query(`
+      CREATE TABLE IF NOT EXISTS qr_menu_tag_translations (
+        tag_id INT NOT NULL REFERENCES qr_menu_tags(id) ON DELETE CASCADE,
+        lang VARCHAR(10) NOT NULL,
+        label VARCHAR(100),
+        is_manual BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (tag_id, lang)
+      );
+    `);
+
+    // Sản phẩm nào mang tag nào. Xoá tag thì mọi liên kết tự rụng theo, không
+    // để lại dòng trỏ vào tag không còn tồn tại.
+    await query(`
+      CREATE TABLE IF NOT EXISTS qr_menu_item_tags (
+        item_id INT NOT NULL REFERENCES qr_menu_items(id) ON DELETE CASCADE,
+        tag_id INT NOT NULL REFERENCES qr_menu_tags(id) ON DELETE CASCADE,
+        PRIMARY KEY (item_id, tag_id)
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_menu_item_tags_tag ON qr_menu_item_tags(tag_id);`);
+
+    // ── BANNER CHẠY TRÊN ĐẦU THỰC ĐƠN ──────────────────────────────────────
+    //
+    // Do AGENT tự đặt (khác với tag): đây là ảnh quảng bá của riêng từng cơ sở
+    // — combo trong tuần, giờ vàng, sự kiện. Mỗi Agent một bộ.
+    //
+    // Ảnh lưu cùng lối với ảnh sản phẩm: khoá S3 giữ trong image_key, URL ký sẵn
+    // giữ trong image_url kèm hạn, máy chủ tự gia hạn khi sắp hết.
+    await query(`
+      CREATE TABLE IF NOT EXISTS qr_menu_banners (
+        id SERIAL PRIMARY KEY,
+        agent_id INT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+        project_id VARCHAR(100) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        image_key TEXT,
+        image_url TEXT,
+        image_url_expires_at TIMESTAMP,
+        -- Bấm vào banner thì mở sản phẩm nào. NULL = banner chỉ để xem.
+        target_item_id INT REFERENCES qr_menu_items(id) ON DELETE SET NULL,
+        sort_order INT NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_menu_banners_agent ON qr_menu_banners(agent_id, is_active, sort_order);`);
 
     // Ghi chú món của Sale ("ít cay", "không hành") là chữ tự do, không nằm
     // trong thực đơn nên không có sẵn bản dịch. Cache theo NỘI DUNG chứ không
