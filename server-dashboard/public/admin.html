@@ -661,6 +661,28 @@
                             <span data-i18n="orgTagOrder">Thứ tự</span>
                             <input type="number" id="org-tag-order" value="0" min="0" max="999">
                         </label>
+                        <!-- KIỂU BADGE: hình dáng nhãn khi hiện trên góc ảnh sản phẩm
+                             ở cổng khách. Danh sách đóng, máy chủ kiểm lại — giá trị
+                             này đi thẳng vào tên class CSS bên cổng khách. -->
+                        <label class="org-field">
+                            <span data-i18n="orgTagBadge">Kiểu badge</span>
+                            <select id="org-tag-badge">
+                                <option value="star" data-i18n="orgTagBadgeStar">Ngôi sao răng cưa</option>
+                                <option value="seal" data-i18n="orgTagBadgeSeal">Con dấu tròn</option>
+                                <option value="pill" data-i18n="orgTagBadgePill">Viên thuốc</option>
+                                <option value="ribbon" data-i18n="orgTagBadgeRibbon">Ruy băng chéo</option>
+                            </select>
+                        </label>
+                        <!-- XEM TRƯỚC NGAY TRÊN Ô ẢNH GIẢ.
+                             Mô tả bằng chữ ("ngôi sao răng cưa") không nói lên được nó
+                             trông ra sao trên một tấm ảnh thật, mà đây lại là thứ khách
+                             nhìn thấy suốt. Vẽ lại ở mỗi lần gõ, không chờ bấm Lưu. -->
+                        <div class="org-field tag-preview-row">
+                            <span data-i18n="orgTagPreview">Xem trước trên ảnh sản phẩm</span>
+                            <div class="tag-preview-shot">
+                                <span class="menu-badge is-star" id="org-tag-preview-badge"><span>NHÃN</span></span>
+                            </div>
+                        </div>
                         <div class="org-form-actions">
                             <button type="submit" class="primary-btn"><i class="ri-save-line"></i> <span data-i18n="orgTagSave">Lưu nhãn</span></button>
                             <button type="button" class="secondary-btn hide" id="org-tag-cancel" data-i18n="orgTagCancel">Huỷ sửa</button>

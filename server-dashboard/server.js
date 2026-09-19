@@ -11783,6 +11783,17 @@ function mauHopLe(raw, macDinh) {
   return /^#[0-9a-fA-F]{3,8}$/.test(mau) ? mau : macDinh;
 }
 
+// HÌNH DÁNG badge trên góc ảnh sản phẩm ở cổng khách.
+//
+// Danh sách ĐÓNG, kiểm ở máy chủ chứ không tin ô chọn ở trình duyệt: giá trị
+// này đi thẳng vào tên class CSS bên cổng khách, nên một chuỗi lạ lọt qua là
+// badge mất hình dáng — hoặc tệ hơn, thành chỗ nhét chuỗi tuỳ ý vào HTML.
+const KIEU_BADGE = ['star', 'seal', 'pill', 'ribbon'];
+function kieuBadgeHopLe(raw, macDinh) {
+  const kieu = String(raw || '').trim().toLowerCase();
+  return KIEU_BADGE.includes(kieu) ? kieu : macDinh;
+}
+
 app.post('/api/superadmin/menu-tags', checkAdminAuth, async (req, res) => {
   if (!requireSuperAdmin(req, res)) return;
   const label = String(req.body?.label || '').trim();
@@ -11791,10 +11802,11 @@ app.post('/api/superadmin/menu-tags', checkAdminAuth, async (req, res) => {
   if (!code) return res.status(400).json({ error: 'Tên tag không tạo được mã hợp lệ.' });
   try {
     const created = await db.query(
-      `INSERT INTO qr_menu_tags (code, label, color_bg, color_text, sort_order, is_active)
-       VALUES ($1, $2, $3, $4, $5, TRUE)
+      `INSERT INTO qr_menu_tags (code, label, color_bg, color_text, badge_style, sort_order, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE)
        ON CONFLICT (code) DO NOTHING RETURNING *`,
       [code, label, mauHopLe(req.body?.colorBg, '#e51a82'), mauHopLe(req.body?.colorText, '#ffffff'),
+       kieuBadgeHopLe(req.body?.badgeStyle, 'star'),
        Number(req.body?.sortOrder) || 0]
     );
     if (!created.rows[0]) return res.status(409).json({ error: 'Đã có tag dùng mã này.' });
@@ -11820,13 +11832,15 @@ app.put('/api/superadmin/menu-tags/:id', checkAdminAuth, async (req, res) => {
 
     const updated = await db.query(
       `UPDATE qr_menu_tags
-          SET label = $2, color_bg = $3, color_text = $4, sort_order = $5, is_active = $6, updated_at = NOW()
+          SET label = $2, color_bg = $3, color_text = $4, badge_style = $7,
+              sort_order = $5, is_active = $6, updated_at = NOW()
         WHERE id = $1 RETURNING *`,
       [id, label,
        mauHopLe(req.body?.colorBg, found.rows[0].color_bg),
        mauHopLe(req.body?.colorText, found.rows[0].color_text),
        req.body?.sortOrder === undefined ? found.rows[0].sort_order : Number(req.body.sortOrder) || 0,
-       req.body?.isActive === undefined ? found.rows[0].is_active : !!req.body.isActive]
+       req.body?.isActive === undefined ? found.rows[0].is_active : !!req.body.isActive,
+       kieuBadgeHopLe(req.body?.badgeStyle, found.rows[0].badge_style || 'star')]
     );
     // Chỉ dịch lại khi CHỮ đổi. Đổi màu hay đổi thứ tự mà cũng gọi máy dịch là
     // tốn một lượt gọi AI cho một việc không liên quan gì tới chữ.
@@ -11885,7 +11899,7 @@ app.get('/api/agent/menu-tags', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
   try {
     const result = await db.query(
-      'SELECT id, code, label, color_bg, color_text, sort_order FROM qr_menu_tags WHERE is_active ORDER BY sort_order, id'
+      'SELECT id, code, label, color_bg, color_text, badge_style, sort_order FROM qr_menu_tags WHERE is_active ORDER BY sort_order, id'
     );
     res.json({ tags: result.rows });
   } catch (error) {
@@ -12815,7 +12829,7 @@ async function tagsChoSanPham(itemIds, lang) {
   if (ids.length === 0) return new Map();
   const target = String(lang || MENU_SOURCE_LANG).toLowerCase().slice(0, 2);
   const rows = await db.query(
-    `SELECT it.item_id, g.id, g.code, g.color_bg, g.color_text, g.sort_order,
+    `SELECT it.item_id, g.id, g.code, g.color_bg, g.color_text, g.badge_style, g.sort_order,
             COALESCE(NULLIF(t.label, ''), g.label) AS label
        FROM qr_menu_item_tags it
        JOIN qr_menu_tags g ON g.id = it.tag_id AND g.is_active

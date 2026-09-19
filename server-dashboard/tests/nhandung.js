@@ -1,114 +1,126 @@
-// MÀN CẤU HÌNH NHÃN PHẢI NẰM Ở CONSOLE SUPERADMIN, KHÔNG Ở BẢNG AGENT/SALE.
+// BADGE NHÃN: SUPERADMIN ĐẶT KIỂU, KHÁCH THẤY ĐÚNG KIỂU ĐÓ.
 //
-// Đây là lỗi đã thật sự xảy ra: tôi thêm tab "Nhãn sản phẩm" vào
-// pastie-dashboard/src (bảng điều khiển Agent & Sale) thay vì
-// server-dashboard/public (console Superadmin). Tab ẩn theo vai trò nên không
-// ai báo lỗi — chỉ đơn giản là Superadmin đăng nhập vào console của mình và
-// không tìm thấy chỗ tạo nhãn.
+// Hình dáng badge được vẽ ở HAI nơi: khung xem trước trong console Superadmin,
+// và thẻ sản phẩm ở cổng khách. Sửa một bên mà quên bên kia thì người cấu hình
+// chọn "ngôi sao", xem trước ra ngôi sao, còn khách nhìn thấy một hình khác —
+// và không ai phát hiện, vì hai màn hình không bao giờ mở cạnh nhau.
 //
-// Quy tắc 4 trong docs/CODEBASE.md nói rõ HAI GIAO DIỆN ĐỘC LẬP và cố ý KHÔNG
-// đồng bộ. Bài này biến quy tắc đó thành một phép đo: thứ của Superadmin chỉ
-// được nằm bên Superadmin, thứ của Agent chỉ được nằm bên Agent.
+// Bài này so từng kiểu ở hai tệp, và so cả đa giác của ngôi sao.
 const fs = require('fs');
 const path = require('path');
 
 let passed = 0; const failures = [];
 const check = (n, c, d) => { if (c) { passed++; console.log('  ✓ ' + n); } else { failures.push(n); console.log('  ✗ ' + n + (d ? '\n      ' + d : '')); } };
 
-// Hai kho, tìm theo bố cục thật rồi rơi về bản sao cục bộ khi chạy ở máy khác.
-function timKho(...duongDan) {
-  return duongDan.find((p) => fs.existsSync(p)) || null;
-}
-const KHO_SA = timKho(
-  path.join(__dirname, '..', 'server-dashboard', 'public'),
-  path.join(__dirname, '..', '..', 'server-dashboard', 'public'),
-  __dirname,
-);
-const KHO_AGENT = timKho(
-  path.join(__dirname, '..', 'pastie-dashboard', 'src'),
-  path.join(__dirname, '..', '..', 'pastie-dashboard', 'src'),
-  path.join(__dirname, '..', 'g2ui', 'dev'),
-  path.join(__dirname, '..', '..', 'g2ui', 'dev'),
-);
+const tim = (...p) => p.find((x) => fs.existsSync(x)) || null;
+const KHO_SA = tim(path.join(__dirname, '..', 'server-dashboard', 'public'),
+                   path.join(__dirname, 'sa'));
+const KHO_PT = tim(path.join(__dirname, '..', 'qr-chat-portal', 'app'),
+                   path.join(__dirname, 'pt'));
+const KHO_SV = tim(path.join(__dirname, '..', 'server-dashboard'),
+                   path.join(__dirname, 'sv'));
+check('tìm thấy console Superadmin', Boolean(KHO_SA));
+check('tìm thấy cổng khách', Boolean(KHO_PT));
+check('tìm thấy máy chủ', Boolean(KHO_SV));
+if (!KHO_SA || !KHO_PT || !KHO_SV) { console.log('\nThiếu kho để đối chiếu.'); process.exit(1); }
 
-check('tìm thấy console Superadmin', Boolean(KHO_SA), 'server-dashboard/public');
-check('tìm thấy bảng điều khiển Agent/Sale', Boolean(KHO_AGENT), 'pastie-dashboard/src');
-if (!KHO_SA || !KHO_AGENT) { console.log('\nThiếu kho để đối chiếu.'); process.exit(1); }
-
-const doc = (kho, ten) => {
-  const p = path.join(kho, ten);
-  return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
-};
-
+const doc = (kho, ten) => { const p = path.join(kho, ten); return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : ''; };
+const gon = (x) => x.replace(/\s*\n\s*/g, '');
 const saHtml = doc(KHO_SA, 'admin.html');
 const saJs = doc(KHO_SA, 'admin.js');
 const saOrg = doc(KHO_SA, 'org-console.js');
-const saCss = doc(KHO_SA, 'admin.css');
+const saCss = gon(doc(KHO_SA, 'admin.css'));
+const ptCss = gon(doc(KHO_PT, 'globals.css'));
+const ptTsx = doc(KHO_PT, 'page.tsx');
+const srv = doc(KHO_SV, 'server.js');
+const db = doc(KHO_SV, 'database.js');
 
-const agHtml = doc(KHO_AGENT, 'admin.html');
-const agJs = doc(KHO_AGENT, 'admin.js');
-const agOrg = doc(KHO_AGENT, 'org-console.js');
+const KIEU = ['star', 'seal', 'pill', 'ribbon'];
 
-// ── 1. BÊN SUPERADMIN PHẢI CÓ ĐỦ ─────────────────────────────────────────
-check('console Superadmin CÓ tab "Nhãn sản phẩm"',
-  saHtml.includes('data-org-tab="tags"'),
-  'thiếu thì Superadmin không tìm thấy chỗ tạo nhãn — đúng lỗi đã xảy ra');
-check('console Superadmin có khung nội dung của tab đó',
-  saHtml.includes('data-org-pane="tags"'));
-check('… kèm form tạo/sửa nhãn', saHtml.includes('id="org-tag-form"') && saHtml.includes('id="org-tag-label"'));
-check('… kèm ô chọn màu nền và màu chữ',
-  saHtml.includes('id="org-tag-color-bg"') && saHtml.includes('id="org-tag-color-text"'));
-check('… kèm chỗ hiện danh sách nhãn', saHtml.includes('id="org-tag-list"'));
+// ── 1. CSDL VÀ API ────────────────────────────────────────────────────────
+check('CSDL có cột badge_style', /badge_style VARCHAR\(20\) NOT NULL DEFAULT 'star'/.test(db));
+check('có bước nâng cấp cho bảng đã tồn tại',
+  /ALTER TABLE qr_menu_tags ADD COLUMN IF NOT EXISTS badge_style/.test(db),
+  'CREATE TABLE IF NOT EXISTS bỏ qua cột mới với bảng cũ — máy đang chạy sẽ thiếu cột');
+check('máy chủ kiểm kiểu trong danh sách ĐÓNG',
+  /const KIEU_BADGE = \['star', 'seal', 'pill', 'ribbon'\]/.test(srv)
+  && /KIEU_BADGE\.includes\(kieu\) \? kieu : macDinh/.test(srv),
+  'giá trị này đi thẳng vào tên class CSS bên cổng khách');
+check('API tạo nhãn nhận badgeStyle', /kieuBadgeHopLe\(req\.body\?\.badgeStyle, 'star'\)/.test(srv));
+check('API sửa nhãn giữ kiểu cũ khi không gửi',
+  /kieuBadgeHopLe\(req\.body\?\.badgeStyle, found\.rows\[0\]\.badge_style \|\| 'star'\)/.test(srv),
+  'rơi về star thay vì giữ nguyên là đổi thầm kiểu của nhãn mỗi lần sửa màu');
+check('API cho Agent trả kèm badge_style',
+  /SELECT id, code, label, color_bg, color_text, badge_style, sort_order FROM qr_menu_tags/.test(srv));
+check('dữ liệu cho cổng khách trả kèm badge_style',
+  /g\.color_text, g\.badge_style, g\.sort_order/.test(srv));
 
-check('console Superadmin nạp danh sách nhãn khi mở tab',
-  /if \(name === 'tags'\) void loadOrgTags/.test(saOrg));
-check('… và có hàm vẽ danh sách nhãn', /async function loadOrgTags/.test(saOrg));
-check('… gọi đúng đường API của Superadmin',
-  saOrg.includes("orgFetch('/api/superadmin/menu-tags')"));
-check('… hiện ĐỦ các bản dịch của từng nhãn',
-  /tag\.translations \|\| \[\]/.test(saOrg),
-  'không nhìn được bản dịch thì một bản sai nằm trên góc ảnh sản phẩm hàng tháng');
-check('… phân biệt bản sửa tay với bản máy dịch',
-  /is-manual/.test(saOrg) && /is-manual/.test(saCss),
-  'người cấu hình cần biết vì sao sửa nhãn gốc mà bản này không đổi');
+// ── 2. MÀN CẤU HÌNH CỦA SUPERADMIN ────────────────────────────────────────
+check('có ô chọn kiểu badge', saHtml.includes('id="org-tag-badge"'));
+for (const k of KIEU) check(`ô chọn có kiểu "${k}"`, new RegExp(`value="${k}"`).test(saHtml));
+check('có khung xem trước trên ảnh sản phẩm giả',
+  saHtml.includes('id="org-tag-preview-badge"') && /\.tag-preview-shot\{/.test(saCss),
+  'mô tả bằng chữ không nói lên được nó trông ra sao trên ảnh thật');
+check('xem trước vẽ lại NGAY khi gõ, không chờ bấm Lưu',
+  /\['org-tag-label', 'org-tag-badge', 'org-tag-color-bg', 'org-tag-color-text'\][\s\S]{0,140}addEventListener\('input', veXemTruocTag\)/.test(saJs),
+  'bấm Lưu là dịch 6 thứ tiếng mất vài giây — đổi một màu rồi chờ từng đó thì không ai thử');
+check('gửi kèm badgeStyle khi lưu', /badgeStyle: document\.getElementById\('org-tag-badge'\)\.value/.test(saJs));
+check('mở form SỬA thì nạp đúng kiểu đang lưu',
+  /org-tag-badge'\)\.value = tag\.badge_style \|\| 'star'/.test(saJs),
+  'bỏ trống thì select giữ kiểu của nhãn sửa trước đó, bấm Lưu là đổi thầm kiểu nhãn này');
+check('reset form đưa ô chọn về star',
+  /org-tag-badge'\)\.value = 'star'/.test(saJs),
+  'form.reset() trả select về option đánh dấu selected, ở đây không có cái nào');
+check('danh sách nhãn vẽ ĐÚNG badge, không phải chip chung chung',
+  /class="menu-badge is-\$\{escapeHtml\(tag\.badge_style \|\| 'star'\)\}"/.test(saOrg));
 
-check('console Superadmin xử lý được sửa / bật tắt / xoá nhãn',
-  saJs.includes('data-tag-edit') && saJs.includes('data-tag-toggle') && saJs.includes('data-tag-delete'));
-check('… khoá nút Lưu trong lúc dịch',
-  /nut\.disabled = true/.test(saJs),
-  'lưu là dịch ngay 6 thứ tiếng, không khoá thì bấm hai lần ra hai nhãn trùng');
-check('… cảnh báo số sản phẩm sẽ mất nhãn trước khi xoá',
-  /sản phẩm đang gắn nhãn sẽ mất nhãn/.test(saJs));
-check('console Superadmin có kiểu hiển thị cho thẻ nhãn', /\.tag-card\{/.test(saCss));
+// ── 3. CỔNG KHÁCH ─────────────────────────────────────────────────────────
+check('badge lấy hình dáng từ cấu hình Superadmin',
+  /className=\{`menu-badge is-\$\{item\.tags\[0\]\.badge_style \|\| "star"\}`\}/.test(ptTsx));
+check('thiếu kiểu thì rơi về star', /badge_style \|\| "star"/.test(ptTsx),
+  'nhãn tạo trước khi có cột badge_style vẫn phải ra một badge tử tế');
+check('thẻ KHÔNG cắt badge lấn ra ngoài',
+  /\.menu-item\{position:relative;overflow:visible\}/.test(ptCss),
+  'overflow:hidden là badge bị xén đúng ở mép thẻ');
+// Badge neo theo Ô ẢNH, mà ô ảnh đã lùi vào 11px lề của thẻ. Muốn badge vượt
+// hẳn mép thẻ thì độ lệch âm phải LỚN HƠN 11px — đó là ý nghĩa của -22px.
+const lech = (ptCss.match(/\.menu-badge\{[^}]*left:-(\d+)px/) || [])[1];
+check('badge lấn HẲN ra ngoài thẻ, không chỉ tròi khỏi ảnh',
+  Number(lech) > 11, `đang lệch -${lech}px, phải hơn 11px (lề thẻ) mới vượt mép thẻ`);
+check('badge nằm trên thẻ liền kề phía trên',
+  /\.menu-badge\{[^}]*z-index:6/.test(ptCss),
+  'phần lấn lên chạm đáy thẻ trên — thiếu z-index là bị thẻ đó che mất');
+check('riêng ruy băng thì ô ảnh mới cắt gọn hai đầu',
+  /\.menu-item-media:has\(\.menu-badge\.is-ribbon\)\{overflow:hidden/.test(ptCss));
+check('KHÔNG còn ruy băng cũ sót lại', !/menu-ribbon/.test(ptCss + ptTsx),
+  'để sót hai cách cùng lúc là hai nhãn chồng nhau trên một thẻ');
 
-// ── 2. BÊN AGENT/SALE TUYỆT ĐỐI KHÔNG ĐƯỢC CÓ ────────────────────────────
-//
-// Không phải vì nguy hiểm — máy chủ đã chặn bằng requireSuperAdmin — mà vì đó
-// là mã chết nằm nhầm nhà: hai giao diện cố ý độc lập, để lẫn vào nhau thì lần
-// sau sửa một bên quên bên kia.
-check('bảng Agent/Sale KHÔNG có tab cấu hình nhãn',
-  !agHtml.includes('data-org-tab="tags"'),
-  'cấu hình nhãn là việc của Superadmin — xem quy tắc 4 trong CODEBASE.md');
-check('bảng Agent/Sale KHÔNG có form cấu hình nhãn',
-  !agHtml.includes('id="org-tag-form"'));
-check('bảng Agent/Sale KHÔNG nạp danh mục nhãn kiểu Superadmin',
-  !/loadOrgTags/.test(agOrg) && !/superadmin\/menu-tags/.test(agJs + agOrg));
+// ── 4. HAI BỘ CSS PHẢI GIỐNG NHAU ─────────────────────────────────────────
+for (const k of KIEU) {
+  const re = new RegExp(`\\.menu-badge\\.is-${k}\\{`);
+  check(`console Superadmin có luật vẽ "${k}"`, re.test(saCss));
+  check(`cổng khách có luật vẽ "${k}"`, re.test(ptCss), 'thiếu một bên là xem trước một đằng, khách thấy một nẻo');
+}
+const clip = (css) => (css.match(/\.menu-badge\.is-star\{[^}]*clip-path:polygon\(([^)]*)\)/) || [])[1];
+check('ngôi sao ở hai bên dùng CÙNG một đa giác', Boolean(clip(saCss)) && clip(saCss) === clip(ptCss),
+  'hai đa giác gần giống nhau thì không ai phát hiện, nhưng số răng cưa lại khác');
+check('cả hai bên lấy màu qua biến --badge-bg',
+  /background:var\(--badge-bg,#e51a82\)/.test(saCss) && /background:var\(--badge-bg,#e51a82\)/.test(ptCss));
 
-// ── 3. NHƯNG AGENT VẪN PHẢI CHỌN ĐƯỢC NHÃN CHO SẢN PHẨM ─────────────────
-//
-// Ranh giới đúng: Superadmin ĐẶT danh mục, Agent CHỌN. Gỡ nhầm cả phần chọn
-// thì Agent không gắn được nhãn nào cho sản phẩm của mình.
-const agMenu = doc(KHO_AGENT, 'menu-console.js');
-check('bảng Agent VẪN có ô chọn nhãn trong form sản phẩm',
-  agHtml.includes('id="menu-item-tags"') && /veOChonTag/.test(agMenu),
-  'Superadmin ĐẶT danh mục, Agent CHỌN — gỡ nhầm phần chọn là Agent bó tay');
-check('… và gọi đúng đường API dành cho Agent',
-  agMenu.includes("orgFetch('/api/agent/menu-tags')"));
-
-// ── 4. CHỮ TRÊN NÚT PHÂN QUYỀN THU TIỀN ─────────────────────────────────
-check('nút dùng chữ "Phân quyền thu tiền"',
-  agOrg.includes('Phân quyền thu tiền'), 'chữ cũ là "Trao thu tiền"');
-check('không còn sót chữ cũ', !/Trao thu tiền/.test(agOrg + agJs));
+// Bẫy đã dính: đặt position:relative lên .menu-badge.is-seal thì bộ chọn hai
+// lớp đè position:absolute của lớp gốc, badge rơi vào luồng và đẩy ảnh tụt
+// xuống. Dựng ra mới nhìn thấy.
+check('con dấu KHÔNG tự đặt position riêng',
+  !/\.menu-badge\.is-seal\{[^}]*position:/.test(saCss) && !/\.menu-badge\.is-seal\{[^}]*position:/.test(ptCss),
+  'bộ chọn hai lớp đè absolute của lớp gốc — badge rơi vào luồng, đẩy ảnh sản phẩm tụt xuống');
+check('position:relative nằm ở lớp gốc để ::before của con dấu bám vào',
+  /\.menu-badge\{[^}]*position:relative/.test(saCss) && /\.menu-badge\{[^}]*position:relative/.test(ptCss));
+check('vòng đứt nét vẽ bằng ::before, không phải border của badge',
+  /\.menu-badge\.is-seal::before\{[^}]*border:1\.5px dashed/.test(ptCss),
+  'border cộng vào kích thước và làm lệch hình tròn');
+check('tôn trọng lựa chọn tắt chuyển động',
+  /\.menu-badge,\.menu-badge::before,\.menu-badge::after\{transition:none !important/.test(ptCss),
+  'bộ chọn * KHÔNG khớp phần tử giả');
 
 console.log('');
 console.log(failures.length ? `HỎNG ${failures.length}:\n  - ` + failures.join('\n  - ') : `ĐẠT ${passed}/${passed}`);

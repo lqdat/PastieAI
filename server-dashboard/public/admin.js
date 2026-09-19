@@ -2032,12 +2032,38 @@ document.getElementById('org-agent-form')?.addEventListener('submit', async (eve
 });
 
 
+// XEM TRƯỚC BADGE NGAY KHI GÕ.
+//
+// Mô tả bằng chữ ("ngôi sao răng cưa") không nói lên được nó trông ra sao trên
+// một tấm ảnh thật, mà đây là thứ khách nhìn thấy suốt. Vẽ lại ở mỗi lần gõ chứ
+// không chờ bấm Lưu — vì bấm Lưu là dịch ngay 6 thứ tiếng, mất vài giây, đổi
+// một màu rồi chờ từng đó để xem thử thì không ai thử.
+function veXemTruocTag() {
+    const badge = document.getElementById('org-tag-preview-badge');
+    if (!badge) return;
+    const kieu = document.getElementById('org-tag-badge')?.value || 'star';
+    badge.className = `menu-badge is-${kieu}`;
+    badge.style.setProperty('--badge-bg', document.getElementById('org-tag-color-bg')?.value || '#e51a82');
+    badge.style.setProperty('--badge-text', document.getElementById('org-tag-color-text')?.value || '#ffffff');
+    const chu = (document.getElementById('org-tag-label')?.value || '').trim();
+    const o = badge.querySelector('span');
+    if (o) o.textContent = chu || 'NHÃN';
+}
+['org-tag-label', 'org-tag-badge', 'org-tag-color-bg', 'org-tag-color-text'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('input', veXemTruocTag);
+});
+veXemTruocTag();
+
 function resetTagForm() {
     document.getElementById('org-tag-form')?.reset();
     document.getElementById('org-tag-id').value = '';
     document.getElementById('org-tag-color-bg').value = '#e51a82';
     document.getElementById('org-tag-color-text').value = '#ffffff';
+    // reset() trả <select> về option ĐƯỢC ĐÁNH DẤU selected trong HTML, không
+    // phải về option đầu — ở đây không đánh dấu cái nào nên phải đặt tay.
+    document.getElementById('org-tag-badge').value = 'star';
     document.getElementById('org-tag-cancel')?.classList.add('hide');
+    veXemTruocTag();
 }
 
 document.getElementById('org-tag-cancel')?.addEventListener('click', resetTagForm);
@@ -2050,6 +2076,7 @@ document.getElementById('org-tag-form')?.addEventListener('submit', async (event
         colorBg: document.getElementById('org-tag-color-bg').value,
         colorText: document.getElementById('org-tag-color-text').value,
         sortOrder: Number(document.getElementById('org-tag-order').value) || 0,
+        badgeStyle: document.getElementById('org-tag-badge').value,
     };
     const nut = event.target.querySelector('button[type="submit"]');
     // Lưu là DỊCH NGAY sang 6 thứ tiếng, nên lượt này mất vài giây. Khoá nút lại,
@@ -2410,6 +2437,11 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         document.getElementById('org-tag-color-bg').value = tag.color_bg || '#e51a82';
         document.getElementById('org-tag-color-text').value = tag.color_text || '#ffffff';
         document.getElementById('org-tag-order').value = tag.sort_order ?? 0;
+        // Rơi về 'star' cho nhãn tạo từ trước khi có cột badge_style — bỏ trống
+        // thì <select> giữ nguyên kiểu của nhãn vừa sửa trước đó, và bấm Lưu là
+        // âm thầm đổi kiểu của nhãn này theo.
+        document.getElementById('org-tag-badge').value = tag.badge_style || 'star';
+        veXemTruocTag();
         document.getElementById('org-tag-cancel')?.classList.remove('hide');
         document.getElementById('org-tag-label')?.focus();
         return;

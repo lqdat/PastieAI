@@ -1195,12 +1195,24 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
         -- Màu nền và màu chữ của nhãn, để superadmin chỉnh mà không phải sửa mã.
         color_bg VARCHAR(20) NOT NULL DEFAULT '#e51a82',
         color_text VARCHAR(20) NOT NULL DEFAULT '#ffffff',
+        -- HÌNH DÁNG badge trên góc ảnh sản phẩm ở cổng khách: star (ngôi sao
+        -- răng cưa), seal (con dấu tròn), pill (viên thuốc), ribbon (ruy băng
+        -- chéo).
+        --
+        -- Để ở CSDL chứ không đoán theo mã nhãn: cùng một nhãn "Mới" thì chỗ
+        -- này muốn ngôi sao, chỗ kia muốn viên thuốc gọn. Đây là danh mục dùng
+        -- chung nên phải có chỗ chọn, không viết cứng trong CSS được.
+        badge_style VARCHAR(20) NOT NULL DEFAULT 'star',
         sort_order INT NOT NULL DEFAULT 0,
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    // Bảng đã tồn tại thì CREATE TABLE IF NOT EXISTS bỏ qua HOÀN TOÀN, kể cả
+    // cột mới — phải thêm riêng. Thiếu bước này là máy đang chạy nâng cấp xong
+    // vẫn thiếu cột, và mọi câu SELECT nhắc tới nó đều ném lỗi.
+    await query(`ALTER TABLE qr_menu_tags ADD COLUMN IF NOT EXISTS badge_style VARCHAR(20) NOT NULL DEFAULT 'star';`);
     await query(`CREATE INDEX IF NOT EXISTS idx_menu_tags_active ON qr_menu_tags(is_active, sort_order);`);
 
     // Chữ trên tag cũng phải dịch, cùng lối với tên sản phẩm và tên nhóm: dịch

@@ -1085,7 +1085,10 @@ async function loadOrgTags(silent = false) {
             return `
             <article class="org-item tag-card${tag.is_active ? '' : ' is-off'}">
                 <div class="tag-card-head">
-                    <span class="tag-chip" style="background:${escapeHtml(tag.color_bg)};color:${escapeHtml(tag.color_text)}">${escapeHtml(tag.label)}</span>
+                    <!-- Vẽ ĐÚNG badge khách sẽ thấy, không phải một viên chip chung
+                         chung: danh mục này quyết định hình dáng trên góc ảnh sản
+                         phẩm, nên danh sách phải cho nhìn ra ngay nhãn nào hình gì. -->
+                    <span class="menu-badge is-${escapeHtml(tag.badge_style || 'star')}" style="--badge-bg:${escapeHtml(tag.color_bg)};--badge-text:${escapeHtml(tag.color_text)}"><span>${escapeHtml(tag.label)}</span></span>
                     <span class="tag-code">${escapeHtml(tag.code)}</span>
                     <span class="tag-usage">${Number(tag.item_count) || 0} sản phẩm</span>
                 </div>
