@@ -11627,7 +11627,11 @@ app.post('/api/agent/menu/banners', checkAdminAuth, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [req.admin.id, req.admin.project_id, titleVi, titleEn, category, excerptVi, contentVi, targetItemId, sortOrder, isActive]
     );
-    res.json({ success: true, banner: created.rows[0] });
+    const item = created.rows[0];
+    if (titleVi || excerptVi || contentVi) {
+      await choCoHan(translateMenuBanner(item.id, titleVi, excerptVi, contentVi, req.admin.id), 9000);
+    }
+    res.json({ success: true, banner: item });
   } catch (error) {
     console.error('Create banner error:', error);
     res.status(500).json({ error: 'Không tạo được banner.' });
@@ -11703,7 +11707,11 @@ app.put('/api/agent/menu/banners/:id', checkAdminAuth, async (req, res) => {
        req.body?.isActive === undefined ? found.rows[0].is_active : !!req.body.isActive,
        titleVi, titleEn, category, excerptVi, contentVi, postId]
     );
-    res.json({ success: true, banner: updated.rows[0] });
+    const item = updated.rows[0];
+    if (titleVi || excerptVi || contentVi) {
+      await choCoHan(translateMenuBanner(item.id, titleVi, excerptVi, contentVi, req.admin.id), 9000);
+    }
+    res.json({ success: true, banner: item });
   } catch (error) {
     console.error('Update banner error:', error);
     res.status(500).json({ error: 'Không lưu được banner.' });
@@ -12838,6 +12846,79 @@ async function translateMenuCategory(categoryId, name, agentId) {
   }));
 }
 
+// Tự động dịch bài viết banner sang ngôn ngữ đích (tiêu đề, tóm tắt, nội dung)
+async function translateMenuBannerToLanguage(bannerId, titleVi, excerptVi, contentVi, lang, protect) {
+  const target = String(lang || '').toLowerCase();
+  if (!MENU_LANGS.includes(target) || target === MENU_SOURCE_LANG) {
+    return { title: titleVi, excerpt: excerptVi, content: contentVi };
+  }
+
+  const manual = await db.query(
+    'SELECT title, excerpt, content, is_manual FROM qr_menu_banner_translations WHERE banner_id = $1 AND lang = $2',
+    [bannerId, target]
+  );
+  if (manual.rows[0]?.is_manual) {
+    return {
+      title: manual.rows[0].title || titleVi,
+      excerpt: manual.rows[0].excerpt ?? excerptVi,
+      content: manual.rows[0].content ?? contentVi,
+    };
+  }
+
+  const fields = [];
+  if (titleVi) fields.push({ key: 'title', text: titleVi });
+  if (excerptVi) fields.push({ key: 'excerpt', text: excerptVi });
+  if (contentVi) fields.push({ key: 'content', text: contentVi });
+
+  if (fields.length === 0) return null;
+
+  const rawTexts = fields.map(f => f.text);
+  const outputs = await gemini.translateTexts(rawTexts, target, { sourceLang: MENU_SOURCE_LANG, protect });
+
+  let translatedTitle = null;
+  let translatedExcerpt = null;
+  let translatedContent = null;
+
+  fields.forEach((f, idx) => {
+    const out = outputs[idx];
+    const val = (out && out.provider !== 'none') ? out.translatedText : f.text;
+    if (f.key === 'title') translatedTitle = val;
+    else if (f.key === 'excerpt') translatedExcerpt = val;
+    else if (f.key === 'content') translatedContent = val;
+  });
+
+  await db.query(
+    `INSERT INTO qr_menu_banner_translations (banner_id, lang, title, excerpt, content, is_manual, updated_at)
+     VALUES ($1, $2, $3, $4, $5, FALSE, NOW())
+     ON CONFLICT (banner_id, lang)
+     DO UPDATE SET title = EXCLUDED.title, excerpt = EXCLUDED.excerpt, content = EXCLUDED.content, updated_at = NOW()
+       WHERE qr_menu_banner_translations.is_manual = FALSE`,
+    [bannerId, target, translatedTitle, translatedExcerpt, translatedContent]
+  );
+
+  return { title: translatedTitle, excerpt: translatedExcerpt, content: translatedContent };
+}
+
+// Dịch bài viết banner sang các ngôn ngữ còn lại ngay lúc lưu
+async function translateMenuBanner(bannerId, titleVi, excerptVi, contentVi, agentId) {
+  const targets = MENU_LANGS.filter((lang) => lang !== MENU_SOURCE_LANG);
+  const protect = await venueNamesForAgent(agentId);
+  await Promise.all(targets.map(async (lang) => {
+    try {
+      const res = await translateMenuBannerToLanguage(bannerId, titleVi, excerptVi, contentVi, lang, protect);
+      if (lang === 'en' && res?.title) {
+        await db.query(
+          `UPDATE qr_menu_banners SET title_en = COALESCE(NULLIF(title_en, ''), $2) WHERE id = $1`,
+          [bannerId, res.title]
+        );
+      }
+    } catch (error) {
+      console.error(`[Menu] Không dịch được banner ${bannerId} sang ${lang}:`, error.message);
+    }
+  }));
+}
+
+
 // Ảnh menu ký 7 ngày; gia hạn khi còn dưới 1 ngày. Không gia hạn thì ảnh biến
 // mất khỏi thực đơn của khách mà không ai hay.
 async function refreshMenuImageUrl(item) {
@@ -13767,21 +13848,35 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
     // Banner đầu thực đơn, chỉ lấy banner ĐANG BẬT và ĐÃ CÓ ẢNH: banner vừa tạo
     // mà Agent chưa kịp tải ảnh lên thì ở cổng khách là một ô trống chạy qua.
     const bannerRows = await db.query(
-      `SELECT id, image_url, image_key, image_url_expires_at, target_item_id, sort_order,
-              title_vi, title_en, category, excerpt_vi, content_vi, post_id
-         FROM qr_menu_banners
-        WHERE agent_id = $1 AND is_active = TRUE AND image_key IS NOT NULL
-        ORDER BY sort_order, id`,
-      [owner.agent_id]
+      `SELECT b.id, b.image_url, b.image_key, b.image_url_expires_at, b.target_item_id, b.sort_order,
+              b.title_vi, b.title_en, b.category, b.excerpt_vi, b.content_vi, b.post_id,
+              bt.title AS translated_title, bt.excerpt AS translated_excerpt, bt.content AS translated_content
+         FROM qr_menu_banners b
+         LEFT JOIN qr_menu_banner_translations bt ON bt.banner_id = b.id AND bt.lang = $2
+        WHERE b.agent_id = $1 AND b.is_active = TRUE AND b.image_key IS NOT NULL
+        ORDER BY b.sort_order, b.id`,
+      [owner.agent_id, useLang]
     );
     const banners = (await Promise.all(bannerRows.rows.map(refreshBannerImageUrl)))
-      .map(({ image_key, image_url_expires_at, ...banner }) => ({
-        ...banner,
-        title: useLang === 'en' && banner.title_en ? banner.title_en : (banner.title_vi || ''),
-        category: banner.category || 'ƯU ĐÃI',
-        excerpt: banner.excerpt_vi || '',
-        content: banner.content_vi || ''
-      }));
+      .map(({ image_key, image_url_expires_at, translated_title, translated_excerpt, translated_content, ...banner }) => {
+        let displayTitle = banner.title_vi || '';
+        if (useLang !== 'vi') {
+          if (translated_title) displayTitle = translated_title;
+          else if (useLang === 'en' && banner.title_en) displayTitle = banner.title_en;
+        }
+        let displayExcerpt = banner.excerpt_vi || '';
+        if (useLang !== 'vi' && translated_excerpt) displayExcerpt = translated_excerpt;
+        let displayContent = banner.content_vi || '';
+        if (useLang !== 'vi' && translated_content) displayContent = translated_content;
+
+        return {
+          ...banner,
+          title: displayTitle,
+          category: banner.category || 'ƯU ĐÃI',
+          excerpt: displayExcerpt,
+          content: displayContent
+        };
+      });
 
     // ẢNH BÌA: ảnh Agent tự tải lên; KHÔNG có thì lấy ảnh của sản phẩm đầu tiên.
     //

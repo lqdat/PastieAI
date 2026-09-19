@@ -125,7 +125,7 @@
     function render(force = false) {
         const currentHash = JSON.stringify([
             CATEGORIES.map(c => [c.id, c.name, c.item_count, c.is_active, c.is_promo]),
-            ITEMS.map(i => [i.id, i.name, i.price, i.category_id, i.is_active, i.image_url, i.stock_quantity])
+            ITEMS.map(i => [i.id, i.name, i.price, i.category_id, i.is_available, i.image_url, i.stock_quantity])
         ]);
         if (!force && currentHash === lastRenderHash && $('menu-item-list')?.children.length > 0) {
             return;
@@ -566,14 +566,42 @@
     async function toggleAvailability(id) {
         const item = ITEMS.find((i) => i.id === Number(id));
         if (!item) return;
+        const oldState = !!item.is_available;
+        const newState = !oldState;
+        item.is_available = newState;
+
+        const card = document.querySelector(`article.menu-item[data-item="${id}"]`);
+        if (card) {
+            if (newState) card.classList.remove('is-off');
+            else card.classList.add('is-off');
+            const btn = card.querySelector('[data-item-availability]');
+            if (btn) {
+                btn.className = `menu-act menu-act-avail ${newState ? 'is-visible' : 'is-hidden'}`;
+                btn.title = newState ? 'Đang hiển thị - Bấm để ẩn món' : 'Đang ẩn - Bấm để hiển thị món';
+                btn.innerHTML = `<i class="ri-${newState ? 'eye-line' : 'eye-off-line'}"></i>`;
+            }
+        }
+
         try {
             await fetchMenu(`/items/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isAvailable: !item.is_available }),
+                body: JSON.stringify({ isAvailable: newState }),
             });
+            lastRenderHash = '';
             await load(true);
         } catch (error) {
+            item.is_available = oldState;
+            if (card) {
+                if (oldState) card.classList.remove('is-off');
+                else card.classList.add('is-off');
+                const btn = card.querySelector('[data-item-availability]');
+                if (btn) {
+                    btn.className = `menu-act menu-act-avail ${oldState ? 'is-visible' : 'is-hidden'}`;
+                    btn.title = oldState ? 'Đang hiển thị - Bấm để ẩn món' : 'Đang ẩn - Bấm để hiển thị món';
+                    btn.innerHTML = `<i class="ri-${oldState ? 'eye-line' : 'eye-off-line'}"></i>`;
+                }
+            }
             showToast(error.message, 'error');
         }
     }

@@ -1264,6 +1264,18 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
         ADD COLUMN IF NOT EXISTS content_vi TEXT,
         ADD COLUMN IF NOT EXISTS post_id INT REFERENCES agent_posts(id) ON DELETE SET NULL;
     `).catch(() => {});
+    await query(`
+      CREATE TABLE IF NOT EXISTS qr_menu_banner_translations (
+        banner_id INT NOT NULL REFERENCES qr_menu_banners(id) ON DELETE CASCADE,
+        lang VARCHAR(10) NOT NULL,
+        title VARCHAR(255),
+        excerpt TEXT,
+        content TEXT,
+        is_manual BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (banner_id, lang)
+      );
+    `);
 
     // Ghi chú món của Sale ("ít cay", "không hành") là chữ tự do, không nằm
     // trong thực đơn nên không có sẵn bản dịch. Cache theo NỘI DUNG chứ không
