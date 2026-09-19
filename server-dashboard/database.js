@@ -1242,6 +1242,12 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
         image_url_expires_at TIMESTAMP,
         -- Bấm vào banner thì mở sản phẩm nào. NULL = banner chỉ để xem.
         target_item_id INT REFERENCES qr_menu_items(id) ON DELETE SET NULL,
+        title_vi TEXT,
+        title_en TEXT,
+        category VARCHAR(100) DEFAULT 'ƯU ĐÃI',
+        excerpt_vi TEXT,
+        content_vi TEXT,
+        post_id INT REFERENCES agent_posts(id) ON DELETE SET NULL,
         sort_order INT NOT NULL DEFAULT 0,
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1249,6 +1255,15 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
       );
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_menu_banners_agent ON qr_menu_banners(agent_id, is_active, sort_order);`);
+    await query(`
+      ALTER TABLE qr_menu_banners
+        ADD COLUMN IF NOT EXISTS title_vi TEXT,
+        ADD COLUMN IF NOT EXISTS title_en TEXT,
+        ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'ƯU ĐÃI',
+        ADD COLUMN IF NOT EXISTS excerpt_vi TEXT,
+        ADD COLUMN IF NOT EXISTS content_vi TEXT,
+        ADD COLUMN IF NOT EXISTS post_id INT REFERENCES agent_posts(id) ON DELETE SET NULL;
+    `).catch(() => {});
 
     // Ghi chú món của Sale ("ít cay", "không hành") là chữ tự do, không nằm
     // trong thực đơn nên không có sẵn bản dịch. Cache theo NỘI DUNG chứ không

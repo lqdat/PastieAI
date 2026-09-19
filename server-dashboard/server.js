@@ -11613,10 +11613,19 @@ app.post('/api/agent/menu/banners', checkAdminAuth, async (req, res) => {
     if (dem.rows[0].n >= BANNER_TOI_DA) {
       return res.status(409).json({ error: `Tối đa ${BANNER_TOI_DA} banner.` });
     }
+    const titleVi = req.body?.titleVi || req.body?.title_vi || null;
+    const titleEn = req.body?.titleEn || req.body?.title_en || null;
+    const category = req.body?.category || 'ƯU ĐÃI';
+    const excerptVi = req.body?.excerptVi || req.body?.excerpt_vi || null;
+    const contentVi = req.body?.contentVi || req.body?.content_vi || null;
+    const targetItemId = req.body?.targetItemId ? Number(req.body.targetItemId) : null;
+    const sortOrder = req.body?.sortOrder !== undefined ? Number(req.body.sortOrder) : dem.rows[0].n;
+    const isActive = req.body?.isActive !== undefined ? !!req.body.isActive : true;
+
     const created = await db.query(
-      `INSERT INTO qr_menu_banners (agent_id, project_id, sort_order, is_active)
-       VALUES ($1, $2, $3, TRUE) RETURNING *`,
-      [req.admin.id, req.admin.project_id, dem.rows[0].n]
+      `INSERT INTO qr_menu_banners (agent_id, project_id, title_vi, title_en, category, excerpt_vi, content_vi, target_item_id, sort_order, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [req.admin.id, req.admin.project_id, titleVi, titleEn, category, excerptVi, contentVi, targetItemId, sortOrder, isActive]
     );
     res.json({ success: true, banner: created.rows[0] });
   } catch (error) {
@@ -11676,13 +11685,23 @@ app.put('/api/agent/menu/banners/:id', checkAdminAuth, async (req, res) => {
       targetId = muon;
     }
 
+    const titleVi = req.body?.titleVi !== undefined ? req.body.titleVi : (req.body?.title_vi !== undefined ? req.body.title_vi : found.rows[0].title_vi);
+    const titleEn = req.body?.titleEn !== undefined ? req.body.titleEn : (req.body?.title_en !== undefined ? req.body.title_en : found.rows[0].title_en);
+    const category = req.body?.category !== undefined ? req.body.category : found.rows[0].category;
+    const excerptVi = req.body?.excerptVi !== undefined ? req.body.excerptVi : (req.body?.excerpt_vi !== undefined ? req.body.excerpt_vi : found.rows[0].excerpt_vi);
+    const contentVi = req.body?.contentVi !== undefined ? req.body.contentVi : (req.body?.content_vi !== undefined ? req.body.content_vi : found.rows[0].content_vi);
+    const postId = req.body?.postId !== undefined ? (Number(req.body.postId) || null) : found.rows[0].post_id;
+
     const updated = await db.query(
       `UPDATE qr_menu_banners
-          SET target_item_id = $2, sort_order = $3, is_active = $4, updated_at = NOW()
+          SET target_item_id = $2, sort_order = $3, is_active = $4,
+              title_vi = $5, title_en = $6, category = $7, excerpt_vi = $8, content_vi = $9, post_id = $10,
+              updated_at = NOW()
         WHERE id = $1 RETURNING *`,
       [id, targetId,
        req.body?.sortOrder === undefined ? found.rows[0].sort_order : Number(req.body.sortOrder) || 0,
-       req.body?.isActive === undefined ? found.rows[0].is_active : !!req.body.isActive]
+       req.body?.isActive === undefined ? found.rows[0].is_active : !!req.body.isActive,
+       titleVi, titleEn, category, excerptVi, contentVi, postId]
     );
     res.json({ success: true, banner: updated.rows[0] });
   } catch (error) {
@@ -13748,14 +13767,21 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
     // Banner đầu thực đơn, chỉ lấy banner ĐANG BẬT và ĐÃ CÓ ẢNH: banner vừa tạo
     // mà Agent chưa kịp tải ảnh lên thì ở cổng khách là một ô trống chạy qua.
     const bannerRows = await db.query(
-      `SELECT id, image_url, image_key, image_url_expires_at, target_item_id, sort_order
+      `SELECT id, image_url, image_key, image_url_expires_at, target_item_id, sort_order,
+              title_vi, title_en, category, excerpt_vi, content_vi, post_id
          FROM qr_menu_banners
         WHERE agent_id = $1 AND is_active = TRUE AND image_key IS NOT NULL
         ORDER BY sort_order, id`,
       [owner.agent_id]
     );
     const banners = (await Promise.all(bannerRows.rows.map(refreshBannerImageUrl)))
-      .map(({ image_key, image_url_expires_at, ...banner }) => banner);
+      .map(({ image_key, image_url_expires_at, ...banner }) => ({
+        ...banner,
+        title: useLang === 'en' && banner.title_en ? banner.title_en : (banner.title_vi || ''),
+        category: banner.category || 'ƯU ĐÃI',
+        excerpt: banner.excerpt_vi || '',
+        content: banner.content_vi || ''
+      }));
 
     // ẢNH BÌA: ảnh Agent tự tải lên; KHÔNG có thì lấy ảnh của sản phẩm đầu tiên.
     //
