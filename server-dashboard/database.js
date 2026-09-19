@@ -738,6 +738,8 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS hero_image_key TEXT;`);
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS hero_image_url TEXT;`);
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS hero_image_url_expires_at TIMESTAMP;`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS hero_title VARCHAR(255);`);
+    await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS hero_subtitle VARCHAR(255);`);
 
     await query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS can_mark_paid BOOLEAN NOT NULL DEFAULT FALSE;`);
     await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_admins_one_paid_sale_per_agent

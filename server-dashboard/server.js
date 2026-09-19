@@ -11031,7 +11031,8 @@ app.get('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
       `SELECT id, agent_menu_enabled, superadmin_menu_disabled, menu_custom_label,
               COALESCE(service_fee_rate, 0) AS service_fee_rate,
               COALESCE(showcase_mode, 'menu') AS showcase_mode,
-              hero_image_key, hero_image_url, hero_image_url_expires_at
+              hero_image_key, hero_image_url, hero_image_url_expires_at,
+              hero_title, hero_subtitle
          FROM admins WHERE id = $1`,
       [agentId]
     )).rows[0];
@@ -11041,6 +11042,8 @@ app.get('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
       agent_menu_enabled: row.agent_menu_enabled !== false,
       superadmin_menu_disabled: row.superadmin_menu_disabled === true,
       menu_custom_label: row.menu_custom_label || '',
+      hero_title: row.hero_title || '',
+      hero_subtitle: row.hero_subtitle || '',
       // % phí dịch vụ cộng trên hóa đơn. 0 = không thu.
       service_fee_rate: Number(row.service_fee_rate || 0),
       showcase_mode: row.showcase_mode || 'menu',
@@ -11065,13 +11068,15 @@ app.put('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
     const agent = (await db.query('SELECT superadmin_menu_disabled FROM admins WHERE id = $1', [agentId])).rows[0];
     if (!agent) return res.status(404).json({ error: 'Không tìm thấy Agent.' });
 
-    const { agentMenuEnabled, menuCustomLabel, serviceFeeRate, showcaseMode } = req.body || {};
+    const { agentMenuEnabled, menuCustomLabel, serviceFeeRate, showcaseMode, heroTitle, heroSubtitle } = req.body || {};
     // Phí dịch vụ: % trên tổng tiền hàng, chấp nhận số lẻ (5.5%), chặn trong
     // khoảng 0–100 để một cú gõ nhầm không thành hóa đơn gấp mấy lần.
     const feeRate = serviceFeeRate !== undefined && serviceFeeRate !== null && !isNaN(Number(serviceFeeRate))
       ? Math.max(0, Math.min(100, Math.round(Number(serviceFeeRate) * 100) / 100))
       : undefined;
     const label = menuCustomLabel !== undefined ? String(menuCustomLabel || '').trim().slice(0, 100) : undefined;
+    const cleanHeroTitle = heroTitle !== undefined ? String(heroTitle || '').trim().slice(0, 255) : undefined;
+    const cleanHeroSubtitle = heroSubtitle !== undefined ? String(heroSubtitle || '').trim().slice(0, 255) : undefined;
     const enabled = typeof agentMenuEnabled === 'boolean' ? agentMenuEnabled : undefined;
     const mode = (showcaseMode === 'banner' || showcaseMode === 'menu') ? showcaseMode : undefined;
 
@@ -11084,28 +11089,24 @@ app.put('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
           SET agent_menu_enabled = COALESCE($2, agent_menu_enabled),
               menu_custom_label = CASE WHEN $4::boolean THEN $3::varchar ELSE menu_custom_label END,
               service_fee_rate = COALESCE($5::numeric, service_fee_rate),
-              showcase_mode = COALESCE($6, showcase_mode)
+              showcase_mode = COALESCE($6, showcase_mode),
+              hero_title = CASE WHEN $8::boolean THEN $7::varchar ELSE hero_title END,
+              hero_subtitle = CASE WHEN $10::boolean THEN $9::varchar ELSE hero_subtitle END
         WHERE id = $1
-        RETURNING agent_menu_enabled, superadmin_menu_disabled, menu_custom_label, COALESCE(service_fee_rate, 0) AS service_fee_rate, COALESCE(showcase_mode, 'menu') AS showcase_mode`,
+        RETURNING agent_menu_enabled, superadmin_menu_disabled, menu_custom_label, hero_title, hero_subtitle, COALESCE(service_fee_rate, 0) AS service_fee_rate, COALESCE(showcase_mode, 'menu') AS showcase_mode`,
       [agentId, enabled !== undefined ? enabled : null, label !== undefined ? label : null, label !== undefined,
-       feeRate !== undefined ? feeRate : null, mode !== undefined ? mode : null]
+       feeRate !== undefined ? feeRate : null, mode !== undefined ? mode : null,
+       cleanHeroTitle !== undefined ? cleanHeroTitle : null, cleanHeroTitle !== undefined,
+       cleanHeroSubtitle !== undefined ? cleanHeroSubtitle : null, cleanHeroSubtitle !== undefined]
     );
 
     const newMenuEnabled = (updated.rows[0].superadmin_menu_disabled !== true) && (updated.rows[0].agent_menu_enabled !== false);
     const newShowcaseMode = updated.rows[0].showcase_mode || 'menu';
 
-    // DỊCH NHÃN THỰC ĐƠN NGAY LÚC BẤM LƯU.
-    //
-    // Nhãn này do Agent tự đặt ("Thực đơn", "Đồ uống", "Bảng giá dịch vụ"...)
-    // nên là text tự do, không tra được từ bảng nào — phải dịch.
-    //
-    // Nó vốn đã được dịch, nhưng là LÚC KHÁCH MỞ mã QR: khách nước ngoài đầu
-    // tiên của mỗi ngôn ngữ phải chờ một lượt gọi máy dịch ngay giữa lúc đang
-    // đọc, và nếu lượt đó hỏng thì họ thấy nguyên tiếng Việt. Dịch sẵn ở đây
-    // thì lúc khách vào đã là một lượt đọc cache — cùng cách làm với loại hình
-    // trong tên cơ sở.
     const nhanMoi = String(updated.rows[0].menu_custom_label || '').trim();
     if (nhanMoi) void pretranslateQrText(nhanMoi);
+    if (cleanHeroTitle) void pretranslateQrText(cleanHeroTitle);
+    if (cleanHeroSubtitle) void pretranslateQrText(cleanHeroSubtitle);
 
     // Bắn thông báo SSE tới các phiên chat đang hoạt động của Agent để client phản ứng lập tức
     db.query(
@@ -11129,6 +11130,8 @@ app.put('/api/agent/menu-settings', checkAdminAuth, async (req, res) => {
         agent_menu_enabled: updated.rows[0].agent_menu_enabled !== false,
         superadmin_menu_disabled: updated.rows[0].superadmin_menu_disabled === true,
         menu_custom_label: updated.rows[0].menu_custom_label || '',
+        hero_title: updated.rows[0].hero_title || '',
+        hero_subtitle: updated.rows[0].hero_subtitle || '',
         service_fee_rate: Number(updated.rows[0].service_fee_rate || 0),
         showcase_mode: newShowcaseMode,
         is_active: newMenuEnabled
@@ -13338,7 +13341,7 @@ async function resolveMenuOwner(sessionId) {
     `SELECT COALESCE(g.agent_id, q.owner_admin_id) AS agent_id, s.detected_language, s.status, s.project_id,
             COALESCE(a.agent_menu_enabled, TRUE) AS agent_menu_enabled,
             COALESCE(a.superadmin_menu_disabled, FALSE) AS superadmin_menu_disabled,
-            a.menu_custom_label
+            a.menu_custom_label, a.hero_title, a.hero_subtitle
        FROM sessions s
        LEFT JOIN agent_groups g ON g.id = s.group_id
        LEFT JOIN qr_chat_accounts q ON q.id = s.qr_account_id
@@ -13895,12 +13898,22 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
     if (owner.menu_custom_label) {
       customMenuLabel = await localizeQrText(owner.menu_custom_label, useLang, owner.agent_id);
     }
+    let customHeroTitle = null;
+    if (owner.hero_title) {
+      customHeroTitle = await localizeQrText(owner.hero_title, useLang, owner.agent_id);
+    }
+    let customHeroSubtitle = null;
+    if (owner.hero_subtitle) {
+      customHeroSubtitle = await localizeQrText(owner.hero_subtitle, useLang, owner.agent_id);
+    }
     res.json({
       language: useLang,
       // Không còn vatRate: giá đã gồm VAT. Cổng khách dùng con số này để hiện
       // dòng phí dịch vụ trong giỏ hàng đúng như trên hóa đơn.
       serviceFeeRate: await serviceFeeRateOfAgent(owner.agent_id),
       menuLabel: customMenuLabel || owner.menu_custom_label || null,
+      heroTitle: customHeroTitle || owner.hero_title || null,
+      heroSubtitle: customHeroSubtitle || owner.hero_subtitle || null,
       categories: categories.rows.map(({ source_name, translated, ...category }) => category),
       // Món ưu đãi tách riêng để cổng khách dựng slider đầu trang mà không phải
       // tự đoán nhóm nào là nhóm ưu đãi.
