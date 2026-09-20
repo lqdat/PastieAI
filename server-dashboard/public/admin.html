@@ -841,9 +841,13 @@
                     <div class="addbox hide" data-addbox="menu-cat">
                     <form class="menu-form" id="menu-category-form">
                         <div class="menu-form-grid">
-                            <label class="menu-field menu-field-catname">
+                            <label class="menu-field menu-field-catname" style="flex: 2;">
                                 <span>Danh mục</span>
                                 <input type="text" id="menu-category-name" placeholder="Nhập tên danh mục..." maxlength="150" autocomplete="off">
+                            </label>
+                            <label class="menu-field menu-field-catsort" style="flex: 1; max-width: 140px;">
+                                <span>STT (Tùy chọn)</span>
+                                <input type="number" id="menu-category-sort" min="0" step="1" placeholder="Ví dụ: 1, 2..." autocomplete="off">
                             </label>
                             <div class="menu-field menu-field-catbtn">
                                 <span aria-hidden="true">&nbsp;</span>
@@ -852,11 +856,11 @@
                         </div>
                         <p class="menu-form-note">
                             <i class="ri-information-line"></i>
-                            <span>Chia nhóm cho khách dễ xem. Không bắt buộc — sản phẩm chưa phân loại vẫn hiển thị.</span>
+                            <span>Nếu để trống STT, danh mục sẽ tự sắp xếp theo thứ tự nhập từ mới tới cũ.</span>
                         </p>
                     </form>
                     </div>
-                    <div class="menu-cat-row" id="menu-category-list"></div>
+                    <div class="menu-cat-row hide" id="menu-category-list" style="display:none !important;"></div>
                     <div class="addbox hide" data-addbox="menu-item">
                     <form class="menu-form" id="menu-item-form">
                         <div class="menu-form-grid">

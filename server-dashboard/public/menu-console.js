@@ -439,6 +439,7 @@
     function renderCategories() {
         const box = $('menu-category-list');
         if (!box) return;
+        box.style.setProperty('display', 'none', 'important');
         if (CATEGORIES.length === 0) {
             box.innerHTML = `<p class="menu-hint-empty">${escapeHtml(t('mnNoCategoryHint'))}</p>`;
             return;
@@ -579,12 +580,14 @@
                     : (item.category_name
                         ? categoryDisplayName({ name: item.category_name })
                         : t('mnUncategorized', null, 'Chưa phân nhóm'));
+                const rawSort = matchedCat?.sort_order;
+                const sortNum = rawSort !== null && rawSort !== undefined && rawSort !== '' && !isNaN(Number(rawSort)) ? Number(rawSort) : null;
                 groups.set(key, {
                     key,
                     name: catName,
                     isPromo: Boolean(matchedCat?.is_promo),
                     isHidden: Boolean(matchedCat) && matchedCat.is_active === false,
-                    sort: matchedCat ? (Number(matchedCat.sort_order) || 0) : 0,
+                    sort: sortNum,
                     items: [],
                 });
             }
@@ -593,8 +596,14 @@
         const nhomTheoThuTu = [...groups.values()].sort((a, b) => {
             if (a.key === 0 || b.key === 0) return a.key === 0 ? 1 : -1;
             if (a.isPromo !== b.isPromo) return a.isPromo ? -1 : 1;
-            if (a.sort !== b.sort) return a.sort - b.sort;
-            return a.name.localeCompare(b.name, 'vi');
+            const aHas = a.sort !== null && !isNaN(a.sort);
+            const bHas = b.sort !== null && !isNaN(b.sort);
+            if (aHas && bHas && a.sort !== b.sort) {
+                return a.sort - b.sort;
+            }
+            if (aHas && !bHas) return -1;
+            if (!aHas && bHas) return 1;
+            return Number(b.key) - Number(a.key);
         });
 
         // ── GẤP / MỞ ───────────────────────────────────────────────────────
@@ -623,22 +632,21 @@
                         <i class="ri-arrow-down-s-line menu-group-caret"></i>
                         ${group.isPromo ? '<i class="ri-flashlight-fill menu-group-flash"></i>' : ''}
                         <span class="menu-group-name">${escapeHtml(group.name)}</span>
-                        <small>${escapeHtml(t('mnProductCount', { count: group.items.length }, `${group.items.length} sản phẩm`))}</small>
                         ${group.isHidden
-                            ? `<span class="menu-group-off"><i class="ri-eye-off-line"></i> ${escapeHtml(t('mnCatHidden', null, 'Nhóm đang ẩn'))}</span>`
+                            ? `<span class="menu-group-off"><i class="ri-eye-off-line"></i> ${escapeHtml(t('mnCatHidden', null, 'Đang ẩn'))}</span>`
                             : ''}
                     </button>
                     ${isRealCat ? `
                     <div class="menu-group-actions">
-                        <button type="button" class="menu-group-act-btn is-edit" data-group-edit="${group.key}" title="Sửa tên nhóm">
-                            <i class="ri-pencil-line"></i> <span>Sửa</span>
+                        <button type="button" class="menu-group-act-btn is-edit" data-group-edit="${group.key}" title="Sửa tên và STT nhóm">
+                            <i class="ri-pencil-line"></i>
                         </button>
                         <button type="button" class="menu-group-act-btn is-toggle" data-group-toggle-active="${group.key}" title="${group.isHidden ? 'Hiện nhóm' : 'Ẩn nhóm'}">
-                            <i class="ri-${group.isHidden ? 'eye-line' : 'eye-off-line'}"></i> <span>${group.isHidden ? 'Hiện' : 'Ẩn'}</span>
+                            <i class="ri-${group.isHidden ? 'eye-line' : 'eye-off-line'}"></i>
                         </button>
                         ${!group.isPromo ? `
                         <button type="button" class="menu-group-act-btn is-delete" data-group-delete="${group.key}" title="Xoá nhóm và toàn bộ sản phẩm trong nhóm">
-                            <i class="ri-delete-bin-line"></i> <span>Xóa</span>
+                            <i class="ri-delete-bin-line"></i>
                         </button>
                         ` : ''}
                     </div>` : ''}
@@ -721,15 +729,19 @@
     async function addCategory(event) {
         event.preventDefault();
         const input = $('menu-category-name');
+        const sortInput = $('menu-category-sort');
         const name = (input?.value || '').trim();
         if (!name) return;
+        const rawSort = sortInput?.value?.trim();
+        const sortOrder = rawSort !== '' && !isNaN(Number(rawSort)) ? Number(rawSort) : null;
         try {
             await fetchMenu('/categories', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name }),
+                body: JSON.stringify({ name, sortOrder }),
             });
             if (input) input.value = '';
+            if (sortInput) sortInput.value = '';
             showToast(t('mnCatAdded', { name }), 'success');
             await load(true);
         } catch (error) {
@@ -737,19 +749,82 @@
         }
     }
 
+    function promptCategoryEdit(category) {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML = `
+                <div class="confirm-card" role="dialog" aria-modal="true" style="max-width: 400px; width: 92%;">
+                    <div class="confirm-title" style="font-size: 15px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                        <i class="ri-edit-line" style="color: var(--accent-color, #c90c6c);"></i> Sửa nhóm danh mục
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+                        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600;">
+                            <span>Tên danh mục *</span>
+                            <input type="text" id="cat-dialog-name" value="${escapeHtml(category.name)}" maxlength="150" autocomplete="off" style="padding: 8px 10px; border: 1px solid var(--panel-border, #cbd5e1); border-radius: 6px; font-size: 13px;">
+                        </label>
+                        <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600;">
+                            <span>Số thứ tự STT (Tùy chọn)</span>
+                            <input type="number" id="cat-dialog-sort" min="0" step="1" value="${category.sort_order !== null && category.sort_order !== undefined ? category.sort_order : ''}" placeholder="Ví dụ: 1, 2... (để trống: xếp mới tới cũ)" style="padding: 8px 10px; border: 1px solid var(--panel-border, #cbd5e1); border-radius: 6px; font-size: 13px;">
+                            <small style="color: var(--text-secondary, #64748b); font-size: 11px; font-weight: normal; margin-top: 2px;">Nếu để trống STT, danh mục sẽ sắp xếp theo thứ tự nhập từ mới tới cũ.</small>
+                        </label>
+                    </div>
+                    <div class="confirm-actions" style="display: flex; justify-content: flex-end; gap: 8px;">
+                        <button type="button" class="confirm-cancel" style="padding: 7px 14px; font-size: 12px; border-radius: 6px; border: 1px solid var(--panel-border, #cbd5e1); background: #fff; cursor: pointer;">Hủy</button>
+                        <button type="button" class="confirm-ok" style="padding: 7px 16px; font-size: 12px; border-radius: 6px; border: none; background: var(--accent-color, #c90c6c); color: #fff; font-weight: 600; cursor: pointer;">Lưu thay đổi</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+
+            const nameInput = overlay.querySelector('#cat-dialog-name');
+            const sortInput = overlay.querySelector('#cat-dialog-sort');
+            const close = (res) => {
+                overlay.classList.add('is-leaving');
+                setTimeout(() => overlay.remove(), 160);
+                resolve(res);
+            };
+
+            overlay.querySelector('.confirm-cancel').addEventListener('click', () => close(null));
+            overlay.querySelector('.confirm-ok').addEventListener('click', () => {
+                const cleanName = (nameInput.value || '').trim();
+                if (!cleanName) return nameInput.focus();
+                const rawSort = sortInput.value.trim();
+                const sortVal = rawSort !== '' && !isNaN(Number(rawSort)) ? Number(rawSort) : null;
+                close({ name: cleanName, sortOrder: sortVal });
+            });
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+            const onKeyDown = (e) => {
+                if (e.key === 'Escape') {
+                    document.removeEventListener('keydown', onKeyDown);
+                    close(null);
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    document.removeEventListener('keydown', onKeyDown);
+                    const cleanName = (nameInput.value || '').trim();
+                    if (!cleanName) return nameInput.focus();
+                    const rawSort = sortInput.value.trim();
+                    const sortVal = rawSort !== '' && !isNaN(Number(rawSort)) ? Number(rawSort) : null;
+                    close({ name: cleanName, sortOrder: sortVal });
+                }
+            };
+            document.addEventListener('keydown', onKeyDown);
+            setTimeout(() => { nameInput.focus(); nameInput.select(); }, 40);
+        });
+    }
+
     async function renameCategory(id) {
         const category = CATEGORIES.find((c) => c.id === Number(id));
         if (!category) return;
-        const name = await pastiePrompt(t('mnRenameCat'), category.name);
-        if (name === null) return;
-        const clean = name.trim();
-        if (!clean || clean === category.name) return;
+        const result = await promptCategoryEdit(category);
+        if (!result) return;
+        const { name: clean, sortOrder } = result;
         try {
             await fetchMenu(`/categories/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: clean }),
+                body: JSON.stringify({ name: clean, sortOrder }),
             });
+            showToast('Đã cập nhật danh mục.', 'success');
             await load(true);
         } catch (error) {
             showToast(error.message, 'error');

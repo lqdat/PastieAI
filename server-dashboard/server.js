@@ -6017,7 +6017,7 @@ app.get('/api/admin/menu/view', checkAdminAuth, async (req, res) => {
          FROM qr_menu_categories c
          LEFT JOIN qr_menu_category_translations ct
                 ON ct.category_id = c.id AND ct.lang = $2
-        WHERE c.agent_id = $1 ORDER BY c.is_promo DESC, c.sort_order, c.id`,
+        WHERE c.agent_id = $1 ORDER BY c.is_promo DESC, c.sort_order NULLS LAST, c.id DESC`,
       [agentId, langXem]
     );
     const agentRow = (await db.query('SELECT menu_custom_label FROM admins WHERE id = $1', [agentId])).rows[0];
@@ -13188,7 +13188,7 @@ app.get('/api/agent/menu/categories', checkAdminAuth, async (req, res) => {
          LEFT JOIN qr_menu_category_translations ct ON ct.category_id = c.id
         WHERE c.agent_id = $1
         GROUP BY c.id
-        ORDER BY c.sort_order, c.id`,
+        ORDER BY c.is_promo DESC, c.sort_order NULLS LAST, c.id DESC`,
       [req.admin.id]
     );
     res.json(result.rows);
@@ -13202,12 +13202,16 @@ app.post('/api/agent/menu/categories', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
   const name = String(req.body?.name || '').trim().slice(0, 150);
   if (!name) return res.status(400).json({ error: 'Cần tên danh mục.' });
+  const rawSort = req.body?.sortOrder ?? req.body?.sort_order;
+  const sortOrder = (rawSort !== undefined && rawSort !== null && rawSort !== '' && Number.isFinite(Number(rawSort)))
+    ? Number(rawSort)
+    : null;
   try {
     const created = await db.query(
       `INSERT INTO qr_menu_categories (agent_id, project_id, name, sort_order)
-       VALUES ($1, $2, $3, COALESCE((SELECT MAX(sort_order) + 1 FROM qr_menu_categories WHERE agent_id = $1), 0))
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [req.admin.id, req.admin.project_id, name]
+      [req.admin.id, req.admin.project_id, name, sortOrder]
     );
     await choCoHan(translateMenuCategory(created.rows[0].id, name, req.admin.id), 9000);
     res.status(201).json({ success: true, category: created.rows[0] });
@@ -13219,20 +13223,25 @@ app.post('/api/agent/menu/categories', checkAdminAuth, async (req, res) => {
 
 app.put('/api/agent/menu/categories/:id', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
-  const { name, sortOrder, isActive } = req.body || {};
+  const { name, isActive } = req.body || {};
+  const hasSort = req.body && ('sortOrder' in req.body || 'sort_order' in req.body);
+  const sortOrder = hasSort
+    ? (Number.isFinite(Number(req.body.sortOrder ?? req.body.sort_order)) ? Number(req.body.sortOrder ?? req.body.sort_order) : null)
+    : undefined;
   try {
     const updated = await db.query(
       `UPDATE qr_menu_categories
-          SET name = COALESCE($3, name), sort_order = COALESCE($4, sort_order), is_active = COALESCE($5, is_active)
+          SET name = COALESCE($3, name),
+              sort_order = CASE WHEN $4::boolean THEN $5::int ELSE sort_order END,
+              is_active = COALESCE($6, is_active)
         WHERE id = $1 AND agent_id = $2 RETURNING *`,
       [Number(req.params.id), req.admin.id,
        name ? String(name).trim().slice(0, 150) : null,
-       Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : null,
+       hasSort,
+       sortOrder,
        typeof isActive === 'boolean' ? isActive : null]
     );
     if (!updated.rows[0]) return res.status(404).json({ error: 'Không tìm thấy danh mục.' });
-    // Chỉ dịch lại khi TÊN đổi. Đổi thứ tự hay bật/tắt nhóm mà cũng gọi AI thì
-    // mỗi lần kéo thả sắp xếp là một loạt lượt gọi vô ích.
     if (name && String(name).trim()) await choCoHan(translateMenuCategory(updated.rows[0].id, updated.rows[0].name, req.admin.id), 9000);
     res.json({ success: true, category: updated.rows[0] });
   } catch (error) {
@@ -13999,7 +14008,7 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
          FROM qr_menu_categories c
          LEFT JOIN qr_menu_category_translations t ON t.category_id = c.id AND t.lang = $2
         WHERE c.agent_id = $1 AND c.is_active = TRUE
-        ORDER BY c.is_promo DESC, c.sort_order, c.id`,
+        ORDER BY c.is_promo DESC, c.sort_order NULLS LAST, c.id DESC`,
       [owner.agent_id, useLang]
     );
 
