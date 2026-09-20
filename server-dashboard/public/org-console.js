@@ -1572,12 +1572,17 @@ async function loadOrgGroups(quiet, isSilent = false) {
                     const groupSaleIds = new Set(groupSales.map(s => Number(s.sale_id)));
                     const notInGroupSales = (window.ORG_SALES || []).filter(s => !groupSaleIds.has(Number(s.id)));
 
-                    const chipsHtml = groupSales.length ? groupSales.map(s => `
+                    const chipsHtml = groupSales.length ? groupSales.map(s => {
+                        const memberName = s.full_name || s.sale_name || s.sale_username || s.username || (() => {
+                            const found = (window.ORG_SALES || []).find(os => Number(os.id) === Number(s.sale_id));
+                            return found ? (found.full_name || found.username) : ('Sale #' + s.sale_id);
+                        })();
+                        return `
                         <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;color:var(--text-primary);">
-                            <i class="ri-user-line" style="color:#6366f1;"></i> ${escapeHtml(s.sale_name || s.sale_username)}
+                            <i class="ri-user-line" style="color:#6366f1;"></i> ${escapeHtml(memberName)}
                             <button type="button" data-remove-sale="${s.sale_id}" data-from-group="${group.id}" title="Gỡ Sale khỏi nhóm" style="background:none;border:none;color:#ef4444;cursor:pointer;padding:0;display:flex;align-items:center;font-size:13px;line-height:1;"><i class="ri-close-circle-fill"></i></button>
                         </span>
-                    `).join('') : `<span style="font-size:11px;color:var(--text-secondary);font-style:italic;">${dict.orgNoSalesInGroup || 'Chưa có Sale nào trong nhóm'}</span>`;
+                    `;}).join('') : `<span style="font-size:11px;color:var(--text-secondary);font-style:italic;">${dict.orgNoSalesInGroup || 'Chưa có Sale nào trong nhóm'}</span>`;
 
                     const addSaleOptions = notInGroupSales.map(s => `<option value="${s.id}">${escapeHtml(s.full_name || s.username)}</option>`).join('');
 

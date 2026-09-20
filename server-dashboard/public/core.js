@@ -206,7 +206,7 @@ function pastieConfirm(message, options = {}) {
         const overlay = document.createElement('div');
         overlay.className = 'confirm-overlay';
         overlay.innerHTML = `
-            <div class="confirm-card" role="alertdialog" aria-modal="true">
+            <div class="confirm-card" role="alertdialog" aria-modal="true" style="background: #ffffff !important;">
                 <div class="confirm-icon ${danger ? 'is-danger' : ''}">
                     <i class="${danger ? 'ri-alert-line' : 'ri-question-line'}"></i>
                 </div>
@@ -214,7 +214,7 @@ function pastieConfirm(message, options = {}) {
                 <p class="confirm-message"></p>
                 <div class="confirm-actions">
                     <button type="button" class="confirm-cancel"></button>
-                    <button type="button" class="confirm-ok ${danger ? 'is-danger' : ''}"></button>
+                    <button type="button" class="confirm-ok ${danger ? 'is-danger' : ''}" style="${danger ? 'background: #ef4444 !important; color: #ffffff !important;' : 'color: #ffffff !important;'}"></button>
                 </div>
             </div>`;
         overlay.querySelector('.confirm-title').textContent = title;

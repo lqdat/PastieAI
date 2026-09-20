@@ -11315,7 +11315,7 @@ app.get('/api/agent/groups', checkAdminAuth, async (req, res) => {
     const result = await db.query(
       `SELECT g.id, g.name, g.description, g.is_active, g.project_id, g.created_at,
               COALESCE(json_agg(DISTINCT jsonb_build_object(
-                'sale_id', s.id, 'full_name', s.full_name, 'is_active', s.is_active
+                'sale_id', s.id, 'full_name', s.full_name, 'sale_name', s.full_name, 'username', s.username, 'is_active', s.is_active
               )) FILTER (WHERE s.id IS NOT NULL), '[]') AS sales,
               (SELECT COUNT(*) FROM sessions se WHERE se.group_id = g.id AND se.routing_status = 'waiting') AS waiting_count,
               (SELECT COUNT(*) FROM sessions se WHERE se.group_id = g.id AND se.routing_status = 'assigned') AS active_count

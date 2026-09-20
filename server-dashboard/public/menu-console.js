@@ -232,48 +232,40 @@
         const box = $('menu-banner-list');
         if (!box) return;
         if (!BANNERS.length) {
-            box.innerHTML = `<p class="org-empty">${escapeHtml(t('mnNoBanner', null, 'Chưa có banner nào. Bấm "Thêm bài viết banner" rồi nhập nội dung.'))}</p>`;
+            box.innerHTML = `<p class="org-empty">${escapeHtml(t('mnNoBanner', null, 'Chưa có slide banner nào. Bấm "Thêm slide banner" rồi nhập nội dung.'))}</p>`;
             return;
         }
-        const dsMon = ITEMS.map((i) => `<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('');
         box.innerHTML = BANNERS.map((b) => {
             const tieuDe = b.title_vi || b.title || '(Chưa có tiêu đề)';
-            const the = '';
-            const unsavedBadge = '';
             return `
-            <article class="menu-banner-card${b.is_active ? '' : ' is-off'}" style="position:relative;">
-                <label class="menu-banner-photo">
+            <article class="menu-banner-card${b.is_active ? '' : ' is-off'}" style="position:relative; display:flex; align-items:center; gap:16px; padding:12px 14px; border:1px solid var(--panel-border, #e2e8f0); border-radius:14px; background:var(--panel-bg, #fff); box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <label class="menu-banner-photo" style="width:170px; flex-shrink:0; aspect-ratio:16/6; border-radius:8px; overflow:hidden; position:relative; cursor:pointer; border:1px dashed var(--panel-border, #cbd5e1); background:#f8fafc; margin:0;">
                     <input type="file" accept="image/*" hidden data-banner-photo="${b.id}">
                     ${b.image_url
-                        ? `<img src="${escapeHtml(b.image_url)}" alt="">`
-                        : `<span class="menu-banner-empty"><i class="ri-image-add-line"></i> ${escapeHtml(t('mnPickBannerImage', null, 'Chọn ảnh'))}</span>`}
+                        ? `<img src="${escapeHtml(b.image_url)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">`
+                        : `<span class="menu-banner-empty" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#94a3b8;font-size:11px;"><i class="ri-image-add-line" style="font-size:18px;"></i> ${escapeHtml(t('mnPickBannerImage', null, 'Chọn ảnh'))}</span>`}
                 </label>
-                <div class="menu-banner-fields" style="flex:1;">
-                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">
-                        ${the}
-                        ${unsavedBadge}
-                        <strong style="font-size:13px;color:#0f172a;">${escapeHtml(tieuDe)}</strong>
+                <div class="menu-banner-fields" style="flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; padding-right:110px;">
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <span class="banner-stt-chip" style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:6px; background:rgba(239, 43, 157, 0.1); color:#ef2b9d; font-size:11.5px; font-weight:700;">STT: ${Number(b.sort_order) || 0}</span>
+                        ${!b.is_active ? `<span class="banner-off-badge" style="display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:4px; background:rgba(239, 68, 68, 0.1); color:#ef4444; font-size:11px; font-weight:600;"><i class="ri-eye-off-line"></i> Đang ẩn</span>` : ''}
                     </div>
-                    ${b.excerpt_vi ? `<p style="margin:0 0 6px;font-size:11.5px;color:#64748b;line-height:1.3;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(b.excerpt_vi)}</p>` : ''}
-                    <label class="menu-banner-field menu-banner-field-narrow" style="margin:0;">
-                        <span>${escapeHtml(t('mnBannerOrder', null, 'Thứ tự'))}</span>
-                        <input type="number" min="0" max="99" value="${Number(b.sort_order) || 0}" data-banner-order="${b.id}">
-                    </label>
+                    <strong class="banner-card-title" style="font-size:14px; font-weight:700; color:var(--text-primary, #0f172a); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(tieuDe)}</strong>
+                    ${b.image_url ? '' : `<span style="color:#f59e0b;font-size:11.5px;display:inline-flex;align-items:center;gap:4px;"><i class="ri-error-warning-line"></i> Chưa có ảnh bìa</span>`}
                 </div>
-                <div class="menu-banner-actions">
-                    <button type="button" class="org-edit-btn" data-banner-edit="${b.id}" title="Sửa bài viết banner" style="padding:5px 10px;font-size:12px;display:inline-flex;align-items:center;gap:4px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;">
-                        <i class="ri-edit-line"></i> <span>${escapeHtml(t('mnEdit', null, 'Sửa'))}</span>
+                <div class="menu-banner-actions" style="position:absolute; bottom:12px; right:14px; display:inline-flex; align-items:center; gap:6px; margin:0;">
+                    <button type="button" class="menu-group-act-btn is-edit" data-banner-edit="${b.id}" title="Sửa slide banner">
+                        <i class="ri-pencil-line"></i>
                     </button>
-                    <button type="button" class="org-toggle ${b.is_active ? 'is-active' : 'is-locked'}" data-banner-toggle="${b.id}" data-on="${b.is_active ? '1' : '0'}">
-                        <i class="${b.is_active ? 'ri-eye-line' : 'ri-eye-off-line'}"></i>
-                        <span>${b.is_active ? escapeHtml(t('mnBannerOn', null, 'Đang hiện')) : escapeHtml(t('mnBannerOff', null, 'Đã ẩn'))}</span>
+                    <button type="button" class="menu-group-act-btn is-toggle" data-banner-toggle="${b.id}" title="${b.is_active ? 'Ẩn banner' : 'Hiện banner'}">
+                        <i class="ri-${b.is_active ? 'eye-line' : 'eye-off-line'}"></i>
                     </button>
-                    <button type="button" class="org-remove" data-banner-delete="${b.id}" title="Xoá"><i class="ri-delete-bin-line"></i></button>
+                    <button type="button" class="menu-group-act-btn is-delete" data-banner-delete="${b.id}" title="Xoá banner">
+                        <i class="ri-delete-bin-line"></i>
+                    </button>
                 </div>
-                ${b.image_url ? '' : `<p class="menu-banner-warn"><i class="ri-error-warning-line"></i> ${escapeHtml(t('mnBannerNeedsImage', null, 'Chưa có ảnh — banner này chưa hiện với khách.'))}</p>`}
             </article>`;
         }).join('');
-
     }
 
     async function load(quiet) {
@@ -782,24 +774,24 @@
             const overlay = document.createElement('div');
             overlay.className = 'confirm-overlay';
             overlay.innerHTML = `
-                <div class="confirm-card" role="dialog" aria-modal="true" style="max-width: 400px; width: 92%;">
+                <div class="confirm-card" role="dialog" aria-modal="true" style="max-width: 400px; width: 92%; background: #ffffff !important;">
                     <div class="confirm-title" style="font-size: 15px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
                         <i class="ri-edit-line" style="color: var(--accent-color, #c90c6c);"></i> Sửa nhóm danh mục
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
                         <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600;">
                             <span>Tên danh mục *</span>
-                            <input type="text" id="cat-dialog-name" value="${escapeHtml(category.name)}" maxlength="150" autocomplete="off" style="padding: 8px 10px; border: 1px solid var(--panel-border, #cbd5e1); border-radius: 6px; font-size: 13px;">
+                            <input type="text" id="cat-dialog-name" value="${escapeHtml(category.name)}" maxlength="150" autocomplete="off" style="padding: 8px 10px; border: 1px solid var(--panel-border, #cbd5e1); border-radius: 6px; font-size: 13px; background: #ffffff; color: #0f172a;">
                         </label>
                         <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600;">
                             <span>Số thứ tự STT (Chỉ nhập số, tùy chọn)</span>
-                            <input type="text" inputmode="numeric" pattern="[0-9]*" id="cat-dialog-sort" value="${category.sort_order !== null && category.sort_order !== undefined ? category.sort_order : ''}" placeholder="Ví dụ: 1, 2... (để trống: xếp mới tới cũ)" style="padding: 8px 10px; border: 1px solid var(--panel-border, #cbd5e1); border-radius: 6px; font-size: 13px;">
+                            <input type="text" inputmode="numeric" pattern="[0-9]*" id="cat-dialog-sort" value="${category.sort_order !== null && category.sort_order !== undefined ? category.sort_order : ''}" placeholder="Ví dụ: 1, 2... (để trống: xếp mới tới cũ)" style="padding: 8px 10px; border: 1px solid var(--panel-border, #cbd5e1); border-radius: 6px; font-size: 13px; background: #ffffff; color: #0f172a;">
                             <small style="color: var(--text-secondary, #64748b); font-size: 11px; font-weight: normal; margin-top: 2px;">Chỉ cho phép nhập số. Nếu để trống STT, danh mục sẽ sắp xếp theo thứ tự nhập từ mới tới cũ.</small>
                         </label>
                     </div>
                     <div class="confirm-actions" style="display: flex; justify-content: flex-end; gap: 8px;">
-                        <button type="button" class="confirm-cancel" style="padding: 7px 14px; font-size: 12px; border-radius: 6px; border: 1px solid var(--panel-border, #cbd5e1); background: #fff; cursor: pointer;">Hủy</button>
-                        <button type="button" class="confirm-ok" style="padding: 7px 16px; font-size: 12px; border-radius: 6px; border: none; background: var(--accent-color, #c90c6c); color: #fff; font-weight: 600; cursor: pointer;">Lưu thay đổi</button>
+                        <button type="button" class="confirm-cancel" style="padding: 7px 14px; font-size: 12px; border-radius: 6px; border: 1px solid var(--panel-border, #cbd5e1); background: #fff; cursor: pointer; color: #334155;">Hủy</button>
+                        <button type="button" class="confirm-ok" style="padding: 7px 16px; font-size: 12px; border-radius: 6px; border: none; background: var(--accent-color, #c90c6c); color: #ffffff !important; font-weight: 600; cursor: pointer;">Lưu thay đổi</button>
                     </div>
                 </div>`;
             document.body.appendChild(overlay);
@@ -2129,7 +2121,7 @@
             }
 
             if (titleEl) {
-                titleEl.textContent = banner ? 'Chỉnh Sửa Bài Viết & Banner' : 'Thêm Bài Viết & Banner Thực Đơn';
+                titleEl.textContent = banner ? 'Chỉnh Sửa Slide Banner' : 'Thêm Slide Banner';
             }
             modal.classList.remove('hide');
         }
