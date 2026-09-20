@@ -537,8 +537,7 @@ const logoutBtn = document.getElementById('logout-btn');
 // Base URL helper
 // Deploy kèm backend thì origin của trang chính là backend — đó là trường hợp
 // mặc định và không cần cấu hình gì. Deploy riêng (Railway static) thì config.js
-// sinh lúc build sẽ đặt window.PASTIE_API_BASE trỏ về backend thật.
-const API_BASE = (window.PASTIE_API_BASE || window.location.origin).replace(/\/$/, '');
+var API_BASE = (window.PASTIE_API_BASE || window.location.origin).replace(/\/$/, '');
 
 
 const TOAST_ICONS = {
@@ -1766,9 +1765,11 @@ document.getElementById('superadmin-team-btn')?.addEventListener('click', (event
 // Superadmin: Thiết lập danh mục Nhãn & Badge sản phẩm
 document.getElementById('superadmin-tags-btn')?.addEventListener('click', (event) => {
     event.stopPropagation();
-    window.closeSettingsDropdown?.();
-    if (typeof openOrgModal === 'function') {
-        openOrgModal('tags');
+    if (typeof closeSettingsDropdown === 'function') closeSettingsDropdown();
+    if (typeof window.closeSettingsDropdown === 'function') window.closeSettingsDropdown();
+    const openFn = window.openOrgModal || (typeof openOrgModal === 'function' ? openOrgModal : null);
+    if (openFn) {
+        openFn('tags');
         const badgeCatalog = document.getElementById('org-badge-catalog');
         if (badgeCatalog) badgeCatalog.open = true;
     }

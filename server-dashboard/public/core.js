@@ -34,6 +34,9 @@ function pastieLang() {
 }
 window.pastieLang = pastieLang;
 
+var API_BASE = (typeof window !== 'undefined' && (window.PASTIE_API_BASE || (window.location && window.location.origin)) || '').replace(/\/$/, '');
+if (typeof window !== 'undefined') window.API_BASE = API_BASE;
+
 function tMoney(value) {
     const num = Number(value) || 0;
     const lang = pastieLang();

@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r164">
-    <link rel="stylesheet" href="menu-console.css?v=r164">
+    <link rel="stylesheet" href="admin.css?v=r182">
+    <link rel="stylesheet" href="menu-console.css?v=r182">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -941,6 +941,12 @@
                                     <button type="button" class="menu-photo-clear hide" id="menu-item-photo-clear" title="Bỏ ảnh đã chọn"><i class="ri-close-line"></i></button>
                                 </label>
                             </div>
+
+                            <!-- NHÃN GẮN GÓC SẢN PHẨM -->
+                            <div class="menu-field menu-field-tags" style="grid-column: span 12;">
+                                <span>Nhãn hiển thị trên góc sản phẩm</span>
+                                <div class="menu-tag-picker" id="menu-item-tags"></div>
+                            </div>
                         </div>
 
                         <p class="menu-form-note">
@@ -956,11 +962,21 @@
                     </form>
                     </div>
 
+                    <!-- Thanh tìm kiếm và bộ lọc trạng thái sản phẩm -->
+                    <div class="menu-search-dock" id="menu-search-dock">
+                        <div class="menu-search-input-wrap">
+                            <i class="ri-search-line menu-search-icon"></i>
+                            <input type="text" id="menu-item-search-input" placeholder="Tìm kiếm món theo tên, giá, mô tả..." autocomplete="off">
+                            <button type="button" id="menu-item-search-clear" class="menu-search-clear hide" title="Xóa tìm kiếm"><i class="ri-close-line"></i></button>
+                        </div>
+                        <div class="menu-status-filter" id="menu-status-filter">
+                            <button type="button" class="menu-status-pill is-active" data-status-filter="all">Tất cả</button>
+                            <button type="button" class="menu-status-pill" data-status-filter="available"><i class="ri-checkbox-circle-line"></i> Đang bán</button>
+                            <button type="button" class="menu-status-pill" data-status-filter="hidden"><i class="ri-eye-off-line"></i> Đang ẩn / Hết</button>
+                        </div>
+                        <div class="menu-results-count" id="menu-search-counter"></div>
+                    </div>
 
-                    <!-- Form nhập món. Bố cục theo lưới thay vì flex + inline style:
-                         trên PC gom thành ba hàng gọn, trên máy hẹp tự xếp dọc. -->
-
-                    
                     <div class="org-list" id="menu-item-list"></div>
                     </div>
 
@@ -2516,17 +2532,17 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="i18n-dictionary.js?v=r164"></script>
-    <script src="config.js?v=r164"></script>
-    <script src="core.js?v=r164"></script>
-    <script src="chat.js?v=r164"></script>
-    <script src="qrcode.bundle.js?v=r164"></script>
-    <script src="org-console.js?v=r164"></script>
-    <script src="project-admin.js?v=r164"></script>
-    <script src="menu-console.js?v=r164"></script>
-    <script src="order-console.js?v=r164"></script>
-    <script src="cart-console.js?v=r164"></script>
-    <script src="ticket-console.js?v=r164"></script>
-    <script src="admin.js?v=r164"></script>
+    <script src="i18n-dictionary.js?v=r182"></script>
+    <script src="config.js?v=r182"></script>
+    <script src="core.js?v=r182"></script>
+    <script src="chat.js?v=r182"></script>
+    <script src="qrcode.bundle.js?v=r182"></script>
+    <script src="org-console.js?v=r182"></script>
+    <script src="project-admin.js?v=r182"></script>
+    <script src="menu-console.js?v=r182"></script>
+    <script src="order-console.js?v=r182"></script>
+    <script src="cart-console.js?v=r182"></script>
+    <script src="ticket-console.js?v=r182"></script>
+    <script src="admin.js?v=r182"></script>
 </body>
 </html>

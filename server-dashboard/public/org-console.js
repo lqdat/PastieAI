@@ -1217,6 +1217,8 @@ function closeOrgModal() {
     window.closeAddBoxModal?.();
     document.getElementById('org-modal')?.classList.add('hide');
 }
+window.openOrgModal = openOrgModal;
+window.closeOrgModal = closeOrgModal;
 
 
 // --- Agent -------------------------------------------------------------------

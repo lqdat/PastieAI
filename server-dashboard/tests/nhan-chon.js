@@ -224,7 +224,7 @@ kt('Agent báo ngay khi CHƯA nhãn nào có ảnh',
 kt('menu-console.css có .menu-tag-note-top{', mcss.includes('.menu-tag-note-top{'));
 kt('menu-console.css có .menu-tag-note{', mcss.includes('.menu-tag-note{'));
 
-kt('admin.html đã nâng số phiên bản tệp tĩnh', ahtml.includes('v=r164') && !ahtml.includes('v=r163'));
+kt('admin.html đã nâng số phiên bản tệp tĩnh', /v=r1[6-9][0-9]/.test(ahtml) && !ahtml.includes('v=r163'));
 
 
 console.log('\n=== KHỔ ĐIỆN THOẠI ===');
