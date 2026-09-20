@@ -119,6 +119,19 @@ if (KHO_PT) {
     'chấm trắng trên nền sáng thì không nhìn thấy gì — trước đây nó nằm trên ảnh');
   check('tỉ lệ 16:6 và góc bo chuyển xuống riêng tấm ảnh',
     /\.menu-banner-strip:has\(\.menu-banner-title\) \.menu-banner-rail>figure>button\{aspect-ratio:16\/6;border-radius:18px/.test(css));
+
+  // Hai lỗi đã thật sự gây ra khi thêm tiêu đề, và đã sửa:
+  check('dải banner VẪN cắt các tấm chưa tới lượt',
+    /\.menu-banner-strip:has\(\.menu-banner-title\)\{[^}]*overflow:hidden/.test(css),
+    'bỏ overflow là tấm thứ hai, thứ ba tràn sang phải và kéo giãn cả hộp thực đơn — màn hình khách trượt ngang được');
+  check('khoảng cách giữa hai tấm nằm ở LỀ TRONG, không phải gap',
+    /\.menu-banner-strip:has\(\.menu-banner-title\) \.menu-banner-rail>figure\{box-sizing:border-box;padding:0 5px;?\}/.test(css),
+    'hàng ngang dịch đúng `chỉ số × 100%` — thêm gap là mỗi tấm lệch dần, tới tấm thứ tư lệch nửa ảnh');
+  check('bù lề trong để mép ảnh thẳng hàng với danh sách',
+    /\.menu-banner-strip:has\(\.menu-banner-title\)\{[^}]*margin:0 -5px 18px/.test(css));
+  check('vùng cuộn thực đơn KHÔNG BAO GIỜ trượt ngang',
+    /\.menu-scroll\{overflow-x:hidden\}/.test(css),
+    'chốt chặn cuối: nguyên nhân tràn ngang có thể nằm ở bất kỳ phần tử con nào');
 }
 
 // ── 6. MÁY CHỦ KHÔNG CÒN GHI HAI TRƯỜNG ĐÓ ───────────────────────────────
