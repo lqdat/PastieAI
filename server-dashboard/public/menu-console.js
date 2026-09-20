@@ -2035,6 +2035,7 @@
             const nut = event.target.closest('[data-tag-pick]');
             if (!nut) return;
             event.preventDefault();
+            const id = Number(nut.dataset.tagPick);
             // Mỗi món chỉ có thể chỉ chọn 1 nhãn:
             // Bấm vào nhãn đang chọn -> Bỏ chọn (0 nhãn).
             // Bấm vào nhãn khác -> Bỏ nhãn cũ, chọn duy nhất nhãn mới.
