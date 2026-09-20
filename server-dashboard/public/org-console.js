@@ -1079,7 +1079,7 @@ async function loadOrgTags(silent = false) {
     // Nạp danh mục ảnh trước khi vẽ: lưới chọn kiểu text nằm trong form ngay
     // phía trên danh sách, mở tab ra mà lưới trống một nhịp rồi mới hiện thì
     // trông như hỏng.
-    try { await loadBadgeCatalog?.(); veLuoiBadge?.(); veKhungBadge?.(); } catch (_) {}
+    try { await loadBadgeCatalog?.(); veLuoiBadge?.(); veKhungBadge?.(); await loadBadgeGallery?.(); } catch (_) {}
     try {
         const data = await orgFetch('/api/superadmin/menu-tags');
         window.ORG_TAGS = data.tags || [];
@@ -1145,7 +1145,6 @@ function switchOrgTab(name) {
     if (name === 'groups') void loadOrgGroups(false, isSilent);
     if (name === 'qr') void loadOrgQr(isSilent);
     if (name === 'tags') void loadOrgTags(isSilent);
-    if (name === 'badges') void loadBadgeGallery?.();
     // Sản phẩm nằm ở menu-console.js — mảnh đầu tiên của QR Console tách riêng.
     if (name === 'menu') {
         void window.MenuConsole?.load(isSilent);
@@ -1166,7 +1165,6 @@ function openOrgModal() {
     // Danh mục nhãn dùng chung mọi cơ sở nên chỉ Superadmin thấy, cùng nhóm với
     // tab Agent. Máy chủ cũng chặn (requireSuperAdmin) — ẩn tab chỉ là lớp ngoài.
     document.querySelector('[data-org-tab="tags"]')?.classList.toggle('hide', !isSuper);
-    document.querySelector('[data-org-tab="badges"]')?.classList.toggle('hide', !isSuper);
     ['sales', 'groups', 'qr', 'menu'].forEach((name) => {
         document.querySelector(`[data-org-tab="${name}"]`)?.classList.toggle('hide', isSuper);
     });

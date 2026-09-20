@@ -20473,3 +20473,20 @@ button:focus-visible {
     .badge-card { padding: 10px 6px; }
     .badge-card img { max-width: 76px; }
 }
+
+/* ── DANH MỤC BADGE NẰM TRONG TAB NHÃN ───────────────────────────────────────
+ *
+ * Vì sao không làm thành một tab thứ bảy: đo ở khổ 375px thì dải tab đã rộng
+ * 661px trong khung 311px, tab thứ bảy nằm hẳn ngoài màn hình. Dải tab có luật
+ * !important ép cuộn ngang và ẩn cả vạch cuộn, nên không có dấu hiệu nào cho
+ * biết còn tab phía sau — người dùng kết luận là tab không tồn tại. Gấp/mở tại
+ * chỗ thì không tốn thêm tab nào, và danh mục nằm ngay cạnh thứ nó tạo ra. */
+.badge-catalog { margin-bottom: 14px; border: 1px solid var(--panel-border); border-radius: 12px; }
+.badge-catalog > summary {
+    padding: 10px 12px; cursor: pointer; font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; gap: 8px; list-style: none;
+}
+.badge-catalog > summary::-webkit-details-marker { display: none; }
+.badge-catalog > summary::before { content: '\25B8'; transition: transform .15s ease; }
+.badge-catalog[open] > summary::before { transform: rotate(90deg); }
+.badge-catalog-body { padding: 0 12px 12px; }

@@ -187,11 +187,18 @@ kt('ô chọn kiểu text chiếm trọn hàng bằng flex-basis, không phải 
    acss.includes('.org-field-wide{flex:1 0 100%;align-self:stretch;}')
    && !/\.org-field-wide\{grid-column/.test(acss));
 
-kt('có tab danh mục badge', ahtml.includes('data-org-tab="badges"'));
-kt('có pane danh mục badge', ahtml.includes('data-org-pane="badges"'));
-kt('tab chỉ hiện với superadmin',
-   /data-org-tab="badges"\]'\)\?\.classList\.toggle\('hide', !isSuper\)/.test(ojs));
-kt('mở tab thì nạp danh mục', /name === 'badges'[\s\S]{0,60}loadBadgeGallery/.test(ojs));
+// KHÔNG tạo tab thứ bảy: đo ở khổ 375px, dải tab đã rộng 661px trong khung
+// 311px và ẩn cả vạch cuộn, nên tab thứ bảy nằm ngoài màn hình mà không có dấu
+// hiệu nào — đúng thứ đã làm người dùng tưởng tính năng chưa có.
+kt('danh mục nằm trong tab Nhãn, không thêm tab thứ bảy',
+   !ahtml.includes('data-org-tab="badges"') && !ahtml.includes('data-org-pane="badges"'));
+kt('danh mục là khối gấp/mở trong pane Nhãn',
+   /<details class="badge-catalog" id="org-badge-catalog">/.test(ahtml));
+kt('đóng sẵn để không đẩy form nhãn xuống dưới màn hình',
+   !/<details class="badge-catalog" id="org-badge-catalog" open/.test(ahtml));
+kt('mở tab Nhãn thì nạp luôn danh mục', /loadBadgeCatalog\?\.\(\)[\s\S]{0,120}loadBadgeGallery\?\.\(\)/.test(ojs));
+kt('không còn chọi lại luật !important của dải tab',
+   !/\.org-tabs\{flex-wrap:wrap/.test(acss));
 kt('gallery đổi được khung và ngôn ngữ',
    ahtml.includes('id="org-badge-gallery-frame"') && ahtml.includes('id="org-badge-gallery-lang"'));
 kt('danh sách ngôn ngữ dựng từ danh mục, không chép cứng',
@@ -201,7 +208,7 @@ kt('mẫu đã có nhãn thì không mời tạo lại',
    /daCo = new Set\(\(window\.ORG_TAGS \|\| \[\]\)\.map\(\(t\) => t\.badge_code\)/.test(ajs));
 kt('gallery nói rõ ảnh đang lấy từ đâu', /Ảnh lấy từ: /.test(ajs));
 kt('gallery trống thì hướng dẫn cách sửa', /Giải nén badges\.zip vào/.test(ajs));
-for (const luat of ['.badge-gallery{', '.badge-card{', '.menu-badge-img{'])
+for (const luat of ['.badge-gallery{', '.badge-card{', '.menu-badge-img{', '.badge-catalog{'])
   kt(`admin.css có ${luat}`, acss.includes(luat));
 
 kt('ô xem trước đổi sang ẢNH khi đã chọn mẫu',
@@ -209,9 +216,15 @@ kt('ô xem trước đổi sang ẢNH khi đã chọn mẫu',
    && /img\?\.classList\.toggle\('hide', !ma\)/.test(ajs));
 
 kt('Agent nói rõ khi nhãn chưa gắn ảnh', /menu-tag-note[\s\S]{0,200}chưa gắn ảnh/.test(mjs));
+// Ghi chú theo dòng chỉ hiện SAU khi tích, nên chưa đủ: chưa nhãn nào có ảnh
+// thì phải nói ngay một câu ở đầu ô, đừng bắt tích thử từng nhãn mới biết.
+kt('Agent báo ngay khi CHƯA nhãn nào có ảnh',
+   /const chuaCoAnh = TAGS\.every\(\(tag\) => !tag\.badge_code\)/.test(mjs)
+   && /box\.innerHTML = nhacChung \+ TAGS\.map/.test(mjs));
+kt('menu-console.css có .menu-tag-note-top{', mcss.includes('.menu-tag-note-top{'));
 kt('menu-console.css có .menu-tag-note{', mcss.includes('.menu-tag-note{'));
 
-kt('admin.html đã nâng số phiên bản tệp tĩnh', ahtml.includes('v=r163') && !ahtml.includes('v=r162'));
+kt('admin.html đã nâng số phiên bản tệp tĩnh', ahtml.includes('v=r164') && !ahtml.includes('v=r163'));
 
 
 console.log('\n=== KHỔ ĐIỆN THOẠI ===');
