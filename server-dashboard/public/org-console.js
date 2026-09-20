@@ -1153,7 +1153,7 @@ function switchOrgTab(name) {
 }
 
 
-function openOrgModal() {
+function openOrgModal(targetTab) {
     window.closeAddBoxModal?.();
     initShiftSelects(); // dựng danh sách giờ 24h ở lần mở đầu tiên
     // Hai màn hình tách bạch, không chồng lấn:
@@ -1169,9 +1169,15 @@ function openOrgModal() {
         document.querySelector(`[data-org-tab="${name}"]`)?.classList.toggle('hide', isSuper);
     });
     const title = document.getElementById('org-title');
-    if (title) title.textContent = isSuper ? 'Quản lý Agent' : 'Quản lý Sale, nhóm, QR và sản phẩm';
+    if (title) {
+        if (targetTab === 'tags') {
+            title.textContent = 'Danh mục Nhãn & Badge sản phẩm';
+        } else {
+            title.textContent = isSuper ? 'Quản lý Agent' : 'Quản lý Sale, nhóm, QR và sản phẩm';
+        }
+    }
     const kicker = document.getElementById('org-kicker');
-    if (kicker) kicker.textContent = 'PHÂN CẤP TỔ CHỨC';
+    if (kicker) kicker.textContent = targetTab === 'tags' ? 'DANH MỤC HỆ THỐNG' : 'PHÂN CẤP TỔ CHỨC';
 
     if (isSuper) {
         const select = document.getElementById('org-agent-project');
@@ -1187,7 +1193,7 @@ function openOrgModal() {
     }
 
     document.getElementById('org-modal')?.classList.remove('hide');
-    const defaultTab = isSuper ? 'agents' : 'sales';
+    const defaultTab = targetTab || (isSuper ? 'agents' : 'sales');
     switchOrgTab(defaultTab);
 
     // PREFETCH TOÀN BỘ CÁC TAB CÒN LẠI TRONG NỀN (ZERO-LATENCY COLD SWITCH)

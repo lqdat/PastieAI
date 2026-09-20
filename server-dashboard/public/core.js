@@ -1279,6 +1279,7 @@ function updateAgentHeaderUI() {
     document.getElementById('superadmin-order-cart-btn')?.classList.toggle('hide', !(isSuperadmin || isProjectAdmin));
     document.getElementById('superadmin-report-modal-btn')?.classList.toggle('hide', !(isSuperadmin || isProjectAdmin));
     document.getElementById('superadmin-otp-unlock-btn')?.classList.toggle('hide', !isSuperadmin);
+    document.getElementById('superadmin-tags-btn')?.classList.toggle('hide', !isSuperadmin);
 
     // Luôn mở bộ chọn ngôn ngữ giao diện cho cả Superadmin, Agent và Sale
     document.getElementById('admin-lang-selector-wrap')?.classList.remove('hide');

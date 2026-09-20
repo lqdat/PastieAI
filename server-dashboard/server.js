@@ -12008,9 +12008,11 @@ app.delete('/api/superadmin/menu-tags/:id', checkAdminAuth, async (req, res) => 
 
 // ─── AGENT: CHỌN TAG CHO SẢN PHẨM ──────────────────────────────────────────
 //
-// Agent thấy danh mục tag (chỉ các tag đang bật) nhưng không sửa được.
+// Agent, Sale & Superadmin: xem danh mục tag (chỉ các tag đang bật)
 app.get('/api/agent/menu-tags', checkAdminAuth, async (req, res) => {
-  if (!(await requireAgentManager(req, res))) return;
+  if (!isSuperAdmin(req.admin) && !isAgentManager(req.admin) && !isSale(req.admin)) {
+    if (!(await requireAgentManager(req, res))) return;
+  }
   try {
     const result = await db.query(
       'SELECT id, code, label, color_bg, color_text, badge_style, badge_code, sort_order FROM qr_menu_tags WHERE is_active ORDER BY sort_order, id'

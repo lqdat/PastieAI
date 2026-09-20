@@ -1763,6 +1763,17 @@ document.getElementById('superadmin-team-btn')?.addEventListener('click', (event
     window.openAdminManagement();
 });
 
+// Superadmin: Thiết lập danh mục Nhãn & Badge sản phẩm
+document.getElementById('superadmin-tags-btn')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    window.closeSettingsDropdown?.();
+    if (typeof openOrgModal === 'function') {
+        openOrgModal('tags');
+        const badgeCatalog = document.getElementById('org-badge-catalog');
+        if (badgeCatalog) badgeCatalog.open = true;
+    }
+});
+
 
 if (manageAdminsBtn) manageAdminsBtn.addEventListener('click', (event) => {
     event.stopPropagation();
