@@ -1076,6 +1076,10 @@ async function loadOrgTags(silent = false) {
     const badge = document.getElementById('org-tag-count-badge');
     if (!box) return;
     if (!silent && !box.children.length) box.innerHTML = '<p class="org-empty">Đang tải…</p>';
+    // Nạp danh mục ảnh trước khi vẽ: lưới chọn kiểu text nằm trong form ngay
+    // phía trên danh sách, mở tab ra mà lưới trống một nhịp rồi mới hiện thì
+    // trông như hỏng.
+    try { await loadBadgeCatalog?.(); veLuoiBadge?.(); veKhungBadge?.(); } catch (_) {}
     try {
         const data = await orgFetch('/api/superadmin/menu-tags');
         window.ORG_TAGS = data.tags || [];
@@ -1088,7 +1092,11 @@ async function loadOrgTags(silent = false) {
                     <!-- Vẽ ĐÚNG badge khách sẽ thấy, không phải một viên chip chung
                          chung: danh mục này quyết định hình dáng trên góc ảnh sản
                          phẩm, nên danh sách phải cho nhìn ra ngay nhãn nào hình gì. -->
-                    <span class="menu-badge is-${escapeHtml(tag.badge_style || 'star')}" style="--badge-bg:${escapeHtml(tag.color_bg)};--badge-text:${escapeHtml(tag.color_text)}"><span>${escapeHtml(tag.label)}</span></span>
+                    ${tag.badge_code
+                        ? `<img class="tag-card-badge" loading="lazy"
+                             src="/badges/${escapeHtml(tag.badge_style || 'vuong')}-${escapeHtml(tag.badge_code)}-en.png"
+                             alt="${escapeHtml(tag.label)}">`
+                        : `<span class="menu-badge is-${escapeHtml(tag.badge_style || 'vuong')}" style="--badge-bg:${escapeHtml(tag.color_bg)};--badge-text:${escapeHtml(tag.color_text)}"><span>${escapeHtml(tag.label)}</span></span>`}
                     <span class="tag-code">${escapeHtml(tag.code)}</span>
                     <span class="tag-usage">${Number(tag.item_count) || 0} sản phẩm</span>
                 </div>

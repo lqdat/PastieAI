@@ -20360,3 +20360,57 @@ button:focus-visible {
 .tag-preview-shot .menu-badge.is-ribbon{left:-32px;top:12px}
 .tag-card .menu-badge{flex:0 0 auto}
 .tag-card .menu-badge.is-ribbon{transform:rotate(-45deg) scale(.52)}
+
+/* ── CHỌN KIỂU TEXT & KHUNG CHO NHÃN (Superadmin) ────────────────────────────
+ *
+ * Lưới ảnh thật thu nhỏ thay cho một ô chọn chữ: tên mẫu không nói lên chữ in
+ * ra trông thế nào, mà đây đúng là thứ khách nhìn thấy trên góc ảnh món. */
+.org-field-wide { grid-column: 1 / -1; }
+.badge-pick > span { display: block; margin-bottom: 8px; }
+
+.badge-grid {
+    display: grid;
+    /* auto-fill + minmax chứ không phải số cột cố định: form này co theo bề
+     * rộng cửa sổ, cột cố định thì màn hẹp bị tràn ngang. */
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 8px;
+    max-height: 268px;
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+}
+.badge-grid-empty { grid-column: 1 / -1; padding: 12px; font-size: 12px; opacity: .7; }
+
+.badge-cell {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 6px 4px; border-radius: 9px; cursor: pointer;
+    border: 1.5px solid transparent; background: transparent; color: inherit;
+    transition: border-color .15s ease, background .15s ease;
+}
+.badge-cell img { width: 100%; max-width: 62px; aspect-ratio: 1; object-fit: contain; }
+.badge-cell small {
+    font-size: 10px; line-height: 1.2; text-align: center; opacity: .75;
+    /* Tên mẫu dài ("Chef Recommended") không được đẩy ô rộng ra làm vỡ lưới. */
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.badge-cell:hover { background: rgba(255, 255, 255, 0.06); }
+.badge-cell.is-on { border-color: var(--accent, #e51a82); background: rgba(229, 26, 130, 0.12); }
+.badge-cell.is-on small { opacity: 1; font-weight: 600; }
+
+/* Ô "chữ, không ảnh" phải cao bằng các ô có ảnh, nếu không hàng đầu so le. */
+.badge-cell-none { justify-content: center; }
+.badge-cell-none i { font-size: 26px; opacity: .6; }
+
+.badge-frame-row { display: flex; align-items: center; gap: 10px; }
+.badge-frame-row select { flex: 1; min-width: 0; }
+.badge-frame-preview {
+    width: 56px; height: 56px; object-fit: contain; flex: none;
+    /* Ảnh nhãn nền trong, đặt trên nền tối của bảng điều khiển thì chữ đỏ
+     * chìm hẳn — lót một mảng sáng nhỏ đúng bằng ô xem trước. */
+    background: #fffaf2; border-radius: 8px; padding: 2px;
+}
+
+/* Ảnh nhãn trong danh sách nhãn đã tạo. */
+.tag-card-badge { width: 44px; height: 44px; object-fit: contain; flex: none; }

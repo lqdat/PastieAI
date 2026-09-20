@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Lobster&display=swap" rel="stylesheet">
     <!-- Remix Icons -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
-    <link rel="stylesheet" href="admin.css?v=r161">
-    <link rel="stylesheet" href="menu-console.css?v=r161">
+    <link rel="stylesheet" href="admin.css?v=r162">
+    <link rel="stylesheet" href="menu-console.css?v=r162">
     <link rel="manifest" href="/manifest.webmanifest?v=2">
     <meta name="theme-color" content="#c90c6c">
     <meta name="mobile-web-app-capable" content="yes">
@@ -661,17 +661,30 @@
                             <span data-i18n="orgTagOrder">Thứ tự</span>
                             <input type="number" id="org-tag-order" value="0" min="0" max="999">
                         </label>
-                        <!-- KIỂU BADGE: hình dáng nhãn khi hiện trên góc ảnh sản phẩm
-                             ở cổng khách. Danh sách đóng, máy chủ kiểm lại — giá trị
-                             này đi thẳng vào tên class CSS bên cổng khách. -->
-                        <label class="org-field">
-                            <span data-i18n="orgTagBadge">Kiểu badge</span>
-                            <select id="org-tag-badge">
-                                <option value="star" data-i18n="orgTagBadgeStar">Ngôi sao răng cưa</option>
-                                <option value="seal" data-i18n="orgTagBadgeSeal">Con dấu tròn</option>
-                                <option value="pill" data-i18n="orgTagBadgePill">Viên thuốc</option>
-                                <option value="ribbon" data-i18n="orgTagBadgeRibbon">Ruy băng chéo</option>
-                            </select>
+                        <!-- KIỂU TEXT: chọn một mẫu chữ trong bộ ảnh dựng sẵn.
+                             Hiện bằng LƯỚI ẢNH THẬT thu nhỏ chứ không phải ô chọn
+                             chữ: tên mẫu ("Bán chạy", "Đặc trưng") không nói lên
+                             chữ in ra trông thế nào, mà đây đúng là thứ khách nhìn.
+                             Tích chọn một mẫu rồi mới mở được ô chọn khung bên dưới. -->
+                        <div class="org-field org-field-wide badge-pick">
+                            <span data-i18n="orgTagBadgeText">Kiểu text</span>
+                            <div class="badge-grid" id="org-tag-badge-grid" role="radiogroup"></div>
+                            <input type="hidden" id="org-tag-badge-code">
+                        </div>
+                        <!-- KHUNG: chỉ có nghĩa khi đã chọn kiểu text, nên ẩn cho tới
+                             lúc đó. Bày sẵn một ô chọn khung trong khi chưa có mẫu nào
+                             thì người dùng chọn khung trước rồi tưởng đã xong. -->
+                        <label class="org-field badge-frame hide" id="org-tag-frame-row">
+                            <span data-i18n="orgTagBadgeFrame">Khung nhãn</span>
+                            <div class="badge-frame-row">
+                                <select id="org-tag-badge">
+                                    <option value="vuong" data-i18n="orgTagFrameVuong">Khung vuông</option>
+                                    <option value="thoi" data-i18n="orgTagFrameThoi">Khung thoi</option>
+                                    <option value="hoa" data-i18n="orgTagFrameHoa">Khung cánh hoa</option>
+                                    <option value="tron" data-i18n="orgTagFrameTron">Khung tròn</option>
+                                </select>
+                                <img id="org-tag-frame-preview" class="badge-frame-preview" alt="">
+                            </div>
                         </label>
                         <!-- XEM TRƯỚC NGAY TRÊN Ô ẢNH GIẢ.
                              Mô tả bằng chữ ("ngôi sao răng cưa") không nói lên được nó
@@ -2463,17 +2476,17 @@
          toàn bộ câu lệnh chạy lúc nạp nên phải đứng sau cùng. -->
     <!-- Mặc định là null (dùng origin của trang); scripts/build.js ghi đè file
          này trong dist/ khi deploy dashboard ở domain riêng. -->
-    <script src="i18n-dictionary.js?v=r161"></script>
-    <script src="config.js?v=r161"></script>
-    <script src="core.js?v=r161"></script>
-    <script src="chat.js?v=r161"></script>
-    <script src="qrcode.bundle.js?v=r161"></script>
-    <script src="org-console.js?v=r161"></script>
-    <script src="project-admin.js?v=r161"></script>
-    <script src="menu-console.js?v=r161"></script>
-    <script src="order-console.js?v=r161"></script>
-    <script src="cart-console.js?v=r161"></script>
-    <script src="ticket-console.js?v=r161"></script>
-    <script src="admin.js?v=r161"></script>
+    <script src="i18n-dictionary.js?v=r162"></script>
+    <script src="config.js?v=r162"></script>
+    <script src="core.js?v=r162"></script>
+    <script src="chat.js?v=r162"></script>
+    <script src="qrcode.bundle.js?v=r162"></script>
+    <script src="org-console.js?v=r162"></script>
+    <script src="project-admin.js?v=r162"></script>
+    <script src="menu-console.js?v=r162"></script>
+    <script src="order-console.js?v=r162"></script>
+    <script src="cart-console.js?v=r162"></script>
+    <script src="ticket-console.js?v=r162"></script>
+    <script src="admin.js?v=r162"></script>
 </body>
 </html>

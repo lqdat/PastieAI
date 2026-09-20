@@ -86,7 +86,15 @@ if (KHO_SV) {
 const KHO_PT = tim(path.join(__dirname, '..', 'qr-chat-portal', 'app'), path.join(__dirname, 'pt'));
 if (KHO_PT) {
   const tsx = fs.readFileSync(path.join(KHO_PT, 'page.tsx'), 'utf8');
-  const css = fs.readFileSync(path.join(KHO_PT, 'globals.css'), 'utf8').replace(/\s*\n\s*/g, '');
+  // Chuẩn hoá MẠNH TAY: bỏ cả khoảng trắng quanh { } : ; ,
+  //
+  // Tệp này có chỗ viết sát (.menu-badge{...}) và chỗ viết thoáng
+  // (.article-reader-back-btn { ... }). Chỉ bỏ xuống dòng thì luật viết thoáng
+  // không khớp mẫu nào, và phép đo báo "không tìm thấy" trong khi luật vẫn nằm
+  // đó — bài đo hỏng chứ không phải mã hỏng. Đã dính đúng vậy.
+  const css = fs.readFileSync(path.join(KHO_PT, 'globals.css'), 'utf8')
+    .replace(/\s*\n\s*/g, '')
+    .replace(/\s*([{};:,])\s*/g, '$1');
 
   check('bấm banner MỞ BÀI VIẾT, không mở sản phẩm',
     /setActiveArticle\(\{/.test(tsx.slice(tsx.indexOf('const bannerBam'), tsx.indexOf('const renderMenuItem'))),
@@ -132,6 +140,25 @@ if (KHO_PT) {
   check('vùng cuộn thực đơn KHÔNG BAO GIỜ trượt ngang',
     /\.menu-scroll\{overflow-x:hidden\}/.test(css),
     'chốt chặn cuối: nguyên nhân tràn ngang có thể nằm ở bất kỳ phần tử con nào');
+
+  // ── Trình đọc bài viết: mở từ banner ra phải dùng được ───────────────
+  //
+  // Hai lỗi thật, đều lộ ra khi bấm banner mở bài viết:
+  check('tấm bài viết đo theo khung ĐANG THẤY, không phải khung lớn',
+    /\.article-reader-sheet\{[^}]*height:92dvh/.test(css),
+    'vh đo theo khung lúc thanh địa chỉ đã thu — tấm neo đáy nên đỉnh bị đẩy lên sau thanh địa chỉ, và đỉnh chính là hàng nút Quay lại / Đóng');
+  check('… và vẫn giữ đường lui vh cho trình duyệt cũ',
+    /height:92vh;height:92dvh/.test(css));
+  check('hàng nút tránh phần lẹm của máy có tai thỏ',
+    /\.article-reader-topbar\{[^}]*padding:calc\(12px \+ env\(safe-area-inset-top\)\)/.test(css));
+  check('nút "Quay lại" KHÔNG bị ép thành hình tròn 32px',
+    /\.article-reader-back-btn\{[^}]*border-radius:999px/.test(css)
+    && !/\.article-reader-back-btn,\.article-reader-close-btn\{/.test(css),
+    'dùng chung luật với nút đóng là chữ "Quay lại" bị xén, còn lại một hình tròn trống và một mẩu chữ thò ra');
+  check('nút đóng vẫn là hình tròn 32px',
+    /\.article-reader-close-btn\{[^}]*max-width:32px/.test(css));
+  check('nhãn danh mục co được, không đẩy nút đóng ra khỏi mép',
+    /\.article-reader-category\{[^}]*text-overflow:ellipsis/.test(css));
 }
 
 // ── 6. MÁY CHỦ KHÔNG CÒN GHI HAI TRƯỜNG ĐÓ ───────────────────────────────

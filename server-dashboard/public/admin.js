@@ -2032,38 +2032,104 @@ document.getElementById('org-agent-form')?.addEventListener('submit', async (eve
 });
 
 
-// XEM TRƯỚC BADGE NGAY KHI GÕ.
+// ── BỘ ẢNH NHÃN DỰNG SẴN ────────────────────────────────────────────────────
 //
-// Mô tả bằng chữ ("ngôi sao răng cưa") không nói lên được nó trông ra sao trên
-// một tấm ảnh thật, mà đây là thứ khách nhìn thấy suốt. Vẽ lại ở mỗi lần gõ chứ
-// không chờ bấm Lưu — vì bấm Lưu là dịch ngay 6 thứ tiếng, mất vài giây, đổi
-// một màu rồi chờ từng đó để xem thử thì không ai thử.
-function veXemTruocTag() {
-    const badge = document.getElementById('org-tag-preview-badge');
-    if (!badge) return;
-    const kieu = document.getElementById('org-tag-badge')?.value || 'star';
-    badge.className = `menu-badge is-${kieu}`;
-    badge.style.setProperty('--badge-bg', document.getElementById('org-tag-color-bg')?.value || '#e51a82');
-    badge.style.setProperty('--badge-text', document.getElementById('org-tag-color-text')?.value || '#ffffff');
-    const chu = (document.getElementById('org-tag-label')?.value || '').trim();
-    const o = badge.querySelector('span');
-    if (o) o.textContent = chu || 'NHÃN';
+// Danh mục do máy chủ trả về (đọc từ public/badges/danh-muc.json), KHÔNG chép
+// cứng ở đây: chép cứng thì thêm một mẫu nhãn mới phải sửa cả ba nơi — script
+// xuất ảnh, màn Superadmin, màn Agent — và sớm muộn cũng lệch nhau.
+let BADGE_CATALOG = null;
+const BADGE_FRAME_DEFAULT = 'vuong';
+
+// Ngôn ngữ dùng cho ảnh XEM TRƯỚC. Bộ ảnh không có bản tiếng Việt (chữ trên
+// nhãn để tiếng Anh cho gọn), nên xem trước lấy bản tiếng Anh.
+const BADGE_PREVIEW_LANG = 'en';
+
+function badgeImgUrl(khung, ma, lang) {
+    return `/badges/${khung}-${ma}-${lang || BADGE_PREVIEW_LANG}.png`;
 }
-['org-tag-label', 'org-tag-badge', 'org-tag-color-bg', 'org-tag-color-text'].forEach((id) => {
-    document.getElementById(id)?.addEventListener('input', veXemTruocTag);
+
+async function loadBadgeCatalog() {
+    if (BADGE_CATALOG) return BADGE_CATALOG;
+    try {
+        BADGE_CATALOG = await orgFetch('/api/menu-badges');
+    } catch (error) {
+        // Mất danh mục thì form vẫn lưu được nhãn, chỉ không chọn được ảnh.
+        // Nuốt im lặng ở đây là để lại một ô trống không ai hiểu vì sao.
+        console.error('[Badge] Không tải được danh mục ảnh nhãn:', error.message);
+        BADGE_CATALOG = { ma: [], mau: [], khung: [] };
+    }
+    return BADGE_CATALOG;
+}
+
+function veLuoiBadge() {
+    const luoi = document.getElementById('org-tag-badge-grid');
+    if (!luoi || !BADGE_CATALOG) return;
+    const dangChon = document.getElementById('org-tag-badge-code')?.value || '';
+    const khung = document.getElementById('org-tag-badge')?.value || BADGE_FRAME_DEFAULT;
+
+    if (!BADGE_CATALOG.mau?.length) {
+        luoi.innerHTML = '<span class="badge-grid-empty">Chưa có bộ ảnh nhãn trên máy chủ '
+            + '(public/badges/). Nhãn sẽ hiện dạng chữ như cũ.</span>';
+        return;
+    }
+
+    // Ô "không dùng ảnh" đứng đầu, không nhét xuống cuối: đây là trạng thái mặc
+    // định của một nhãn mới nên nó phải nằm ở chỗ mắt nhìn vào trước tiên.
+    const oTrong = `<button type="button" class="badge-cell badge-cell-none${dangChon ? '' : ' is-on'}"
+        role="radio" aria-checked="${dangChon ? 'false' : 'true'}" data-badge-code="">
+        <i class="ri-text"></i><small>Chữ, không ảnh</small></button>`;
+
+    luoi.innerHTML = oTrong + BADGE_CATALOG.mau.map((m) => {
+        const on = m.ma === dangChon;
+        const chu = m.chu?.[BADGE_PREVIEW_LANG] || m.ma;
+        return `<button type="button" class="badge-cell${on ? ' is-on' : ''}" role="radio"
+            aria-checked="${on ? 'true' : 'false'}" data-badge-code="${escapeHtml(m.ma)}" title="${escapeHtml(chu)}">
+            <img src="${escapeHtml(badgeImgUrl(khung, m.ma))}" alt="${escapeHtml(chu)}" loading="lazy">
+            <small>${escapeHtml(chu)}</small></button>`;
+    }).join('');
+}
+
+// Ô chọn khung chỉ có nghĩa khi đã chọn kiểu text, và ảnh xem trước phải đổi
+// theo cả hai lựa chọn — nếu không thì người dùng đổi khung mà không thấy gì
+// khác và tưởng thao tác không ăn.
+function veKhungBadge() {
+    const ma = document.getElementById('org-tag-badge-code')?.value || '';
+    const hang = document.getElementById('org-tag-frame-row');
+    const anh = document.getElementById('org-tag-frame-preview');
+    const khung = document.getElementById('org-tag-badge')?.value || BADGE_FRAME_DEFAULT;
+    hang?.classList.toggle('hide', !ma);
+    if (anh && ma) { anh.src = badgeImgUrl(khung, ma); anh.alt = `${ma} — ${khung}`; }
+}
+
+document.getElementById('org-tag-badge-grid')?.addEventListener('click', (event) => {
+    const o = event.target.closest('[data-badge-code]');
+    if (!o) return;
+    event.preventDefault();
+    const truong = document.getElementById('org-tag-badge-code');
+    if (truong) truong.value = o.dataset.badgeCode || '';
+    veLuoiBadge();
+    veKhungBadge();
 });
-veXemTruocTag();
+
+document.getElementById('org-tag-badge')?.addEventListener('change', () => {
+    // Đổi khung thì vẽ lại CẢ lưới: ảnh trong lưới là ảnh của khung đang chọn,
+    // để nguyên thì lưới và ô xem trước nói hai chuyện khác nhau.
+    veLuoiBadge();
+    veKhungBadge();
+});
 
 function resetTagForm() {
     document.getElementById('org-tag-form')?.reset();
     document.getElementById('org-tag-id').value = '';
     document.getElementById('org-tag-color-bg').value = '#e51a82';
     document.getElementById('org-tag-color-text').value = '#ffffff';
-    // reset() trả <select> về option ĐƯỢC ĐÁNH DẤU selected trong HTML, không
-    // phải về option đầu — ở đây không đánh dấu cái nào nên phải đặt tay.
-    document.getElementById('org-tag-badge').value = 'star';
     document.getElementById('org-tag-cancel')?.classList.add('hide');
-    veXemTruocTag();
+    const ma = document.getElementById('org-tag-badge-code');
+    if (ma) ma.value = '';
+    const khung = document.getElementById('org-tag-badge');
+    if (khung) khung.value = BADGE_FRAME_DEFAULT;
+    veLuoiBadge();
+    veKhungBadge();
 }
 
 document.getElementById('org-tag-cancel')?.addEventListener('click', resetTagForm);
@@ -2076,7 +2142,8 @@ document.getElementById('org-tag-form')?.addEventListener('submit', async (event
         colorBg: document.getElementById('org-tag-color-bg').value,
         colorText: document.getElementById('org-tag-color-text').value,
         sortOrder: Number(document.getElementById('org-tag-order').value) || 0,
-        badgeStyle: document.getElementById('org-tag-badge').value,
+        badgeCode: document.getElementById('org-tag-badge-code')?.value || '',
+        badgeStyle: document.getElementById('org-tag-badge')?.value || BADGE_FRAME_DEFAULT,
     };
     const nut = event.target.querySelector('button[type="submit"]');
     // Lưu là DỊCH NGAY sang 6 thứ tiếng, nên lượt này mất vài giây. Khoá nút lại,
@@ -2437,11 +2504,14 @@ document.getElementById('org-modal')?.addEventListener('click', async (event) =>
         document.getElementById('org-tag-color-bg').value = tag.color_bg || '#e51a82';
         document.getElementById('org-tag-color-text').value = tag.color_text || '#ffffff';
         document.getElementById('org-tag-order').value = tag.sort_order ?? 0;
-        // Rơi về 'star' cho nhãn tạo từ trước khi có cột badge_style — bỏ trống
-        // thì <select> giữ nguyên kiểu của nhãn vừa sửa trước đó, và bấm Lưu là
-        // âm thầm đổi kiểu của nhãn này theo.
-        document.getElementById('org-tag-badge').value = tag.badge_style || 'star';
-        veXemTruocTag();
+        // Khung phải đặt TRƯỚC khi vẽ lưới: lưới lấy khung đang chọn để dựng
+        // đường dẫn ảnh, vẽ trước thì cả lưới hiện ảnh của khung mặc định.
+        const oKhung = document.getElementById('org-tag-badge');
+        if (oKhung) oKhung.value = tag.badge_style || BADGE_FRAME_DEFAULT;
+        const oMa = document.getElementById('org-tag-badge-code');
+        if (oMa) oMa.value = tag.badge_code || '';
+        veLuoiBadge();
+        veKhungBadge();
         document.getElementById('org-tag-cancel')?.classList.remove('hide');
         document.getElementById('org-tag-label')?.focus();
         return;

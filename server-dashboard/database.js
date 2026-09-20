@@ -1195,25 +1195,30 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
         -- Màu nền và màu chữ của nhãn, để superadmin chỉnh mà không phải sửa mã.
         color_bg VARCHAR(20) NOT NULL DEFAULT '#e51a82',
         color_text VARCHAR(20) NOT NULL DEFAULT '#ffffff',
-        -- HÌNH DÁNG badge trên góc ảnh sản phẩm ở cổng khách: star (ngôi sao
-        -- răng cưa), seal (con dấu tròn), pill (viên thuốc), ribbon (ruy băng
-        -- chéo).
-        --
-        -- Để ở CSDL chứ không đoán theo mã nhãn: cùng một nhãn "Mới" thì chỗ
-        -- này muốn ngôi sao, chỗ kia muốn viên thuốc gọn. Đây là danh mục dùng
-        -- chung nên phải có chỗ chọn, không viết cứng trong CSS được.
-        badge_style VARCHAR(20) NOT NULL DEFAULT 'star',
         sort_order INT NOT NULL DEFAULT 0,
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    // Bảng đã tồn tại thì CREATE TABLE IF NOT EXISTS bỏ qua HOÀN TOÀN, kể cả
-    // cột mới — phải thêm riêng. Thiếu bước này là máy đang chạy nâng cấp xong
-    // vẫn thiếu cột, và mọi câu SELECT nhắc tới nó đều ném lỗi.
-    await query(`ALTER TABLE qr_menu_tags ADD COLUMN IF NOT EXISTS badge_style VARCHAR(20) NOT NULL DEFAULT 'star';`);
     await query(`CREATE INDEX IF NOT EXISTS idx_menu_tags_active ON qr_menu_tags(is_active, sort_order);`);
+
+    // KHUNG ẢNH của nhãn: 'vuong' | 'thoi' | 'hoa' | 'tron'. Trước đây là bốn
+    // hình vẽ bằng CSS (star/seal/pill/ribbon); nay nhãn là ẢNH PNG dựng sẵn
+    // nên giá trị đổi theo tên khung. Bản ghi cũ được chuyển thẳng sang khung
+    // gần nhất về hình dáng, không để lại giá trị mồ côi.
+    await query(`ALTER TABLE qr_menu_tags ADD COLUMN IF NOT EXISTS badge_style VARCHAR(20) NOT NULL DEFAULT 'vuong';`);
+    await query(`
+      UPDATE qr_menu_tags SET badge_style = CASE badge_style
+        WHEN 'star' THEN 'hoa' WHEN 'seal' THEN 'tron'
+        WHEN 'pill' THEN 'vuong' WHEN 'ribbon' THEN 'thoi' ELSE badge_style END
+       WHERE badge_style IN ('star', 'seal', 'pill', 'ribbon');
+    `);
+
+    // MÃ NHÃN trong bộ ảnh dựng sẵn ('best-seller', 'discount-20'…). Để trống
+    // nghĩa là nhãn này chưa gắn ảnh, cổng khách sẽ hiện nhãn chữ như cũ —
+    // không ép, vì Superadmin có thể tạo nhãn riêng ngoài bộ 15 mã có sẵn.
+    await query(`ALTER TABLE qr_menu_tags ADD COLUMN IF NOT EXISTS badge_code VARCHAR(40);`);
 
     // Chữ trên tag cũng phải dịch, cùng lối với tên sản phẩm và tên nhóm: dịch
     // LÚC LƯU rồi cất vào đây, cổng khách chỉ đọc. Không dịch live.
@@ -1238,6 +1243,13 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
       );
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_menu_item_tags_tag ON qr_menu_item_tags(tag_id);`);
+
+    // KHUNG RIÊNG CHO TỪNG SẢN PHẨM.
+    //
+    // Cùng một nhãn "Bán chạy" nhưng món này để khung tròn, món kia khung thoi —
+    // Agent chọn lúc gắn nhãn. NULL nghĩa là dùng khung mặc định của nhãn do
+    // Superadmin đặt, chứ không phải "không có khung".
+    await query(`ALTER TABLE qr_menu_item_tags ADD COLUMN IF NOT EXISTS badge_style VARCHAR(20);`);
 
     // ── BANNER CHẠY TRÊN ĐẦU THỰC ĐƠN ──────────────────────────────────────
     //

@@ -11771,16 +11771,72 @@ function mauHopLe(raw, macDinh) {
   return /^#[0-9a-fA-F]{3,8}$/.test(mau) ? mau : macDinh;
 }
 
-// HÌNH DÁNG badge trên góc ảnh sản phẩm ở cổng khách.
+// KHUNG ẢNH của nhãn trên góc ảnh sản phẩm ở cổng khách.
 //
 // Danh sách ĐÓNG, kiểm ở máy chủ chứ không tin ô chọn ở trình duyệt: giá trị
-// này đi thẳng vào tên class CSS bên cổng khách, nên một chuỗi lạ lọt qua là
-// badge mất hình dáng — hoặc tệ hơn, thành chỗ nhét chuỗi tuỳ ý vào HTML.
-const KIEU_BADGE = ['star', 'seal', 'pill', 'ribbon'];
+// này đi vào tên tệp ảnh (badge/<khung>-<mã>-<ngôn ngữ>.png) và vào tên class
+// CSS, nên một chuỗi lạ lọt qua là nhãn vỡ ảnh — hoặc tệ hơn, thành chỗ nhét
+// chuỗi tuỳ ý vào HTML.
+const KIEU_BADGE = ['vuong', 'thoi', 'hoa', 'tron'];
+
+// Bốn kiểu cũ vẽ bằng CSS, ánh xạ sang khung gần nhất về hình dáng. Giữ bảng
+// này vì bản ghi cũ vẫn có thể được gửi lên từ một tab trình duyệt chưa tải lại.
+const KHUNG_CU = { star: 'hoa', seal: 'tron', pill: 'vuong', ribbon: 'thoi' };
+
 function kieuBadgeHopLe(raw, macDinh) {
   const kieu = String(raw || '').trim().toLowerCase();
-  return KIEU_BADGE.includes(kieu) ? kieu : macDinh;
+  if (KIEU_BADGE.includes(kieu)) return kieu;
+  if (KHUNG_CU[kieu]) return KHUNG_CU[kieu];
+  return macDinh;
 }
+
+// ── DANH MỤC ẢNH NHÃN ───────────────────────────────────────────────────────
+//
+// Đọc MỘT LẦN từ public/badges/danh-muc.json do script xuất ảnh sinh ra, thay
+// vì chép cứng 15 mã vào đây: chép cứng thì thêm một nhãn mới phải sửa hai nơi
+// và sớm muộn cũng lệch. Đọc đồng bộ lúc khởi động là chấp nhận được — tệp nhỏ
+// và nếu thiếu thì phải biết ngay chứ không phải lúc Agent bấm vào.
+let DANH_MUC_NHAN = null;
+function danhMucNhan() {
+  if (DANH_MUC_NHAN) return DANH_MUC_NHAN;
+  try {
+    const raw = fs.readFileSync(path.join(__dirname, 'public/badges/danh-muc.json'), 'utf8');
+    const d = JSON.parse(raw);
+    // Gom về danh sách mã kèm chữ từng thứ tiếng, bỏ chiều "khung" đi: chữ trên
+    // nhãn không phụ thuộc khung, giữ cả 300 dòng ở đây chỉ tổ nặng.
+    const chu = new Map();
+    for (const a of d.anh || []) {
+      if (!chu.has(a.ma)) chu.set(a.ma, {});
+      chu.get(a.ma)[a.ngonNgu] = a.nhan;
+    }
+    DANH_MUC_NHAN = {
+      co: d.co, khung: d.khung || KIEU_BADGE, ngonNgu: d.ngonNgu || [],
+      ma: d.ma || [...chu.keys()],
+      mau: (d.ma || [...chu.keys()]).map((ma) => ({ ma, chu: chu.get(ma) || {} })),
+    };
+  } catch (error) {
+    console.error('[BADGE] Không đọc được public/badges/danh-muc.json:', error.message);
+    DANH_MUC_NHAN = { co: 0, khung: KIEU_BADGE, ngonNgu: [], ma: [], mau: [] };
+  }
+  return DANH_MUC_NHAN;
+}
+
+// Mã nhãn phải nằm trong danh mục ảnh, nếu không thì cổng khách trỏ vào một tệp
+// không tồn tại. Chuỗi rỗng là hợp lệ và có nghĩa "nhãn này không dùng ảnh".
+function maNhanHopLe(raw, macDinh) {
+  if (raw === undefined) return macDinh;
+  const ma = String(raw || '').trim().toLowerCase();
+  if (!ma) return null;
+  return danhMucNhan().ma.includes(ma) ? ma : macDinh;
+}
+
+// Danh mục ảnh nhãn cho CẢ Superadmin lẫn Agent dựng lưới chọn. Hai bảng điều
+// khiển nằm ở hai ứng dụng khác nhau nên phải đi qua API chung, đừng để mỗi bên
+// tự đoán tên tệp.
+app.get('/api/menu-badges', checkAdminAuth, (req, res) => {
+  const d = danhMucNhan();
+  res.json({ ...d, duongDan: '/badges', mau: d.mau });
+});
 
 app.post('/api/superadmin/menu-tags', checkAdminAuth, async (req, res) => {
   if (!requireSuperAdmin(req, res)) return;
@@ -11790,11 +11846,12 @@ app.post('/api/superadmin/menu-tags', checkAdminAuth, async (req, res) => {
   if (!code) return res.status(400).json({ error: 'Tên tag không tạo được mã hợp lệ.' });
   try {
     const created = await db.query(
-      `INSERT INTO qr_menu_tags (code, label, color_bg, color_text, badge_style, sort_order, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+      `INSERT INTO qr_menu_tags (code, label, color_bg, color_text, badge_style, badge_code, sort_order, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
        ON CONFLICT (code) DO NOTHING RETURNING *`,
       [code, label, mauHopLe(req.body?.colorBg, '#e51a82'), mauHopLe(req.body?.colorText, '#ffffff'),
-       kieuBadgeHopLe(req.body?.badgeStyle, 'star'),
+       kieuBadgeHopLe(req.body?.badgeStyle, 'vuong'),
+       maNhanHopLe(req.body?.badgeCode, null),
        Number(req.body?.sortOrder) || 0]
     );
     if (!created.rows[0]) return res.status(409).json({ error: 'Đã có tag dùng mã này.' });
@@ -11820,7 +11877,7 @@ app.put('/api/superadmin/menu-tags/:id', checkAdminAuth, async (req, res) => {
 
     const updated = await db.query(
       `UPDATE qr_menu_tags
-          SET label = $2, color_bg = $3, color_text = $4, badge_style = $7,
+          SET label = $2, color_bg = $3, color_text = $4, badge_style = $7, badge_code = $8,
               sort_order = $5, is_active = $6, updated_at = NOW()
         WHERE id = $1 RETURNING *`,
       [id, label,
@@ -11828,7 +11885,8 @@ app.put('/api/superadmin/menu-tags/:id', checkAdminAuth, async (req, res) => {
        mauHopLe(req.body?.colorText, found.rows[0].color_text),
        req.body?.sortOrder === undefined ? found.rows[0].sort_order : Number(req.body.sortOrder) || 0,
        req.body?.isActive === undefined ? found.rows[0].is_active : !!req.body.isActive,
-       kieuBadgeHopLe(req.body?.badgeStyle, found.rows[0].badge_style || 'star')]
+       kieuBadgeHopLe(req.body?.badgeStyle, found.rows[0].badge_style || 'vuong'),
+       maNhanHopLe(req.body?.badgeCode, found.rows[0].badge_code || null)]
     );
     // Chỉ dịch lại khi CHỮ đổi. Đổi màu hay đổi thứ tự mà cũng gọi máy dịch là
     // tốn một lượt gọi AI cho một việc không liên quan gì tới chữ.
@@ -11887,7 +11945,7 @@ app.get('/api/agent/menu-tags', checkAdminAuth, async (req, res) => {
   if (!(await requireAgentManager(req, res))) return;
   try {
     const result = await db.query(
-      'SELECT id, code, label, color_bg, color_text, badge_style, sort_order FROM qr_menu_tags WHERE is_active ORDER BY sort_order, id'
+      'SELECT id, code, label, color_bg, color_text, badge_style, badge_code, sort_order FROM qr_menu_tags WHERE is_active ORDER BY sort_order, id'
     );
     res.json({ tags: result.rows });
   } catch (error) {
@@ -11904,7 +11962,19 @@ app.put('/api/agent/menu/items/:id/tags', checkAdminAuth, async (req, res) => {
       [itemId, req.admin.id]);
     if (!item.rows[0]) return res.status(404).json({ error: 'Không tìm thấy sản phẩm.' });
 
-    const muon = [...new Set((Array.isArray(req.body?.tagIds) ? req.body.tagIds : []).map(Number).filter(Boolean))];
+    // Nhận HAI dạng thân yêu cầu: dạng mới `tags: [{tagId, badgeStyle}]` để
+    // Agent chọn khung riêng cho từng món, và dạng cũ `tagIds: [1,2]`. Giữ dạng
+    // cũ vì một tab trình duyệt chưa tải lại vẫn đang gửi kiểu đó.
+    const thoTags = Array.isArray(req.body?.tags) ? req.body.tags
+      : (Array.isArray(req.body?.tagIds) ? req.body.tagIds.map((id) => ({ tagId: id })) : []);
+    const khungTheoTag = new Map();
+    for (const t of thoTags) {
+      const tagId = Number(t?.tagId ?? t);
+      if (!tagId) continue;
+      // undefined = dùng khung mặc định của nhãn; chỉ ghi đè khi Agent thực sự chọn.
+      khungTheoTag.set(tagId, t?.badgeStyle ? kieuBadgeHopLe(t.badgeStyle, null) : null);
+    }
+    const muon = [...khungTheoTag.keys()];
     // Chỉ nhận tag CÓ THẬT và đang bật. Không lọc thì client gửi id bừa vào là
     // tạo ra dòng trỏ vào tag không tồn tại (khoá ngoại sẽ chặn, nhưng chặn bằng
     // lỗi 500 thay vì một câu nói rõ).
@@ -11920,8 +11990,9 @@ app.put('/api/agent/menu/items/:id/tags', checkAdminAuth, async (req, res) => {
       await client.query('BEGIN');
       await client.query('DELETE FROM qr_menu_item_tags WHERE item_id = $1', [itemId]);
       for (const tagId of ids) {
-        await client.query('INSERT INTO qr_menu_item_tags (item_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-          [itemId, tagId]);
+        await client.query(
+          'INSERT INTO qr_menu_item_tags (item_id, tag_id, badge_style) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+          [itemId, tagId, khungTheoTag.get(tagId) || null]);
       }
       await client.query('COMMIT');
     } catch (err) {
@@ -11930,7 +12001,8 @@ app.put('/api/agent/menu/items/:id/tags', checkAdminAuth, async (req, res) => {
     } finally {
       client.release();
     }
-    res.json({ success: true, tagIds: ids });
+    res.json({ success: true, tagIds: ids,
+      tags: ids.map((id) => ({ tagId: id, badgeStyle: khungTheoTag.get(id) || null })) });
   } catch (error) {
     console.error('Set item tags error:', error);
     res.status(500).json({ error: 'Không lưu được tag cho sản phẩm.' });
@@ -12817,7 +12889,11 @@ async function tagsChoSanPham(itemIds, lang) {
   if (ids.length === 0) return new Map();
   const target = String(lang || MENU_SOURCE_LANG).toLowerCase().slice(0, 2);
   const rows = await db.query(
-    `SELECT it.item_id, g.id, g.code, g.color_bg, g.color_text, g.badge_style, g.sort_order,
+    `SELECT it.item_id, g.id, g.code, g.color_bg, g.color_text, g.sort_order, g.badge_code,
+            -- Khung Agent chọn riêng cho món này đè khung mặc định của nhãn.
+            -- COALESCE chứ không phải ưu tiên nhãn: nếu ưu tiên nhãn thì lựa
+            -- chọn của Agent không bao giờ có tác dụng.
+            COALESCE(NULLIF(it.badge_style, ''), g.badge_style) AS badge_style,
             COALESCE(NULLIF(t.label, ''), g.label) AS label
        FROM qr_menu_item_tags it
        JOIN qr_menu_tags g ON g.id = it.tag_id AND g.is_active
@@ -13096,7 +13172,13 @@ app.get('/api/agent/menu/items', checkAdminAuth, async (req, res) => {
               -- mở lên với ô tag trống, Agent bấm Lưu là xoá sạch tag đã chọn —
               -- đúng lớp lỗi đã xảy ra với tên riêng / tên gọi (mục 9.3).
               COALESCE((SELECT json_agg(it.tag_id ORDER BY it.tag_id)
-                          FROM qr_menu_item_tags it WHERE it.item_id = i.id), '[]') AS tag_ids
+                          FROM qr_menu_item_tags it WHERE it.item_id = i.id), '[]') AS tag_ids,
+              -- Kèm cả KHUNG mà Agent đã chọn cho từng nhãn của món này. Chỉ
+              -- trả tag_ids thôi thì form sửa mở lên mất lựa chọn khung, bấm
+              -- Lưu là rơi hết về khung mặc định — cùng lớp lỗi với tag_ids.
+              COALESCE((SELECT json_agg(json_build_object('tagId', it.tag_id, 'badgeStyle', it.badge_style)
+                                        ORDER BY it.tag_id)
+                          FROM qr_menu_item_tags it WHERE it.item_id = i.id), '[]') AS tag_styles
          FROM qr_menu_items i
          LEFT JOIN qr_menu_categories c ON c.id = i.category_id
          LEFT JOIN qr_menu_item_translations t ON t.item_id = i.id
