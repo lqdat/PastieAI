@@ -20365,7 +20365,11 @@ button:focus-visible {
  *
  * Lưới ảnh thật thu nhỏ thay cho một ô chọn chữ: tên mẫu không nói lên chữ in
  * ra trông thế nào, mà đây đúng là thứ khách nhìn thấy trên góc ảnh món. */
-.org-field-wide { grid-column: 1 / -1; }
+/* .org-tag-form là FLEX WRAP, không phải grid — nên grid-column không có tác
+ * dụng và ô chọn kiểu text bị bóp lại thành một cột hẹp nằm lẫn giữa các ô nhỏ.
+ * Chiếm trọn một hàng phải nói bằng flex-basis 100%. align-self:stretch để
+ * thoát khỏi align-items:flex-end của form. */
+.org-field-wide { flex: 1 0 100%; align-self: stretch; }
 .badge-pick > span { display: block; margin-bottom: 8px; }
 
 .badge-grid {
@@ -20414,3 +20418,58 @@ button:focus-visible {
 
 /* Ảnh nhãn trong danh sách nhãn đã tạo. */
 .tag-card-badge { width: 44px; height: 44px; object-fit: contain; flex: none; }
+
+/* ── TAB DANH MỤC BADGE ──────────────────────────────────────────────────── */
+.badge-gallery-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
+.badge-gallery-bar .org-form-note { margin: 0 0 6px auto; }
+
+.badge-gallery {
+    display: grid;
+    /* Ô rộng 132px: đủ để đọc chữ trên ảnh nhãn ở cỡ thật, hẹp hơn thì phải
+     * phóng to mới biết mẫu nào là mẫu nào. */
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    gap: 12px;
+}
+.badge-card {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 12px 8px; border-radius: 12px;
+    border: 1px solid var(--panel-border); background: rgba(255, 255, 255, 0.03);
+}
+.badge-card img { width: 100%; max-width: 96px; aspect-ratio: 1; object-fit: contain; }
+.badge-card h5 { margin: 0; font-size: 12px; text-align: center; }
+.badge-card code { font-size: 10px; opacity: .6; }
+.badge-card .secondary-btn { width: 100%; padding: 6px 8px; font-size: 11px; }
+.badge-card-done { font-size: 11px; opacity: .7; display: inline-flex; align-items: center; gap: 4px; }
+
+/* Ảnh nhãn trong ô xem trước trên ảnh sản phẩm giả. */
+.menu-badge-img { width: 64px; height: 64px; object-fit: contain; }
+
+/* ── ĐIỆN THOẠI ─────────────────────────────────────────────────────────────
+ *
+ * Breakpoint 720px theo đúng các khối còn lại của tệp này. Đo ở khổ 375px. */
+@media (max-width: 720px) {
+    /* Ô cuộn cao 268px ở khổ điện thoại chỉ hở hơn hai hàng trên tổng năm hàng,
+     * hàng bị cắt ngang trông như lỗi hiển thị. Đo theo chiều cao MÀN HÌNH để
+     * luôn hở trọn hàng, và vẫn còn thấy phần form phía dưới. */
+    .badge-grid { max-height: 46vh; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); }
+    .badge-cell img { max-width: 54px; }
+
+    /* Ô chọn khung và ảnh xem trước xếp trên một hàng thì ô chọn còn chưa tới
+     * 180px, đọc tên khung bị cụt. Cho ô chọn nguyên hàng, ảnh xuống dưới. */
+    .badge-frame { flex: 1 0 100%; }
+
+    /* Ô xem trước trên ảnh sản phẩm: xếp dọc, nhãn nằm trên ảnh giả. Để ngang
+     * thì chữ nhãn bị ép xuống hai ba dòng cạnh một ô vuông to. */
+    .tag-preview-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+
+    /* Hai ô chọn của danh mục badge chia đôi hàng thay vì mỗi ô 92px cố định —
+     * 92px không đủ cho chữ "Khung cánh hoa". */
+    .badge-gallery-bar .org-field-narrow { flex: 1 1 calc(50% - 6px); }
+    .badge-gallery-bar .org-form-note { flex: 1 0 100%; margin: 0; }
+
+    /* Thẻ trong danh mục: hai cột ở khổ điện thoại. minmax(132px) sẽ ra hai cột
+     * hẹp 168px, nhưng nút "Tạo nhãn" cần chỗ nên bỏ bớt lề trong. */
+    .badge-gallery { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+    .badge-card { padding: 10px 6px; }
+    .badge-card img { max-width: 76px; }
+}

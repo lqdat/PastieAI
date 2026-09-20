@@ -11813,6 +11813,7 @@ function danhMucNhan() {
       co: d.co, khung: d.khung || KIEU_BADGE, ngonNgu: d.ngonNgu || [],
       ma: d.ma || [...chu.keys()],
       mau: (d.ma || [...chu.keys()]).map((ma) => ({ ma, chu: chu.get(ma) || {} })),
+      duongDan: gocAnhNhan(),
     };
   } catch (error) {
     console.error('[BADGE] Không đọc được public/badges/danh-muc.json:', error.message);
@@ -11830,12 +11831,25 @@ function maNhanHopLe(raw, macDinh) {
   return danhMucNhan().ma.includes(ma) ? ma : macDinh;
 }
 
+// ĐỊA CHỈ GỐC CỦA ẢNH NHÃN.
+//
+// Sau khi đẩy lên S3, ảnh gốc trong mã nguồn bị xoá đi cho nhẹ bản deploy, nên
+// địa chỉ phải đọc từ badge-s3-manifest.json chứ không chép cứng '/badges'.
+// Chưa đẩy lên (hoặc manifest hỏng) thì rơi về thư mục tĩnh — máy phát triển
+// vẫn chạy được mà không cần S3.
+function gocAnhNhan() {
+  try {
+    const man = JSON.parse(fs.readFileSync(path.join(__dirname, 'badge-s3-manifest.json'), 'utf8'));
+    if (man?.dayDu === true && man?.baseUrl) return String(man.baseUrl).replace(/\/+$/, '');
+  } catch (_) { /* chưa đẩy lên bao giờ — đường dẫn tĩnh là đúng */ }
+  return '/badges';
+}
+
 // Danh mục ảnh nhãn cho CẢ Superadmin lẫn Agent dựng lưới chọn. Hai bảng điều
 // khiển nằm ở hai ứng dụng khác nhau nên phải đi qua API chung, đừng để mỗi bên
 // tự đoán tên tệp.
 app.get('/api/menu-badges', checkAdminAuth, (req, res) => {
-  const d = danhMucNhan();
-  res.json({ ...d, duongDan: '/badges', mau: d.mau });
+  res.json(danhMucNhan());
 });
 
 app.post('/api/superadmin/menu-tags', checkAdminAuth, async (req, res) => {
@@ -12902,9 +12916,19 @@ async function tagsChoSanPham(itemIds, lang) {
       ORDER BY g.sort_order, g.id`,
     [ids, target]
   );
+  // Ghép sẵn ĐƯỜNG DẪN ẢNH ở máy chủ, không để cổng khách tự nối chuỗi: chỉ
+  // máy chủ biết ảnh đang nằm ở thư mục tĩnh hay trên S3, và biết bộ ảnh có
+  // thứ tiếng nào. Thiếu bản dịch cho thứ tiếng đang xem thì dùng bản tiếng
+  // Anh — chữ đã in vào ảnh nên không thể dịch lúc chạy.
+  const goc = gocAnhNhan();
+  const coTieng = new Set(danhMucNhan().ngonNgu || []);
+  const tiengAnh = coTieng.has(target) ? target : 'en';
   const theo = new Map();
   for (const row of rows.rows) {
     const { item_id, ...tag } = row;
+    tag.badge_url = tag.badge_code
+      ? `${goc}/${tag.badge_style || 'vuong'}-${tag.badge_code}-${tiengAnh}.png`
+      : null;
     if (!theo.has(item_id)) theo.set(item_id, []);
     theo.get(item_id).push(tag);
   }

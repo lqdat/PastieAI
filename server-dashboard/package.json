@@ -21,6 +21,7 @@
     "upload:badge-s3": "node scripts/upload-badges-to-s3.js",
     "test:badge": "node tests/nhan-s3.js",
     "import:badge-tags": "node scripts/import-badge-tags.js",
+    "clean:badge-local": "node scripts/clean-local-badges.js",
     "test:badge-ui": "node tests/nhan-chon.js",
     "test:email": "node test-send-emails.js"
   },

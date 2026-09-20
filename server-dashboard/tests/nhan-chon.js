@@ -96,7 +96,8 @@ kt('mở nhãn ra sửa thì nạp lại cả mã lẫn khung',
    /tag\.badge_style \|\| BADGE_FRAME_DEFAULT[\s\S]{0,260}tag\.badge_code/.test(ajs));
 kt('reset form xoá luôn mã nhãn đã chọn',
    /function resetTagForm[\s\S]{0,700}org-tag-badge-code/.test(ajs));
-kt('danh sách nhãn hiện ảnh thật khi nhãn có mã', /tag-card-badge[\s\S]{0,200}\/badges\//.test(ojs));
+kt('danh sách nhãn hiện ảnh thật khi nhãn có mã, chữ khi không có',
+   /tag\.badge_code[\s\S]{0,120}tag-card-badge[\s\S]{0,320}menu-badge is-/.test(ojs));
 for (const luat of ['.badge-grid{', '.badge-cell{', '.badge-cell.is-on{', '.badge-frame-preview{', '.tag-card-badge{'])
   kt(`admin.css có ${luat}`, acss.includes(luat));
 
@@ -114,7 +115,6 @@ kt('mở form sửa thì khôi phục khung từ tag_styles', /item\.tag_styles[
 kt('vẫn mở được bản ghi cũ chỉ có tag_ids', /else if \(item && Array\.isArray\(item\.tag_ids\)\)/.test(mjs));
 kt('đổi khung bắt bằng change uỷ quyền ở thẻ cha',
    /addEventListener\('change'[\s\S]{0,200}data-tag-frame/.test(mjs));
-kt('ảnh nhãn trỏ tuyệt đối theo API_BASE', /\$\{API_BASE\}\/badges\//.test(mjs));
 kt('khung chứa đổi sang xếp dọc', mcss.includes('.menu-tag-picker{flex-direction:column;'));
 for (const luat of ['.menu-tag-row{', '.menu-tag-frame{', '.menu-tag-thumb{'])
   kt(`menu-console.css có ${luat}`, mcss.includes(luat));
@@ -130,6 +130,91 @@ kt('nhãn đã có thì chỉ vá phần thiếu, không ghi đè chữ và màu
 kt('dừng khi thiếu nhãn tiếng Việt cho một mã', /Chưa khai nhãn tiếng Việt cho/.test(imp));
 kt('chờ initPromise chứ không tự chạy lại migration',
    /await db\.initPromise/.test(imp) && !/db\.initDatabase\(\)/.test(imp));
+
+
+console.log('\n=== ẢNH NẰM TRÊN S3, KHÔNG CÒN TRONG MÃ NGUỒN ===');
+const up = boChuThich(doc('scripts/upload-badges-to-s3.js'));
+const clean = boChuThich(doc('scripts/clean-local-badges.js'));
+
+kt('script đẩy ghi baseUrl vào manifest', /baseUrl,/.test(up) && /const baseUrl = /.test(up));
+kt('manifest có cờ dayDu dựa trên số tệp lỗi',
+   /dayDu: hong\.length === 0 && xong === canTai\.length/.test(up));
+
+kt('máy chủ đọc địa chỉ gốc từ manifest, không chép cứng /badges',
+   /function gocAnhNhan[\s\S]{0,400}badge-s3-manifest\.json/.test(sv));
+kt('chỉ dùng địa chỉ S3 khi lần đẩy ĐỦ', /man\?\.dayDu === true && man\?\.baseUrl/.test(sv));
+kt('chưa đẩy S3 thì rơi về thư mục tĩnh', /return '\/badges';/.test(sv));
+kt('danh mục trả kèm duongDan', /duongDan: gocAnhNhan\(\)/.test(sv));
+kt('cổng khách nhận sẵn badge_url, không tự nối chuỗi', /tag\.badge_url = tag\.badge_code/.test(sv));
+kt('thứ tiếng không có trong bộ ảnh thì rơi về bản tiếng Anh',
+   /coTieng\.has\(target\) \? target : 'en'/.test(sv));
+
+kt('Superadmin lấy gốc ảnh từ danh mục', /BADGE_CATALOG\?\.duongDan \|\| '\/badges'/.test(ajs));
+kt('Superadmin không còn chép cứng /badges/ trong chuỗi ảnh',
+   !/src="\/badges\/|`\/badges\/\$\{/.test(ajs));
+kt('danh sách nhãn cũng đi qua badgeImgUrl', /tag-card-badge[\s\S]{0,200}badgeImgUrl\(/.test(ojs));
+
+kt('Agent lấy gốc ảnh từ danh mục', /BADGE_CATALOG\?\.duongDan \|\| '\/badges'/.test(mjs));
+// Đây là chỗ dễ sai nhất: địa chỉ S3 đã tuyệt đối, ghép thêm API_BASE là hỏng.
+kt('Agent chỉ ghép API_BASE cho đường dẫn tương đối',
+   /\^https\?:[\s\S]{0,80}goc : `\$\{API_BASE\}\$\{goc\}`/.test(mjs));
+
+kt('script xoá đòi manifest mới xoá', /Chưa có badge-s3-manifest\.json/.test(clean));
+kt('script xoá từ chối khi lần đẩy chưa đủ', /man\.dayDu !== true/.test(clean));
+kt('script xoá đối chiếu từng TÊN TỆP, không chỉ đếm số lượng',
+   /chuaTai = tren_dia\.filter\(\(f\) => !daTai\.has\(f\)\)/.test(clean));
+kt('script xoá giữ lại danh-muc.json', /GIU_LAI = new Set\(\['danh-muc\.json'\]\)/.test(clean));
+kt('script xoá chỉ đụng tệp .png', /\.endsWith\('\.png'\)/.test(clean));
+kt('có chế độ chạy thử', /--thu/.test(clean));
+
+
+console.log('\n=== TAB DANH MỤC BADGE ===');
+// Lỗi thật đã gặp: .org-tag-form là flex-wrap chứ không phải grid, nên
+// grid-column:1/-1 không có tác dụng và lưới chọn bị bóp thành một cột hẹp.
+kt('ô chọn kiểu text chiếm trọn hàng bằng flex-basis, không phải grid-column',
+   acss.includes('.org-field-wide{flex:1 0 100%;align-self:stretch;}')
+   && !/\.org-field-wide\{grid-column/.test(acss));
+
+kt('có tab danh mục badge', ahtml.includes('data-org-tab="badges"'));
+kt('có pane danh mục badge', ahtml.includes('data-org-pane="badges"'));
+kt('tab chỉ hiện với superadmin',
+   /data-org-tab="badges"\]'\)\?\.classList\.toggle\('hide', !isSuper\)/.test(ojs));
+kt('mở tab thì nạp danh mục', /name === 'badges'[\s\S]{0,60}loadBadgeGallery/.test(ojs));
+kt('gallery đổi được khung và ngôn ngữ',
+   ahtml.includes('id="org-badge-gallery-frame"') && ahtml.includes('id="org-badge-gallery-lang"'));
+kt('danh sách ngôn ngữ dựng từ danh mục, không chép cứng',
+   /BADGE_CATALOG\.ngonNgu \|\| \[\]\)\.map/.test(ajs));
+kt('tạo nhãn thẳng từ mẫu', /data-badge-make/.test(ajs) && /badgeCode: ma/.test(ajs));
+kt('mẫu đã có nhãn thì không mời tạo lại',
+   /daCo = new Set\(\(window\.ORG_TAGS \|\| \[\]\)\.map\(\(t\) => t\.badge_code\)/.test(ajs));
+kt('gallery nói rõ ảnh đang lấy từ đâu', /Ảnh lấy từ: /.test(ajs));
+kt('gallery trống thì hướng dẫn cách sửa', /Giải nén badges\.zip vào/.test(ajs));
+for (const luat of ['.badge-gallery{', '.badge-card{', '.menu-badge-img{'])
+  kt(`admin.css có ${luat}`, acss.includes(luat));
+
+kt('ô xem trước đổi sang ẢNH khi đã chọn mẫu',
+   ahtml.includes('id="org-tag-preview-img"')
+   && /img\?\.classList\.toggle\('hide', !ma\)/.test(ajs));
+
+kt('Agent nói rõ khi nhãn chưa gắn ảnh', /menu-tag-note[\s\S]{0,200}chưa gắn ảnh/.test(mjs));
+kt('menu-console.css có .menu-tag-note{', mcss.includes('.menu-tag-note{'));
+
+kt('admin.html đã nâng số phiên bản tệp tĩnh', ahtml.includes('v=r163') && !ahtml.includes('v=r162'));
+
+
+console.log('\n=== KHỔ ĐIỆN THOẠI ===');
+// Đo ở 375px: ô cuộn cao 268px chỉ hở hơn hai hàng trên năm, hàng bị cắt ngang
+// trông như lỗi hiển thị; hai ô chọn 92px cố định không đủ cho "Khung cánh hoa".
+const mob = acss.slice(acss.lastIndexOf('@media (max-width:720px)'));
+kt('có khối media query cho điện thoại', acss.includes('@media (max-width:720px)'));
+kt('lưới chọn cao theo màn hình thay vì 268px cố định', /\.badge-grid\{max-height:46vh/.test(mob));
+kt('ô nhãn nhỏ lại ở khổ hẹp', /minmax\(76px/.test(mob));
+kt('ô chọn khung chiếm nguyên hàng', /\.badge-frame\{flex:1 0 100%;\}/.test(mob));
+kt('ô xem trước xếp dọc', /\.tag-preview-row\{flex-direction:column/.test(mob));
+kt('hai ô chọn của danh mục chia đôi hàng', /\.org-field-narrow\{flex:1 1 calc\(50% - 6px\);\}/.test(mob));
+kt('thẻ danh mục hai cột ở khổ hẹp', /\.badge-gallery\{grid-template-columns:repeat\(auto-fill,minmax\(112px/.test(mob));
+kt('Agent: ô chọn khung xuống hàng riêng ở khổ hẹp',
+   /@media \(max-width:720px\)\{[\s\S]{0,240}\.menu-tag-frame select\{flex:1 1 100%\}/.test(mcss));
 
 console.log(`\n${dat}/${dat + truot} đạt`);
 process.exit(truot ? 1 : 0);

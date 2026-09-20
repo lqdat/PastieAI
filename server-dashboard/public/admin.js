@@ -2044,8 +2044,12 @@ const BADGE_FRAME_DEFAULT = 'vuong';
 // nhãn để tiếng Anh cho gọn), nên xem trước lấy bản tiếng Anh.
 const BADGE_PREVIEW_LANG = 'en';
 
+// Gốc ảnh do máy chủ báo: thư mục tĩnh khi chưa đẩy S3, địa chỉ S3 khi đã đẩy
+// và ảnh gốc đã bị xoá khỏi mã nguồn. Chép cứng '/badges' ở đây thì sau lượt
+// dọn ảnh là cả lưới vỡ hình.
 function badgeImgUrl(khung, ma, lang) {
-    return `/badges/${khung}-${ma}-${lang || BADGE_PREVIEW_LANG}.png`;
+    const goc = BADGE_CATALOG?.duongDan || '/badges';
+    return `${goc}/${khung}-${ma}-${lang || BADGE_PREVIEW_LANG}.png`;
 }
 
 async function loadBadgeCatalog() {
@@ -2099,7 +2103,103 @@ function veKhungBadge() {
     const khung = document.getElementById('org-tag-badge')?.value || BADGE_FRAME_DEFAULT;
     hang?.classList.toggle('hide', !ma);
     if (anh && ma) { anh.src = badgeImgUrl(khung, ma); anh.alt = `${ma} — ${khung}`; }
+
+    // Ô "xem trước trên ảnh sản phẩm" phải đổi theo: có mẫu ảnh thì hiện ảnh,
+    // chưa chọn mẫu thì quay về badge chữ. Để nguyên hình vẽ CSS trong khi đã
+    // chọn ảnh là nói dối về thứ khách sẽ nhìn thấy.
+    const chu = document.getElementById('org-tag-preview-badge');
+    const img = document.getElementById('org-tag-preview-img');
+    chu?.classList.toggle('hide', Boolean(ma));
+    img?.classList.toggle('hide', !ma);
+    if (img && ma) { img.src = badgeImgUrl(khung, ma); img.alt = ma; }
 }
+
+// ── DANH MỤC BADGE (tab riêng) ──────────────────────────────────────────────
+//
+// Chỉ để XEM và tạo nhanh nhãn từ mẫu. Không sửa ảnh ở đây: ảnh do script xuất
+// ra rồi đẩy lên S3, sửa tay ở bảng điều khiển sẽ lệch với bản trên S3.
+async function loadBadgeGallery() {
+    const luoi = document.getElementById('org-badge-gallery');
+    if (!luoi) return;
+    await loadBadgeCatalog();
+
+    const oLang = document.getElementById('org-badge-gallery-lang');
+    if (oLang && !oLang.options.length) {
+        oLang.innerHTML = (BADGE_CATALOG.ngonNgu || []).map((n) => `<option value="${n}">${n}</option>`).join('');
+        oLang.value = BADGE_CATALOG.ngonNgu?.includes(BADGE_PREVIEW_LANG)
+            ? BADGE_PREVIEW_LANG : (BADGE_CATALOG.ngonNgu?.[0] || BADGE_PREVIEW_LANG);
+    }
+    const khung = document.getElementById('org-badge-gallery-frame')?.value || BADGE_FRAME_DEFAULT;
+    const lang = oLang?.value || BADGE_PREVIEW_LANG;
+
+    const dem = document.getElementById('org-badge-count');
+    if (dem) dem.textContent = String(BADGE_CATALOG.mau?.length || 0);
+
+    // Nói rõ ảnh đang lấy từ đâu: sau khi dọn ảnh gốc, biết ngay là đang ăn S3
+    // hay vẫn đọc thư mục tĩnh — không có dòng này thì phải mở DevTools mới biết.
+    const nguon = document.getElementById('org-badge-source');
+    if (nguon) nguon.textContent = BADGE_CATALOG.mau?.length
+        ? `Ảnh lấy từ: ${BADGE_CATALOG.duongDan || '/badges'}`
+        : '';
+
+    if (!BADGE_CATALOG.mau?.length) {
+        luoi.innerHTML = '<p class="org-empty">Máy chủ chưa đọc được bộ ảnh nhãn. '
+            + 'Giải nén badges.zip vào server-dashboard/public/badges/ rồi khởi động lại máy chủ.</p>';
+        return;
+    }
+
+    // Nhãn nào đã có trong danh sách nhãn thì không mời tạo lại nữa.
+    const daCo = new Set((window.ORG_TAGS || []).map((t) => t.badge_code).filter(Boolean));
+    luoi.innerHTML = BADGE_CATALOG.mau.map((m) => {
+        const chu = m.chu?.[lang] || m.chu?.en || m.ma;
+        return `<article class="badge-card">
+            <img src="${escapeHtml(badgeImgUrl(khung, m.ma, lang))}" alt="${escapeHtml(chu)}" loading="lazy">
+            <h5>${escapeHtml(chu)}</h5>
+            <code>${escapeHtml(m.ma)}</code>
+            ${daCo.has(m.ma)
+                ? '<span class="badge-card-done"><i class="ri-check-line"></i> Đã có nhãn</span>'
+                : `<button type="button" class="secondary-btn" data-badge-make="${escapeHtml(m.ma)}">
+                     <i class="ri-add-line"></i> Tạo nhãn</button>`}
+        </article>`;
+    }).join('');
+}
+
+document.getElementById('org-badge-gallery-frame')?.addEventListener('change', () => void loadBadgeGallery());
+document.getElementById('org-badge-gallery-lang')?.addEventListener('change', () => void loadBadgeGallery());
+
+// Tạo nhãn thẳng từ một mẫu: đỡ phải gõ lại tên rồi dò tìm đúng mẫu trong lưới.
+document.getElementById('org-badge-gallery')?.addEventListener('click', async (event) => {
+    const nut = event.target.closest('[data-badge-make]');
+    if (!nut) return;
+    const ma = nut.dataset.badgeMake;
+    const mau = BADGE_CATALOG?.mau?.find((m) => m.ma === ma);
+    const khung = document.getElementById('org-badge-gallery-frame')?.value || BADGE_FRAME_DEFAULT;
+    nut.disabled = true;
+    nut.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang tạo và dịch…';
+    try {
+        await orgFetch('/api/superadmin/menu-tags', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                // Tên nhãn để tiếng Anh theo chữ in trên ảnh; Superadmin đổi lại
+                // tiếng Việt ở tab Nhãn nếu muốn, lúc đó bản dịch chạy lại theo.
+                label: mau?.chu?.en || ma,
+                code: ma,
+                badgeCode: ma,
+                badgeStyle: khung,
+                colorBg: '#fff4d9',
+                colorText: '#c8402c',
+            }),
+        });
+        setOrgStatus(`Đã tạo nhãn từ mẫu "${ma}".`);
+        await loadOrgTags(true);
+        await loadBadgeGallery();
+    } catch (error) {
+        setOrgStatus(error.message, 'error');
+        nut.disabled = false;
+        nut.innerHTML = '<i class="ri-add-line"></i> Tạo nhãn';
+    }
+});
 
 document.getElementById('org-tag-badge-grid')?.addEventListener('click', (event) => {
     const o = event.target.closest('[data-badge-code]');

@@ -1094,7 +1094,7 @@ async function loadOrgTags(silent = false) {
                          phẩm, nên danh sách phải cho nhìn ra ngay nhãn nào hình gì. -->
                     ${tag.badge_code
                         ? `<img class="tag-card-badge" loading="lazy"
-                             src="/badges/${escapeHtml(tag.badge_style || 'vuong')}-${escapeHtml(tag.badge_code)}-en.png"
+                             src="${escapeHtml(badgeImgUrl(tag.badge_style || 'vuong', tag.badge_code))}"
                              alt="${escapeHtml(tag.label)}">`
                         : `<span class="menu-badge is-${escapeHtml(tag.badge_style || 'vuong')}" style="--badge-bg:${escapeHtml(tag.color_bg)};--badge-text:${escapeHtml(tag.color_text)}"><span>${escapeHtml(tag.label)}</span></span>`}
                     <span class="tag-code">${escapeHtml(tag.code)}</span>
@@ -1145,6 +1145,7 @@ function switchOrgTab(name) {
     if (name === 'groups') void loadOrgGroups(false, isSilent);
     if (name === 'qr') void loadOrgQr(isSilent);
     if (name === 'tags') void loadOrgTags(isSilent);
+    if (name === 'badges') void loadBadgeGallery?.();
     // Sản phẩm nằm ở menu-console.js — mảnh đầu tiên của QR Console tách riêng.
     if (name === 'menu') {
         void window.MenuConsole?.load(isSilent);
@@ -1165,6 +1166,7 @@ function openOrgModal() {
     // Danh mục nhãn dùng chung mọi cơ sở nên chỉ Superadmin thấy, cùng nhóm với
     // tab Agent. Máy chủ cũng chặn (requireSuperAdmin) — ẩn tab chỉ là lớp ngoài.
     document.querySelector('[data-org-tab="tags"]')?.classList.toggle('hide', !isSuper);
+    document.querySelector('[data-org-tab="badges"]')?.classList.toggle('hide', !isSuper);
     ['sales', 'groups', 'qr', 'menu'].forEach((name) => {
         document.querySelector(`[data-org-tab="${name}"]`)?.classList.toggle('hide', isSuper);
     });
