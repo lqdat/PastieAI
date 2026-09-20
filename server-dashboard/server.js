@@ -6053,8 +6053,8 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
     const fromDate = String(req.query.from || req.query.fromDate || '').trim();
     const toDate = String(req.query.to || req.query.toDate || '').trim();
 
-    const where = ['o.status NOT IN ($1, $2)'];
-    const params = ['rejected', 'superseded'];
+    const where = ['o.status NOT IN ($1, $2, $3)'];
+    const params = ['rejected', 'superseded', 'expired'];
     if (isSuperAdmin(req.admin)) {
       // không thêm điều kiện
     } else if (req.admin.role === 'sale') {

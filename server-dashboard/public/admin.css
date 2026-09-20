@@ -8702,7 +8702,7 @@ button:focus-visible {
 
     padding: 3px 8px;
 
-    border-radius: 999px;
+    border-radius: 4px;
 
     background: #f4edf3;
 
@@ -16890,7 +16890,7 @@ button:focus-visible {
 
         font-weight: 750 !important;
 
-        border-radius: 999px !important;
+        border-radius: 4px !important;
 
     }
 
@@ -20497,5 +20497,25 @@ button:focus-visible {
 }
 .badge-catalog > summary::-webkit-details-marker { display: none; }
 .badge-catalog > summary::before { content: '\25B8'; transition: transform .15s ease; }
-.badge-catalog[open] > summary::before { transform: rotate(90deg); }
 .badge-catalog-body { padding: 0 12px 12px; }
+
+/* Chống cuộn dính ngoài popup (scroll chaining / scroll leak) */
+.modal-overlay,
+.org-modal,
+.order-cart-modal,
+.login-box,
+.org-box,
+.order-cart-modal-box,
+.menu-modal-box,
+.qr-preview-box,
+.admin-modal-box,
+.agent-guide-box,
+.media-preview-modal-box,
+.addbox {
+    overscroll-behavior: contain !important;
+}
+
+body.has-active-modal {
+    overflow: hidden !important;
+}
+

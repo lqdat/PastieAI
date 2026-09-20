@@ -69,35 +69,40 @@ const INVOICE_I18N = {
     phone: 'Điện thoại', address: 'Địa chỉ', item: 'Mặt hàng', unitPrice: 'Đơn giá', quantity: 'SL',
     discount: 'Chiết khấu', lineTotal: 'Thành tiền', subtotal: 'Tổng tiền hàng',
     totalDiscount: 'Chiết khấu', vat: 'VAT', grandTotal: 'TỔNG CỘNG', paymentMethod: 'Thanh toán',
-    thanks: 'Cảm ơn quý khách!', note: 'Hóa đơn được tạo tự động từ hệ thống Pastie Chat.', paidStamp: 'ĐÃ THANH TOÁN'
+    thanks: 'Cảm ơn quý khách!', note: 'Hóa đơn được tạo tự động từ hệ thống Pastie Chat.', paidStamp: 'ĐÃ THANH TOÁN',
+    vatIncluded: 'Giá đã bao gồm VAT'
   },
   en: {
     title: 'SALES INVOICE', invoiceNo: 'Invoice No.', date: 'Date', customer: 'Customer', email: 'Email', table: 'Table', openedAt: 'Time in', printedAt: 'Printed', sale: 'Served by',
     phone: 'Phone', address: 'Address', item: 'Item', unitPrice: 'Unit price', quantity: 'Qty',
     discount: 'Discount', lineTotal: 'Amount', subtotal: 'Subtotal',
     totalDiscount: 'Discount', vat: 'VAT', grandTotal: 'TOTAL', paymentMethod: 'Payment',
-    thanks: 'Thank you!', note: 'This invoice was generated automatically by Pastie Chat.', paidStamp: 'PAID'
+    thanks: 'Thank you!', note: 'This invoice was generated automatically by Pastie Chat.', paidStamp: 'PAID',
+    vatIncluded: 'Prices include VAT'
   },
   ru: {
     title: 'СЧЁТ НА ОПЛАТУ', invoiceNo: 'Номер счёта', date: 'Дата', customer: 'Клиент', email: 'Электронная почта', table: 'Стол', openedAt: 'Время входа', printedAt: 'Напечатано', sale: 'Обслужил',
     phone: 'Телефон', address: 'Адрес', item: 'Наименование', unitPrice: 'Цена', quantity: 'Кол-во',
     discount: 'Скидка', lineTotal: 'Сумма', subtotal: 'Итого по товарам',
     totalDiscount: 'Скидка', vat: 'НДС', grandTotal: 'ИТОГО', paymentMethod: 'Оплата',
-    thanks: 'Спасибо за покупку!', note: 'Счёт сформирован автоматически системой Pastie Chat.', paidStamp: 'ОПЛАЧЕНО'
+    thanks: 'Спасибо за покупку!', note: 'Счёт сформирован автоматически системой Pastie Chat.', paidStamp: 'ОПЛАЧЕНО',
+    vatIncluded: 'Цены включают НДС'
   },
   zh: {
     title: '销售发票', invoiceNo: '发票号', date: '日期', customer: '客户', email: '邮箱', table: '桌号', openedAt: '入座时间', printedAt: '打印时间', sale: '服务员',
     phone: '电话', address: '地址', item: '商品', unitPrice: '单价', quantity: '数量',
     discount: '折扣', lineTotal: '金额', subtotal: '商品合计',
     totalDiscount: '折扣', vat: '增值税', grandTotal: '总计', paymentMethod: '付款方式',
-    thanks: '感谢惠顾！', note: '本发票由 Pastie Chat 系统自动生成。', paidStamp: '已付款'
+    thanks: '感谢惠顾！', note: '本发票由 Pastie Chat 系统自动生成。', paidStamp: '已付款',
+    vatIncluded: '价格已含增值税'
   },
   ko: {
     title: '판매 영수증', invoiceNo: '영수증 번호', date: '발행일', customer: '고객', email: '이메일', table: '테이블', openedAt: '입장 시간', printedAt: '출력 시간', sale: '담당 직원',
     phone: '전화번호', address: '주소', item: '품목', unitPrice: '단가', quantity: '수량',
     discount: '할인', lineTotal: '금액', subtotal: '상품 합계',
     totalDiscount: '할인', vat: 'VAT', grandTotal: '총 합계', paymentMethod: '결제 수단',
-    thanks: '이용해 주셔서 감사합니다!', note: '본 영수증은 Pastie Chat 시스템에서 자동 발행되었습니다.', paidStamp: '결제 완료'
+    thanks: '이용해 주셔서 감사합니다!', note: '본 영수증은 Pastie Chat 시스템에서 자동 발행되었습니다.', paidStamp: '결제 완료',
+    vatIncluded: 'VAT 포함 가격'
   },
   // Tiếng Kazakh viết bằng chữ Kirin. DejaVuSans đã có đủ 18 chữ riêng của
   // Kazakh (Ә Ғ Қ Ң Ө Ұ Ү Һ І và chữ thường) nên KHÔNG cần font bổ sung —
@@ -107,7 +112,8 @@ const INVOICE_I18N = {
     phone: 'Телефон', address: 'Мекенжай', item: 'Атауы', unitPrice: 'Бағасы', quantity: 'Саны',
     discount: 'Жеңілдік', lineTotal: 'Сомасы', subtotal: 'Тауарлар жиыны',
     totalDiscount: 'Жеңілдік', vat: 'ҚҚС', grandTotal: 'ЖАЛПЫ СОМА', paymentMethod: 'Төлем',
-    thanks: 'Сатып алғаныңыз үшін рахмет!', note: 'Бұл есеп-шот Pastie Chat жүйесінде автоматты түрде жасалды.', paidStamp: 'ТӨЛЕНДІ'
+    thanks: 'Сатып алғаныңыз үшін рахмет!', note: 'Бұл есеп-шот Pastie Chat жүйесінде автоматты түрде жасалды.', paidStamp: 'ТӨЛЕНДІ',
+    vatIncluded: 'Бағаларға ҚҚС кіреді'
   },
 };
 
@@ -468,12 +474,11 @@ function createInvoicePdfDataUrl(invoice, language) {
     }
     summaryRow(copy.grandTotal, money(data.totalAmount), { bold: true });
 
-    // KHÔNG còn dòng "giá đã bao gồm VAT".
-    //
-    // Giá sản phẩm giờ CHƯA gồm VAT — VAT được cộng thành một dòng riêng ngay
-    // phía trên. Giữ lại câu đó là nói với khách rằng thuế đã nằm trong giá,
-    // trong khi hóa đơn vừa cộng thuế một lần nữa ở dòng trên: hai câu trên
-    // cùng một tờ giấy chọi nhau, và câu sai là câu khách đem đi khiếu nại.
+    // Khi quán không cấu hình VAT riêng (để trống hoặc 0%): in dòng "Giá đã bao gồm VAT"
+    if (!data.serviceFeeAmount || Number(data.serviceFeeRate) === 0) {
+      doc.moveDown(0.35);
+      useRegular().fontSize(8).fillColor('#6f6070').text(`* ${copy.vatIncluded || 'Giá đã bao gồm VAT'}`, left, doc.y, { width, align: 'center' });
+    }
 
     doc.moveDown(1.1);
     useBold().fontSize(10.5).fillColor('#b20c69').text(copy.thanks, left, doc.y, { width, align: 'center' });
@@ -761,8 +766,11 @@ function createInvoiceSvg(invoice, language) {
   }
   summary(copy.grandTotal, money(data.totalAmount), { bold: true });
 
-  // Gỡ dòng ghi chú VAT thì khoảng trống nó để lại cũng phải gỡ theo, không thì
-  // giữa TỔNG CỘNG và lời cảm ơn hở ra một mảng trắng vô cớ.
+  if (!data.serviceFeeAmount || Number(data.serviceFeeRate) === 0) {
+    y += 14;
+    text(`* ${copy.vatIncluded || 'Giá đã bao gồm VAT'}`, W / 2, y, { size: 10, fill: '#6f6070', anchor: 'middle' });
+  }
+
   y += 14;
   text(copy.thanks, W / 2, y, { size: 13, weight: 700, fill: '#b20c69', anchor: 'middle' });
   y += 18;

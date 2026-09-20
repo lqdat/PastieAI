@@ -1257,7 +1257,7 @@ async function loadOrgAgents(isSilent = false) {
                     </strong>
                     <small>${escapeHtml(agent.username)}</small>
                     <small><i class="ri-team-line"></i> Đã tạo: <strong>${agent.sale_count}${agent.sale_limit ? '/' + agent.sale_limit : ''} Sale</strong>
-                        · <strong>${agent.group_count} nhóm</strong>${agent.sale_limit && agent.sale_count >= agent.sale_limit ? ' · <span style="color:#ef4444;font-weight:700;">Đã hết suất</span>' : ''}</small>
+                        · <strong>${agent.group_count} nhóm</strong></small>
                 </div>
                 <div class="org-agent-actions">
                     <button type="button" class="org-device-btn" data-agent-devices="${agent.id}" data-agent-name="${escapeHtml(agent.full_name || agent.username)}">
@@ -1478,7 +1478,7 @@ async function loadOrgSales(isSilent = false) {
                 const left = Math.max(0, Number(limit) - count);
                 quotaCount.textContent = left > 0
                     ? `${usedLabel} ${count}/${limit} ${saleUnit} · ${remLabel} ${left}`
-                    : `${usedLabel} ${count}/${limit} ${saleUnit} · ${fullLabel}`;
+                    : `${usedLabel} ${count}/${limit} ${saleUnit}`;
                 quotaCount.classList.toggle('is-full', left <= 0);
             } else {
                 quotaCount.textContent = `${usedLabel} ${count} ${saleUnit} · ${unlimitedLabel}`;
