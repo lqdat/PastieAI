@@ -3133,3 +3133,115 @@ function showOtpFeedback(msg, type = 'success') {
     otpUnlockFeedback.classList.remove('hide');
 }
 window.showOtpFeedback = showOtpFeedback;
+
+// Khóa scroll body khi có modal/popup mở để tránh lỗi cuộn dính nền ngoài popup
+function initModalScrollLock() {
+    const isBackdropArea = (target) => {
+        if (!target) return false;
+        if (target.classList?.contains('modal-overlay') ||
+            target.classList?.contains('org-modal') ||
+            target.classList?.contains('cart-overlay') ||
+            target.classList?.contains('confirm-overlay') ||
+            target.classList?.contains('menu-modal') ||
+            target.classList?.contains('order-cart-modal') ||
+            target.classList?.contains('order-detail-overlay') ||
+            target.id === 'qr-preview-modal' ||
+            target.id === 'org-modal' ||
+            target.id === 'order-cart-modal' ||
+            target.id === 'report-modal') {
+            return true;
+        }
+        return false;
+    };
+
+    const isModalActive = () => {
+        return document.body.classList.contains('has-active-modal') || !!document.querySelector(
+            '.modal-overlay:not(.hide), .org-modal:not(.hide), .order-cart-modal:not(.hide), #org-modal:not(.hide), #qr-preview-modal:not(.hide), #order-cart-modal:not(.hide), #report-modal:not(.hide), .menu-modal:not(.hide), .cart-overlay:not(.is-closing), .confirm-overlay:not(.is-leaving), .order-detail-overlay'
+        );
+    };
+
+    const updateLock = () => {
+        const hasOpenModal = isModalActive();
+        document.documentElement.classList.toggle('has-active-modal', hasOpenModal);
+        document.body.classList.toggle('has-active-modal', hasOpenModal);
+    };
+
+    const observer = new MutationObserver(updateLock);
+    observer.observe(document.body, {
+        childList: true,
+        attributes: true,
+        attributeFilter: ['class', 'style'],
+        subtree: true
+    });
+    updateLock();
+
+    // Chặn hoàn toàn hành vi cuộn khi lăn chuột trên nền mờ hoặc vùng tĩnh của popup
+    window.addEventListener('wheel', (e) => {
+        if (!isModalActive()) return;
+
+        if (isBackdropArea(e.target)) {
+            e.preventDefault();
+            return;
+        }
+
+        let el = e.target;
+        let foundScrollable = false;
+        while (el && el !== document.body && el !== document.documentElement) {
+            if (isBackdropArea(el)) break;
+
+            const style = window.getComputedStyle(el);
+            const canScrollY = (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+            if (canScrollY) {
+                const isScrollingUp = e.deltaY < 0;
+                const isScrollingDown = e.deltaY > 0;
+                const atTop = el.scrollTop <= 0;
+                const atBottom = Math.ceil(el.scrollTop + el.clientHeight) >= el.scrollHeight;
+
+                if ((isScrollingUp && atTop) || (isScrollingDown && atBottom)) {
+                    e.preventDefault();
+                }
+                foundScrollable = true;
+                break;
+            }
+            el = el.parentElement;
+        }
+
+        if (!foundScrollable) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+
+    // Chặn cuộn vuốt cảm ứng trên nền mờ của popup
+    window.addEventListener('touchmove', (e) => {
+        if (!isModalActive()) return;
+
+        if (isBackdropArea(e.target)) {
+            e.preventDefault();
+            return;
+        }
+
+        let el = e.target;
+        let foundScrollable = false;
+        while (el && el !== document.body && el !== document.documentElement) {
+            if (isBackdropArea(el)) break;
+
+            const style = window.getComputedStyle(el);
+            const canScrollY = (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+            if (canScrollY) {
+                foundScrollable = true;
+                break;
+            }
+            el = el.parentElement;
+        }
+
+        if (!foundScrollable) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initModalScrollLock);
+} else {
+    initModalScrollLock();
+}
+

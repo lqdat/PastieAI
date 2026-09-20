@@ -20503,8 +20503,12 @@ button:focus-visible {
 .modal-overlay,
 .org-modal,
 .order-cart-modal,
+.cart-overlay,
+.confirm-overlay,
+.order-detail-overlay,
 .login-box,
 .org-box,
+.cart-box,
 .order-cart-modal-box,
 .menu-modal-box,
 .qr-preview-box,
@@ -20515,8 +20519,32 @@ button:focus-visible {
     overscroll-behavior: contain !important;
 }
 
+/* Khóa cuộn cảm ứng và chuột trên nền mờ của tất cả popup */
+.modal-overlay,
+.org-modal,
+.order-cart-modal,
+.cart-overlay,
+.confirm-overlay,
+.order-detail-overlay {
+    touch-action: none !important;
+}
+
+/* Các hộp popup bên trong cho phép cuộn nội dung bình thường */
+.modal-overlay > *,
+.org-modal > *,
+.order-cart-modal > *,
+.cart-overlay > *,
+.confirm-overlay > *,
+.order-detail-overlay > * {
+    touch-action: pan-y !important;
+}
+
+html.has-active-modal,
 body.has-active-modal {
     overflow: hidden !important;
+    height: 100% !important;
+    overscroll-behavior: none !important;
+    touch-action: none !important;
 }
 
 /* Segmented Tabs chuyển đổi kiểu poster QR (Co-branded & Standard & Chỉ mã QR) */
