@@ -832,12 +832,11 @@
 
                     <!-- Khung Quản lý Sản phẩm (Ẩn khi chọn chế độ Banner) -->
                     <div id="agent-menu-items-section">
-                    <div class="org-list-header">
-                        <h4>Danh sách sản phẩm</h4>
-                        <span id="menu-count-badge" class="org-count-badge">0 sản phẩm</span>
+                    <div class="org-list-header" style="justify-content: flex-end; margin-bottom: 8px;">
+                        <h4 class="hide" style="display:none;">Danh sách sản phẩm</h4>
+                        <span id="menu-count-badge" class="org-count-badge hide" style="display:none;">0 sản phẩm</span>
                     
-                        <button type="button" class="pane-add is-quiet" data-addbox-toggle="menu-cat"><i class="ri-price-tag-3-line"></i> <span>Danh mục</span></button>
-                        <button type="button" class="pane-add" data-addbox-toggle="menu-item"><i class="ri-add-circle-line"></i> <span>Thêm sản phẩm</span></button>
+                        <button type="button" class="pane-add is-quiet" data-addbox-toggle="menu-cat"><i class="ri-add-line"></i> <span>Thêm danh mục</span></button>
                     </div>
                     <div class="addbox hide" data-addbox="menu-cat">
                     <form class="menu-form" id="menu-category-form">
@@ -965,8 +964,8 @@
                     </form>
                     </div>
 
-                    <!-- Thanh tìm kiếm và bộ lọc trạng thái sản phẩm -->
-                    <div class="menu-search-dock" id="menu-search-dock">
+                    <!-- Thanh tìm kiếm và bộ lọc trạng thái sản phẩm (Ẩn theo yêu cầu) -->
+                    <div class="menu-search-dock hide" id="menu-search-dock" style="display:none;">
                         <div class="menu-search-input-wrap">
                             <i class="ri-search-line menu-search-icon"></i>
                             <input type="text" id="menu-item-search-input" placeholder="Tìm kiếm món theo tên, giá, mô tả..." autocomplete="off">

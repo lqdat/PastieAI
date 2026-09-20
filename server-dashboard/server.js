@@ -13254,7 +13254,15 @@ app.delete('/api/agent/menu/categories/:id', checkAdminAuth, async (req, res) =>
       return res.status(400).json({ error: 'Không xoá được nhóm Ưu đãi. Bạn có thể ẩn nhóm này nếu chưa dùng tới.' });
     }
 
-    // Món trong danh mục KHÔNG bị xoá theo — chỉ mất phân loại (ON DELETE SET NULL).
+    // Nếu yêu cầu xoá luôn các món trong nhóm:
+    if (req.query.deleteItems === 'true' || req.query.cascade === 'true') {
+      await db.query(
+        'DELETE FROM qr_menu_items WHERE category_id = $1 AND agent_id = $2',
+        [Number(req.params.id), req.admin.id]
+      );
+    }
+
+    // Món trong danh mục KHÔNG bị xoá theo nếu không có cờ deleteItems — chỉ mất phân loại (ON DELETE SET NULL).
     // Xoá nhầm danh mục mà mất luôn cả thực đơn thì quá đắt cho một thao tác lỡ tay.
     const deleted = await db.query(
       'DELETE FROM qr_menu_categories WHERE id = $1 AND agent_id = $2 RETURNING id',

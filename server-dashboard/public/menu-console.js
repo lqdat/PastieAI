@@ -443,21 +443,14 @@
             box.innerHTML = `<p class="menu-hint-empty">${escapeHtml(t('mnNoCategoryHint'))}</p>`;
             return;
         }
-        const totalCount = ITEMS.length;
-        const allBtn = `
-            <button type="button" class="menu-cat-pill is-all${selectedCategoryId === 'all' ? ' is-active' : ''}" data-category-filter="all">
-                <span>${escapeHtml(t('allWord', null, 'Tất cả'))}</span>
-                <small>${totalCount}</small>
-            </button>
-        `;
         let nonPromoIdx = 1;
-        box.innerHTML = allBtn + CATEGORIES.map((category) => {
+        box.innerHTML = CATEGORIES.map((category) => {
             const stt = category.is_promo ? 0 : nonPromoIdx++;
             return `
-            <span class="menu-cat-chip${category.is_active ? '' : ' is-off'}${category.is_promo ? ' is-promo' : ''}${String(selectedCategoryId) === String(category.id) ? ' is-active' : ''}" data-category-chip="${category.id}" draggable="${category.is_promo ? 'false' : 'true'}">
+            <span class="menu-cat-chip${category.is_active ? '' : ' is-off'}${category.is_promo ? ' is-promo' : ''}" data-category-chip="${category.id}" draggable="${category.is_promo ? 'false' : 'true'}">
                 ${category.is_promo ? `<i class="ri-flashlight-fill" title="${escapeHtml(t('mnPromoCatTitle'))}"></i>` : `<span class="menu-cat-drag" title="${escapeHtml(t('mnDragReorder', null, 'Kéo thả để sắp xếp thứ tự'))}"><i class="ri-drag-move-fill"></i></span>`}
                 <span class="menu-cat-stt" title="Số thứ tự nhóm">${stt}</span>
-                <button type="button" class="menu-cat-name" data-category-filter="${category.id}" title="${escapeHtml(t('mnFilterByCat', null, 'Lọc theo nhóm'))}">${escapeHtml(categoryDisplayName(category))}</button>
+                <button type="button" class="menu-cat-name" data-category-filter="${category.id}" title="${escapeHtml(t('mnFilterByCat', null, 'Cuộn tới nhóm'))}">${escapeHtml(categoryDisplayName(category))}</button>
                 <small>${category.item_count}</small>
                 <button type="button" class="menu-cat-rename" data-category-rename="${category.id}" title="${escapeHtml(t('mnRename'))}">
                     <i class="ri-pencil-line"></i>
@@ -620,26 +613,44 @@
             daKhoiTaoGapNhom = true;
         }
 
-        let nonPromoGroupIdx = 1;
         box.innerHTML = nhomTheoThuTu.map((group) => {
             const gap = !dangThuHep && NHOM_DA_GAP.has(group.key);
-            const stt = group.isPromo ? 0 : (group.key === 0 ? '' : nonPromoGroupIdx++);
-            const sttLabel = group.isPromo ? '0. ' : (group.key === 0 ? '' : `${stt}. `);
+            const isRealCat = group.key !== 0 && group.key !== '0' && group.key !== 'uncat';
             return `
             <section class="menu-group${gap ? ' is-collapsed' : ''}${group.isPromo ? ' is-promo' : ''}" data-group="${group.key}">
                 <div class="menu-group-header">
                     <button type="button" class="menu-group-title" data-group-toggle="${group.key}" aria-expanded="${gap ? 'false' : 'true'}">
                         <i class="ri-arrow-down-s-line menu-group-caret"></i>
-                        ${stt !== '' ? `<span class="menu-group-stt-badge">${stt}</span>` : ''}
                         ${group.isPromo ? '<i class="ri-flashlight-fill menu-group-flash"></i>' : ''}
-                        <span class="menu-group-name">${sttLabel}${escapeHtml(group.name)}</span>
+                        <span class="menu-group-name">${escapeHtml(group.name)}</span>
                         <small>${escapeHtml(t('mnProductCount', { count: group.items.length }, `${group.items.length} sản phẩm`))}</small>
                         ${group.isHidden
                             ? `<span class="menu-group-off"><i class="ri-eye-off-line"></i> ${escapeHtml(t('mnCatHidden', null, 'Nhóm đang ẩn'))}</span>`
                             : ''}
                     </button>
+                    ${isRealCat ? `
+                    <div class="menu-group-actions">
+                        <button type="button" class="menu-group-act-btn is-edit" data-group-edit="${group.key}" title="Sửa tên nhóm">
+                            <i class="ri-pencil-line"></i> <span>Sửa</span>
+                        </button>
+                        <button type="button" class="menu-group-act-btn is-toggle" data-group-toggle-active="${group.key}" title="${group.isHidden ? 'Hiện nhóm' : 'Ẩn nhóm'}">
+                            <i class="ri-${group.isHidden ? 'eye-line' : 'eye-off-line'}"></i> <span>${group.isHidden ? 'Hiện' : 'Ẩn'}</span>
+                        </button>
+                        ${!group.isPromo ? `
+                        <button type="button" class="menu-group-act-btn is-delete" data-group-delete="${group.key}" title="Xoá nhóm và toàn bộ sản phẩm trong nhóm">
+                            <i class="ri-delete-bin-line"></i> <span>Xóa</span>
+                        </button>
+                        ` : ''}
+                    </div>` : ''}
                 </div>
-                <div class="menu-group-body">${group.items.map(itemCard).join('')}</div>
+                <div class="menu-group-body">
+                    <div class="menu-group-top-action">
+                        <button type="button" class="menu-group-add-btn" data-group-add="${group.key}">
+                            <i class="ri-add-circle-line"></i> <span>${escapeHtml(t('mnAddProduct', null, 'Thêm sản phẩm'))}</span>
+                        </button>
+                    </div>
+                    ${group.items.map(itemCard).join('')}
+                </div>
             </section>`;
         }).join('');
     }
@@ -777,6 +788,29 @@
         try {
             await fetchMenu(`/categories/${id}`, { method: 'DELETE' });
             showToast(t('mnCatDeleted'), 'success');
+            await load(true);
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function deleteGroup(id) {
+        const category = CATEGORIES.find((c) => String(c.id) === String(id));
+        if (!category) return;
+        if (category.is_promo) {
+            return showToast(t('mnCantDeletePromo', null, 'Không thể xoá nhóm ưu đãi.'), 'error');
+        }
+        const count = ITEMS.filter((i) => String(i.category_id) === String(id)).length;
+        const ok = await pastieConfirm(
+            count > 0
+                ? `Xoá nhóm "${category.name}"? Lưu ý: Toàn bộ ${count} sản phẩm trong nhóm này sẽ bị xoá cùng nhóm! Thao tác này không thể hoàn tác.`
+                : `Xoá nhóm "${category.name}"? Thao tác này không thể hoàn tác.`,
+            { confirmText: 'Xoá nhóm và sản phẩm', danger: true }
+        );
+        if (!ok) return;
+        try {
+            await fetchMenu(`/categories/${id}?deleteItems=true`, { method: 'DELETE' });
+            showToast(count > 0 ? `Đã xoá nhóm và ${count} sản phẩm.` : 'Đã xoá nhóm.', 'success');
             await load(true);
         } catch (error) {
             showToast(error.message, 'error');
@@ -2185,9 +2219,15 @@
 
             const filter = event.target.closest('[data-category-filter]');
             if (filter) {
-                selectedCategoryId = filter.dataset.categoryFilter;
-                renderCategories();
-                renderItems();
+                const catId = filter.dataset.categoryFilter;
+                const grp = document.querySelector(`[data-group="${catId}"]`);
+                if (grp) {
+                    grp.classList.remove('is-collapsed');
+                    NHOM_DA_GAP.delete(Number(catId));
+                    if (typeof grp.scrollIntoView === 'function') {
+                        grp.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }
                 return;
             }
         });
@@ -2299,6 +2339,27 @@
 
         const list = $('menu-item-list');
         list?.addEventListener('click', (event) => {
+            const groupEdit = event.target.closest('[data-group-edit]');
+            if (groupEdit) {
+                event.preventDefault();
+                event.stopPropagation();
+                return void renameCategory(groupEdit.dataset.groupEdit);
+            }
+
+            const groupToggleActive = event.target.closest('[data-group-toggle-active]');
+            if (groupToggleActive) {
+                event.preventDefault();
+                event.stopPropagation();
+                return void toggleCategory(groupToggleActive.dataset.groupToggleActive);
+            }
+
+            const groupDelete = event.target.closest('[data-group-delete]');
+            if (groupDelete) {
+                event.preventDefault();
+                event.stopPropagation();
+                return void deleteGroup(groupDelete.dataset.groupDelete);
+            }
+
             // GẤP / MỞ NHÓM. Đổi class thẳng trên khối đang có, không dựng lại
             // cả danh sách: dựng lại là mất vị trí cuộn, mất ô ảnh đang tải dở,
             // và nhấp một cái ở nhóm 30 sản phẩm.
@@ -2314,6 +2375,25 @@
                 // mà lúc dựng đem ra so, tức số.
                 const so = Number(khoa);
                 if (dangGap) NHOM_DA_GAP.add(so); else NHOM_DA_GAP.delete(so);
+                return;
+            }
+
+            const addBtn = event.target.closest('[data-group-add]');
+            if (addBtn) {
+                event.preventDefault();
+                event.stopPropagation();
+                const groupKey = addBtn.dataset.groupAdd;
+                fillItemForm(null);
+                const addBox = document.querySelector('[data-addbox="menu-item"]');
+                if (addBox) addBox.classList.remove('hide');
+                const catSelect = $('menu-item-category');
+                if (catSelect && groupKey && groupKey !== '0') {
+                    catSelect.value = String(groupKey);
+                }
+                if (typeof $('menu-item-form')?.scrollIntoView === 'function') {
+                    $('menu-item-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+                $('menu-item-common-name')?.focus();
                 return;
             }
 
