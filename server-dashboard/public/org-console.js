@@ -1077,12 +1077,11 @@ async function loadOrgTags(silent = false) {
     if (!box) return;
     if (!silent && !box.children.length) box.innerHTML = '<p class="org-empty">Đang tải…</p>';
     // Nạp danh mục ảnh trước khi vẽ: lưới chọn kiểu text nằm trong form ngay
-    // phía trên danh sách, mở tab ra mà lưới trống một nhịp rồi mới hiện thì
-    // trông như hỏng.
     try { await loadBadgeCatalog?.(); veLuoiBadge?.(); veKhungBadge?.(); await loadBadgeGallery?.(); } catch (_) {}
     try {
         const data = await orgFetch('/api/superadmin/menu-tags');
         window.ORG_TAGS = data.tags || [];
+        try { await loadBadgeGallery?.(); } catch (_) {}
         if (badge) badge.textContent = String(window.ORG_TAGS.length);
         box.innerHTML = window.ORG_TAGS.length ? window.ORG_TAGS.map((tag) => {
             const dich = (tag.translations || []).filter((t) => t && t.lang && t.label);
@@ -1115,6 +1114,7 @@ async function loadOrgTags(silent = false) {
                 </div>
             </article>`;
         }).join('') : '<p class="org-empty">Chưa có nhãn nào. Tạo nhãn đầu tiên ở form phía trên.</p>';
+        try { await loadBadgeGallery?.(); } catch (_) {}
     } catch (error) {
         box.innerHTML = `<p class="org-empty">${escapeHtml(error.message)}</p>`;
     }
@@ -1161,10 +1161,14 @@ function openOrgModal(targetTab) {
     //   Agent quản lý -> Sale / Nhóm / QR, tự sắp xếp tổ chức của mình.
     // Superadmin cố tình KHÔNG thiết lập thay Agent; backend cũng trả 403.
     const isSuper = CURRENT_ADMIN?.role === 'superadmin';
-    document.querySelector('[data-org-tab="agents"]')?.classList.toggle('hide', !isSuper);
-    // Danh mục nhãn dùng chung mọi cơ sở nên chỉ Superadmin thấy, cùng nhóm với
-    // tab Agent. Máy chủ cũng chặn (requireSuperAdmin) — ẩn tab chỉ là lớp ngoài.
-    document.querySelector('[data-org-tab="tags"]')?.classList.toggle('hide', !isSuper);
+    if (targetTab === 'tags') {
+        // Khi mở Danh mục Badge/Nhãn: ẩn hẳn tab Agent, chỉ hiện Nhãn sản phẩm
+        document.querySelector('[data-org-tab="agents"]')?.classList.add('hide');
+        document.querySelector('[data-org-tab="tags"]')?.classList.remove('hide');
+    } else {
+        document.querySelector('[data-org-tab="agents"]')?.classList.toggle('hide', !isSuper);
+        document.querySelector('[data-org-tab="tags"]')?.classList.add('hide');
+    }
     ['sales', 'groups', 'qr', 'menu'].forEach((name) => {
         document.querySelector(`[data-org-tab="${name}"]`)?.classList.toggle('hide', isSuper);
     });

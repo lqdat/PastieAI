@@ -2162,6 +2162,20 @@ async function loadBadgeGallery() {
 
     // Nhãn nào đã có trong danh sách nhãn thì không mời tạo lại nữa.
     const daCo = new Set((window.ORG_TAGS || []).map((t) => t.badge_code).filter(Boolean));
+    const nutTatCa = document.getElementById('org-badge-make-all-btn');
+    if (nutTatCa) {
+        const chuaCo = (BADGE_CATALOG.mau || []).filter((m) => !daCo.has(m.ma));
+        if (chuaCo.length === 0) {
+            nutTatCa.disabled = true;
+            nutTatCa.innerHTML = '<i class="ri-checkbox-circle-line"></i> Đã có đủ tất cả nhãn';
+            nutTatCa.style.opacity = '0.7';
+        } else {
+            nutTatCa.disabled = false;
+            nutTatCa.innerHTML = `<i class="ri-checkbox-multiple-line"></i> Tạo tất cả nhãn (${chuaCo.length} mẫu)`;
+            nutTatCa.style.opacity = '1';
+        }
+    }
+
     luoi.innerHTML = BADGE_CATALOG.mau.map((m) => {
         const chu = m.chu?.[lang] || m.chu?.en || m.ma;
         return `<article class="badge-card">
@@ -2178,6 +2192,24 @@ async function loadBadgeGallery() {
 
 document.getElementById('org-badge-gallery-frame')?.addEventListener('change', () => void loadBadgeGallery());
 document.getElementById('org-badge-gallery-lang')?.addEventListener('change', () => void loadBadgeGallery());
+
+// Tạo tất cả nhãn từ các mẫu dựng sẵn
+document.getElementById('org-badge-make-all-btn')?.addEventListener('click', async () => {
+    const nut = document.getElementById('org-badge-make-all-btn');
+    if (nut) {
+        nut.disabled = true;
+        nut.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> Đang nạp tất cả nhãn…';
+    }
+    try {
+        await orgFetch('/api/superadmin/menu-tags/import-all', { method: 'POST' });
+        setOrgStatus('Đã nạp thành công tất cả nhãn badge vào hệ thống.');
+        await loadOrgTags(true);
+        await loadBadgeGallery();
+    } catch (error) {
+        setOrgStatus(error.message, 'error');
+        if (nut) nut.disabled = false;
+    }
+});
 
 // Tạo nhãn thẳng từ một mẫu: đỡ phải gõ lại tên rồi dò tìm đúng mẫu trong lưới.
 document.getElementById('org-badge-gallery')?.addEventListener('click', async (event) => {

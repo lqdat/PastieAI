@@ -12006,6 +12006,36 @@ app.delete('/api/superadmin/menu-tags/:id', checkAdminAuth, async (req, res) => 
   }
 });
 
+// Nạp một lượt tất cả mẫu badge dựng sẵn vào CSDL
+app.post('/api/superadmin/menu-tags/import-all', checkAdminAuth, async (req, res) => {
+  if (!requireSuperAdmin(req, res)) return;
+  try {
+    const d = danhMucNhan();
+    if (!d || !Array.isArray(d.mau) || !d.mau.length) {
+      return res.status(500).json({ error: 'Không đọc được danh mục badge.' });
+    }
+    let count = 0;
+    for (const [i, m] of d.mau.entries()) {
+      const ma = m.ma;
+      const label = m.chu?.vi || m.chu?.en || ma;
+      const ins = await db.query(
+        `INSERT INTO qr_menu_tags (code, label, color_bg, color_text, badge_style, badge_code, sort_order, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+         ON CONFLICT (code) DO UPDATE SET
+           badge_code = COALESCE(qr_menu_tags.badge_code, EXCLUDED.badge_code),
+           badge_style = CASE WHEN qr_menu_tags.badge_style = ANY($8::text[]) THEN qr_menu_tags.badge_style ELSE EXCLUDED.badge_style END
+         RETURNING id`,
+        [ma, label, '#fff4d9', '#c8402c', 'vuong', ma, i, KIEU_BADGE]
+      );
+      if (ins.rows[0]) count++;
+    }
+    res.json({ success: true, count, total: d.mau.length });
+  } catch (error) {
+    console.error('Import all badge tags error:', error);
+    res.status(500).json({ error: 'Không nạp được danh mục nhãn.' });
+  }
+});
+
 // ─── AGENT: CHỌN TAG CHO SẢN PHẨM ──────────────────────────────────────────
 //
 // Agent, Sale & Superadmin: xem danh mục tag (chỉ các tag đang bật)

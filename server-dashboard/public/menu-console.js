@@ -147,13 +147,21 @@
 
             const oKhung = dang && ma ? `
                 <div class="menu-tag-frame">
-                    <select data-tag-frame="${tag.id}" aria-label="Khung nhãn ${escapeHtml(tag.label)}">
-                        ${khungCo.map((k) => `<option value="${escapeHtml(k)}"${k === khung ? ' selected' : ''}>${escapeHtml(TEN_KHUNG[k] || k)}</option>`).join('')}
-                    </select>
-                    <img class="menu-tag-frame-preview" loading="lazy"
-                         src="${escapeHtml(anhNhan(khung, ma))}" alt="${escapeHtml(tag.label)}">
-                    <div class="menu-tag-frame-tiles">
-                        ${frameTiles}
+                    <div class="menu-tag-frame-preview-box">
+                        <img class="menu-tag-frame-preview" loading="lazy"
+                             src="${escapeHtml(anhNhan(khung, ma))}" alt="${escapeHtml(tag.label)}">
+                        <span class="menu-tag-frame-preview-label">Xem trước</span>
+                    </div>
+                    <div class="menu-tag-frame-main">
+                        <div class="menu-tag-frame-label-row">
+                            <span class="menu-tag-frame-title"><i class="ri-shape-line"></i> Kiểu khung:</span>
+                            <select data-tag-frame="${tag.id}" aria-label="Khung nhãn ${escapeHtml(tag.label)}" class="menu-tag-frame-select">
+                                ${khungCo.map((k) => `<option value="${escapeHtml(k)}"${k === khung ? ' selected' : ''}>${escapeHtml(TEN_KHUNG[k] || k)}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="menu-tag-frame-tiles">
+                            ${frameTiles}
+                        </div>
                     </div>
                 </div>` : loiKhung;
 
@@ -161,9 +169,10 @@
                 <button type="button" class="menu-tag-opt${dang ? ' is-on' : ''}" data-tag-pick="${tag.id}"
                     role="checkbox" aria-checked="${dang ? 'true' : 'false'}"
                     style="${dang ? `background:${escapeHtml(tag.color_bg)};color:${escapeHtml(tag.color_text)};border-color:${escapeHtml(tag.color_bg)}` : ''}">
-                    <i class="${dang ? 'ri-checkbox-line' : 'ri-checkbox-blank-line'}"></i>
+                    <i class="${dang ? 'ri-radio-button-fill' : 'ri-checkbox-blank-circle-line'}"></i>
                     ${ma ? `<img class="menu-tag-thumb" loading="lazy" src="${escapeHtml(anhNhan(khung, ma))}" alt="">` : ''}
-                    <span>${escapeHtml(tag.label)}</span>
+                    <span class="menu-tag-name">${escapeHtml(tag.label)}</span>
+                    ${dang ? `<span class="menu-tag-badge-active"><i class="ri-check-line"></i> ${escapeHtml(t('mnTagSelected', null, 'Đang chọn'))}</span>` : ''}
                 </button>
                 ${oKhung}
             </div>`;
@@ -441,12 +450,15 @@
                 <small>${totalCount}</small>
             </button>
         `;
-        box.innerHTML = allBtn + CATEGORIES.map((category) => `
+        let nonPromoIdx = 1;
+        box.innerHTML = allBtn + CATEGORIES.map((category) => {
+            const stt = category.is_promo ? 0 : nonPromoIdx++;
+            return `
             <span class="menu-cat-chip${category.is_active ? '' : ' is-off'}${category.is_promo ? ' is-promo' : ''}${String(selectedCategoryId) === String(category.id) ? ' is-active' : ''}" data-category-chip="${category.id}" draggable="${category.is_promo ? 'false' : 'true'}">
                 ${category.is_promo ? `<i class="ri-flashlight-fill" title="${escapeHtml(t('mnPromoCatTitle'))}"></i>` : `<span class="menu-cat-drag" title="${escapeHtml(t('mnDragReorder', null, 'Kéo thả để sắp xếp thứ tự'))}"><i class="ri-drag-move-fill"></i></span>`}
+                <span class="menu-cat-stt" title="Số thứ tự nhóm">${stt}</span>
                 <button type="button" class="menu-cat-name" data-category-filter="${category.id}" title="${escapeHtml(t('mnFilterByCat', null, 'Lọc theo nhóm'))}">${escapeHtml(categoryDisplayName(category))}</button>
                 <small>${category.item_count}</small>
-                ${category.is_promo ? '' : `<button type="button" class="menu-cat-move" data-category-move="prev" data-cat-id="${category.id}" title="${escapeHtml(t('mnMovePrev', null, 'Lên trước'))}"><i class="ri-arrow-left-s-line"></i></button><button type="button" class="menu-cat-move" data-category-move="next" data-cat-id="${category.id}" title="${escapeHtml(t('mnMoveNext', null, 'Xuống sau'))}"><i class="ri-arrow-right-s-line"></i></button>`}
                 <button type="button" class="menu-cat-rename" data-category-rename="${category.id}" title="${escapeHtml(t('mnRename'))}">
                     <i class="ri-pencil-line"></i>
                 </button>
@@ -456,15 +468,19 @@
                 </button>
                 ${category.is_promo ? '' : `<button type="button" class="menu-cat-del" data-category-delete="${category.id}" title="${escapeHtml(t('mnDeleteCat'))}"><i class="ri-close-line"></i></button>`}
             </span>
-        `).join('');
+        `;}).join('');
     }
 
     function renderCategorySelect() {
         const select = $('menu-item-category');
         if (!select) return;
         const current = select.value;
+        let nonPromoIdx = 1;
         select.innerHTML = `<option value="">${escapeHtml(t('mnPickCategory'))}</option>`
-            + CATEGORIES.map((c) => `<option value="${c.id}">${c.is_promo ? '⚡ ' : ''}${escapeHtml(categoryDisplayName(c))}</option>`).join('');
+            + CATEGORIES.map((c) => {
+                const stt = c.is_promo ? 0 : nonPromoIdx++;
+                return `<option value="${c.id}">${c.is_promo ? '⚡ 0. ' : `${stt}. `}${escapeHtml(categoryDisplayName(c))}</option>`;
+            }).join('');
         if (current) select.value = current;
     }
 
@@ -604,25 +620,24 @@
             daKhoiTaoGapNhom = true;
         }
 
+        let nonPromoGroupIdx = 1;
         box.innerHTML = nhomTheoThuTu.map((group) => {
             const gap = !dangThuHep && NHOM_DA_GAP.has(group.key);
+            const stt = group.isPromo ? 0 : (group.key === 0 ? '' : nonPromoGroupIdx++);
+            const sttLabel = group.isPromo ? '0. ' : (group.key === 0 ? '' : `${stt}. `);
             return `
             <section class="menu-group${gap ? ' is-collapsed' : ''}${group.isPromo ? ' is-promo' : ''}" data-group="${group.key}">
                 <div class="menu-group-header">
                     <button type="button" class="menu-group-title" data-group-toggle="${group.key}" aria-expanded="${gap ? 'false' : 'true'}">
                         <i class="ri-arrow-down-s-line menu-group-caret"></i>
+                        ${stt !== '' ? `<span class="menu-group-stt-badge">${stt}</span>` : ''}
                         ${group.isPromo ? '<i class="ri-flashlight-fill menu-group-flash"></i>' : ''}
-                        <span class="menu-group-name">${escapeHtml(group.name)}</span>
+                        <span class="menu-group-name">${sttLabel}${escapeHtml(group.name)}</span>
                         <small>${escapeHtml(t('mnProductCount', { count: group.items.length }, `${group.items.length} sản phẩm`))}</small>
                         ${group.isHidden
                             ? `<span class="menu-group-off"><i class="ri-eye-off-line"></i> ${escapeHtml(t('mnCatHidden', null, 'Nhóm đang ẩn'))}</span>`
                             : ''}
                     </button>
-                    ${group.isPromo || group.key === 0 ? '' : `
-                    <div class="menu-group-actions">
-                        <button type="button" class="menu-group-move-btn" data-group-move="prev" data-cat-id="${group.key}" title="${escapeHtml(t('mnMovePrev', null, 'Lên trước'))}"><i class="ri-arrow-up-s-line"></i></button>
-                        <button type="button" class="menu-group-move-btn" data-group-move="next" data-cat-id="${group.key}" title="${escapeHtml(t('mnMoveNext', null, 'Xuống sau'))}"><i class="ri-arrow-down-s-line"></i></button>
-                    </div>`}
                 </div>
                 <div class="menu-group-body">${group.items.map(itemCard).join('')}</div>
             </section>`;
@@ -1889,11 +1904,15 @@
             const nut = event.target.closest('[data-tag-pick]');
             if (!nut) return;
             event.preventDefault();
-            const id = Number(nut.dataset.tagPick);
-            // Bỏ tích rồi tích lại thì trả về null (khung mặc định của nhãn),
-            // không giữ lại khung đã chọn lần trước: giữ lại thì Agent tưởng
-            // mình đang ở mặc định trong khi vẫn còn một lựa chọn cũ dính theo.
-            if (chonTag.has(id)) chonTag.delete(id); else chonTag.set(id, null);
+            // Mỗi món chỉ có thể chỉ chọn 1 nhãn:
+            // Bấm vào nhãn đang chọn -> Bỏ chọn (0 nhãn).
+            // Bấm vào nhãn khác -> Bỏ nhãn cũ, chọn duy nhất nhãn mới.
+            if (chonTag.has(id)) {
+                chonTag.delete(id);
+            } else {
+                chonTag.clear();
+                chonTag.set(id, null);
+            }
             veOChonTag();
         });
 
@@ -2157,13 +2176,6 @@
         $('menu-item-cancel')?.addEventListener('click', () => fillItemForm(null));
 
         $('menu-category-list')?.addEventListener('click', (event) => {
-            const move = event.target.closest('[data-category-move]');
-            if (move) {
-                event.preventDefault();
-                event.stopPropagation();
-                return void moveCategory(move.dataset.catId, move.dataset.categoryMove);
-            }
-
             const rename = event.target.closest('[data-category-rename]');
             if (rename) return void renameCategory(rename.dataset.categoryRename);
             const toggle = event.target.closest('[data-category-toggle]');
@@ -2287,13 +2299,6 @@
 
         const list = $('menu-item-list');
         list?.addEventListener('click', (event) => {
-            const groupMove = event.target.closest('[data-group-move]');
-            if (groupMove) {
-                event.preventDefault();
-                event.stopPropagation();
-                return void moveCategory(groupMove.dataset.catId, groupMove.dataset.groupMove);
-            }
-
             // GẤP / MỞ NHÓM. Đổi class thẳng trên khối đang có, không dựng lại
             // cả danh sách: dựng lại là mất vị trí cuộn, mất ô ảnh đang tải dở,
             // và nhấp một cái ở nhóm 30 sản phẩm.
