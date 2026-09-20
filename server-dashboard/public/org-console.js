@@ -698,6 +698,28 @@ async function createBrandedQrPoster(imageUrl, options = {}) {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Trình duyệt không hỗ trợ tạo ảnh QR.');
     ctx.scale(scale, scale);
+
+    // ── KIỂU "CHỈ MÃ QR" ───────────────────────────────────────────────────
+    // Dùng đúng mã QR bong bóng thoại bên Standard (Speech Bubble vector + gradient)
+    // nhưng CHỈ CÓ mã QR, không có bất kỳ chữ nào.
+    if (style === 'qronly') {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, baseW, baseH);
+
+        const qrSize = 680;
+        const tailH = Math.round(qrSize * 0.15);
+        const totalH = qrSize + tailH;
+        const qrX = Math.round((baseW - qrSize) / 2);
+        const qrY = Math.round((baseH - totalH) / 2);
+
+        drawStyledVectorQrCode(ctx, qrText, qrX, qrY, qrSize, qrSize, {
+            centerLogoImage: null,
+            fallbackImage: trimmedQr
+        });
+
+        return xuatPngBlob(canvas);
+    }
+
     const posterFont = '"Be Vietnam Pro", "Segoe UI", Arial, sans-serif';
     const sloganFont = '"Nunito", "Be Vietnam Pro", "Segoe UI", sans-serif';
 

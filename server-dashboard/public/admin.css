@@ -20519,3 +20519,58 @@ body.has-active-modal {
     overflow: hidden !important;
 }
 
+/* Segmented Tabs chuyển đổi kiểu poster QR (Co-branded & Standard & Chỉ mã QR) */
+.qr-poster-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    max-width: 360px;
+    margin: 6px auto;
+    padding: 3px;
+    background: rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(244, 56, 161, 0.18);
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(201, 12, 108, 0.04);
+    box-sizing: border-box;
+}
+.qr-poster-tab-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary, #666);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+    box-sizing: border-box;
+}
+.qr-poster-tab-btn span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.qr-poster-tab-btn:hover {
+    color: #c90c6c;
+}
+.qr-poster-tab-btn.is-active {
+    background: linear-gradient(110deg, #f438a1, #c90c6c);
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 4px 14px rgba(201, 12, 108, 0.28);
+}
+.qr-poster-tab-btn i {
+    font-size: 13.5px;
+    flex: none;
+}
+
+
