@@ -6048,6 +6048,8 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
     const bo = (trang - 1) * soMoiTrang;
     // Lọc theo mã QR (mã của bàn/phòng). 'all' hoặc để trống là không lọc.
     const locQr = String(req.query.qr || '').trim();
+    // Lọc theo trạng thái thanh toán: 'paid' (đã thanh toán), 'unpaid' (chưa thanh toán), 'all' hoặc để trống là tất cả
+    const locStatus = String(req.query.status || '').trim();
     // Lọc theo ngày: 'today' (hôm nay), 'yesterday' (hôm qua), 'all' (tất cả), 'custom' (từ ngày đến ngày), hoặc 'YYYY-MM-DD'
     const locDate = String(req.query.date || '').trim();
     const fromDate = String(req.query.from || req.query.fromDate || '').trim();
@@ -6090,6 +6092,12 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
     if (locQr && locQr !== 'all') {
       params.push(locQr);
       where.push(`q.code = $${params.length}`);
+    }
+
+    if (locStatus === 'paid') {
+      where.push("o.status = 'paid'");
+    } else if (locStatus === 'unpaid') {
+      where.push("o.status != 'paid'");
     }
 
     if (locDate === 'today') {
@@ -6186,6 +6194,7 @@ app.get('/api/admin/orders/cart', checkAdminAuth, async (req, res) => {
       totalPages: Math.max(1, Math.ceil(tong / soMoiTrang)),
       hasMore: bo + rows.rows.length < tong,
       qr: locQr && locQr !== 'all' ? locQr : '',
+      status: locStatus,
       date: locDate,
       from: fromDate,
       to: toDate,
