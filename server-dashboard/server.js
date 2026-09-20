@@ -11618,17 +11618,15 @@ app.post('/api/agent/menu/banners', checkAdminAuth, async (req, res) => {
     }
     const titleVi = req.body?.titleVi || req.body?.title_vi || null;
     const titleEn = req.body?.titleEn || req.body?.title_en || null;
-    const category = req.body?.category || 'ƯU ĐÃI';
     const excerptVi = req.body?.excerptVi || req.body?.excerpt_vi || null;
     const contentVi = req.body?.contentVi || req.body?.content_vi || null;
-    const targetItemId = req.body?.targetItemId ? Number(req.body.targetItemId) : null;
     const sortOrder = req.body?.sortOrder !== undefined ? Number(req.body.sortOrder) : dem.rows[0].n;
     const isActive = req.body?.isActive !== undefined ? !!req.body.isActive : true;
 
     const created = await db.query(
-      `INSERT INTO qr_menu_banners (agent_id, project_id, title_vi, title_en, category, excerpt_vi, content_vi, target_item_id, sort_order, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-      [req.admin.id, req.admin.project_id, titleVi, titleEn, category, excerptVi, contentVi, targetItemId, sortOrder, isActive]
+      `INSERT INTO qr_menu_banners (agent_id, project_id, title_vi, title_en, excerpt_vi, content_vi, sort_order, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [req.admin.id, req.admin.project_id, titleVi, titleEn, excerptVi, contentVi, sortOrder, isActive]
     );
     const item = created.rows[0];
     if (titleVi || excerptVi || contentVi) {
@@ -11679,36 +11677,26 @@ app.put('/api/agent/menu/banners/:id', checkAdminAuth, async (req, res) => {
     const found = await db.query('SELECT * FROM qr_menu_banners WHERE id = $1 AND agent_id = $2', [id, req.admin.id]);
     if (!found.rows[0]) return res.status(404).json({ error: 'Không tìm thấy banner.' });
 
-    // Sản phẩm banner trỏ tới phải là sản phẩm CỦA CHÍNH Agent này. Không kiểm
-    // thì Agent gửi id sản phẩm của quán khác vào là banner mở ra một sản phẩm
-    // không có trong thực đơn của mình.
-    let targetId = found.rows[0].target_item_id;
-    if (req.body?.targetItemId !== undefined) {
-      const muon = Number(req.body.targetItemId) || null;
-      if (muon) {
-        const thuoc = await db.query('SELECT id FROM qr_menu_items WHERE id = $1 AND agent_id = $2', [muon, req.admin.id]);
-        if (!thuoc.rows[0]) return res.status(400).json({ error: 'Sản phẩm không thuộc thực đơn của bạn.' });
-      }
-      targetId = muon;
-    }
+    // Không còn liên kết sản phẩm: banner giờ là một BÀI VIẾT, bấm vào mở bài
+    // đọc. Cột target_item_id vẫn nằm trong bảng cho dữ liệu cũ nhưng không ai
+    // ghi vào nữa — cùng lý do với cột category.
 
     const titleVi = req.body?.titleVi !== undefined ? req.body.titleVi : (req.body?.title_vi !== undefined ? req.body.title_vi : found.rows[0].title_vi);
     const titleEn = req.body?.titleEn !== undefined ? req.body.titleEn : (req.body?.title_en !== undefined ? req.body.title_en : found.rows[0].title_en);
-    const category = req.body?.category !== undefined ? req.body.category : found.rows[0].category;
     const excerptVi = req.body?.excerptVi !== undefined ? req.body.excerptVi : (req.body?.excerpt_vi !== undefined ? req.body.excerpt_vi : found.rows[0].excerpt_vi);
     const contentVi = req.body?.contentVi !== undefined ? req.body.contentVi : (req.body?.content_vi !== undefined ? req.body.content_vi : found.rows[0].content_vi);
     const postId = req.body?.postId !== undefined ? (Number(req.body.postId) || null) : found.rows[0].post_id;
 
     const updated = await db.query(
       `UPDATE qr_menu_banners
-          SET target_item_id = $2, sort_order = $3, is_active = $4,
-              title_vi = $5, title_en = $6, category = $7, excerpt_vi = $8, content_vi = $9, post_id = $10,
+          SET sort_order = $2, is_active = $3,
+              title_vi = $4, title_en = $5, excerpt_vi = $6, content_vi = $7, post_id = $8,
               updated_at = NOW()
         WHERE id = $1 RETURNING *`,
-      [id, targetId,
+      [id,
        req.body?.sortOrder === undefined ? found.rows[0].sort_order : Number(req.body.sortOrder) || 0,
        req.body?.isActive === undefined ? found.rows[0].is_active : !!req.body.isActive,
-       titleVi, titleEn, category, excerptVi, contentVi, postId]
+       titleVi, titleEn, excerptVi, contentVi, postId]
     );
     const item = updated.rows[0];
     if (titleVi || excerptVi || contentVi) {
@@ -13865,8 +13853,11 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
     // Banner đầu thực đơn, chỉ lấy banner ĐANG BẬT và ĐÃ CÓ ẢNH: banner vừa tạo
     // mà Agent chưa kịp tải ảnh lên thì ở cổng khách là một ô trống chạy qua.
     const bannerRows = await db.query(
-      `SELECT b.id, b.image_url, b.image_key, b.image_url_expires_at, b.target_item_id, b.sort_order,
-              b.title_vi, b.title_en, b.category, b.excerpt_vi, b.content_vi, b.post_id,
+      // KHÔNG lấy target_item_id và category nữa: banner giờ là một BÀI VIẾT —
+      // bấm vào mở bài đọc, không mở sản phẩm — và không còn phân danh mục.
+      // Hai cột vẫn nằm trong bảng cho dữ liệu cũ, chỉ là không ai đọc.
+      `SELECT b.id, b.image_url, b.image_key, b.image_url_expires_at, b.sort_order,
+              b.title_vi, b.title_en, b.excerpt_vi, b.content_vi, b.post_id,
               bt.title AS translated_title, bt.excerpt AS translated_excerpt, bt.content AS translated_content
          FROM qr_menu_banners b
          LEFT JOIN qr_menu_banner_translations bt ON bt.banner_id = b.id AND bt.lang = $2
@@ -13889,7 +13880,6 @@ app.get('/api/chats/:sessionId/menu', async (req, res) => {
         return {
           ...banner,
           title: displayTitle,
-          category: banner.category || 'ƯU ĐÃI',
           excerpt: displayExcerpt,
           content: displayContent
         };

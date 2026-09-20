@@ -71,10 +71,66 @@ check('hỏi trước khi xoá, và nói rõ ảnh cũng mất',
 if (KHO_SV) {
   const srv = fs.readFileSync(path.join(KHO_SV, 'server.js'), 'utf8');
   const post = srv.slice(srv.indexOf("app.post('/api/agent/menu/banners'"), srv.indexOf("app.post('/api/agent/menu/banners/:id/image'"));
-  for (const truong of ['titleVi', 'category', 'excerptVi', 'targetItemId', 'sortOrder', 'isActive']) {
+  for (const truong of ['titleVi', 'titleEn', 'excerptVi', 'contentVi', 'sortOrder', 'isActive']) {
     check(`máy chủ nhận "${truong}" lúc tạo banner`, new RegExp(truong).test(post),
       'gửi lên mà máy chủ không đọc thì banner tạo ra trống trơn');
   }
+  // Hai trường đã gỡ: cột vẫn nằm trong bảng cho dữ liệu cũ, nhưng endpoint
+  // không được đọc nữa — đọc lại là mở đường cho luồng cũ quay về.
+  for (const truong of ['category', 'targetItemId']) {
+    check(`máy chủ KHÔNG còn đọc "${truong}" lúc tạo banner`, !new RegExp(truong).test(post));
+  }
+}
+
+// ── 5. BANNER LÀ BÀI VIẾT, KHÔNG PHẢI LIÊN KẾT SẢN PHẨM ──────────────────
+const KHO_PT = tim(path.join(__dirname, '..', 'qr-chat-portal', 'app'), path.join(__dirname, 'pt'));
+if (KHO_PT) {
+  const tsx = fs.readFileSync(path.join(KHO_PT, 'page.tsx'), 'utf8');
+  const css = fs.readFileSync(path.join(KHO_PT, 'globals.css'), 'utf8').replace(/\s*\n\s*/g, '');
+
+  check('bấm banner MỞ BÀI VIẾT, không mở sản phẩm',
+    /setActiveArticle\(\{/.test(tsx.slice(tsx.indexOf('const bannerBam'), tsx.indexOf('const renderMenuItem'))),
+    'banner giờ là bài viết — mở sản phẩm là luồng cũ');
+  check('banner trống trơn thì không mở gì',
+    /!banner\.title && !banner\.content && !banner\.excerpt/.test(tsx),
+    'một trang bài viết chỉ có mỗi tấm ảnh và không một chữ nào là ngõ cụt');
+  check('vuốt xong KHÔNG bị tính là bấm',
+    /Math\.abs\(bannerDragRef\.current\.lech\) > 8/.test(tsx));
+  check('kiểu dữ liệu banner KHÔNG còn liên kết sản phẩm',
+    !/target_item_id/.test(tsx), 'còn trường này là còn đường quay lại luồng cũ');
+  check('banner KHÔNG còn danh mục',
+    !/banner\.category|category: banner/.test(tsx));
+  check('trình đọc chỉ vẽ nhãn danh mục khi THẬT SỰ có chữ',
+    /activeArticle\.category \? <span className="article-reader-category">/.test(tsx),
+    'rơi về "ƯU ĐÃI" là gán cho banner một danh mục nó không có');
+
+  check('tiêu đề hiện DƯỚI tấm banner',
+    /<figcaption className="menu-banner-title">\{banner\.title\}<\/figcaption>/.test(tsx),
+    'đè lên ảnh thì chồng với chữ Agent đã in sẵn trong ảnh');
+  check('tiêu đề cắt đúng hai dòng', /\.menu-banner-title\{[^}]*-webkit-line-clamp:2/.test(css));
+  check('giữ chỗ đủ hai dòng kể cả tiêu đề ngắn',
+    /\.menu-banner-title\{[^}]*min-height:2\.64em/.test(css),
+    'không giữ thì tấm tiêu đề dài cao hơn tấm ngắn — đo được 184px so với 165px, dải giật mỗi lần vuốt');
+  check('chấm chỉ vị trí xuống dưới phần chữ',
+    /\.menu-banner-strip:has\(\.menu-banner-title\) \.menu-banner-dots\{position:static/.test(css),
+    'giữ vị trí tuyệt đối cũ là chấm đè lên đúng dòng tiêu đề');
+  check('chấm đổi màu cho thấy được trên nền sáng',
+    /\.menu-banner-strip:has\(\.menu-banner-title\) \.menu-banner-dots i\{background:rgba\(80,45,69,\.24\)\}/.test(css),
+    'chấm trắng trên nền sáng thì không nhìn thấy gì — trước đây nó nằm trên ảnh');
+  check('tỉ lệ 16:6 và góc bo chuyển xuống riêng tấm ảnh',
+    /\.menu-banner-strip:has\(\.menu-banner-title\) \.menu-banner-rail>figure>button\{aspect-ratio:16\/6;border-radius:18px/.test(css));
+}
+
+// ── 6. MÁY CHỦ KHÔNG CÒN GHI HAI TRƯỜNG ĐÓ ───────────────────────────────
+if (KHO_SV) {
+  const srv = fs.readFileSync(path.join(KHO_SV, 'server.js'), 'utf8');
+  const khach = srv.slice(srv.indexOf('const bannerRows = await db.query'), srv.indexOf('// ẢNH BÌA:'));
+  check('dữ liệu cho khách không còn target_item_id', !/b\.target_item_id/.test(khach));
+  check('dữ liệu cho khách không còn category',
+    !/category: banner\.category/.test(khach));
+  check('dữ liệu cho khách CÓ tiêu đề đã dịch', /title: displayTitle/.test(khach));
+  const put = srv.slice(srv.indexOf("app.put('/api/agent/menu/banners/:id'"), srv.indexOf("app.delete('/api/agent/menu/banners/:id'"));
+  check('API sửa banner không còn ghi target_item_id', !/SET target_item_id/.test(put));
 }
 
 console.log('');
