@@ -49,16 +49,7 @@
 }
 
 .menu-cat-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 10px 0 14px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 4px 2px 8px;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
-    -webkit-overflow-scrolling: touch;
+    display: none !important;
 }
 
 .menu-cat-row::-webkit-scrollbar {
