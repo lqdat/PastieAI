@@ -840,16 +840,16 @@
                     </div>
                     <div class="addbox hide" data-addbox="menu-cat">
                     <form class="menu-form" id="menu-category-form">
-                        <div class="menu-form-grid">
-                            <label class="menu-field menu-field-catname" style="flex: 2;">
+                        <div class="menu-form-grid menu-category-form-grid" style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;">
+                            <label class="menu-field menu-field-catname" style="flex: 1; min-width: 200px;">
                                 <span>Danh mục</span>
                                 <input type="text" id="menu-category-name" placeholder="Nhập tên danh mục..." maxlength="150" autocomplete="off">
                             </label>
-                            <label class="menu-field menu-field-catsort" style="flex: 1; max-width: 140px;">
-                                <span>STT (Tùy chọn)</span>
-                                <input type="number" id="menu-category-sort" min="0" step="1" placeholder="Ví dụ: 1, 2..." autocomplete="off">
+                            <label class="menu-field menu-field-catsort" style="width: 140px; flex-shrink: 0;">
+                                <span>STT (Chỉ nhập số)</span>
+                                <input type="text" inputmode="numeric" pattern="[0-9]*" id="menu-category-sort" placeholder="Ví dụ: 1, 2..." autocomplete="off">
                             </label>
-                            <div class="menu-field menu-field-catbtn">
+                            <div class="menu-field menu-field-catbtn" style="flex-shrink: 0;">
                                 <span aria-hidden="true">&nbsp;</span>
                                 <button type="submit" class="menu-btn-primary"><i class="ri-add-line"></i> Thêm</button>
                             </div>

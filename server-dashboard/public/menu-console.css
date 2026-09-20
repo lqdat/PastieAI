@@ -352,6 +352,31 @@
     gap: 10px;
 }
 
+.menu-category-form-grid,
+#menu-category-form .menu-form-grid {
+    display: flex !important;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.menu-field-catname,
+#menu-category-form .menu-field-catname {
+    flex: 1;
+    min-width: 200px;
+}
+
+.menu-field-catsort,
+#menu-category-form .menu-field-catsort {
+    width: 140px;
+    flex-shrink: 0;
+}
+
+.menu-field-catbtn,
+#menu-category-form .menu-field-catbtn {
+    flex-shrink: 0;
+}
+
 .menu-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 
 .menu-field > span {
@@ -515,7 +540,9 @@
     justify-content: space-between;
     background: rgba(0, 0, 0, 0.02);
     border-bottom: 1px solid var(--panel-border, rgba(0, 0, 0, 0.06));
-    padding: 2px 10px 2px 4px;
+    padding: 3px 8px 3px 8px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .menu-group.is-collapsed .menu-group-header {
@@ -525,15 +552,17 @@
 button.menu-group-title,
 .menu-group-title {
     flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     gap: 8px;
-    padding: 10px 12px;
+    padding: 8px 6px 8px 4px;
     margin: 0;
     border: none;
     background: transparent;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 13.5px;
     font-weight: 700;
     letter-spacing: 0.02em;
     color: var(--text-primary, #1e293b);
@@ -544,14 +573,11 @@ button.menu-group-title,
 
 .menu-group-title:hover {
     background: rgba(0, 0, 0, 0.03);
+    border-radius: 6px;
 }
 
 .menu-group-title small {
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0;
-    text-transform: none;
-    color: var(--text-muted, var(--text-secondary));
+    display: none !important;
 }
 
 .menu-group-caret {
@@ -559,6 +585,32 @@ button.menu-group-title,
     color: var(--text-secondary, #64748b);
     transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     display: inline-block;
+    flex-shrink: 0;
+}
+
+.menu-group-flash {
+    color: #f59e0b;
+    font-size: 15px;
+    flex-shrink: 0;
+}
+
+.menu-group-name {
+    display: inline-block;
+    color: inherit;
+    font-weight: 700;
+}
+
+.menu-group-off {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
 }
 
 .menu-group.is-collapsed .menu-group-caret {
@@ -580,7 +632,8 @@ button.menu-group-title,
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding-right: 8px;
+    margin-left: auto;
+    padding: 0;
     flex-shrink: 0;
 }
 

@@ -724,6 +724,34 @@
         </article>`;
     }
 
+    function enforceDigitsOnly(inputEl) {
+        if (!inputEl) return;
+        inputEl.addEventListener('input', () => {
+            inputEl.value = inputEl.value.replace(/[^0-9]/g, '');
+        });
+        inputEl.addEventListener('keydown', (e) => {
+            if (['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+            if (e.ctrlKey || e.metaKey) return;
+            if (!/^[0-9]$/.test(e.key)) {
+                e.preventDefault();
+            }
+        });
+        inputEl.addEventListener('paste', (e) => {
+            const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+            if (text && !/^[0-9]+$/.test(text)) {
+                e.preventDefault();
+                const filtered = text.replace(/[^0-9]/g, '');
+                if (filtered) {
+                    const start = inputEl.selectionStart || 0;
+                    const end = inputEl.selectionEnd || 0;
+                    inputEl.value = inputEl.value.slice(0, start) + filtered + inputEl.value.slice(end);
+                    inputEl.selectionStart = inputEl.selectionEnd = start + filtered.length;
+                    inputEl.dispatchEvent(new Event('input'));
+                }
+            }
+        });
+    }
+
     // --- Thao tác danh mục ---------------------------------------------------
 
     async function addCategory(event) {
@@ -732,8 +760,8 @@
         const sortInput = $('menu-category-sort');
         const name = (input?.value || '').trim();
         if (!name) return;
-        const rawSort = sortInput?.value?.trim();
-        const sortOrder = rawSort !== '' && !isNaN(Number(rawSort)) ? Number(rawSort) : null;
+        const rawSort = (sortInput?.value || '').trim();
+        const sortOrder = rawSort !== '' && /^\d+$/.test(rawSort) ? Number(rawSort) : null;
         try {
             await fetchMenu('/categories', {
                 method: 'POST',
@@ -764,9 +792,9 @@
                             <input type="text" id="cat-dialog-name" value="${escapeHtml(category.name)}" maxlength="150" autocomplete="off" style="padding: 8px 10px; border: 1px solid var(--panel-border, #cbd5e1); border-radius: 6px; font-size: 13px;">
                         </label>
                         <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600;">
-                            <span>Số thứ tự STT (Tùy chọn)</span>
-                            <input type="number" id="cat-dialog-sort" min="0" step="1" value="${category.sort_order !== null && category.sort_order !== undefined ? category.sort_order : ''}" placeholder="Ví dụ: 1, 2... (để trống: xếp mới tới cũ)" style="padding: 8px 10px; border: 1px solid var(--panel-border, #cbd5e1); border-radius: 6px; font-size: 13px;">
-                            <small style="color: var(--text-secondary, #64748b); font-size: 11px; font-weight: normal; margin-top: 2px;">Nếu để trống STT, danh mục sẽ sắp xếp theo thứ tự nhập từ mới tới cũ.</small>
+                            <span>Số thứ tự STT (Chỉ nhập số, tùy chọn)</span>
+                            <input type="text" inputmode="numeric" pattern="[0-9]*" id="cat-dialog-sort" value="${category.sort_order !== null && category.sort_order !== undefined ? category.sort_order : ''}" placeholder="Ví dụ: 1, 2... (để trống: xếp mới tới cũ)" style="padding: 8px 10px; border: 1px solid var(--panel-border, #cbd5e1); border-radius: 6px; font-size: 13px;">
+                            <small style="color: var(--text-secondary, #64748b); font-size: 11px; font-weight: normal; margin-top: 2px;">Chỉ cho phép nhập số. Nếu để trống STT, danh mục sẽ sắp xếp theo thứ tự nhập từ mới tới cũ.</small>
                         </label>
                     </div>
                     <div class="confirm-actions" style="display: flex; justify-content: flex-end; gap: 8px;">
@@ -778,6 +806,8 @@
 
             const nameInput = overlay.querySelector('#cat-dialog-name');
             const sortInput = overlay.querySelector('#cat-dialog-sort');
+            enforceDigitsOnly(sortInput);
+
             const close = (res) => {
                 overlay.classList.add('is-leaving');
                 setTimeout(() => overlay.remove(), 160);
@@ -788,8 +818,8 @@
             overlay.querySelector('.confirm-ok').addEventListener('click', () => {
                 const cleanName = (nameInput.value || '').trim();
                 if (!cleanName) return nameInput.focus();
-                const rawSort = sortInput.value.trim();
-                const sortVal = rawSort !== '' && !isNaN(Number(rawSort)) ? Number(rawSort) : null;
+                const rawSort = (sortInput.value || '').trim();
+                const sortVal = rawSort !== '' && /^\d+$/.test(rawSort) ? Number(rawSort) : null;
                 close({ name: cleanName, sortOrder: sortVal });
             });
             overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
@@ -802,8 +832,8 @@
                     document.removeEventListener('keydown', onKeyDown);
                     const cleanName = (nameInput.value || '').trim();
                     if (!cleanName) return nameInput.focus();
-                    const rawSort = sortInput.value.trim();
-                    const sortVal = rawSort !== '' && !isNaN(Number(rawSort)) ? Number(rawSort) : null;
+                    const rawSort = (sortInput.value || '').trim();
+                    const sortVal = rawSort !== '' && /^\d+$/.test(rawSort) ? Number(rawSort) : null;
                     close({ name: cleanName, sortOrder: sortVal });
                 }
             };
@@ -2281,6 +2311,7 @@
 
 
         $('menu-category-form')?.addEventListener('submit', addCategory);
+        enforceDigitsOnly($('menu-category-sort'));
         $('menu-item-form')?.addEventListener('submit', submitItem);
         $('menu-item-cancel')?.addEventListener('click', () => fillItemForm(null));
 
