@@ -74,6 +74,16 @@ check('reset form đưa ô chọn về star',
 check('danh sách nhãn vẽ ĐÚNG badge, không phải chip chung chung',
   /class="menu-badge is-\$\{escapeHtml\(tag\.badge_style \|\| 'star'\)\}"/.test(saOrg));
 
+// Số phiên bản tệp tĩnh: cơ chế DUY NHẤT bắt trình duyệt tải lại admin.js và
+// admin.css. Thêm mã mới mà quên đổi số là người dùng mở lên thấy HTML mới nằm
+// trên CSS và JS cũ — ô chọn kiểu badge hiện ra nhưng không có hình dáng nào và
+// không có phần xem trước. Đã xảy ra đúng vậy.
+const ver = [...new Set((saHtml.match(/\?v=r\d+/g) || []))];
+check('mọi tệp tĩnh dùng CÙNG một số phiên bản', ver.length === 1,
+  'đang có ' + ver.join(' ') + ' — lẫn lộn là có tệp được tải lại, có tệp không');
+check('số phiên bản đã nâng sau khi thêm badge', !ver.includes('?v=r152') && !ver.includes('?v=r160'),
+  'giữ số cũ là trình duyệt vẫn dùng admin.js/admin.css trong bộ nhớ đệm');
+
 // ── 3. CỔNG KHÁCH ─────────────────────────────────────────────────────────
 check('badge lấy hình dáng từ cấu hình Superadmin',
   /className=\{`menu-badge is-\$\{item\.tags\[0\]\.badge_style \|\| "star"\}`\}/.test(ptTsx));
