@@ -140,10 +140,22 @@ kt('script đẩy ghi baseUrl vào manifest', /baseUrl,/.test(up) && /const base
 kt('manifest có cờ dayDu dựa trên số tệp lỗi',
    /dayDu: hong\.length === 0 && xong === canTai\.length/.test(up));
 
-kt('máy chủ đọc địa chỉ gốc từ manifest, không chép cứng /badges',
-   /function gocAnhNhan[\s\S]{0,400}badge-s3-manifest\.json/.test(sv));
-kt('chỉ dùng địa chỉ S3 khi lần đẩy ĐỦ', /man\?\.dayDu === true && man\?\.baseUrl/.test(sv));
-kt('chưa đẩy S3 thì rơi về thư mục tĩnh', /return '\/badges';/.test(sv));
+// Bucket KHÔNG công khai (ảnh sản phẩm cũng phải ký URL mới xem được), nên
+// trình duyệt không bao giờ được trỏ thẳng vào địa chỉ S3 — sẽ nhận 403.
+kt('địa chỉ trình duyệt gọi luôn là /badges, không phải địa chỉ S3',
+   /const DUONG_DAN_NHAN = '\/badges'/.test(sv)
+   && /function gocAnhNhan\(\) \{ return DUONG_DAN_NHAN; \}/.test(sv));
+kt('chỉ đi lấy từ S3 khi lần đẩy ĐỦ', /man\?\.dayDu === true && man\?\.s3Prefix/.test(sv));
+kt('có route phục vụ ảnh nhãn khi tệp gốc đã xoá', /app\.get\('\/badges\/:tep'/.test(sv));
+kt('tên tệp bị chặn chặt trước khi ghép vào khoá S3',
+   /\^\[a-z0-9\]\[a-z0-9-\]\{0,80\}\\\.\(png\|json\)\$/.test(sv));
+kt('ảnh nhãn cache vĩnh viễn ở trình duyệt', /max-age=31536000, immutable/.test(sv));
+// Gắn cache cho cả 404 thì một ảnh tạm thời thiếu bị nhớ là "không có" suốt
+// một năm, đẩy lại ảnh cũng không cứu được.
+kt('404 KHÔNG mang theo cache một năm',
+   /const traVe = \(buf\) => res\.set\('Cache-Control'/.test(sv));
+kt('ảnh đã lấy thì giữ trong bộ nhớ, không gọi S3 lại',
+   /KHO_ANH_NHAN\.set\(tep, buf\)/.test(sv) && /KHO_ANH_NHAN\.get\(tep\)/.test(sv));
 kt('danh mục trả kèm duongDan', /duongDan: gocAnhNhan\(\)/.test(sv));
 kt('cổng khách nhận sẵn badge_url, không tự nối chuỗi', /tag\.badge_url = tag\.badge_code/.test(sv));
 kt('thứ tiếng không có trong bộ ảnh thì rơi về bản tiếng Anh',

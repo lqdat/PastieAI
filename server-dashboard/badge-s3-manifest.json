@@ -1,6 +1,7 @@
 {
-  "uploadedAt": "2026-09-20T11:20:49.088Z",
+  "uploadedAt": "2026-09-20T11:33:04.160Z",
   "s3Prefix": "badge/",
+  "baseUrl": "https://t3.storageapi.dev/customizable-knapsack-ois9rs/badge",
   "co": 320,
   "khung": [
     "vuong",
@@ -336,5 +337,6 @@
     "tron-buy1get1-kk.png",
     "danh-muc.json"
   ],
-  "hong": []
+  "hong": [],
+  "dayDu": true
 }

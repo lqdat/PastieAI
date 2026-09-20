@@ -11831,19 +11831,73 @@ function maNhanHopLe(raw, macDinh) {
   return danhMucNhan().ma.includes(ma) ? ma : macDinh;
 }
 
-// ĐỊA CHỈ GỐC CỦA ẢNH NHÃN.
+// ĐỊA CHỈ ẢNH NHÃN MÀ TRÌNH DUYỆT GỌI: luôn là '/badges', không bao giờ là
+// địa chỉ S3 trần.
 //
-// Sau khi đẩy lên S3, ảnh gốc trong mã nguồn bị xoá đi cho nhẹ bản deploy, nên
-// địa chỉ phải đọc từ badge-s3-manifest.json chứ không chép cứng '/badges'.
-// Chưa đẩy lên (hoặc manifest hỏng) thì rơi về thư mục tĩnh — máy phát triển
-// vẫn chạy được mà không cần S3.
-function gocAnhNhan() {
+// Bucket này KHÔNG công khai — ảnh sản phẩm cũng phải ký URL mới xem được
+// (xem getMenuImageUrl trong s3-helper). Trỏ thẳng khách vào
+// https://…/badge/xxx.png sẽ nhận 403. Mà ký URL cho nhãn thì không ổn: URL ký
+// hết hạn sau tối đa 7 ngày, trong khi tên tệp nhãn là bất biến và đáng lẽ
+// phải cache được vĩnh viễn ở trình duyệt.
+//
+// Nên địa chỉ giữ nguyên '/badges/...' và máy chủ tự lấy bytes từ S3 khi tệp
+// gốc đã bị xoá khỏi mã nguồn. Đổi lại, Agent ở tên miền khác vẫn ghép được
+// API_BASE như cũ, và không lộ địa chỉ bucket ra giao diện khách.
+const DUONG_DAN_NHAN = '/badges';
+function gocAnhNhan() { return DUONG_DAN_NHAN; }
+
+// Địa chỉ gốc TRÊN S3, chỉ máy chủ dùng để đi lấy bytes. null = chưa đẩy lên
+// bao giờ, lúc đó ảnh vẫn nằm ở thư mục tĩnh.
+function khoAnhNhanS3() {
   try {
     const man = JSON.parse(fs.readFileSync(path.join(__dirname, 'badge-s3-manifest.json'), 'utf8'));
-    if (man?.dayDu === true && man?.baseUrl) return String(man.baseUrl).replace(/\/+$/, '');
-  } catch (_) { /* chưa đẩy lên bao giờ — đường dẫn tĩnh là đúng */ }
-  return '/badges';
+    if (man?.dayDu === true && man?.s3Prefix) return String(man.s3Prefix).replace(/\/+$/, '');
+  } catch (_) { /* chưa đẩy lên bao giờ */ }
+  return null;
 }
+
+// Ảnh nhãn lấy từ S3, giữ trong bộ nhớ tiến trình.
+//
+// Cả bộ chỉ 301 tệp, tổng ~9MB, và BẤT BIẾN (tên tệp gồm khung + mã + ngôn ngữ,
+// đổi nội dung là đổi tên). Nên nạp dần vào bộ nhớ rồi phục vụ thẳng, thay vì
+// mỗi lượt khách mở thực đơn lại đi một vòng sang S3.
+const KHO_ANH_NHAN = new Map();
+
+app.get('/badges/:tep', async (req, res) => {
+  // Tên tệp đi vào khoá S3 nên phải chặt: chỉ chữ thường, số, gạch ngang. Không
+  // chặn thì '../' trong tên tệp thành đường đi đọc trộm object khác trong bucket.
+  const tep = String(req.params.tep || '');
+  if (!/^[a-z0-9][a-z0-9-]{0,80}\.(png|json)$/.test(tep)) {
+    return res.status(404).end();
+  }
+
+  const loai = tep.endsWith('.json') ? 'application/json' : 'image/png';
+  // Bất biến nên cache một năm; đây là thứ hiện trên mọi thẻ sản phẩm của mọi
+  // khách, xin lại mỗi lần là lãng phí thấy rõ. CHỈ gắn cho lượt trả thành
+  // công: gắn cả cho 404 thì một ảnh tạm thời thiếu sẽ bị trình duyệt nhớ là
+  // "không có" suốt một năm, đẩy lại ảnh cũng không cứu được.
+  const traVe = (buf) => res.set('Cache-Control', 'public, max-age=31536000, immutable')
+    .type(loai).send(buf);
+
+  const sanCo = KHO_ANH_NHAN.get(tep);
+  if (sanCo) return traVe(sanCo);
+
+  const tienTo = khoAnhNhanS3();
+  if (!tienTo) return res.status(404).end();   // chưa đẩy S3: express.static đã lo
+
+  try {
+    const ky = await s3.getPresignedUrl(`${tienTo}/${tep}`, 300);
+    if (!ky) return res.status(404).end();
+    const tai = await fetch(ky);
+    if (!tai.ok) return res.status(tai.status === 404 ? 404 : 502).end();
+    const buf = Buffer.from(await tai.arrayBuffer());
+    KHO_ANH_NHAN.set(tep, buf);
+    traVe(buf);
+  } catch (error) {
+    console.error('[BADGE] Không lấy được ảnh nhãn từ S3:', tep, error.message);
+    res.status(502).end();
+  }
+});
 
 // Danh mục ảnh nhãn cho CẢ Superadmin lẫn Agent dựng lưới chọn. Hai bảng điều
 // khiển nằm ở hai ứng dụng khác nhau nên phải đi qua API chung, đừng để mỗi bên
