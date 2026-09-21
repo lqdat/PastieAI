@@ -1115,9 +1115,9 @@ async function loadOrgTags(silent = false) {
                          phẩm, nên danh sách phải cho nhìn ra ngay nhãn nào hình gì. -->
                     ${tag.badge_code
                         ? `<img class="tag-card-badge" loading="lazy"
-                             src="${escapeHtml(badgeImgUrl(tag.badge_style || 'vuong', tag.badge_code))}"
+                             src="${escapeHtml(badgeImgUrl(tag.badge_style || 'hoa', tag.badge_code))}"
                              alt="${escapeHtml(tag.label)}">`
-                        : `<span class="menu-badge is-${escapeHtml(tag.badge_style || 'vuong')}" style="--badge-bg:${escapeHtml(tag.color_bg)};--badge-text:${escapeHtml(tag.color_text)}"><span>${escapeHtml(tag.label)}</span></span>`}
+                        : `<span class="menu-badge is-${escapeHtml(tag.badge_style || 'hoa')}" style="--badge-bg:${escapeHtml(tag.color_bg)};--badge-text:${escapeHtml(tag.color_text)}"><span>${escapeHtml(tag.label)}</span></span>`}
                     <span class="tag-code">${escapeHtml(tag.code)}</span>
                     <span class="tag-usage">${Number(tag.item_count) || 0} sản phẩm</span>
                 </div>

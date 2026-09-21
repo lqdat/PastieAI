@@ -57,11 +57,11 @@
     // dùng khung mặc định của nhãn). Set chỉ nhớ được "có chọn hay không".
     let chonTag = new Map();
     let BADGE_CATALOG = null;
-    const KHUNG_MAC_DINH = 'vuong';
+    const KHUNG_MAC_DINH = 'hoa';
     // Bộ ảnh không có bản tiếng Việt (chữ trên nhãn để tiếng Anh cho gọn), nên
     // ảnh xem trước lấy bản tiếng Anh.
     const BADGE_LANG = 'en';
-    const TEN_KHUNG = { vuong: 'Khung vuông', thoi: 'Khung thoi', hoa: 'Khung cánh hoa', tron: 'Khung tròn' };
+    const TEN_KHUNG = { hoa: 'Khung cánh hoa' };
 
     // Gốc ảnh do máy chủ báo trong danh mục: thư mục tĩnh khi chưa đẩy S3, địa
     // chỉ S3 khi đã đẩy và ảnh gốc đã xoá khỏi mã nguồn. Đường tĩnh còn phải
@@ -137,31 +137,12 @@
                     'Nhãn này chưa gắn ảnh — Superadmin chọn kiểu text cho nhãn thì mới chọn được khung.'))}</p>`
                 : '';
 
-            const frameTiles = (khungCo || []).map((k) => {
-                const isSelected = k === khung;
-                return `<button type="button" class="menu-tag-frame-tile${isSelected ? ' is-selected' : ''}" data-frame-val="${escapeHtml(k)}" data-tag-id="${tag.id}" title="${escapeHtml(TEN_KHUNG[k] || k)}">
-                    <img class="menu-tag-frame-preview-mini" loading="lazy" src="${escapeHtml(anhNhan(k, ma))}" alt="${escapeHtml(TEN_KHUNG[k] || k)}">
-                    <span>${escapeHtml(TEN_KHUNG[k] || k)}</span>
-                </button>`;
-            }).join('');
-
             const oKhung = dang && ma ? `
                 <div class="menu-tag-frame">
                     <div class="menu-tag-frame-preview-box">
                         <img class="menu-tag-frame-preview" loading="lazy"
                              src="${escapeHtml(anhNhan(khung, ma))}" alt="${escapeHtml(tag.label)}">
                         <span class="menu-tag-frame-preview-label">Xem trước</span>
-                    </div>
-                    <div class="menu-tag-frame-main">
-                        <div class="menu-tag-frame-label-row">
-                            <span class="menu-tag-frame-title"><i class="ri-shape-line"></i> Kiểu khung:</span>
-                            <select data-tag-frame="${tag.id}" aria-label="Khung nhãn ${escapeHtml(tag.label)}" class="menu-tag-frame-select">
-                                ${khungCo.map((k) => `<option value="${escapeHtml(k)}"${k === khung ? ' selected' : ''}>${escapeHtml(TEN_KHUNG[k] || k)}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div class="menu-tag-frame-tiles">
-                            ${frameTiles}
-                        </div>
                     </div>
                 </div>` : loiKhung;
 

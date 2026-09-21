@@ -2050,7 +2050,7 @@ document.getElementById('org-agent-form')?.addEventListener('submit', async (eve
 // cứng ở đây: chép cứng thì thêm một mẫu nhãn mới phải sửa cả ba nơi — script
 // xuất ảnh, màn Superadmin, màn Agent — và sớm muộn cũng lệch nhau.
 let BADGE_CATALOG = null;
-const BADGE_FRAME_DEFAULT = 'vuong';
+const BADGE_FRAME_DEFAULT = 'hoa';
 
 // Ngôn ngữ dùng cho ảnh XEM TRƯỚC. Bộ ảnh không có bản tiếng Việt (chữ trên
 // nhãn để tiếng Anh cho gọn), nên xem trước lấy bản tiếng Anh.
@@ -2232,7 +2232,7 @@ document.getElementById('org-badge-gallery')?.addEventListener('click', async (e
                 badgeCode: ma,
                 badgeStyle: khung,
                 colorBg: '#fff4d9',
-                colorText: '#c8402c',
+                colorText: '#91121a',
             }),
         });
         setOrgStatus(`Đã tạo nhãn từ mẫu "${ma}".`);

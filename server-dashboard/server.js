@@ -11891,6 +11891,17 @@ app.get('/badges/:tep', async (req, res) => {
   const sanCo = KHO_ANH_NHAN.get(tep);
   if (sanCo) return traVe(sanCo);
 
+  // Ưu tiên tệp nội bộ trên đĩa (public/badges/) trước nếu có: vừa nhanh hơn
+  // vừa đảm bảo các bản vẽ mới cập nhật được phục vụ ngay lập tức.
+  const localFile = path.join(__dirname, 'public/badges', tep);
+  if (fs.existsSync(localFile)) {
+    try {
+      const buf = fs.readFileSync(localFile);
+      KHO_ANH_NHAN.set(tep, buf);
+      return traVe(buf);
+    } catch (_) {}
+  }
+
   const tienTo = khoAnhNhanS3();
   if (!tienTo) return res.status(404).end();   // chưa đẩy S3: express.static đã lo
 
@@ -11926,8 +11937,8 @@ app.post('/api/superadmin/menu-tags', checkAdminAuth, async (req, res) => {
       `INSERT INTO qr_menu_tags (code, label, color_bg, color_text, badge_style, badge_code, sort_order, is_active)
        VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
        ON CONFLICT (code) DO NOTHING RETURNING *`,
-      [code, label, mauHopLe(req.body?.colorBg, '#e51a82'), mauHopLe(req.body?.colorText, '#ffffff'),
-       kieuBadgeHopLe(req.body?.badgeStyle, 'vuong'),
+      [code, label, mauHopLe(req.body?.colorBg, '#fff4d9'), mauHopLe(req.body?.colorText, '#91121a'),
+       kieuBadgeHopLe(req.body?.badgeStyle, 'hoa'),
        maNhanHopLe(req.body?.badgeCode, null),
        Number(req.body?.sortOrder) || 0]
     );
@@ -11962,7 +11973,7 @@ app.put('/api/superadmin/menu-tags/:id', checkAdminAuth, async (req, res) => {
        mauHopLe(req.body?.colorText, found.rows[0].color_text),
        req.body?.sortOrder === undefined ? found.rows[0].sort_order : Number(req.body.sortOrder) || 0,
        req.body?.isActive === undefined ? found.rows[0].is_active : !!req.body.isActive,
-       kieuBadgeHopLe(req.body?.badgeStyle, found.rows[0].badge_style || 'vuong'),
+       kieuBadgeHopLe(req.body?.badgeStyle, found.rows[0].badge_style || 'hoa'),
        maNhanHopLe(req.body?.badgeCode, found.rows[0].badge_code || null)]
     );
     // Chỉ dịch lại khi CHỮ đổi. Đổi màu hay đổi thứ tự mà cũng gọi máy dịch là
@@ -12032,9 +12043,12 @@ app.post('/api/superadmin/menu-tags/import-all', checkAdminAuth, async (req, res
          VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
          ON CONFLICT (code) DO UPDATE SET
            badge_code = COALESCE(qr_menu_tags.badge_code, EXCLUDED.badge_code),
-           badge_style = CASE WHEN qr_menu_tags.badge_style = ANY($8::text[]) THEN qr_menu_tags.badge_style ELSE EXCLUDED.badge_style END
+           badge_style = EXCLUDED.badge_style,
+           color_text = EXCLUDED.color_text,
+           color_bg = EXCLUDED.color_bg,
+           updated_at = NOW()
          RETURNING id`,
-        [ma, label, '#fff4d9', '#c8402c', 'vuong', ma, i, KIEU_BADGE]
+        [ma, label, '#fff4d9', '#91121a', 'hoa', ma, i]
       );
       if (ins.rows[0]) count++;
     }
@@ -13022,7 +13036,7 @@ async function tagsChoSanPham(itemIds, lang) {
   for (const row of rows.rows) {
     const { item_id, ...tag } = row;
     const maNhan = tag.badge_code || tag.code;
-    tag.badge_url = maNhan
+    tag.badge_url = tag.badge_code
       ? `${goc}/${tag.badge_style || 'hoa'}-${maNhan}-${tiengAnh}.png`
       : null;
     if (!theo.has(item_id)) theo.set(item_id, []);
