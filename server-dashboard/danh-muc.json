@@ -1,0 +1,558 @@
+{
+ "tao": "2026-09-20T10:48:46.355Z",
+ "co": 320,
+ "khung": [
+  "hoa"
+ ],
+ "ngonNgu": [
+  "en",
+  "zh",
+  "ko",
+  "ru",
+  "kk"
+ ],
+ "ma": [
+  "smart-choice",
+  "cheapest-choice",
+  "season-dishes",
+  "chef-recommended",
+  "kids",
+  "vegetarian",
+  "must-try",
+  "best-seller",
+  "new-dishes",
+  "signature",
+  "discount-10",
+  "discount-20",
+  "discount-30",
+  "discount-40",
+  "buy1get1"
+ ],
+ "anh": [
+  {
+   "tep": "hoa-smart-choice-en.png",
+   "khung": "hoa",
+   "ma": "smart-choice",
+   "ngonNgu": "en",
+   "nhan": "Smart Pick"
+  },
+  {
+   "tep": "hoa-smart-choice-zh.png",
+   "khung": "hoa",
+   "ma": "smart-choice",
+   "ngonNgu": "zh",
+   "nhan": "明智之选"
+  },
+  {
+   "tep": "hoa-smart-choice-ko.png",
+   "khung": "hoa",
+   "ma": "smart-choice",
+   "ngonNgu": "ko",
+   "nhan": "현명한 선택"
+  },
+  {
+   "tep": "hoa-smart-choice-ru.png",
+   "khung": "hoa",
+   "ma": "smart-choice",
+   "ngonNgu": "ru",
+   "nhan": "Умный выбор"
+  },
+  {
+   "tep": "hoa-smart-choice-kk.png",
+   "khung": "hoa",
+   "ma": "smart-choice",
+   "ngonNgu": "kk",
+   "nhan": "Ақылды таңдау"
+  },
+  {
+   "tep": "hoa-cheapest-choice-en.png",
+   "khung": "hoa",
+   "ma": "cheapest-choice",
+   "ngonNgu": "en",
+   "nhan": "Best Price"
+  },
+  {
+   "tep": "hoa-cheapest-choice-zh.png",
+   "khung": "hoa",
+   "ma": "cheapest-choice",
+   "ngonNgu": "zh",
+   "nhan": "最超值"
+  },
+  {
+   "tep": "hoa-cheapest-choice-ko.png",
+   "khung": "hoa",
+   "ma": "cheapest-choice",
+   "ngonNgu": "ko",
+   "nhan": "최저가"
+  },
+  {
+   "tep": "hoa-cheapest-choice-ru.png",
+   "khung": "hoa",
+   "ma": "cheapest-choice",
+   "ngonNgu": "ru",
+   "nhan": "Самое выгодное"
+  },
+  {
+   "tep": "hoa-cheapest-choice-kk.png",
+   "khung": "hoa",
+   "ma": "cheapest-choice",
+   "ngonNgu": "kk",
+   "nhan": "Ең тиімді"
+  },
+  {
+   "tep": "hoa-season-dishes-en.png",
+   "khung": "hoa",
+   "ma": "season-dishes",
+   "ngonNgu": "en",
+   "nhan": "Season Dish"
+  },
+  {
+   "tep": "hoa-season-dishes-zh.png",
+   "khung": "hoa",
+   "ma": "season-dishes",
+   "ngonNgu": "zh",
+   "nhan": "当季菜品"
+  },
+  {
+   "tep": "hoa-season-dishes-ko.png",
+   "khung": "hoa",
+   "ma": "season-dishes",
+   "ngonNgu": "ko",
+   "nhan": "제철 메뉴"
+  },
+  {
+   "tep": "hoa-season-dishes-ru.png",
+   "khung": "hoa",
+   "ma": "season-dishes",
+   "ngonNgu": "ru",
+   "nhan": "Сезонное блюдо"
+  },
+  {
+   "tep": "hoa-season-dishes-kk.png",
+   "khung": "hoa",
+   "ma": "season-dishes",
+   "ngonNgu": "kk",
+   "nhan": "Маусымдық тағам"
+  },
+  {
+   "tep": "hoa-chef-recommended-en.png",
+   "khung": "hoa",
+   "ma": "chef-recommended",
+   "ngonNgu": "en",
+   "nhan": "Chef Pick"
+  },
+  {
+   "tep": "hoa-chef-recommended-zh.png",
+   "khung": "hoa",
+   "ma": "chef-recommended",
+   "ngonNgu": "zh",
+   "nhan": "主厨推荐"
+  },
+  {
+   "tep": "hoa-chef-recommended-ko.png",
+   "khung": "hoa",
+   "ma": "chef-recommended",
+   "ngonNgu": "ko",
+   "nhan": "셰프 추천"
+  },
+  {
+   "tep": "hoa-chef-recommended-ru.png",
+   "khung": "hoa",
+   "ma": "chef-recommended",
+   "ngonNgu": "ru",
+   "nhan": "Выбор шефа"
+  },
+  {
+   "tep": "hoa-chef-recommended-kk.png",
+   "khung": "hoa",
+   "ma": "chef-recommended",
+   "ngonNgu": "kk",
+   "nhan": "Аспаз таңдауы"
+  },
+  {
+   "tep": "hoa-kids-en.png",
+   "khung": "hoa",
+   "ma": "kids",
+   "ngonNgu": "en",
+   "nhan": "Kids"
+  },
+  {
+   "tep": "hoa-kids-zh.png",
+   "khung": "hoa",
+   "ma": "kids",
+   "ngonNgu": "zh",
+   "nhan": "儿童"
+  },
+  {
+   "tep": "hoa-kids-ko.png",
+   "khung": "hoa",
+   "ma": "kids",
+   "ngonNgu": "ko",
+   "nhan": "키즈"
+  },
+  {
+   "tep": "hoa-kids-ru.png",
+   "khung": "hoa",
+   "ma": "kids",
+   "ngonNgu": "ru",
+   "nhan": "Детям"
+  },
+  {
+   "tep": "hoa-kids-kk.png",
+   "khung": "hoa",
+   "ma": "kids",
+   "ngonNgu": "kk",
+   "nhan": "Балаларға"
+  },
+  {
+   "tep": "hoa-vegetarian-en.png",
+   "khung": "hoa",
+   "ma": "vegetarian",
+   "ngonNgu": "en",
+   "nhan": "Vegan"
+  },
+  {
+   "tep": "hoa-vegetarian-zh.png",
+   "khung": "hoa",
+   "ma": "vegetarian",
+   "ngonNgu": "zh",
+   "nhan": "素食"
+  },
+  {
+   "tep": "hoa-vegetarian-ko.png",
+   "khung": "hoa",
+   "ma": "vegetarian",
+   "ngonNgu": "ko",
+   "nhan": "채식"
+  },
+  {
+   "tep": "hoa-vegetarian-ru.png",
+   "khung": "hoa",
+   "ma": "vegetarian",
+   "ngonNgu": "ru",
+   "nhan": "Вегетарианское"
+  },
+  {
+   "tep": "hoa-vegetarian-kk.png",
+   "khung": "hoa",
+   "ma": "vegetarian",
+   "ngonNgu": "kk",
+   "nhan": "Вегетариандық"
+  },
+  {
+   "tep": "hoa-must-try-en.png",
+   "khung": "hoa",
+   "ma": "must-try",
+   "ngonNgu": "en",
+   "nhan": "Must Try"
+  },
+  {
+   "tep": "hoa-must-try-zh.png",
+   "khung": "hoa",
+   "ma": "must-try",
+   "ngonNgu": "zh",
+   "nhan": "必试"
+  },
+  {
+   "tep": "hoa-must-try-ko.png",
+   "khung": "hoa",
+   "ma": "must-try",
+   "ngonNgu": "ko",
+   "nhan": "꼭 드세요"
+  },
+  {
+   "tep": "hoa-must-try-ru.png",
+   "khung": "hoa",
+   "ma": "must-try",
+   "ngonNgu": "ru",
+   "nhan": "Стоит попробовать"
+  },
+  {
+   "tep": "hoa-must-try-kk.png",
+   "khung": "hoa",
+   "ma": "must-try",
+   "ngonNgu": "kk",
+   "nhan": "Міндетті түрде"
+  },
+  {
+   "tep": "hoa-best-seller-en.png",
+   "khung": "hoa",
+   "ma": "best-seller",
+   "ngonNgu": "en",
+   "nhan": "Best Seller"
+  },
+  {
+   "tep": "hoa-best-seller-zh.png",
+   "khung": "hoa",
+   "ma": "best-seller",
+   "ngonNgu": "zh",
+   "nhan": "热销"
+  },
+  {
+   "tep": "hoa-best-seller-ko.png",
+   "khung": "hoa",
+   "ma": "best-seller",
+   "ngonNgu": "ko",
+   "nhan": "베스트셀러"
+  },
+  {
+   "tep": "hoa-best-seller-ru.png",
+   "khung": "hoa",
+   "ma": "best-seller",
+   "ngonNgu": "ru",
+   "nhan": "Хит продаж"
+  },
+  {
+   "tep": "hoa-best-seller-kk.png",
+   "khung": "hoa",
+   "ma": "best-seller",
+   "ngonNgu": "kk",
+   "nhan": "Хит сатылым"
+  },
+  {
+   "tep": "hoa-new-dishes-en.png",
+   "khung": "hoa",
+   "ma": "new-dishes",
+   "ngonNgu": "en",
+   "nhan": "New"
+  },
+  {
+   "tep": "hoa-new-dishes-zh.png",
+   "khung": "hoa",
+   "ma": "new-dishes",
+   "ngonNgu": "zh",
+   "nhan": "新品"
+  },
+  {
+   "tep": "hoa-new-dishes-ko.png",
+   "khung": "hoa",
+   "ma": "new-dishes",
+   "ngonNgu": "ko",
+   "nhan": "신메뉴"
+  },
+  {
+   "tep": "hoa-new-dishes-ru.png",
+   "khung": "hoa",
+   "ma": "new-dishes",
+   "ngonNgu": "ru",
+   "nhan": "Новинка"
+  },
+  {
+   "tep": "hoa-new-dishes-kk.png",
+   "khung": "hoa",
+   "ma": "new-dishes",
+   "ngonNgu": "kk",
+   "nhan": "Жаңа тағам"
+  },
+  {
+   "tep": "hoa-signature-en.png",
+   "khung": "hoa",
+   "ma": "signature",
+   "ngonNgu": "en",
+   "nhan": "Special"
+  },
+  {
+   "tep": "hoa-signature-zh.png",
+   "khung": "hoa",
+   "ma": "signature",
+   "ngonNgu": "zh",
+   "nhan": "招牌"
+  },
+  {
+   "tep": "hoa-signature-ko.png",
+   "khung": "hoa",
+   "ma": "signature",
+   "ngonNgu": "ko",
+   "nhan": "시그니처"
+  },
+  {
+   "tep": "hoa-signature-ru.png",
+   "khung": "hoa",
+   "ma": "signature",
+   "ngonNgu": "ru",
+   "nhan": "Фирменное"
+  },
+  {
+   "tep": "hoa-signature-kk.png",
+   "khung": "hoa",
+   "ma": "signature",
+   "ngonNgu": "kk",
+   "nhan": "Фирмалық"
+  },
+  {
+   "tep": "hoa-discount-10-en.png",
+   "khung": "hoa",
+   "ma": "discount-10",
+   "ngonNgu": "en",
+   "nhan": "10% Off"
+  },
+  {
+   "tep": "hoa-discount-10-zh.png",
+   "khung": "hoa",
+   "ma": "discount-10",
+   "ngonNgu": "zh",
+   "nhan": "优惠 10%"
+  },
+  {
+   "tep": "hoa-discount-10-ko.png",
+   "khung": "hoa",
+   "ma": "discount-10",
+   "ngonNgu": "ko",
+   "nhan": "할인 10%"
+  },
+  {
+   "tep": "hoa-discount-10-ru.png",
+   "khung": "hoa",
+   "ma": "discount-10",
+   "ngonNgu": "ru",
+   "nhan": "Скидка 10%"
+  },
+  {
+   "tep": "hoa-discount-10-kk.png",
+   "khung": "hoa",
+   "ma": "discount-10",
+   "ngonNgu": "kk",
+   "nhan": "Жеңілдік 10%"
+  },
+  {
+   "tep": "hoa-discount-20-en.png",
+   "khung": "hoa",
+   "ma": "discount-20",
+   "ngonNgu": "en",
+   "nhan": "20% Off"
+  },
+  {
+   "tep": "hoa-discount-20-zh.png",
+   "khung": "hoa",
+   "ma": "discount-20",
+   "ngonNgu": "zh",
+   "nhan": "优惠 20%"
+  },
+  {
+   "tep": "hoa-discount-20-ko.png",
+   "khung": "hoa",
+   "ma": "discount-20",
+   "ngonNgu": "ko",
+   "nhan": "할인 20%"
+  },
+  {
+   "tep": "hoa-discount-20-ru.png",
+   "khung": "hoa",
+   "ma": "discount-20",
+   "ngonNgu": "ru",
+   "nhan": "Скидка 20%"
+  },
+  {
+   "tep": "hoa-discount-20-kk.png",
+   "khung": "hoa",
+   "ma": "discount-20",
+   "ngonNgu": "kk",
+   "nhan": "Жеңілдік 20%"
+  },
+  {
+   "tep": "hoa-discount-30-en.png",
+   "khung": "hoa",
+   "ma": "discount-30",
+   "ngonNgu": "en",
+   "nhan": "30% Off"
+  },
+  {
+   "tep": "hoa-discount-30-zh.png",
+   "khung": "hoa",
+   "ma": "discount-30",
+   "ngonNgu": "zh",
+   "nhan": "优惠 30%"
+  },
+  {
+   "tep": "hoa-discount-30-ko.png",
+   "khung": "hoa",
+   "ma": "discount-30",
+   "ngonNgu": "ko",
+   "nhan": "할인 30%"
+  },
+  {
+   "tep": "hoa-discount-30-ru.png",
+   "khung": "hoa",
+   "ma": "discount-30",
+   "ngonNgu": "ru",
+   "nhan": "Скидка 30%"
+  },
+  {
+   "tep": "hoa-discount-30-kk.png",
+   "khung": "hoa",
+   "ma": "discount-30",
+   "ngonNgu": "kk",
+   "nhan": "Жеңілдік 30%"
+  },
+  {
+   "tep": "hoa-discount-40-en.png",
+   "khung": "hoa",
+   "ma": "discount-40",
+   "ngonNgu": "en",
+   "nhan": "40% Off"
+  },
+  {
+   "tep": "hoa-discount-40-zh.png",
+   "khung": "hoa",
+   "ma": "discount-40",
+   "ngonNgu": "zh",
+   "nhan": "优惠 40%"
+  },
+  {
+   "tep": "hoa-discount-40-ko.png",
+   "khung": "hoa",
+   "ma": "discount-40",
+   "ngonNgu": "ko",
+   "nhan": "할인 40%"
+  },
+  {
+   "tep": "hoa-discount-40-ru.png",
+   "khung": "hoa",
+   "ma": "discount-40",
+   "ngonNgu": "ru",
+   "nhan": "Скидка 40%"
+  },
+  {
+   "tep": "hoa-discount-40-kk.png",
+   "khung": "hoa",
+   "ma": "discount-40",
+   "ngonNgu": "kk",
+   "nhan": "Жеңілдік 40%"
+  },
+  {
+   "tep": "hoa-buy1get1-en.png",
+   "khung": "hoa",
+   "ma": "buy1get1",
+   "ngonNgu": "en",
+   "nhan": "Buy 1 Get 1"
+  },
+  {
+   "tep": "hoa-buy1get1-zh.png",
+   "khung": "hoa",
+   "ma": "buy1get1",
+   "ngonNgu": "zh",
+   "nhan": "买一送一"
+  },
+  {
+   "tep": "hoa-buy1get1-ko.png",
+   "khung": "hoa",
+   "ma": "buy1get1",
+   "ngonNgu": "ko",
+   "nhan": "1+1"
+  },
+  {
+   "tep": "hoa-buy1get1-ru.png",
+   "khung": "hoa",
+   "ma": "buy1get1",
+   "ngonNgu": "ru",
+   "nhan": "1+1"
+  },
+  {
+   "tep": "hoa-buy1get1-kk.png",
+   "khung": "hoa",
+   "ma": "buy1get1",
+   "ngonNgu": "kk",
+   "nhan": "1+1"
+  }
+ ]
+}

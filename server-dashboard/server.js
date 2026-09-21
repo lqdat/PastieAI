@@ -11809,30 +11809,32 @@ let DANH_MUC_NHAN = null;
 let DANH_MUC_NHAN_MTIME = 0;
 function danhMucNhan() {
   try {
-    const p = path.join(__dirname, 'public/badges/danh-muc.json');
-    const st = fs.statSync(p);
-    if (DANH_MUC_NHAN && st.mtimeMs === DANH_MUC_NHAN_MTIME) return DANH_MUC_NHAN;
-    const raw = fs.readFileSync(p, 'utf8');
-    const d = JSON.parse(raw);
-    DANH_MUC_NHAN_MTIME = st.mtimeMs;
-    // Gom về danh sách mã kèm chữ từng thứ tiếng, bỏ chiều "khung" đi: chữ trên
-    // nhãn không phụ thuộc khung, giữ cả 300 dòng ở đây chỉ tổ nặng.
-    const chu = new Map();
-    for (const a of d.anh || []) {
-      if (!chu.has(a.ma)) chu.set(a.ma, {});
-      chu.get(a.ma)[a.ngonNgu] = a.nhan;
+    let p = path.join(__dirname, 'danh-muc.json');
+    if (!fs.existsSync(p)) {
+      p = path.join(__dirname, 'public/badges/danh-muc.json');
     }
-    DANH_MUC_NHAN = {
-      co: d.co, khung: d.khung || KIEU_BADGE, ngonNgu: d.ngonNgu || [],
-      ma: d.ma || [...chu.keys()],
-      mau: (d.ma || [...chu.keys()]).map((ma) => ({ ma, chu: chu.get(ma) || {} })),
-      duongDan: gocAnhNhan(),
-    };
+    if (fs.existsSync(p)) {
+      const st = fs.statSync(p);
+      if (DANH_MUC_NHAN && st.mtimeMs === DANH_MUC_NHAN_MTIME) return DANH_MUC_NHAN;
+      const raw = fs.readFileSync(p, 'utf8');
+      const d = JSON.parse(raw);
+      DANH_MUC_NHAN_MTIME = st.mtimeMs;
+      const chu = new Map();
+      for (const a of d.anh || []) {
+        if (!chu.has(a.ma)) chu.set(a.ma, {});
+        chu.get(a.ma)[a.ngonNgu] = a.nhan;
+      }
+      DANH_MUC_NHAN = {
+        co: d.co, khung: d.khung || KIEU_BADGE, ngonNgu: d.ngonNgu || [],
+        ma: d.ma || [...chu.keys()],
+        mau: (d.ma || [...chu.keys()]).map((ma) => ({ ma, chu: chu.get(ma) || {} })),
+        duongDan: gocAnhNhan(),
+      };
+    }
   } catch (error) {
-    console.error('[BADGE] Không đọc được public/badges/danh-muc.json:', error.message);
-    DANH_MUC_NHAN = { co: 0, khung: KIEU_BADGE, ngonNgu: [], ma: [], mau: [] };
+    console.error('[BADGE] Không đọc được danh-muc.json:', error.message);
   }
-  return DANH_MUC_NHAN;
+  return DANH_MUC_NHAN || { co: 0, khung: ['hoa'], ngonNgu: [], ma: [], mau: [] };
 }
 
 // Mã nhãn phải nằm trong danh mục ảnh, nếu không thì cổng khách trỏ vào một tệp
@@ -11864,9 +11866,9 @@ function gocAnhNhan() { return DUONG_DAN_NHAN; }
 function khoAnhNhanS3() {
   try {
     const man = JSON.parse(fs.readFileSync(path.join(__dirname, 'badge-s3-manifest.json'), 'utf8'));
-    if (man?.dayDu === true && man?.s3Prefix) return String(man.s3Prefix).replace(/\/+$/, '');
+    if (man?.s3Prefix) return String(man.s3Prefix).replace(/\/+$/, '');
   } catch (_) { /* chưa đẩy lên bao giờ */ }
-  return null;
+  return 'badge';
 }
 
 // Ảnh nhãn lấy từ S3, giữ trong bộ nhớ tiến trình.
@@ -11896,22 +11898,11 @@ app.get('/badges/:tep', async (req, res) => {
   const traVe = (buf) => res.set('Cache-Control', 'public, max-age=31536000, immutable')
     .type(loai).send(buf);
 
-  // Ưu tiên tệp nội bộ trên đĩa (public/badges/) trước nếu có: vừa nhanh hơn
-  // vừa đảm bảo các bản vẽ mới cập nhật được phục vụ ngay lập tức.
-  const localFile = path.join(__dirname, 'public/badges', tep);
-  if (fs.existsSync(localFile)) {
-    try {
-      const buf = fs.readFileSync(localFile);
-      KHO_ANH_NHAN.set(tep, buf);
-      return traVe(buf);
-    } catch (_) {}
-  }
-
   const sanCo = KHO_ANH_NHAN.get(tep);
   if (sanCo) return traVe(sanCo);
 
   const tienTo = khoAnhNhanS3();
-  if (!tienTo) return res.status(404).end();   // chưa đẩy S3: express.static đã lo
+  if (!tienTo) return res.status(404).end();
 
   try {
     const ky = await s3.getPresignedUrl(`${tienTo}/${tep}`, 300);
