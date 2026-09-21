@@ -11873,19 +11873,18 @@ function khoAnhNhanS3() {
 const KHO_ANH_NHAN = new Map();
 
 app.get('/badges/:tep', async (req, res) => {
-  // Tên tệp đi vào khoá S3 nên phải chặt: chỉ chữ thường, số, gạch ngang. Không
-  // chặn thì '../' trong tên tệp thành đường đi đọc trộm object khác trong bucket.
-  const tep = String(req.params.tep || '');
+  // Tên tệp đi vào khoá S3 nên phải chặt: chỉ chữ thường, số, gạch ngang.
+  let tep = String(req.params.tep || '').toLowerCase();
+  // Nếu có client yêu cầu kiểu khung cũ (vuong, thoi, tron, star), tự động chuyển về khung hoa
+  if (/^(?:vuong|thoi|tron|star)-/i.test(tep)) {
+    tep = tep.replace(/^(?:vuong|thoi|tron|star)-/i, 'hoa-');
+  }
   if (!/^[a-z0-9][a-z0-9-]{0,80}\.(png|json)$/.test(tep)) {
     return res.status(404).end();
   }
 
   const loai = tep.endsWith('.json') ? 'application/json' : 'image/png';
-  // Bất biến nên cache một năm; đây là thứ hiện trên mọi thẻ sản phẩm của mọi
-  // khách, xin lại mỗi lần là lãng phí thấy rõ. CHỈ gắn cho lượt trả thành
-  // công: gắn cả cho 404 thì một ảnh tạm thời thiếu sẽ bị trình duyệt nhớ là
-  // "không có" suốt một năm, đẩy lại ảnh cũng không cứu được.
-  const traVe = (buf) => res.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400')
+  const traVe = (buf) => res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=86400')
     .type(loai).send(buf);
 
   const sanCo = KHO_ANH_NHAN.get(tep);
@@ -13037,7 +13036,7 @@ async function tagsChoSanPham(itemIds, lang) {
     const { item_id, ...tag } = row;
     const maNhan = tag.badge_code || tag.code;
     tag.badge_url = tag.badge_code
-      ? `${goc}/${tag.badge_style || 'hoa'}-${maNhan}-${tiengAnh}.png`
+      ? `${goc}/hoa-${maNhan}-${tiengAnh}.png?v=v6`
       : null;
     if (!theo.has(item_id)) theo.set(item_id, []);
     theo.get(item_id).push(tag);

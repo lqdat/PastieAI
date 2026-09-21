@@ -2059,9 +2059,9 @@ const BADGE_PREVIEW_LANG = 'en';
 // Gốc ảnh do máy chủ báo: thư mục tĩnh khi chưa đẩy S3, địa chỉ S3 khi đã đẩy
 // và ảnh gốc đã bị xoá khỏi mã nguồn. Chép cứng '/badges' ở đây thì sau lượt
 // dọn ảnh là cả lưới vỡ hình.
-function badgeImgUrl(khung, ma, lang) {
+function badgeImgUrl(_khung, ma, lang) {
     const goc = BADGE_CATALOG?.duongDan || '/badges';
-    return `${goc}/${khung}-${ma}-${lang || BADGE_PREVIEW_LANG}.png`;
+    return `${goc}/hoa-${ma}-${lang || BADGE_PREVIEW_LANG}.png?v=v6`;
 }
 
 async function loadBadgeCatalog() {
