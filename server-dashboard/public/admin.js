@@ -3190,6 +3190,17 @@ function initModalScrollLock() {
             if (isBackdropArea(el)) break;
 
             const style = window.getComputedStyle(el);
+            const canScrollX = (style.overflowX === 'auto' || style.overflowX === 'scroll') && el.scrollWidth > el.clientWidth;
+            if (canScrollX) {
+                // Tự động chuyển con lăn chuột dọc (deltaY) thành cuộn ngang cho các tab cuộn ngang (.org-tabs, .staff-tabs, ...)
+                if (e.deltaY && !e.deltaX) {
+                    el.scrollLeft += e.deltaY;
+                    e.preventDefault();
+                }
+                foundScrollable = true;
+                break;
+            }
+
             const canScrollY = (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
             if (canScrollY) {
                 const isScrollingUp = e.deltaY < 0;
@@ -3227,7 +3238,8 @@ function initModalScrollLock() {
 
             const style = window.getComputedStyle(el);
             const canScrollY = (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
-            if (canScrollY) {
+            const canScrollX = (style.overflowX === 'auto' || style.overflowX === 'scroll') && el.scrollWidth > el.clientWidth;
+            if (canScrollY || canScrollX) {
                 foundScrollable = true;
                 break;
             }
@@ -3235,6 +3247,15 @@ function initModalScrollLock() {
         }
 
         if (!foundScrollable) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+
+    // Hỗ trợ lăn chuột ngang trực tiếp cho các thanh tab ngang
+    document.addEventListener('wheel', (e) => {
+        const tabs = e.target.closest?.('.org-tabs, .staff-tabs, #org-tabs, #admin-mgmt-tabs');
+        if (tabs && e.deltaY && !e.deltaX) {
+            tabs.scrollLeft += e.deltaY;
             e.preventDefault();
         }
     }, { passive: false });

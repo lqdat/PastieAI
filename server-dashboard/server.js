@@ -11885,7 +11885,7 @@ app.get('/badges/:tep', async (req, res) => {
   // khách, xin lại mỗi lần là lãng phí thấy rõ. CHỈ gắn cho lượt trả thành
   // công: gắn cả cho 404 thì một ảnh tạm thời thiếu sẽ bị trình duyệt nhớ là
   // "không có" suốt một năm, đẩy lại ảnh cũng không cứu được.
-  const traVe = (buf) => res.set('Cache-Control', 'public, max-age=31536000, immutable')
+  const traVe = (buf) => res.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400')
     .type(loai).send(buf);
 
   const sanCo = KHO_ANH_NHAN.get(tep);
