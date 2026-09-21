@@ -22,6 +22,8 @@
     "test:badge": "node tests/nhan-s3.js",
     "import:badge-tags": "node scripts/import-badge-tags.js",
     "clean:badge-local": "node scripts/clean-local-badges.js",
+    "clean:badge-unused": "node scripts/clean-local-badges.js --keep-flower",
+    "clean:badge-all": "node scripts/clean-local-badges.js --force",
     "test:badge-ui": "node tests/nhan-chon.js",
     "test:email": "node test-send-emails.js"
   },
