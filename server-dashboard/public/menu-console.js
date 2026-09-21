@@ -67,10 +67,10 @@
     // chỉ S3 khi đã đẩy và ảnh gốc đã xoá khỏi mã nguồn. Đường tĩnh còn phải
     // ghép API_BASE vì bảng điều khiển Agent nằm ở tên miền khác máy chủ; địa
     // chỉ S3 thì đã tuyệt đối sẵn, ghép thêm là hỏng.
-    function anhNhan(khung, ma) {
+    function anhNhan(_khung, ma) {
         const goc = BADGE_CATALOG?.duongDan || '/badges';
         const day = /^https?:\/\//i.test(goc) ? goc : `${API_BASE}${goc}`;
-        return `${day}/${khung}-${ma}-${BADGE_LANG}.png`;
+        return `${day}/hoa-${ma}-${BADGE_LANG}.png`;
     }
 
     async function loadBadgeCatalog() {
@@ -141,7 +141,7 @@
                 <div class="menu-tag-frame">
                     <div class="menu-tag-frame-preview-box">
                         <img class="menu-tag-frame-preview" loading="lazy"
-                             src="${escapeHtml(anhNhan(khung, ma))}" alt="${escapeHtml(tag.label)}">
+                             src="${escapeHtml(anhNhan('hoa', ma))}" alt="${escapeHtml(tag.label)}">
                         <span class="menu-tag-frame-preview-label">Xem trước</span>
                     </div>
                 </div>` : loiKhung;
@@ -151,7 +151,7 @@
                     role="checkbox" aria-checked="${dang ? 'true' : 'false'}"
                     style="${dang ? `background:${escapeHtml(tag.color_bg)};color:${escapeHtml(tag.color_text)};border-color:${escapeHtml(tag.color_bg)}` : ''}">
                     <i class="${dang ? 'ri-radio-button-fill' : 'ri-checkbox-blank-circle-line'}"></i>
-                    ${ma ? `<img class="menu-tag-thumb" loading="lazy" src="${escapeHtml(anhNhan(khung, ma))}" alt="">` : ''}
+                    ${ma ? `<img class="menu-tag-thumb" loading="lazy" src="${escapeHtml(anhNhan('hoa', ma))}" alt="">` : ''}
                     <span class="menu-tag-name">${escapeHtml(tag.label)}</span>
                     ${dang ? `<span class="menu-tag-badge-active"><i class="ri-check-line"></i> ${escapeHtml(t('mnTagSelected', null, 'Đang chọn'))}</span>` : ''}
                 </button>
