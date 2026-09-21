@@ -13023,7 +13023,7 @@ async function tagsChoSanPham(itemIds, lang) {
     const { item_id, ...tag } = row;
     const maNhan = tag.badge_code || tag.code;
     tag.badge_url = maNhan
-      ? `${goc}/${tag.badge_style || 'vuong'}-${maNhan}-${tiengAnh}.png`
+      ? `${goc}/${tag.badge_style || 'hoa'}-${maNhan}-${tiengAnh}.png`
       : null;
     if (!theo.has(item_id)) theo.set(item_id, []);
     theo.get(item_id).push(tag);
