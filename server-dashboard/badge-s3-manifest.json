@@ -1,8 +1,8 @@
 {
-  "uploadedAt": "2026-09-21T14:11:10.902Z",
+  "uploadedAt": "2026-09-21T14:27:16.715Z",
   "s3Prefix": "badge/",
   "baseUrl": "https://t3.storageapi.dev/customizable-knapsack-ois9rs/badge",
-  "co": 75,
+  "co": 320,
   "khung": [
     "hoa"
   ],

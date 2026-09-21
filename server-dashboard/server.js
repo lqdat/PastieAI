@@ -11875,16 +11875,18 @@ const KHO_ANH_NHAN = new Map();
 app.get('/badges/:tep', async (req, res) => {
   // Tên tệp đi vào khoá S3 nên phải chặt: chỉ chữ thường, số, gạch ngang.
   let tep = String(req.params.tep || '').toLowerCase();
-  // Nếu có client yêu cầu kiểu khung cũ (vuong, thoi, tron, star), tự động chuyển về khung hoa
   if (/^(?:vuong|thoi|tron|star)-/i.test(tep)) {
     tep = tep.replace(/^(?:vuong|thoi|tron|star)-/i, 'hoa-');
+  }
+  if (/^hoa-chef-pick-/i.test(tep)) {
+    tep = tep.replace(/^hoa-chef-pick-/i, 'hoa-chef-recommended-');
   }
   if (!/^[a-z0-9][a-z0-9-]{0,80}\.(png|json)$/.test(tep)) {
     return res.status(404).end();
   }
 
   const loai = tep.endsWith('.json') ? 'application/json' : 'image/png';
-  const traVe = (buf) => res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=86400')
+  const traVe = (buf) => res.set('Cache-Control', 'public, max-age=31536000, immutable')
     .type(loai).send(buf);
 
   const sanCo = KHO_ANH_NHAN.get(tep);
@@ -13035,8 +13037,8 @@ async function tagsChoSanPham(itemIds, lang) {
   for (const row of rows.rows) {
     const { item_id, ...tag } = row;
     const maNhan = tag.badge_code || tag.code;
-    tag.badge_url = tag.badge_code
-      ? `${goc}/hoa-${maNhan}-${tiengAnh}.png?v=v6`
+    tag.badge_url = maNhan
+      ? `${goc}/hoa-${maNhan}-${tiengAnh}.png?v=v7`
       : null;
     if (!theo.has(item_id)) theo.set(item_id, []);
     theo.get(item_id).push(tag);
