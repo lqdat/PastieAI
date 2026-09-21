@@ -13021,8 +13021,9 @@ async function tagsChoSanPham(itemIds, lang) {
   const theo = new Map();
   for (const row of rows.rows) {
     const { item_id, ...tag } = row;
-    tag.badge_url = tag.badge_code
-      ? `${goc}/${tag.badge_style || 'vuong'}-${tag.badge_code}-${tiengAnh}.png`
+    const maNhan = tag.badge_code || tag.code;
+    tag.badge_url = maNhan
+      ? `${goc}/${tag.badge_style || 'vuong'}-${maNhan}-${tiengAnh}.png`
       : null;
     if (!theo.has(item_id)) theo.set(item_id, []);
     theo.get(item_id).push(tag);
