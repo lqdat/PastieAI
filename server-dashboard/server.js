@@ -11806,11 +11806,15 @@ function kieuBadgeHopLe(raw, macDinh) {
 // và sớm muộn cũng lệch. Đọc đồng bộ lúc khởi động là chấp nhận được — tệp nhỏ
 // và nếu thiếu thì phải biết ngay chứ không phải lúc Agent bấm vào.
 let DANH_MUC_NHAN = null;
+let DANH_MUC_NHAN_MTIME = 0;
 function danhMucNhan() {
-  if (DANH_MUC_NHAN) return DANH_MUC_NHAN;
   try {
-    const raw = fs.readFileSync(path.join(__dirname, 'public/badges/danh-muc.json'), 'utf8');
+    const p = path.join(__dirname, 'public/badges/danh-muc.json');
+    const st = fs.statSync(p);
+    if (DANH_MUC_NHAN && st.mtimeMs === DANH_MUC_NHAN_MTIME) return DANH_MUC_NHAN;
+    const raw = fs.readFileSync(p, 'utf8');
     const d = JSON.parse(raw);
+    DANH_MUC_NHAN_MTIME = st.mtimeMs;
     // Gom về danh sách mã kèm chữ từng thứ tiếng, bỏ chiều "khung" đi: chữ trên
     // nhãn không phụ thuộc khung, giữ cả 300 dòng ở đây chỉ tổ nặng.
     const chu = new Map();
@@ -11892,9 +11896,6 @@ app.get('/badges/:tep', async (req, res) => {
   const traVe = (buf) => res.set('Cache-Control', 'public, max-age=31536000, immutable')
     .type(loai).send(buf);
 
-  const sanCo = KHO_ANH_NHAN.get(tep);
-  if (sanCo) return traVe(sanCo);
-
   // Ưu tiên tệp nội bộ trên đĩa (public/badges/) trước nếu có: vừa nhanh hơn
   // vừa đảm bảo các bản vẽ mới cập nhật được phục vụ ngay lập tức.
   const localFile = path.join(__dirname, 'public/badges', tep);
@@ -11905,6 +11906,9 @@ app.get('/badges/:tep', async (req, res) => {
       return traVe(buf);
     } catch (_) {}
   }
+
+  const sanCo = KHO_ANH_NHAN.get(tep);
+  if (sanCo) return traVe(sanCo);
 
   const tienTo = khoAnhNhanS3();
   if (!tienTo) return res.status(404).end();   // chưa đẩy S3: express.static đã lo
@@ -12046,6 +12050,7 @@ app.post('/api/superadmin/menu-tags/import-all', checkAdminAuth, async (req, res
         `INSERT INTO qr_menu_tags (code, label, color_bg, color_text, badge_style, badge_code, sort_order, is_active)
          VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
          ON CONFLICT (code) DO UPDATE SET
+           label = EXCLUDED.label,
            badge_code = COALESCE(qr_menu_tags.badge_code, EXCLUDED.badge_code),
            badge_style = EXCLUDED.badge_style,
            color_text = EXCLUDED.color_text,
@@ -13041,7 +13046,7 @@ async function tagsChoSanPham(itemIds, lang) {
     const { item_id, ...tag } = row;
     const maNhan = tag.badge_code || tag.code;
     tag.badge_url = maNhan
-      ? `${goc}/hoa-${maNhan}-${tiengAnh}.png?v=v7`
+      ? `${goc}/hoa-${maNhan}-${tiengAnh}.png?v=v8`
       : null;
     if (!theo.has(item_id)) theo.set(item_id, []);
     theo.get(item_id).push(tag);

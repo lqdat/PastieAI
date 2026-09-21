@@ -70,7 +70,7 @@
     function anhNhan(_khung, ma) {
         const goc = BADGE_CATALOG?.duongDan || '/badges';
         const day = /^https?:\/\//i.test(goc) ? goc : `${API_BASE}${goc}`;
-        return `${day}/hoa-${ma}-${BADGE_LANG}.png?v=v7`;
+        return `${day}/hoa-${ma}-${BADGE_LANG}.png?v=v8`;
     }
 
     async function loadBadgeCatalog() {

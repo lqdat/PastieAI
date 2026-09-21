@@ -2061,7 +2061,7 @@ const BADGE_PREVIEW_LANG = 'en';
 // dọn ảnh là cả lưới vỡ hình.
 function badgeImgUrl(_khung, ma, lang) {
     const goc = BADGE_CATALOG?.duongDan || '/badges';
-    return `${goc}/hoa-${ma}-${lang || BADGE_PREVIEW_LANG}.png?v=v7`;
+    return `${goc}/hoa-${ma}-${lang || BADGE_PREVIEW_LANG}.png?v=v8`;
 }
 
 async function loadBadgeCatalog() {

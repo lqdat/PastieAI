@@ -1233,6 +1233,29 @@ Phong cách trả lời: thân thiện, ngắn gọn, đúng trọng tâm, bằn
       );
     `);
 
+    // Đồng bộ nhãn rút gọn và khung hoa cho toàn bộ hệ thống
+    await query(`
+      UPDATE qr_menu_tags SET badge_style = 'hoa';
+      UPDATE qr_menu_tags SET label = 'Smart Pick' WHERE code = 'smart-choice';
+      UPDATE qr_menu_tags SET label = 'Best Price' WHERE code = 'cheapest-choice';
+      UPDATE qr_menu_tags SET label = 'Season Dish' WHERE code = 'season-dishes';
+      UPDATE qr_menu_tags SET label = 'Chef Pick' WHERE code = 'chef-recommended';
+      UPDATE qr_menu_tags SET label = 'Kids' WHERE code = 'kids';
+      UPDATE qr_menu_tags SET label = 'Vegan' WHERE code = 'vegetarian';
+      UPDATE qr_menu_tags SET label = 'Must Try' WHERE code = 'must-try';
+      UPDATE qr_menu_tags SET label = 'Best Seller' WHERE code = 'best-seller';
+      UPDATE qr_menu_tags SET label = 'New' WHERE code = 'new-dishes';
+      UPDATE qr_menu_tags SET label = 'Special' WHERE code = 'signature';
+      UPDATE qr_menu_tags SET label = '10% Off' WHERE code = 'discount-10';
+      UPDATE qr_menu_tags SET label = '20% Off' WHERE code = 'discount-20';
+      UPDATE qr_menu_tags SET label = '30% Off' WHERE code = 'discount-30';
+      UPDATE qr_menu_tags SET label = '40% Off' WHERE code = 'discount-40';
+      UPDATE qr_menu_tags SET label = 'Buy 1 Get 1' WHERE code = 'buy1get1';
+      INSERT INTO qr_menu_tag_translations (tag_id, lang, label)
+      SELECT id, 'en', label FROM qr_menu_tags
+      ON CONFLICT (tag_id, lang) DO UPDATE SET label = EXCLUDED.label;
+    `);
+
     // Sản phẩm nào mang tag nào. Xoá tag thì mọi liên kết tự rụng theo, không
     // để lại dòng trỏ vào tag không còn tồn tại.
     await query(`
