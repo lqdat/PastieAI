@@ -34,7 +34,7 @@
    "khung": "hoa",
    "ma": "smart-choice",
    "ngonNgu": "en",
-   "nhan": "Smart Choice"
+   "nhan": "Smart Pick"
   },
   {
    "tep": "hoa-smart-choice-zh.png",
@@ -69,7 +69,7 @@
    "khung": "hoa",
    "ma": "cheapest-choice",
    "ngonNgu": "en",
-   "nhan": "Cheapest Choice"
+   "nhan": "Best Price"
   },
   {
    "tep": "hoa-cheapest-choice-zh.png",
@@ -104,7 +104,7 @@
    "khung": "hoa",
    "ma": "season-dishes",
    "ngonNgu": "en",
-   "nhan": "Season Dishes"
+   "nhan": "Season Dish"
   },
   {
    "tep": "hoa-season-dishes-zh.png",
@@ -209,7 +209,7 @@
    "khung": "hoa",
    "ma": "vegetarian",
    "ngonNgu": "en",
-   "nhan": "Vegetarian"
+   "nhan": "Vegan"
   },
   {
    "tep": "hoa-vegetarian-zh.png",
@@ -314,7 +314,7 @@
    "khung": "hoa",
    "ma": "new-dishes",
    "ngonNgu": "en",
-   "nhan": "New Dishes"
+   "nhan": "New"
   },
   {
    "tep": "hoa-new-dishes-zh.png",
@@ -349,7 +349,7 @@
    "khung": "hoa",
    "ma": "signature",
    "ngonNgu": "en",
-   "nhan": "Signature"
+   "nhan": "Special"
   },
   {
    "tep": "hoa-signature-zh.png",
@@ -384,7 +384,7 @@
    "khung": "hoa",
    "ma": "discount-10",
    "ngonNgu": "en",
-   "nhan": "Discount 10%"
+   "nhan": "10% Off"
   },
   {
    "tep": "hoa-discount-10-zh.png",
@@ -419,7 +419,7 @@
    "khung": "hoa",
    "ma": "discount-20",
    "ngonNgu": "en",
-   "nhan": "Discount 20%"
+   "nhan": "20% Off"
   },
   {
    "tep": "hoa-discount-20-zh.png",
@@ -454,7 +454,7 @@
    "khung": "hoa",
    "ma": "discount-30",
    "ngonNgu": "en",
-   "nhan": "Discount 30%"
+   "nhan": "30% Off"
   },
   {
    "tep": "hoa-discount-30-zh.png",
@@ -489,7 +489,7 @@
    "khung": "hoa",
    "ma": "discount-40",
    "ngonNgu": "en",
-   "nhan": "Discount 40%"
+   "nhan": "40% Off"
   },
   {
    "tep": "hoa-discount-40-zh.png",

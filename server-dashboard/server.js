@@ -11881,6 +11881,9 @@ app.get('/badges/:tep', async (req, res) => {
   if (/^hoa-chef-pick-/i.test(tep)) {
     tep = tep.replace(/^hoa-chef-pick-/i, 'hoa-chef-recommended-');
   }
+  if (/^hoa-special-/i.test(tep)) {
+    tep = tep.replace(/^hoa-special-/i, 'hoa-signature-');
+  }
   if (!/^[a-z0-9][a-z0-9-]{0,80}\.(png|json)$/.test(tep)) {
     return res.status(404).end();
   }
