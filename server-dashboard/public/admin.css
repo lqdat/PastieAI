@@ -5248,106 +5248,180 @@ button:focus-visible {
 
   /* ── Menu Quản trị Superadmin Mobile (UI/UX Pro Max, không tràn, không đè) ── */
 
-  .settings-dropdown-menu {
-
+  /* ── Menu Quản trị Superadmin Mobile: Bottom Action Sheet (UI/UX Pro Max) ── */
+  .settings-dropdown-backdrop {
     position: fixed !important;
+    inset: 0 !important;
+    background: rgba(22, 10, 24, 0.48) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    z-index: 1190 !important;
+    transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.22s !important;
+  }
+  .settings-dropdown-backdrop.hide {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
 
-    top: calc(58px + env(safe-area-inset-top)) !important;
-
-    right: 12px !important;
-
-    left: 12px !important;
-
-    width: auto !important;
-
-    max-width: 440px !important;
-
-    margin: 0 0 0 auto !important;
-
-    max-height: min(84dvh, 660px) !important;
-
+  .settings-dropdown-menu {
+    position: fixed !important;
+    bottom: 0 !important;
+    top: auto !important;
+    right: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    max-height: min(88dvh, 720px) !important;
     overflow-y: auto !important;
-
     -webkit-overflow-scrolling: touch !important;
-
     overscroll-behavior: contain !important;
-
-    padding: 14px !important;
-
+    padding: 10px 14px calc(24px + env(safe-area-inset-bottom)) !important;
     background: rgba(255, 255, 255, 0.98) !important;
-
-    backdrop-filter: blur(24px) !important;
-
-    -webkit-backdrop-filter: blur(24px) !important;
-
+    backdrop-filter: blur(28px) !important;
+    -webkit-backdrop-filter: blur(28px) !important;
     border: 1px solid rgba(239, 43, 157, 0.22) !important;
-
-    border-radius: 22px !important;
-
-    box-shadow: 0 24px 60px -10px rgba(70, 20, 54, 0.35), 0 10px 24px -5px rgba(0, 0, 0, 0.1) !important;
-
+    border-bottom: 0 !important;
+    border-radius: 26px 26px 0 0 !important;
+    box-shadow: 0 -16px 50px rgba(50, 15, 40, 0.32), 0 -4px 16px rgba(0, 0, 0, 0.08) !important;
     z-index: 1200 !important;
-
-    animation: dropdownFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
-
+    animation: sdmSlideUp 0.26s cubic-bezier(0.16, 1, 0.3, 1) !important;
   }
 
   .settings-dropdown-menu.hide {
-
     display: none !important;
-
   }
 
+  @keyframes sdmSlideUp {
+    from { opacity: 0; transform: translateY(100%); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 
+  .sdm-drag-handle {
+    width: 44px !important;
+    height: 5px !important;
+    border-radius: 999px !important;
+    background: rgba(84, 62, 100, 0.22) !important;
+    margin: 4px auto 10px !important;
+    flex-shrink: 0 !important;
+  }
 
   .sdm-menu-head {
-
     display: flex !important;
-
     flex-direction: column !important;
-
     gap: 3px !important;
-
-    padding: 12px 14px !important;
-
+    padding: 10px 14px !important;
     margin-bottom: 8px !important;
-
     border-bottom: 1px solid rgba(239, 43, 157, 0.12) !important;
-
     background: linear-gradient(135deg, rgba(239, 43, 157, 0.08) 0%, rgba(245, 158, 11, 0.05) 100%) !important;
-
     border-radius: 14px !important;
-
   }
 
   .sdm-menu-head::after {
-
     display: none !important;
+  }
 
+  .sdm-head-title-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  .sdm-head-title-text {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+  }
+
+  .sdm-close-btn {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+    border-radius: 50% !important;
+    border: 1px solid rgba(84, 62, 100, 0.12) !important;
+    background: rgba(84, 62, 100, 0.06) !important;
+    color: #4a3b53 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 19px !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+    flex-shrink: 0 !important;
+  }
+
+  .sdm-close-btn:active {
+    transform: scale(0.92) !important;
+    background: rgba(239, 43, 157, 0.12) !important;
+    color: #ef2b9d !important;
+  }
+
+  .sdm-mobile-user-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 10px 14px !important;
+    margin: 4px 0 8px !important;
+    background: linear-gradient(135deg, rgba(239, 43, 157, 0.08) 0%, rgba(245, 158, 11, 0.06) 100%) !important;
+    border: 1px solid rgba(239, 43, 157, 0.16) !important;
+    border-radius: 14px !important;
+  }
+
+  .sdm-mobile-avatar {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 10px !important;
+    background: linear-gradient(135deg, #ef2b9d, #db2777) !important;
+    color: #fff !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 18px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .sdm-mobile-user-info {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
+  .sdm-mobile-name {
+    font-size: 13.5px !important;
+    font-weight: 750 !important;
+    color: #1e1b2e !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .sdm-mobile-role-badge {
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    color: #be185d !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.04em !important;
   }
 
   .sdm-menu-head span {
-
     font-size: 10.5px !important;
-
     font-weight: 800 !important;
-
     letter-spacing: 0.12em !important;
-
     text-transform: uppercase !important;
-
     color: #be185d !important;
-
   }
 
   .sdm-menu-head strong {
-
     font-size: 15px !important;
-
     font-weight: 800 !important;
-
     color: #1e1b2e !important;
-
   }
 
 
@@ -5713,15 +5787,108 @@ button:focus-visible {
   .sidebar-header { padding: 18px 16px 12px; border-bottom: 0; }
 
   .sessions-list {
-
-    padding: 0 12px calc(18px + env(safe-area-inset-bottom));
-
+    padding: 0 12px calc(76px + env(safe-area-inset-bottom)) !important;
     gap: 9px;
-
     -webkit-overflow-scrolling: touch;
-
     overscroll-behavior-y: contain;
+  }
 
+  /* ── Superadmin Mobile Ergonomic Bottom Nav (UI/UX Pro Max) ── */
+  .superadmin-bottom-nav {
+    display: flex !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: calc(56px + env(safe-area-inset-bottom)) !important;
+    padding: 4px 10px env(safe-area-inset-bottom) !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    backdrop-filter: blur(18px) !important;
+    -webkit-backdrop-filter: blur(18px) !important;
+    border-top: 1px solid rgba(239, 43, 157, 0.14) !important;
+    box-shadow: 0 -4px 20px rgba(110, 43, 83, 0.08) !important;
+    z-index: 150 !important;
+    align-items: center !important;
+    justify-content: space-around !important;
+    box-sizing: border-box !important;
+  }
+  .superadmin-bottom-nav.hide {
+    display: none !important;
+  }
+  /* Khi mở chat thì ẩn Bottom Nav để ưu tiên khung gõ tin nhắn */
+  body:has(.dashboard-body.chat-open) .superadmin-bottom-nav,
+  .dashboard-body.chat-open ~ .superadmin-bottom-nav {
+    display: none !important;
+  }
+  .sbn-item {
+    flex: 1 1 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    background: transparent !important;
+    border: none !important;
+    color: #796c82 !important;
+    padding: 4px 0 !important;
+    border-radius: 12px !important;
+    cursor: pointer !important;
+    font-size: 10.5px !important;
+    font-weight: 600 !important;
+    transition: all 0.15s ease !important;
+    -webkit-tap-highlight-color: transparent !important;
+    min-height: 48px !important;
+  }
+  .sbn-item i {
+    font-size: 20px !important;
+    line-height: 1 !important;
+    transition: transform 0.15s ease !important;
+  }
+  .sbn-item:active {
+    transform: scale(0.92) !important;
+  }
+  .sbn-item.is-active {
+    color: var(--accent-color, #ef2b9d) !important;
+    font-weight: 750 !important;
+  }
+  .sbn-item.is-active i {
+    transform: translateY(-1.5px) !important;
+    filter: drop-shadow(0 2px 6px rgba(239, 43, 157, 0.35)) !important;
+  }
+
+  /* Triệt tiêu nút ticket lơ lửng đè lên thanh chat trên mobile */
+  .ticket-float {
+    display: none !important;
+  }
+
+  /* Category tabs & Status filters trên mobile */
+  .session-category-tabs {
+    display: flex !important;
+    gap: 6px !important;
+    padding: 8px 12px 6px !important;
+    background: #ffffff !important;
+    border-bottom: 1px solid rgba(239, 43, 157, 0.08) !important;
+  }
+  .sct-tab {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    padding: 8px 6px !important;
+    font-size: 12px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    border-radius: 10px !important;
+  }
+  .session-status-filter {
+    margin: 8px 12px 8px !important;
+    display: flex !important;
+    gap: 6px !important;
+  }
+  .ssf-btn {
+    flex: 1 !important;
+    padding: 7px 4px !important;
+    font-size: 12px !important;
+    border-radius: 10px !important;
   }
 
   .session-card { padding: 16px; border-radius: 17px; gap: 9px; background: rgba(255,255,255,0.035); }
@@ -6115,9 +6282,7 @@ button:focus-visible {
     display: flex !important;
 
     align-items: center !important;
-
-    justify-content: flex-end !important;
-
+    justify-content: flex-start !important;
     flex-wrap: nowrap !important;
 
     gap: 6px !important;
@@ -6578,6 +6743,97 @@ button:focus-visible {
 
   #admin-mgmt-close-btn { width: 100% !important; min-height: 44px; border-color: rgba(239,43,157,.18) !important; color: var(--text-primary) !important; background: #fff7fb !important; }
 
+  /* ── Universal Mobile Modal Enhancements (UI/UX Pro Max) ── */
+  .modal-overlay {
+    padding: max(10px, env(safe-area-inset-top)) 10px max(14px, env(safe-area-inset-bottom)) !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .org-card,
+  .report-card,
+  .otp-unlock-card,
+  .agent-guide-card,
+  .media-preview-modal-box,
+  #keyword-modal .login-box,
+  #knowledge-modal .login-box,
+  #channel-modal .login-box {
+    width: 100% !important;
+    max-width: 580px !important;
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 20px) !important;
+    border-radius: 22px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    box-shadow: 0 20px 60px rgba(50, 15, 40, 0.28) !important;
+  }
+
+  /* Sticky Modal Heads: luôn cố định ở đỉnh modal, không bao giờ bị cuộn mất */
+  .org-head,
+  .report-head,
+  .otp-unlock-head,
+  .agent-guide-head,
+  #monitor-modal .brand-header,
+  #admin-management-modal .brand-header {
+    position: sticky !important;
+    top: 0 !important;
+    background: #ffffff !important;
+    z-index: 30 !important;
+    padding-bottom: 12px !important;
+    margin-bottom: 8px !important;
+    border-bottom: 1px solid rgba(239, 43, 157, 0.12) !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Sticky Modal Tabs: bám ngay dưới header khi cuộn */
+  .org-tabs,
+  .staff-tabs,
+  .agent-guide-tabs,
+  .qr-poster-tabs {
+    position: sticky !important;
+    top: 0 !important;
+    background: #ffffff !important;
+    z-index: 25 !important;
+    padding: 6px 0 !important;
+    margin-bottom: 10px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Cuộn nội dung modal độc lập và mượt mà */
+  .org-pane,
+  .report-body,
+  .otp-unlock-body,
+  .agent-guide-body,
+  .admin-mgmt-scroll {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+  }
+
+  /* Sticky Footer */
+  .modal-sticky-footer,
+  .report-foot,
+  .otp-unlock-foot {
+    position: sticky !important;
+    bottom: 0 !important;
+    background: #ffffff !important;
+    padding-top: 10px !important;
+    border-top: 1px solid rgba(239, 43, 157, 0.12) !important;
+    z-index: 20 !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Responsive tables trong modal: trượt ngang êm ái, không tràn vỡ layout */
+  .report-table-wrap,
+  .otp-table-scroll,
+  .org-list {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
 }
 
 

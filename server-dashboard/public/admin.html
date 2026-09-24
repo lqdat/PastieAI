@@ -313,9 +313,24 @@
                         <i class="ri-arrow-down-s-line chevron-icon"></i>
                     </button>
                     <div class="settings-dropdown-menu hide" id="settings-dropdown-menu">
+                        <div class="sdm-drag-handle mobile-only"></div>
                         <div class="sdm-menu-head">
-                            <span data-i18n="adminCenterBtn">TRUNG TÂM QUẢN TRỊ</span>
-                            <strong data-i18n="headerTitle">Hệ thống &amp; Vận hành</strong>
+                            <div class="sdm-head-title-row">
+                                <div class="sdm-head-title-text">
+                                    <span data-i18n="adminCenterBtn">TRUNG TÂM QUẢN TRỊ</span>
+                                    <strong data-i18n="headerTitle">Hệ thống &amp; Vận hành</strong>
+                                </div>
+                                <button type="button" class="sdm-close-btn mobile-only" id="sdm-close-btn" aria-label="Đóng menu">
+                                    <i class="ri-close-line"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="sdm-mobile-user-row mobile-only" id="sdm-mobile-user-row">
+                            <div class="sdm-mobile-avatar"><i class="ri-shield-star-line"></i></div>
+                            <div class="sdm-mobile-user-info">
+                                <span class="sdm-mobile-name" id="sdm-mobile-user-name">Superadmin</span>
+                                <span class="sdm-mobile-role-badge">Superadmin Toàn Quyền</span>
+                            </div>
                         </div>
                         <div class="sdm-lang-bar" style="padding: 10px 14px 10px; border-bottom: 1px solid rgba(84,62,100,0.08); background: rgba(255,255,255,0.7); display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                             <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: #9d5a86; text-transform: uppercase; letter-spacing: 0.05em;">
@@ -1268,6 +1283,33 @@
             <!-- Nền mờ khi mở panel chi tiết ở màn nhỏ -->
             <div id="details-backdrop" class="details-backdrop"></div>
         </div>
+
+        <!-- Backdrop khi mở menu Quản trị trên màn nhỏ (ngăn chạm nhầm và khóa cuộn nền) -->
+        <div id="settings-dropdown-backdrop" class="settings-dropdown-backdrop hide"></div>
+
+        <!-- Thanh điều hướng đáy di động (Mobile Superadmin Dock) -->
+        <nav class="superadmin-bottom-nav hide" id="superadmin-bottom-nav" aria-label="Thanh điều hướng di động Superadmin">
+            <button type="button" class="sbn-item is-active" id="sbn-tab-chats" title="Hội thoại">
+                <i class="ri-chat-3-line"></i>
+                <span>Hội thoại</span>
+            </button>
+            <button type="button" class="sbn-item" id="sbn-tab-org" title="Đội ngũ">
+                <i class="ri-team-line"></i>
+                <span>Đội ngũ</span>
+            </button>
+            <button type="button" class="sbn-item" id="sbn-tab-monitor" title="Giám sát">
+                <i class="ri-pulse-line"></i>
+                <span>Giám sát</span>
+            </button>
+            <button type="button" class="sbn-item" id="sbn-tab-tickets" title="Ticket">
+                <i class="ri-coupon-3-line"></i>
+                <span>Ticket</span>
+            </button>
+            <button type="button" class="sbn-item" id="sbn-tab-more" title="Quản trị">
+                <i class="ri-apps-fill"></i>
+                <span>Quản trị</span>
+            </button>
+        </nav>
     </div>
 
     <!-- Knowledge Base Modal -->

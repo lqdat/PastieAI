@@ -1208,48 +1208,130 @@ if (detailLangSelect) {
 // --- AI KNOWLEDGE BASE SETTINGS DIALOG ---
 const knowledgeModal = document.getElementById('knowledge-modal');
 
-// --- SETTINGS DROPDOWN TOGGLE ---
+// --- SETTINGS DROPDOWN & MOBILE ACTION SHEET TOGGLE ---
 const settingsTriggerBtn = document.getElementById('settings-trigger-btn');
-
 const settingsDropdownMenu = document.getElementById('settings-dropdown-menu');
+const settingsDropdownBackdrop = document.getElementById('settings-dropdown-backdrop');
+
+function openSettingsDropdown() {
+    if (!settingsDropdownMenu) return;
+    settingsDropdownMenu.classList.remove('hide');
+    settingsTriggerBtn?.classList.add('open');
+    settingsDropdownBackdrop?.classList.remove('hide');
+    document.body.classList.add('sdm-open');
+}
+
+function closeSettingsDropdown() {
+    const sdm = document.getElementById('settings-dropdown-menu');
+    const trigger = document.getElementById('settings-trigger-btn');
+    const backdrop = document.getElementById('settings-dropdown-backdrop');
+    if (sdm) sdm.classList.add('hide');
+    if (trigger) trigger.classList.remove('open');
+    if (backdrop) backdrop.classList.add('hide');
+    document.body.classList.remove('sdm-open');
+
+    // Sync bottom nav active state back to chat if in sessions view
+    const bottomNav = document.getElementById('superadmin-bottom-nav');
+    if (bottomNav) {
+        bottomNav.querySelectorAll('.sbn-item').forEach(b => b.classList.remove('is-active'));
+        document.getElementById('sbn-tab-chats')?.classList.add('is-active');
+    }
+}
+window.closeSettingsDropdown = closeSettingsDropdown;
+window.openSettingsDropdown = openSettingsDropdown;
 
 if (settingsTriggerBtn) {
     settingsTriggerBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         const isOpen = !settingsDropdownMenu.classList.contains('hide');
         if (isOpen) {
-            settingsDropdownMenu.classList.add('hide');
-            settingsTriggerBtn.classList.remove('open');
+            closeSettingsDropdown();
         } else {
-            settingsDropdownMenu.classList.remove('hide');
-            settingsTriggerBtn.classList.add('open');
+            openSettingsDropdown();
         }
     });
 }
 
+settingsDropdownBackdrop?.addEventListener('click', closeSettingsDropdown);
+document.getElementById('sdm-close-btn')?.addEventListener('click', closeSettingsDropdown);
+
 document.addEventListener('click', (e) => {
     if (settingsDropdownMenu && !settingsDropdownMenu.classList.contains('hide')) {
-        if (!document.getElementById('settings-dropdown-wrapper').contains(e.target)) {
-            settingsDropdownMenu.classList.add('hide');
-            settingsTriggerBtn && settingsTriggerBtn.classList.remove('open');
+        if (!document.getElementById('settings-dropdown-wrapper')?.contains(e.target) &&
+            !e.target.closest('#superadmin-bottom-nav')) {
+            closeSettingsDropdown();
         }
     }
 });
 
 settingsDropdownMenu?.addEventListener('click', (e) => {
     if (e.target.closest('.sdm-item')) {
-        settingsDropdownMenu.classList.add('hide');
-        settingsTriggerBtn?.classList.remove('open');
+        closeSettingsDropdown();
     }
 });
 
-function closeSettingsDropdown() {
-    const sdm = document.getElementById('settings-dropdown-menu');
-    const trigger = document.getElementById('settings-trigger-btn');
-    if (sdm) sdm.classList.add('hide');
-    if (trigger) trigger.classList.remove('open');
+// --- SUPERADMIN MOBILE BOTTOM NAV ---
+function initSuperadminBottomNav() {
+    const bottomNav = document.getElementById('superadmin-bottom-nav');
+    if (!bottomNav) return;
+
+    const role = (typeof CURRENT_ADMIN !== 'undefined' && CURRENT_ADMIN?.role) || '';
+    const isSuperOrProject = ['superadmin', 'project_admin'].includes(role);
+    bottomNav.classList.toggle('hide', !isSuperOrProject);
+
+    // Sync mobile user name in action sheet
+    const mobileUserName = document.getElementById('sdm-mobile-user-name');
+    if (mobileUserName && CURRENT_ADMIN) {
+        mobileUserName.textContent = CURRENT_ADMIN.full_name || CURRENT_ADMIN.username || 'Superadmin';
+    }
+
+    const setActiveTab = (tabId) => {
+        bottomNav.querySelectorAll('.sbn-item').forEach(b => b.classList.remove('is-active'));
+        document.getElementById(tabId)?.classList.add('is-active');
+    };
+
+    document.getElementById('sbn-tab-chats')?.addEventListener('click', () => {
+        setActiveTab('sbn-tab-chats');
+        closeSettingsDropdown();
+        const db = document.getElementById('dashboard-body');
+        if (db && db.classList.contains('chat-open')) {
+            db.classList.remove('chat-open');
+        }
+        document.getElementById('sessions-list-container')?.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    document.getElementById('sbn-tab-org')?.addEventListener('click', () => {
+        setActiveTab('sbn-tab-org');
+        closeSettingsDropdown();
+        const btn = document.getElementById('superadmin-team-btn') || document.getElementById('org-manage-btn');
+        btn?.click();
+    });
+
+    document.getElementById('sbn-tab-monitor')?.addEventListener('click', () => {
+        setActiveTab('sbn-tab-monitor');
+        closeSettingsDropdown();
+        document.getElementById('superadmin-monitor-btn')?.click();
+    });
+
+    document.getElementById('sbn-tab-tickets')?.addEventListener('click', () => {
+        setActiveTab('sbn-tab-tickets');
+        closeSettingsDropdown();
+        document.getElementById('ticket-manage-btn')?.click();
+    });
+
+    document.getElementById('sbn-tab-more')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = settingsDropdownMenu && !settingsDropdownMenu.classList.contains('hide');
+        if (isOpen) {
+            closeSettingsDropdown();
+        } else {
+            setActiveTab('sbn-tab-more');
+            openSettingsDropdown();
+        }
+    });
 }
-window.closeSettingsDropdown = closeSettingsDropdown;
+window.initSuperadminBottomNav = initSuperadminBottomNav;
+document.addEventListener('DOMContentLoaded', initSuperadminBottomNav);
 
 
 

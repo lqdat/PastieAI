@@ -1110,6 +1110,7 @@ async function loadAdminProfile() {
         window.TicketConsole?.capNhatNut?.();
 
         updateAgentHeaderUI();
+        window.initSuperadminBottomNav?.();
         return true;
     } catch (e) {
         console.error('Failed to load admin profile:', e);
