@@ -522,7 +522,9 @@ async function selectInternalSession(chat) {
         chatInput.disabled = false;
         chatInput.classList.remove('is-supervisor-mode');
         chatInput.placeholder = 'Nhập tin nhắn nội bộ...';
-        setTimeout(() => chatInput?.focus(), 150);
+        if (window.innerWidth > 768) {
+            setTimeout(() => chatInput?.focus(), 150);
+        }
     }
     const sendBtn = chatForm?.querySelector('button[type="submit"]');
     if (sendBtn) sendBtn.disabled = false;
@@ -1500,10 +1502,18 @@ function bindAgentChatInputEvents() {
         handleAgentChatInputTyping();
     });
     input.addEventListener('focus', () => {
+        if (window.innerWidth <= 768) {
+            window.scrollTo(0, 0);
+            if (document.body) document.body.scrollTop = 0;
+            if (document.documentElement) document.documentElement.scrollTop = 0;
+        }
         window.updateAgentChatViewport?.();
         const msgContainer = document.getElementById('chat-messages-container');
         if (msgContainer) {
             setTimeout(() => {
+                if (window.innerWidth <= 768) {
+                    window.scrollTo(0, 0);
+                }
                 window.updateAgentChatViewport?.();
                 msgContainer.scrollTop = msgContainer.scrollHeight;
             }, 150);
@@ -1552,6 +1562,11 @@ function initAgentMobileKeyboardHandler() {
         }
 
         if (!container) return;
+
+        // Tránh việc window bị cuộn lên bởi trình duyệt mobile khi focus/mở bàn phím
+        if (window.scrollY !== 0 || window.scrollX !== 0) {
+            window.scrollTo(0, 0);
+        }
 
         const h = Math.round(vv.height);
         const top = Math.round(vv.offsetTop || 0);
@@ -3040,11 +3055,13 @@ function scrollChatToBottom(force = false) {
     const doScroll = () => {
         if (!chatMessagesContainer) return;
         chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
-        const last = chatMessagesContainer.lastElementChild;
-        if (last && typeof last.scrollIntoView === 'function') {
-            try {
-                last.scrollIntoView({ block: 'end', inline: 'nearest' });
-            } catch (_) {}
+        if (window.innerWidth > 768) {
+            const last = chatMessagesContainer.lastElementChild;
+            if (last && typeof last.scrollIntoView === 'function') {
+                try {
+                    last.scrollIntoView({ block: 'end', inline: 'nearest' });
+                } catch (_) {}
+            }
         }
     };
 

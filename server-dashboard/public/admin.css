@@ -4933,25 +4933,21 @@ button:focus-visible {
   body { min-height: 100svh; min-height: 100dvh; }
 
   .dashboard-container {
-
-    width: 100%;
-
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100% !important;
+    max-width: 100% !important;
     padding: 0;
-
     gap: 0;
-
     height: 100svh;
-
     height: 100dvh;
-
+    max-height: 100dvh;
     background: var(--bg-color);
-
     display: flex !important;
-
     flex-direction: column !important;
-
     overflow: hidden !important;
-
   }
 
   /* ── Superadmin & Default Mobile Header (UI/UX Pro Max) ── */
@@ -5968,31 +5964,44 @@ button:focus-visible {
   }
 
   .dashboard-body.chat-open .chat-main > .chat-header {
-
     flex: 0 0 auto !important;
-
     padding: 10px 14px !important;
+  }
 
+  .dashboard-body.chat-open .chat-main > .ticket-bar,
+  .ticket-bar {
+    flex: 0 0 auto !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 7px 12px !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    background: rgba(239, 43, 157, 0.04) !important;
+    border-bottom: 1px solid rgba(84, 62, 100, 0.09) !important;
+  }
+
+  .ticket-bar.hide {
+    display: none !important;
+  }
+
+  .ticket-bar .ticket-btn {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
   }
 
   .dashboard-body.chat-open .chat-main > .chat-messages {
-
     flex: 1 1 0% !important;
-
     min-height: 0 !important;
-
     overflow-y: auto !important;
-
     -webkit-overflow-scrolling: touch;
-
     overscroll-behavior: contain;
-
   }
 
   .dashboard-body.chat-open .chat-main > .chat-input-area {
-
     flex: 0 0 auto !important;
-
   }
 
   .dashboard-body.chat-open .chat-main.keyboard-open > .chat-input-area,
